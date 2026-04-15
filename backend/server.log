@@ -1,0 +1,5 @@
+[dotenv@17.3.1] injecting env (5) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+🚀 Zenith Spend API running on port 5001
+✅ Successfully connected to the MySQL Database.
+✅ DB migrations checked.
