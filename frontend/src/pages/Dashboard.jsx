@@ -407,10 +407,10 @@ export default function Dashboard() {
         </motion.div>
         <div className="bento-actions">
           <motion.button className="bbtn-sec" onClick={handleExport} disabled={exporting} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-            <Download size={14} /> {exporting ? 'Exporting...' : 'Export CSV'}
+            <Download size={14} /> {exporting ? getLocalizedText('exporting', 'Exporting...') : getLocalizedText('export_csv', 'Export CSV')}
           </motion.button>
           <motion.button className="bbtn-pri" onClick={() => setShowForm(true)} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-            <Plus size={14} /> Add Transaction
+            <Plus size={14} /> {getLocalizedText('add_transaction', 'Add Transaction')}
           </motion.button>
         </div>
       </div>
@@ -422,18 +422,18 @@ export default function Dashboard() {
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-hero glass" style={{ borderColor: balance >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)' }} role="region" aria-label="Account balance">
           <div className="blob-glow" style={{ background: balance >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)' }}></div>
-          <div className="bh-top"><span className="bh-label">Total Balance</span><Wallet size={20} className="bh-icon" style={{ color: balanceColor }} /></div>
+          <div className="bh-top"><span className="bh-label">{getLocalizedText('total_balance', 'Total Balance')}</span><Wallet size={20} className="bh-icon" style={{ color: balanceColor }} /></div>
           <div className="bh-mid">
             <h2 style={{ fontSize: '2.4rem', fontWeight: '900', color: balanceColor, margin: '8px 0' }}>{safeFormatCurrency(balance, safeFmt)}</h2>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Net position</span>
-              <div className="bh-trend neutral" style={{ background: 'var(--glass-2)' }}><Minus size={14} /><span>+0% vs last month</span></div>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{getLocalizedText('net_position', 'Net position')}</span>
+              <div className="bh-trend neutral" style={{ background: 'var(--glass-2)' }}><Minus size={14} /><span>{getLocalizedText('vs_last_month', '+0% vs last month')}</span></div>
             </div>
           </div>
         </motion.div>
 
-        <StatCard icon={TrendingUp} label="Total Income" value={safeFormatCurrency(income, safeFmt)} colorRgb="16,185,129" subtitle="All time" trend="neutral" trendVal="+0% vs last month" />
-        <StatCard icon={TrendingDown} label="Total Expenses" value={safeFormatCurrency(expense, safeFmt)} colorRgb="239,68,68" subtitle="All time" trend="neutral" trendVal="+0% vs last month" />
+        <StatCard icon={TrendingUp} label={getLocalizedText('total_income', 'Total Income')} value={safeFormatCurrency(income, safeFmt)} colorRgb="16,185,129" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} />
+        <StatCard icon={TrendingDown} label={getLocalizedText('total_expenses', 'Total Expenses')} value={safeFormatCurrency(expense, safeFmt)} colorRgb="239,68,68" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} />
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-recent glass">
           <div className="bt-header">
@@ -458,7 +458,7 @@ export default function Dashboard() {
         </motion.div>
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-chart glass">
-          <div className="bt-header"><h3 className="heading-accent">Spending vs Income</h3><span className="bt-badge">Daily Trend</span></div>
+          <div className="bt-header"><h3 className="heading-accent">{getLocalizedText('spending_vs_income', 'Spending vs Income')}</h3><span className="bt-badge">{getLocalizedText('daily_trend', 'Daily Trend')}</span></div>
           <div className="bt-chart-wrap">
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -471,21 +471,21 @@ export default function Dashboard() {
                   <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={tooltipStyle} formatter={(val) => safeFormatCurrency(val, safeFmt)} />
-                  <Legend wrapperStyle={{ paddingTop: 12, fontSize: '0.78rem', fontWeight: 700 }} formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value === 'income' ? 'Income' : 'Expenses'}</span>} />
+                  <Legend wrapperStyle={{ paddingTop: 12, fontSize: '0.78rem', fontWeight: 700 }} formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value === 'income' ? getLocalizedText('income_label', 'Income') : getLocalizedText('expense_label', 'Expenses')}</span>} />
                   <Area type="monotone" dataKey="income" stroke="#10b981" fill="url(#gIn)" strokeWidth={2.5} strokeLinecap="round" dot={{ r: 0 }} activeDot={{ r: 6, strokeWidth: 0, fill: '#10b981' }} />
                   <Area type="monotone" dataKey="expense" stroke="#ef4444" fill="url(#gEx)" strokeWidth={2.5} strokeLinecap="round" dot={{ r: 0 }} activeDot={{ r: 6, strokeWidth: 0, fill: '#ef4444' }} />
                 </AreaChart>
               </ResponsiveContainer>
-            ) : <div className="bento-empty"><span className="bento-empty-icon" aria-hidden="true"><LineChart size={42} strokeWidth={1.5} opacity={0.5} /></span><p className="bento-empty-title">Your story starts here</p><p className="bento-empty-sub">Add transactions to see your spending timeline.</p></div>}
+            ) : <div className="bento-empty"><span className="bento-empty-icon" aria-hidden="true"><LineChart size={42} strokeWidth={1.5} opacity={0.5} /></span><p className="bento-empty-title">{getLocalizedText('story_starts', 'Your story starts here')}</p><p className="bento-empty-sub">{getLocalizedText('add_tx_timeline', 'Add transactions to see your spending timeline.')}</p></div>}
           </div>
-          {chartData.length > 0 && <div className="bt-chart-summary" role="note">{expense > income ? `⚠️ You spent ${expenseOfIncome}% of your income this period` : income > 0 ? `✅ You saved ${savingsRate}% of your income this period` : 'Add income transactions to see your savings rate'}</div>}
+          {chartData.length > 0 && <div className="bt-chart-summary" role="note">{expense > income ? getLocalizedText('spent_pct', `⚠️ You spent {pct}% of your income this period`).replace('{pct}', expenseOfIncome) : income > 0 ? getLocalizedText('saved_pct', `✅ You saved {pct}% of your income this period`).replace('{pct}', savingsRate) : getLocalizedText('add_income_rate', 'Add income transactions to see your savings rate')}</div>}
         </motion.div>
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-goal glass">
-          <div className="bt-header"><h3 className="heading-accent">Savings Goal</h3><Target size={16} className="bt-icon-muted" /></div>
+          <div className="bt-header"><h3 className="heading-accent">{getLocalizedText('savings_goal', 'Savings Goal')}</h3><Target size={16} className="bt-icon-muted" /></div>
           {monthlyGoal > 0 ? (
-            <><div className="bg-hud"><span className="bg-pct">{goalProgress.toFixed(0)}%</span><span className="bg-frac">{safeFormatCurrency(Math.max(0, netSavings), safeFmt)} / {safeFormatCurrency(monthlyGoal, safeFmt)}</span></div><div className="bg-track"><motion.div className={`bg-fill ${goalProgress < 15 ? 'breathing' : ''}`} initial={{ width: 0 }} animate={{ width: `${goalProgress}%` }} transition={{ duration: 1.5, delay: 0.5 }}><div className="bg-glow-dot"></div></motion.div></div>{goalProgress < 10 && <p className="bg-nudge">You're just getting started! Keep tracking. 💪</p>}</>
-          ) : <div className="bento-empty"><span className="bento-empty-icon" aria-hidden="true"><Target size={42} strokeWidth={1.5} opacity={0.5} /></span><p className="bento-empty-title">Set a savings goal</p><p className="bento-empty-sub">Track your progress toward a monthly target.</p><NavLink to="/settings" className="bento-empty-cta pulse-encouragement" style={{ textDecoration: 'none' }}><Settings size={13} /> Set Goal →</NavLink></div>}
+            <><div className="bg-hud"><span className="bg-pct">{goalProgress.toFixed(0)}%</span><span className="bg-frac">{safeFormatCurrency(Math.max(0, netSavings), safeFmt)} / {safeFormatCurrency(monthlyGoal, safeFmt)}</span></div><div className="bg-track"><motion.div className={`bg-fill ${goalProgress < 15 ? 'breathing' : ''}`} initial={{ width: 0 }} animate={{ width: `${goalProgress}%` }} transition={{ duration: 1.5, delay: 0.5 }}><div className="bg-glow-dot"></div></motion.div></div>{goalProgress < 10 && <p className="bg-nudge">{getLocalizedText('getting_started_nudge', `You're just getting started! Keep tracking. 💪`)}</p>}</>
+          ) : <div className="bento-empty"><span className="bento-empty-icon" aria-hidden="true"><Target size={42} strokeWidth={1.5} opacity={0.5} /></span><p className="bento-empty-title">{getLocalizedText('set_savings_goal', 'Set a savings goal')}</p><p className="bento-empty-sub">{getLocalizedText('track_progress_target', 'Track your progress toward a monthly target.')}</p><NavLink to="/settings" className="bento-empty-cta pulse-encouragement" style={{ textDecoration: 'none' }}><Settings size={13} /> {getLocalizedText('set_goal_cta', 'Set Goal →')}</NavLink></div>}
         </motion.div>
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-ai glass">
@@ -494,7 +494,7 @@ export default function Dashboard() {
         </motion.div>
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-pie glass">
-          <div className="bt-header"><h3 className="heading-accent">Breakdown</h3></div>
+          <div className="bt-header"><h3 className="heading-accent">{getLocalizedText('breakdown', 'Breakdown')}</h3></div>
           <div className="bt-pie-wrap">
             {pieData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -504,7 +504,7 @@ export default function Dashboard() {
                   <Legend wrapperStyle={{ fontSize: '0.72rem', fontWeight: 700 }} formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value}</span>} />
                 </PieChart>
               </ResponsiveContainer>
-            ) : <div className="bento-empty"><span className="bento-empty-icon" aria-hidden="true"><Tag size={42} strokeWidth={1.5} opacity={0.5} /></span><p className="bento-empty-title">No expenses yet</p><p className="bento-empty-sub">Track spending to see category breakdown.</p></div>}
+            ) : <div className="bento-empty"><span className="bento-empty-icon" aria-hidden="true"><Tag size={42} strokeWidth={1.5} opacity={0.5} /></span><p className="bento-empty-title">{getLocalizedText('no_exp_yet', 'No expenses yet')}</p><p className="bento-empty-sub">{getLocalizedText('track_spend_breakdown', 'Track spending to see category breakdown.')}</p></div>}
           </div>
         </motion.div>
 

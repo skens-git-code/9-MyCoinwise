@@ -2,15 +2,16 @@ import React, { useState, useContext, useMemo, useCallback, useEffect } from 're
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, ArrowLeftRight, BarChart3, Target,
+  LayoutDashboard, ArrowLeftRight, BarChart3, Target, Activity, Briefcase,
   CreditCard, Settings, ChevronRight, Zap, TrendingUp,
-  Plus, Check, Users, Bell, Smartphone, AlertCircle, RefreshCw, LogOut
+  Plus, Check, Users, Bell, Smartphone, AlertCircle, RefreshCw, LogOut, Sparkles
 } from 'lucide-react';
 import { AppContext } from '../App';
 import { CURRENCIES } from '../services/api';
 import { LANGUAGES } from '../services/i18n';
 import CurrencyConverter from './CurrencyConverter';
 import AlertsCenter from './AlertsCenter';
+import AIChat from './AIChat';
 import DOMPurify from 'dompurify';
 
 // ==============================
@@ -23,6 +24,8 @@ const NAV_ITEMS = [
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics' },
   { to: '/goals', icon: Target, labelKey: 'goals' },
   { to: '/subscriptions', icon: CreditCard, labelKey: 'subscriptions' },
+  { to: '/cashflow', icon: Activity, labelKey: 'cashflow' },
+  { to: '/wealth', icon: Briefcase, labelKey: 'wealth' },
 ];
 
 const USER_DISPLAY_RULES = {
@@ -105,7 +108,7 @@ const useDropdownManager = () => {
 const useUserDisplay = (user) => {
   return useMemo(() => {
     if (!user) {
-      return { displayName: 'Guest', avatar: '👤', avatarColor: '#6B7280', rawName: null };
+      return { displayName: 'Guest', avatar: '👤', avatarColor: '#6B7280', rawName: null, isBase64Avatar: false };
     }
 
     const rawName = user?.name || user?.username;
@@ -114,11 +117,15 @@ const useUserDisplay = (user) => {
       !USER_DISPLAY_RULES.randomIdPattern.test(sanitizedRawName) &&
       !USER_DISPLAY_RULES.excludedIds.has(sanitizedRawName);
 
+    const avatarStr = user?.profile_avatar || '😊';
+    const isBase64Avatar = typeof avatarStr === 'string' && avatarStr.length > 20 && avatarStr.startsWith('data:image');
+
     return {
       displayName: isValidDisplayName ? sanitizedRawName : USER_DISPLAY_RULES.defaultDisplayName,
-      avatar: sanitizeUserInput(user?.profile_avatar) || '😊',
+      avatar: avatarStr,
       avatarColor: validateColorHex(user?.profile_color),
-      rawName: sanitizedRawName
+      rawName: sanitizedRawName,
+      isBase64Avatar
     };
   }, [user]);
 };
@@ -315,6 +322,7 @@ export default function AppLayout({ children }) {
   // State management
   const [showConverter, setShowConverter] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [isAIOpen, setIsAIOpen] = useState(false);
   const [error, setError] = useState(null);
 
   const { activeDropdown, toggleDropdown, closeAll } = useDropdownManager();
@@ -349,6 +357,8 @@ export default function AppLayout({ children }) {
     '/analytics': 'analytics',
     '/goals': 'goals',
     '/subscriptions': 'subscriptions',
+    '/cashflow': 'cashflow',
+    '/wealth': 'wealth',
     '/settings': 'settings',
   }), []);
 
@@ -386,19 +396,37 @@ export default function AppLayout({ children }) {
       if (event.key === 'Escape') {
         if (showConverter) setShowConverter(false);
         if (showAlerts) setShowAlerts(false);
+        if (isAIOpen) setIsAIOpen(false);
         closeAll();
       }
     };
 
     window.addEventListener('keydown', handleKeyboardShortcuts);
     return () => window.removeEventListener('keydown', handleKeyboardShortcuts);
-  }, [handleSidebarToggle, showConverter, showAlerts, closeAll]);
+  }, [handleSidebarToggle, showConverter, showAlerts, isAIOpen, closeAll]);
 
 
 
   return (
     <ErrorBoundary>
       <div className="app-island-layout" data-theme={theme}>
+        {/* Ambient AMOLED Background */}
+        <div className="animated-bg" aria-hidden="true">
+          <div className="gradient-bg"></div>
+          <div className="gradients-container">
+            <div className="gradient gradient-1"></div>
+            <div className="gradient gradient-2"></div>
+            <div className="gradient gradient-3"></div>
+          </div>
+          <div className="particles">
+            <div className="particle" style={{left:'10%', animationDuration:'25s', animationDelay:'0s'}}></div>
+            <div className="particle" style={{left:'30%', animationDuration:'20s', animationDelay:'2s'}}></div>
+            <div className="particle" style={{left:'55%', animationDuration:'28s', animationDelay:'5s'}}></div>
+            <div className="particle" style={{left:'75%', animationDuration:'22s', animationDelay:'1s'}}></div>
+            <div className="particle" style={{left:'90%', animationDuration:'30s', animationDelay:'3s'}}></div>
+          </div>
+        </div>
+
         {/* Desktop Sidebar */}
         {deviceType !== 'mobile' && (
           <DesktopSidebar
@@ -425,6 +453,7 @@ export default function AppLayout({ children }) {
             onCloseDropdowns={closeAll}
             onShowConverter={() => setShowConverter(true)}
             onShowAlerts={() => setShowAlerts(true)}
+            onShowAI={() => setIsAIOpen(true)}
             urgentAlertsCount={urgentAlertsCount}
             formattedBalance={formattedBalance}
             theme={theme}
@@ -471,6 +500,34 @@ export default function AppLayout({ children }) {
               alerts={alerts}
               onClose={() => setShowAlerts(false)}
             />
+          )}
+          {isAIOpen && (
+            <motion.aside 
+              className="ai-panel"
+              initial={{ x: '100%', opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: '100%', opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            >
+              <div className="ai-panel-header">
+                <h2>AI Financial Assistant</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="ai-status-badge">Online</span>
+                  <button
+                    onClick={() => setIsAIOpen(false)}
+                    className="ibtn"
+                    style={{ width: '32px', height: '32px', borderRadius: '10px' }}
+                    aria-label="Close AI Assistant"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                Ask questions about your spending, forecasting, or investments.
+              </p>
+              <AIChat />
+            </motion.aside>
           )}
         </AnimatePresence>
 
@@ -540,8 +597,12 @@ const DesktopSidebar = React.memo(({
           className="user-trigger"
           style={{ ...styles.userTrigger, cursor: 'default' }}
         >
-          <div className="user-avatar" style={{ background: userInfo.avatarColor }}>
-            {userInfo.avatar}
+          <div className="user-avatar" style={{ background: userInfo.avatarColor, overflow: 'hidden' }}>
+            {userInfo.isBase64Avatar ? (
+              <img src={userInfo.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              userInfo.avatar
+            )}
           </div>
           <AnimatePresence>
             {sidebarOpen && (
@@ -637,7 +698,7 @@ DesktopSidebar.displayName = 'DesktopSidebar';
 const Header = React.memo(({
   isDashboard, pageTitle, userInfo, hasIncome,
   activeDropdown, onDropdownToggle, onCloseDropdowns,
-  onShowConverter, onShowAlerts, urgentAlertsCount,
+  onShowConverter, onShowAlerts, onShowAI, urgentAlertsCount,
   formattedBalance, theme, onToggleTheme,
   lang, onLanguageChange, t, logout
 }) => {
@@ -652,7 +713,7 @@ const Header = React.memo(({
             transition={{ duration: ANIMATION_DURATIONS.slow, ease: "easeOut" }}
           >
             <h1 className="greeting-title">
-              Welcome back, <span className="greeting-name">{userInfo.displayName}</span>
+              {t('welcome_back')} <span className="greeting-name">{userInfo.displayName}</span>
               <motion.span
                 className="wave-emoji"
                 animate={{ rotate: [0, 15, -10, 15, -5, 10, 0] }}
@@ -664,8 +725,8 @@ const Header = React.memo(({
             </h1>
             <p className="greeting-subtitle">
               {hasIncome
-                ? "Here is your latest financial summary."
-                : "Ready to add your first income? Let's go →"}
+                ? t('latest_financial_summary')
+                : t('add_first_income')}
             </p>
           </motion.div>
         ) : (
@@ -745,6 +806,14 @@ const Header = React.memo(({
           )}
         </button>
 
+        <button
+          className="ibtn"
+          onClick={onShowAI}
+          aria-label="AI Assistant"
+        >
+          <Sparkles size={20} />
+        </button>
+
         <div className="ih-balance">
           <TrendingUp size={16} />
           <span>{formattedBalance}</span>
@@ -760,10 +829,16 @@ const Header = React.memo(({
               ...styles.avatarButton,
               background: userInfo.avatarColor,
               boxShadow: `0 4px 12px ${userInfo.avatarColor}44`,
-              cursor: 'pointer'
+              cursor: 'pointer',
+              overflow: 'hidden',
+              padding: userInfo.isBase64Avatar ? 0 : undefined
             }}
           >
-            {userInfo.avatar}
+            {userInfo.isBase64Avatar ? (
+              <img src={userInfo.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+            ) : (
+              userInfo.avatar
+            )}
           </button>
         </div>
       </div>

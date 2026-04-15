@@ -17,6 +17,9 @@ const LoginLog = require('./models/LoginLog');
 
 // ─── Middleware ─────────────────────────────────────────────────────────────
 const auth = require('./middleware/auth');
+const wealthRoutes = require('./routes/wealth');
+const cashflowRoutes = require('./routes/cashflow');
+const aiRoutes = require('./routes/ai');
 
 dotenv.config();
 
@@ -29,11 +32,15 @@ const app = express();
 
 app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174'], optionsSuccessStatus: 200 }));
 app.use(morgan('dev'));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
+
+app.use('/api/wealth', wealthRoutes);
+app.use('/api/cashflow', cashflowRoutes);
 
 // ─── AUTHENTICATION ROUTES ──────────────────────────────────────────────────
 app.post('/api/auth/register', [
@@ -185,6 +192,7 @@ app.use('/api/transactions', auth);
 app.use('/api/goals', auth);
 app.use('/api/subscriptions', auth);
 app.use('/api/export', auth);
+app.use('/api/ai', auth, aiRoutes);
 
 // 1. Get all users (for user switcher - keeping for backward compat if needed, but really shouldn't be used now)
 app.get('/api/users', async (req, res) => {

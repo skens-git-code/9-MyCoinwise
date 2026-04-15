@@ -151,5 +151,11 @@ export const api = {
     document.body.appendChild(link);
     link.click();
     link.remove();
+  },
+
+  // AI Chat
+  chatWithAI: async (message, history) => {
+    const res = await axios.post(`${API_URL}/ai/chat`, { message, history });
+    return res.data;
   }
 };

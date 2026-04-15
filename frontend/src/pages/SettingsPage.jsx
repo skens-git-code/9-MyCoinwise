@@ -13,7 +13,7 @@ import { AppContext } from '../App';
 import { CURRENCIES, AVATARS, AVATAR_COLORS, api } from '../services/api';
 import { LANGUAGES } from '../services/i18n';
 import { exportToPDF } from '../services/pdfExport';
-
+import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 // ============= HELPER FUNCTIONS =============
 const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email?.trim() || '');
 const validateGoal = (goal) => {
@@ -802,7 +802,28 @@ const AdvancedPreferences = ({ userId, showMessage }) => {
 };
 
 // ============= PROFILE TAB =============
-const ProfileTab = ({ formState, handleFieldChange, t, user, loading }) => (
+const ProfileTab = ({ formState, handleFieldChange, t, user, loading, theme }) => {
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 20 * 1024 * 1024) { // 20MB limit
+        alert('Image must be less than 20MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        handleFieldChange('avatar', reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const isBase64Avatar = formState.avatar && formState.avatar.length > 20 && formState.avatar.startsWith('data:image');
+
+  return (
   <>
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
       <div className="idp-hero-icon income" style={{ width: 64, height: 64, marginBottom: 16 }}>
@@ -830,40 +851,58 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, loading }) => (
             justifyContent: 'center',
             fontSize: '3rem',
             boxShadow: `0 0 30px ${formState.avatarColor}55`,
-            flexShrink: 0
+            flexShrink: 0,
+            position: 'relative',
+            overflow: 'hidden'
           }}
         >
-          {formState.avatar}
+          {isBase64Avatar ? (
+            <img src={formState.avatar} alt="Profile Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            formState.avatar
+          )}
         </motion.div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
             <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
-              Choose Avatar
+              Profile Picture & Emoji
             </label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} role="group" aria-label="Choose your avatar">
-              {AVATARS.slice(0, 12).map(avatar => (
-                <button
-                  key={avatar}
-                  type="button"
-                  onClick={() => handleFieldChange('avatar', avatar)}
-                  aria-label={`Select avatar ${avatar}`}
-                  aria-pressed={formState.avatar === avatar}
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    background: formState.avatar === avatar ? 'var(--brand-primary)' : 'var(--glass-2)',
-                    border: '1px solid var(--glass-border)',
-                    cursor: 'pointer',
-                    fontSize: '1.2rem',
-                    transition: 'all 0.2s',
-                    opacity: formState.avatar === avatar ? 1 : 0.6
-                  }}
-                >
-                  {avatar}
-                </button>
-              ))}
+            
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              >
+                😀 Pick Full Emoji
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload size={16} /> Upload Local Image
+              </button>
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                onChange={handleImageUpload}
+              />
             </div>
+
+            {showEmojiPicker && (
+              <div style={{ position: 'absolute', zIndex: 100, marginTop: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.2)', borderRadius: 8 }}>
+                <EmojiPicker
+                  theme={theme === 'light' ? EmojiTheme.LIGHT : EmojiTheme.DARK}
+                  onEmojiClick={(emojiData) => {
+                    handleFieldChange('avatar', emojiData.emoji);
+                    setShowEmojiPicker(false);
+                  }}
+                />
+              </div>
+            )}
           </div>
           <div>
             <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
@@ -920,7 +959,8 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, loading }) => (
       </button>
     </div>
   </>
-);
+  );
+};
 
 // ============= PREFERENCES TAB =============
 const PreferencesTab = ({ formState, handleFieldChange, t, loading }) => (

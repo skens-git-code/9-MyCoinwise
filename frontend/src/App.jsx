@@ -7,6 +7,8 @@ import Transactions from './pages/Transactions';
 import Analytics from './pages/Analytics';
 import Goals from './pages/Goals';
 import Subscriptions from './pages/Subscriptions';
+import Cashflow from './pages/Cashflow';
+import Wealth from './pages/Wealth';
 import SettingsPage from './pages/SettingsPage';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -149,7 +151,7 @@ export default function App() {
         addTransaction, deleteTransaction, editTransaction,
         resetAccount, login, logout, loading,
         refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
-        lang, setLanguage, t,
+        lang, setLanguage, t, token,
         alerts, insights, deferredPrompt, installPWA, goals, subscriptions,
       }}>
         <Router>
@@ -165,6 +167,8 @@ export default function App() {
                     <Route path="/analytics"     element={<Analytics />} />
                     <Route path="/goals"         element={<Goals />} />
                     <Route path="/subscriptions" element={<Subscriptions />} />
+                    <Route path="/cashflow"      element={<Cashflow />} />
+                    <Route path="/wealth"        element={<Wealth />} />
                     <Route path="/settings"      element={<SettingsPage />} />
                     <Route path="*"              element={<Navigate to="/" />} />
                   </Routes>

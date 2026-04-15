@@ -30,9 +30,20 @@ export default function Subscriptions() {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [cycle, setCycle] = useState('monthly');
+  const [icon, setIcon] = useState('💳');
+  const [color, setColor] = useState('#059669');
+
+  const handlePresetClick = (p) => {
+    setName(p.name);
+    setAmount(p.amount.toString());
+    setCycle('monthly');
+    setIcon(p.icon);
+    setColor(p.color);
+    setShowAdd(true);
+  };
 
   const addSub = async (sub) => {
-    const newSub = sub || { name, amount: parseFloat(amount), cycle, icon: '💳', color: '#059669' };
+    const newSub = sub || { name, amount: parseFloat(amount), cycle, icon, color };
     if (!newSub.name || !newSub.amount) return;
     setIsSubmitting(true);
     try {
@@ -45,7 +56,7 @@ export default function Subscriptions() {
         icon: newSub.icon
       });
       await refetch();
-      setName(''); setAmount(''); setCycle('monthly'); setShowAdd(false);
+      setName(''); setAmount(''); setCycle('monthly'); setIcon('💳'); setColor('#059669'); setShowAdd(false);
     } catch (err) {
       console.error('Failed to create subscription', err);
     } finally {
@@ -85,7 +96,7 @@ export default function Subscriptions() {
           <h2>Subscriptions</h2>
           <span className="mh-badge">{subs.length} active</span>
         </div>
-        <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="btn-primary" onClick={() => setShowAdd(true)}>
+        <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="btn-primary" onClick={() => { setName(''); setAmount(''); setCycle('monthly'); setIcon('💳'); setColor('#059669'); setShowAdd(true); }}>
           <Plus size={16} /> Add Custom
         </motion.button>
       </div>
@@ -123,7 +134,7 @@ export default function Subscriptions() {
                 <motion.button
                   key={i} className="preset-btn"
                   whileHover={added ? {} : { scale: 1.05, y: -4 }} whileTap={added ? {} : { scale: 0.97 }}
-                  onClick={() => !added && addSub({ ...p, cycle: 'monthly' })}
+                  onClick={() => !added && handlePresetClick(p)}
                   style={{
                     scrollSnapAlign: 'start', flex: '0 0 160px', padding: '20px 14px', borderRadius: 20,
                     background: added ? 'var(--surface-1)' : 'var(--glass-1)',
@@ -196,7 +207,7 @@ export default function Subscriptions() {
         {showAdd && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAdd(false)}>
             <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22, stiffness: 300 }} onClick={e => e.stopPropagation()}>
-              <h3>💳 New Subscription</h3>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: '1.4rem' }}>{icon}</span> {name ? `Add ${name}` : 'New Subscription'}</h3>
               <div className="form-field"><label>Service Name</label><input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Netflix, Gym" autoFocus /></div>
               <div className="form-field"><label>Amount</label><input type="text" inputMode="decimal" value={amount} onChange={e => { let v = e.target.value.replace(/[^0-9.]/g, ''); const p = v.split('.'); if (p.length > 2) v = p[0] + '.' + p.slice(1).join(''); setAmount(v); }} placeholder="9.99" /></div>
               <div className="form-field">

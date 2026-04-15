@@ -20,6 +20,7 @@ const transactionSchema = new mongoose.Schema({
 
   // ── Recurring Transaction Support ─────────────────────────────────────────
   is_recurring:          { type: Boolean, default: false },
+  is_one_time:           { type: Boolean, default: false },
   recurrence_interval:   { type: String, enum: ['daily', 'weekly', 'monthly', 'yearly', null], default: null },
   recurrence_ends_at:    { type: Date, default: null },
   parent_transaction_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', default: null },

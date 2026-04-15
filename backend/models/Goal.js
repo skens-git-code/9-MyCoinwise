@@ -15,23 +15,23 @@ const goalSchema = new mongoose.Schema({
     trim: true 
   },
   target: { 
-    type: mongoose.Schema.Types.Decimal128, 
+    type: Number, 
     required: [true, 'Target amount is required'], 
     min: 0.01,
     validate: {
       validator: function(v) {
-        return parseFloat(v) > 0;
+        return v > 0;
       },
       message: 'Target amount must be greater than 0'
     }
   },
   saved: { 
-    type: mongoose.Schema.Types.Decimal128, 
+    type: Number, 
     default: 0, 
     min: 0,
     validate: {
       validator: function(v) {
-        return parseFloat(v) <= parseFloat(this.target);
+        return v <= (this.target || 0);
       },
       message: 'Saved amount cannot exceed target amount'
     }
@@ -83,7 +83,7 @@ const goalSchema = new mongoose.Schema({
     maxlength: [1000, 'Notes cannot exceed 1000 characters'] 
   },
   auto_save_amount: { 
-    type: mongoose.Schema.Types.Decimal128, 
+    type: Number, 
     default: 0,
     min: 0
   },
@@ -412,59 +412,5 @@ goalSchema.statics.getDashboardStats = async function(userId) {
 
 // ── Export Model ──────────────────────────────────────────────────────────────
 module.exports = mongoose.model('Goal', goalSchema);
-// const mongoose = require('mongoose');
-
-// const goalSchema = new mongoose.Schema({
-//   // ── Core ──────────────────────────────────────────────────────────────────
-//   user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-//   name:    { type: String, required: true, maxlength: 255, trim: true },
-//   target:  { type: Number, required: true, min: 0 },
-//   saved:   { type: Number, default: 0.00, min: 0 },
-//   color:   { type: String, default: '#7c3aed', maxlength: 20 },
-//   icon:    { type: String, default: '🎯', maxlength: 10 },
-
-//   // ── Goal Intelligence ──────────────────────────────────────────────────────
-//   deadline:        { type: Date, default: null },
-//   priority:        { type: String, enum: ['low', 'medium', 'high', 'critical'], default: 'medium' },
-//   notes:           { type: String, default: null, maxlength: 1000 },
-//   auto_save_amount: { type: Number, default: 0 },  // Amount to auto-contribute per period
-//   auto_save_interval: { type: String, enum: ['daily', 'weekly', 'monthly', null], default: null },
-
-//   // ── Completion Tracking ────────────────────────────────────────────────────
-//   is_completed:  { type: Boolean, default: false },
-//   completed_at:  { type: Date, default: null },
-//   is_archived:   { type: Boolean, default: false }
-
-// }, {
-//   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
-//   toJSON:   { virtuals: true },
-//   toObject: { virtuals: true }
-// });
-
-// // ── Indexes ───────────────────────────────────────────────────────────────────
-// goalSchema.index({ user_id: 1, is_completed: 1 });
-// goalSchema.index({ user_id: 1, priority: 1 });
-
-// // ── Virtuals ──────────────────────────────────────────────────────────────────
-// goalSchema.virtual('id').get(function() {
-//   return this._id.toHexString();
-// });
-
-// goalSchema.virtual('progress_percent').get(function() {
-//   if (!this.target || this.target === 0) return 0;
-//   return Math.min(100, Math.round((this.saved / this.target) * 100));
-// });
-
-// goalSchema.virtual('remaining').get(function() {
-//   return Math.max(0, this.target - this.saved);
-// });
-
-// goalSchema.virtual('days_remaining').get(function() {
-//   if (!this.deadline) return null;
-//   const diff = this.deadline - new Date();
-//   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-// });
-
-// module.exports = mongoose.model('Goal', goalSchema);
 
 

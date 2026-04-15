@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema({
 
   // ── Appearance ─────────────────────────────────────────────────────────────
   theme:          { type: String, enum: ['dark', 'light', 'amoled'], default: 'dark' },
-  profile_avatar: { type: String, default: '😊', maxlength: 10 },
+  profile_avatar: { type: String, default: '😊' },
   profile_color:  { type: String, default: '#7c3aed', maxlength: 20 },
 
   // ── Account Status ─────────────────────────────────────────────────────────
