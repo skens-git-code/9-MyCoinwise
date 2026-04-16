@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ArrowLeftRight, BarChart3, Target, Activity, Briefcase,
   CreditCard, Settings, ChevronRight, Zap, TrendingUp,
-  Plus, Check, Users, Bell, Smartphone, AlertCircle, RefreshCw, LogOut, Sparkles
+  Plus, Check, Users, Bell, Smartphone, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon
 } from 'lucide-react';
 import { AppContext } from '../App';
 import { CURRENCIES } from '../services/api';
@@ -21,6 +21,7 @@ import DOMPurify from 'dompurify';
 const NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, labelKey: 'dashboard' },
   { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions' },
+  { to: '/calendar', icon: CalendarIcon, labelKey: 'Calendar' },
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics' },
   { to: '/goals', icon: Target, labelKey: 'goals' },
   { to: '/subscriptions', icon: CreditCard, labelKey: 'subscriptions' },
@@ -419,11 +420,11 @@ export default function AppLayout({ children }) {
             <div className="gradient gradient-3"></div>
           </div>
           <div className="particles">
-            <div className="particle" style={{left:'10%', animationDuration:'25s', animationDelay:'0s'}}></div>
-            <div className="particle" style={{left:'30%', animationDuration:'20s', animationDelay:'2s'}}></div>
-            <div className="particle" style={{left:'55%', animationDuration:'28s', animationDelay:'5s'}}></div>
-            <div className="particle" style={{left:'75%', animationDuration:'22s', animationDelay:'1s'}}></div>
-            <div className="particle" style={{left:'90%', animationDuration:'30s', animationDelay:'3s'}}></div>
+            <div className="particle" style={{ left: '10%', animationDuration: '25s', animationDelay: '0s' }}></div>
+            <div className="particle" style={{ left: '30%', animationDuration: '20s', animationDelay: '2s' }}></div>
+            <div className="particle" style={{ left: '55%', animationDuration: '28s', animationDelay: '5s' }}></div>
+            <div className="particle" style={{ left: '75%', animationDuration: '22s', animationDelay: '1s' }}></div>
+            <div className="particle" style={{ left: '90%', animationDuration: '30s', animationDelay: '3s' }}></div>
           </div>
         </div>
 
@@ -502,7 +503,7 @@ export default function AppLayout({ children }) {
             />
           )}
           {isAIOpen && (
-            <motion.aside 
+            <motion.aside
               className="ai-panel"
               initial={{ x: '100%', opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}

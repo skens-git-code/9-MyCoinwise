@@ -29,13 +29,13 @@ const CLASS_LABELS = {
 export default function Wealth() {
   const { fmt, token, t } = useContext(AppContext);
 
-  const [wealthItems, setWealthItems]   = useState([]);
-  const [isLoading, setIsLoading]       = useState(false);
-  const [aiInsight, setAiInsight]       = useState('');
-  const [isAiLoading, setIsAiLoading]   = useState(false);
+  const [wealthItems, setWealthItems] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [aiInsight, setAiInsight] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [fetchError, setFetchError]     = useState(null);
-  const [formError, setFormError]       = useState(null);
+  const [fetchError, setFetchError] = useState(null);
+  const [formError, setFormError] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
 
   // Stable refs to prevent AI refetching
@@ -122,7 +122,7 @@ export default function Wealth() {
     // severity level determined by liquid asset ratio
     const highDebts = tDebts.filter(d => (d.interest_rate || 0) > 15);
     const highDebtTotal = highDebts.reduce((s, d) => s + d.computedValue, 0);
-    
+
     let debtSeverity = 'info';
     let debtMsg = 'Consider paying off high-interest debt soon.';
     if (highDebts.length > 0) {
@@ -160,13 +160,13 @@ export default function Wealth() {
 
     const payload = { totalAssets, liquidAssets, physicalAssets, liabilities: totalLiabilities };
     const newKey = JSON.stringify(payload);
-    
+
     // Prevent refetch if data hasn't changed or cooldown applies
     const now = Date.now();
     if (newKey === aiTriggerKey.current && now - aiCooldown.current < 30000) return;
 
     let cancelled = false;
-    
+
     const fetchDebounced = setTimeout(async () => {
       aiTriggerKey.current = newKey;
       aiCooldown.current = Date.now();
@@ -185,8 +185,8 @@ export default function Wealth() {
       }
     }, 1500);
 
-    return () => { 
-      cancelled = true; 
+    return () => {
+      cancelled = true;
       clearTimeout(fetchDebounced);
     };
   }, [totalAssets, totalLiabilities, liquidAssets, physicalAssets, token, wealthItems.length]);
@@ -199,7 +199,7 @@ export default function Wealth() {
     if (formData.asset_class === 'liquid_asset') {
       const hasSymbol = formData.symbol && formData.symbol.trim() !== '';
       const hasQuantity = formData.quantity && Number(formData.quantity) > 0;
-      
+
       if (hasSymbol && !hasQuantity) {
         setFormError('A valid Quantity (> 0) is required when a Ticker is provided.');
         return;
@@ -225,7 +225,7 @@ export default function Wealth() {
   const confirmDelete = async () => {
     if (!itemToDelete) return;
     const id = itemToDelete;
-    
+
     // Optimistic UI deletion
     const backupItems = [...wealthItems];
     setWealthItems(prev => prev.filter(item => item._id !== id));
@@ -602,26 +602,29 @@ export default function Wealth() {
       <AnimatePresence>
         {itemToDelete && (
           <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setItemToDelete(null); }}>
-             <motion.div
-               className="glass-deep modal-content"
-               style={{ maxWidth: 400, textAlign: 'center', padding: '32px 24px' }}
-               initial={{ y: 20, opacity: 0, scale: 0.95 }}
-               animate={{ y: 0, opacity: 1, scale: 1 }}
-               exit={{ y: 10, opacity: 0, scale: 0.95 }}
-             >
-               <Trash2 size={48} color="var(--danger)" style={{ marginBottom: 16, opacity: 0.8 }} />
-               <h3 style={{ marginBottom: 8 }}>Delete Item?</h3>
-               <p style={{ color: 'var(--text-secondary)', marginBottom: 24, fontSize: '0.9rem' }}>
-                 Are you sure you want to completely remove this from your portfolio? This action cannot be undone.
-               </p>
-               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                 <button onClick={() => setItemToDelete(null)} className="btn-glass" style={{ justifyContent: 'center' }}>Cancel</button>
-                 <button onClick={confirmDelete} className="btn-primary" style={{ background: 'var(--danger)', justifyContent: 'center' }}>Delete</button>
-               </div>
-             </motion.div>
+            <motion.div
+              className="glass-deep modal-content"
+              style={{ maxWidth: 400, textAlign: 'center', padding: '32px 24px' }}
+              initial={{ y: 20, opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 10, opacity: 0, scale: 0.95 }}
+            >
+              <Trash2 size={48} color="var(--danger)" style={{ marginBottom: 16, opacity: 0.8 }} />
+              <h3 style={{ marginBottom: 8 }}>Delete Item?</h3>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: 24, fontSize: '0.9rem' }}>
+                Are you sure you want to completely remove this from your portfolio? This action cannot be undone.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <button onClick={() => setItemToDelete(null)} className="btn-glass" style={{ justifyContent: 'center' }}>Cancel</button>
+                <button onClick={confirmDelete} className="btn-primary" style={{ background: 'var(--danger)', justifyContent: 'center' }}>Delete</button>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>
     </div>
   );
 }
+
+
+

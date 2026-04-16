@@ -1,0 +1,26 @@
+{
+  "name": "9-budgettracker",
+  "version": "1.0.0",
+  "description": "Budget Tracker Full Stack App",
+  "main": "clean.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "backend": "cd backend && npm start",
+    "frontend": "cd frontend && npm run dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skens-git-code/9-BudgetTracker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/skens-git-code/9-BudgetTracker/issues"
+  },
+  "homepage": "https://github.com/skens-git-code/9-BudgetTracker#readme",
+  "devDependencies": {
+    "concurrently": "^8.0.0"
+  }
+}

@@ -26,13 +26,26 @@ const AIChat = () => {
     setIsLoading(true);
 
     try {
-      // Exclude the very last user message from history param so the backend model gets it as current input
       const res = await api.chatWithAI(userMessage.text, chatHistory);
       setMessages((prev) => [...prev, { role: 'ai', text: res.text }]);
     } catch (error) {
-      console.error("Chat Error:", error);
-      const errMsg = error.response?.data?.error || "Sorry, I encountered an issue connecting to my brain. Please try again later.";
-      setMessages((prev) => [...prev, { role: 'ai', text: errMsg, isError: true }]);
+      console.error('Chat Error:', error);
+      const status = error.response?.status;
+      const serverMsg = error.response?.data?.error;
+
+      let errMsg;
+      let isRateLimit = false;
+
+      if (status === 429) {
+        isRateLimit = true;
+        errMsg = '⏳ The AI is a bit busy right now (rate limit reached). Please wait 15-30 seconds and try again.';
+      } else if (status === 503) {
+        errMsg = serverMsg || '🔧 AI service is not configured yet. Please add your GEMINI_API_KEY to the backend .env file.';
+      } else {
+        errMsg = serverMsg || 'Sorry, I encountered an issue. Please try again.';
+      }
+
+      setMessages((prev) => [...prev, { role: 'ai', text: errMsg, isError: !isRateLimit, isWarning: isRateLimit }]);
     } finally {
       setIsLoading(false);
     }
@@ -42,7 +55,7 @@ const AIChat = () => {
     <div className="ai-chat-container">
       <div className="ai-chat-messages">
         {messages.map((msg, idx) => (
-          <div key={idx} className={`chat-bubble ${msg.role === 'user' ? 'user-msg' : 'ai-msg'} ${msg.isError ? 'error-msg' : ''}`}>
+          <div key={idx} className={`chat-bubble ${msg.role === 'user' ? 'user-msg' : 'ai-msg'} ${msg.isError ? 'error-msg' : ''} ${msg.isWarning ? 'warning-msg' : ''}`}>
             <div className="bubble-icon">
               {msg.role === 'user' ? <UserIcon size={16} /> : <Sparkles size={16} />}
             </div>

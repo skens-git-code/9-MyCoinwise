@@ -61,7 +61,22 @@ const userSchema = new mongoose.Schema({
 
   // ── Two-Factor Auth (future-ready) ─────────────────────────────────────────
   two_factor_enabled: { type: Boolean, default: false },
-  two_factor_secret:  { type: String, default: null, select: false }
+  two_factor_secret:  { type: String, default: null, select: false },
+
+  // ── Advanced Preferences ───────────────────────────────────────────────────
+  advanced_prefs: {
+    type: Object,
+    default: {
+      dateFormat: 'MM/DD/YYYY',
+      timeFormat: '12h',
+      firstDayOfWeek: 'Sunday',
+      decimalSeparator: '.',
+      compactMode: false,
+      autoSave: true,
+      animationsEnabled: true,
+      showWeekNumbers: false
+    }
+  }
 
 }, {
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },

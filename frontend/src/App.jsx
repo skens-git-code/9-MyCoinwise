@@ -10,6 +10,7 @@ import Subscriptions from './pages/Subscriptions';
 import Cashflow from './pages/Cashflow';
 import Wealth from './pages/Wealth';
 import SettingsPage from './pages/SettingsPage';
+import Calendar from './pages/Calendar';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -30,14 +31,15 @@ export function formatCurrency(amount, currency = 'USD') {
 }
 
 export default function App() {
-  const [theme, setTheme]       = useState(() => localStorage.getItem('zs-theme') || 'dark');
-  const [lang, setLang]         = useState(() => localStorage.getItem('zs-lang') || 'en');
-  const [user, setUser]         = useState(null);
+  const [theme, setTheme] = useState(() => localStorage.getItem('zs-theme') || 'dark');
+  const [lang, setLang] = useState(() => localStorage.getItem('zs-lang') || 'en');
+  const [user, setUser] = useState(null);
   const [transactions, setTransactions] = useState([]);
-  const [goals, setGoals]       = useState([]);
+  const [goals, setGoals] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [token, setToken]       = useState(() => localStorage.getItem('zs-token') || null);
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [token, setToken] = useState(() => localStorage.getItem('zs-token') || null);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
   useEffect(() => {
@@ -47,7 +49,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { });
   }, []);
 
   const installPWA = async () => {
@@ -93,6 +95,7 @@ export default function App() {
     setTransactions([]);
     setGoals([]);
     setSubscriptions([]);
+    setEvents([]);
   };
 
   const fetchData = async () => {
@@ -104,16 +107,18 @@ export default function App() {
       setLoading(true);
       const me = await api.getMe();
       const activeId = me._id || me.id;
-      
-      const [txData, goalsData, subsData] = await Promise.all([
+
+      const [txData, goalsData, subsData, eventsData] = await Promise.all([
         api.getTransactions(activeId),
         api.getGoals(activeId),
-        api.getSubscriptions(activeId)
+        api.getSubscriptions(activeId),
+        api.getEvents(activeId)
       ]);
       setUser(me);
       setTransactions(txData);
       setGoals(goalsData);
       setSubscriptions(subsData);
+      setEvents(eventsData);
       if (me?.theme) {
         setTheme(me.theme);
         document.documentElement.setAttribute('data-theme', me.theme);
@@ -131,16 +136,16 @@ export default function App() {
 
   useEffect(() => { fetchData(); }, [token]);
 
-  const addTransaction    = async (tx)       => { await api.addTransaction({ ...tx, user_id: user?.id || user?._id }); await fetchData(); };
-  const deleteTransaction = async (id)       => { await api.deleteTransaction(id); await fetchData(); };
-  const editTransaction   = async (id, data) => { await api.editTransaction(id, data); await fetchData(); };
-  const resetAccount      = async ()         => { await api.resetAccount(user?.id || user?._id); await fetchData(); };
+  const addTransaction = async (tx) => { await api.addTransaction({ ...tx, user_id: user?.id || user?._id }); await fetchData(); };
+  const deleteTransaction = async (id) => { await api.deleteTransaction(id); await fetchData(); };
+  const editTransaction = async (id, data) => { await api.editTransaction(id, data); await fetchData(); };
+  const resetAccount = async () => { await api.resetAccount(user?.id || user?._id); await fetchData(); };
 
-  const currency     = user?.currency || 'USD';
+  const currency = user?.currency || 'USD';
   const currencyInfo = CURRENCIES[currency] || CURRENCIES.USD;
-  const fmt          = (amount) => formatCurrency(amount, currency);
+  const fmt = (amount) => formatCurrency(amount, currency);
 
-  const alerts   = useMemo(() => generateAlerts(transactions, user), [transactions, user]);
+  const alerts = useMemo(() => generateAlerts(transactions, user), [transactions, user]);
   const insights = useMemo(() => getSpendingInsights(transactions, fmt), [transactions, currency]);
   const t = useMemo(() => getT(lang), [lang]);
 
@@ -152,7 +157,7 @@ export default function App() {
         resetAccount, login, logout, loading,
         refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
         lang, setLanguage, t, token,
-        alerts, insights, deferredPrompt, installPWA, goals, subscriptions,
+        alerts, insights, deferredPrompt, installPWA, goals, subscriptions, events,
       }}>
         <Router>
           <Routes>
@@ -162,15 +167,16 @@ export default function App() {
               <ProtectedRoute>
                 <AppLayout>
                   <Routes>
-                    <Route path="/"              element={<Dashboard />} />
-                    <Route path="/transactions"  element={<Transactions />} />
-                    <Route path="/analytics"     element={<Analytics />} />
-                    <Route path="/goals"         element={<Goals />} />
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/transactions" element={<Transactions />} />
+                    <Route path="/analytics" element={<Analytics />} />
+                    <Route path="/goals" element={<Goals />} />
                     <Route path="/subscriptions" element={<Subscriptions />} />
-                    <Route path="/cashflow"      element={<Cashflow />} />
-                    <Route path="/wealth"        element={<Wealth />} />
-                    <Route path="/settings"      element={<SettingsPage />} />
-                    <Route path="*"              element={<Navigate to="/" />} />
+                    <Route path="/cashflow" element={<Cashflow />} />
+                    <Route path="/wealth" element={<Wealth />} />
+                    <Route path="/calendar" element={<Calendar />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="*" element={<Navigate to="/" />} />
                   </Routes>
                 </AppLayout>
               </ProtectedRoute>

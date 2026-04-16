@@ -13,6 +13,7 @@ const User = require('./models/User');
 const Transaction = require('./models/Transaction');
 const Goal = require('./models/Goal');
 const Subscription = require('./models/Subscription');
+const Event = require('./models/Event');
 const LoginLog = require('./models/LoginLog');
 
 // ─── Middleware ─────────────────────────────────────────────────────────────
@@ -20,6 +21,7 @@ const auth = require('./middleware/auth');
 const wealthRoutes = require('./routes/wealth');
 const cashflowRoutes = require('./routes/cashflow');
 const aiRoutes = require('./routes/ai');
+const securityRoutes = require('./routes/security');
 
 dotenv.config();
 
@@ -53,18 +55,18 @@ app.post('/api/auth/register', [
 
   const { username, email, password, currency, profile_avatar, profile_color } = req.body;
   const ipAddr = req.ip || req.headers['x-forwarded-for'] || null;
-  const ua     = req.headers['user-agent'] || null;
+  const ua = req.headers['user-agent'] || null;
   const { device_type, browser, os } = LoginLog.parseUserAgent(ua);
 
   try {
-    const user  = await User.create({ username, email, password, currency, profile_avatar, profile_color });
+    const user = await User.create({ username, email, password, currency, profile_avatar, profile_color });
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'super_secret', { expiresIn: '7d' });
 
     await LoginLog.create({
       user_id: user._id, email, status: 'success', reason: 'registered',
       ip: ipAddr, user_agent: ua, device_type, browser, os,
       failed_attempts_before: 0
-    }).catch(() => {});
+    }).catch(() => { });
 
     res.status(201).json({ token, user: { id: user._id, username, email } });
   } catch (error) {
@@ -81,7 +83,7 @@ app.post('/api/auth/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
   const ipAddr = req.ip || req.headers['x-forwarded-for'] || null;
-  const ua     = req.headers['user-agent'] || null;
+  const ua = req.headers['user-agent'] || null;
   const { device_type, browser, os } = LoginLog.parseUserAgent(ua);
 
   try {
@@ -89,7 +91,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // User not found
     if (!user) {
-      await LoginLog.create({ email, status: 'failed', reason: 'user_not_found', ip: ipAddr, user_agent: ua, device_type, browser, os }).catch(() => {});
+      await LoginLog.create({ email, status: 'failed', reason: 'user_not_found', ip: ipAddr, user_agent: ua, device_type, browser, os }).catch(() => { });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -106,12 +108,12 @@ app.post('/api/auth/login', async (req, res) => {
           user_id: user._id, email, status: 'failed', reason: 'account_locked',
           ip: ipAddr, user_agent: ua, device_type, browser, os,
           failed_attempts_before: user.failed_login_count
-        }).catch(() => {});
+        }).catch(() => { });
         return res.status(423).json({ error: `Account locked. Try again in ${minutesLeft} minute(s).` });
       }
       // Lock expired — reset
-      user.account_locked     = false;
-      user.locked_until       = null;
+      user.account_locked = false;
+      user.locked_until = null;
       user.failed_login_count = 0;
     }
 
@@ -126,7 +128,7 @@ app.post('/api/auth/login', async (req, res) => {
         user_id: user._id, email, status: 'failed', reason: 'invalid_password',
         ip: ipAddr, user_agent: ua, device_type, browser, os,
         failed_attempts_before: prevFailed
-      }).catch(() => {});
+      }).catch(() => { });
 
       if (user.account_locked) {
         return res.status(423).json({ error: `Too many failed attempts. Account locked for ${User.LOCK_DURATION_MINUTES} minutes.` });
@@ -142,7 +144,7 @@ app.post('/api/auth/login', async (req, res) => {
       user_id: user._id, email, status: 'success', reason: 'login',
       ip: ipAddr, user_agent: ua, device_type, browser, os,
       failed_attempts_before: 0
-    }).catch(() => {});
+    }).catch(() => { });
 
     res.json({ token, user: { id: user._id, username: user.username, email: user.email } });
   } catch (error) {
@@ -191,8 +193,10 @@ app.use('/api/users', auth);
 app.use('/api/transactions', auth);
 app.use('/api/goals', auth);
 app.use('/api/subscriptions', auth);
+app.use('/api/events', auth);
 app.use('/api/export', auth);
 app.use('/api/ai', auth, aiRoutes);
+app.use('/api/security', auth, securityRoutes);
 
 // 1. Get all users (for user switcher - keeping for backward compat if needed, but really shouldn't be used now)
 app.get('/api/users', async (req, res) => {
@@ -308,6 +312,38 @@ app.put('/api/users/:id/notifications', async (req, res) => {
   try {
     await User.findByIdAndUpdate(req.params.id, { notification_prefs: req.body });
     res.json({ message: 'Notification preferences updated' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 4.6 Advanced Preferences
+app.get('/api/users/:id/advanced-preferences', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id, 'advanced_prefs');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const prefs = user.advanced_prefs;
+    res.json(prefs || {
+      dateFormat: 'MM/DD/YYYY',
+      timeFormat: '12h',
+      firstDayOfWeek: 'Sunday',
+      decimalSeparator: '.',
+      compactMode: false,
+      autoSave: true,
+      animationsEnabled: true,
+      showWeekNumbers: false
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.put('/api/users/:id/advanced-preferences', async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.params.id, { advanced_prefs: req.body });
+    res.json({ message: 'Advanced preferences updated' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -453,7 +489,7 @@ app.post('/api/goals', async (req, res) => {
   const user_id = req.user.id;
   try {
     const goalData = { user_id, name, target, saved: saved || 0, color, icon };
-    
+
     if (deadline) goalData.deadline = new Date(deadline);
     if (priority) goalData.priority = priority;
     if (category) goalData.category = category;
@@ -510,7 +546,7 @@ app.post('/api/subscriptions', async (req, res) => {
   const user_id = req.user.id;
   try {
     const subData = { user_id, name, amount, cycle: cycle || 'monthly', color, icon };
-    
+
     // Add optional advanced fields if they exist
     if (url) subData.url = url;
     if (notes) subData.notes = notes;
@@ -538,7 +574,72 @@ app.delete('/api/subscriptions/:id', async (req, res) => {
   }
 });
 
-// 10. Export to Excel
+// 8. Calendar Events endpoints
+app.get('/api/events/:userId', async (req, res) => {
+  try {
+    const events = await Event.find({ user_id: req.params.userId }).sort({ date: 1 });
+    res.json(events);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.post('/api/events', [
+  body('title').notEmpty().trim(),
+  body('date').isISO8601()
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const { title, date, type, amount, description, color } = req.body;
+  const user_id = req.user.id;
+  try {
+    const eventData = { user_id, title, date: new Date(date) };
+    if (type) eventData.type = type;
+    if (amount !== undefined) eventData.amount = amount;
+    if (description) eventData.description = description;
+    if (color) eventData.color = color;
+
+    const event = await Event.create(eventData);
+    res.status(201).json(event);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.put('/api/events/:id', async (req, res) => {
+  try {
+    const updateData = {};
+    if (req.body.title) updateData.title = req.body.title;
+    if (req.body.date) updateData.date = new Date(req.body.date);
+    if (req.body.type) updateData.type = req.body.type;
+    if (req.body.amount !== undefined) updateData.amount = req.body.amount;
+    if (req.body.description !== undefined) updateData.description = req.body.description;
+    if (req.body.color) updateData.color = req.body.color;
+
+    const event = await Event.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+    res.json(event);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.delete('/api/events/:id', async (req, res) => {
+  try {
+    const event = await Event.findByIdAndDelete(req.params.id);
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+    res.json({ message: 'Event deleted' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 9. Export logic Excel
 app.get('/api/export/:userId', async (req, res) => {
   try {
     const user = await User.findById(req.params.userId) || {};

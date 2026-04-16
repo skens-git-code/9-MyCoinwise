@@ -202,7 +202,7 @@ export default function Dashboard() {
 
   const {
     user = null, transactions: rawTransactions = [], theme = 'light',
-    addTransaction, USER_ID = null, fmt, t, insights: rawInsights = [], alerts: rawAlerts = []
+    addTransaction, USER_ID = null, fmt, t
   } = context;
 
   const safeFmt = useCallback(
@@ -324,9 +324,7 @@ export default function Dashboard() {
     return `Saving ${savingsRate}% · ${parsedTransactions.length} transactions`;
   }, [parsedTransactions, savingsRate, getLocalizedText]);
 
-  const alerts = useMemo(() => Array.isArray(rawAlerts) ? rawAlerts : [], [rawAlerts]);
-  const insights = useMemo(() => Array.isArray(rawInsights) ? rawInsights : [], [rawInsights]);
-  const urgentAlerts = useMemo(() => alerts.filter(a => a?.type === 'danger').length, [alerts]);
+
 
   const balanceColor = balance >= 0 ? 'var(--success)' : 'var(--danger)';
   const isDark = theme === 'dark' || theme === 'amoled';
@@ -488,10 +486,7 @@ export default function Dashboard() {
           ) : <div className="bento-empty"><span className="bento-empty-icon" aria-hidden="true"><Target size={42} strokeWidth={1.5} opacity={0.5} /></span><p className="bento-empty-title">{getLocalizedText('set_savings_goal', 'Set a savings goal')}</p><p className="bento-empty-sub">{getLocalizedText('track_progress_target', 'Track your progress toward a monthly target.')}</p><NavLink to="/settings" className="bento-empty-cta pulse-encouragement" style={{ textDecoration: 'none' }}><Settings size={13} /> {getLocalizedText('set_goal_cta', 'Set Goal →')}</NavLink></div>}
         </motion.div>
 
-        <motion.div variants={CARD_VARIANTS} className="bento-tile bento-ai glass">
-          <div className="bt-header"><h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Brain size={16} color="var(--brand-primary)" /> {getLocalizedText('ai_insights', 'AI Insights')}</h3>{urgentAlerts > 0 && <span className="bt-badge danger">{urgentAlerts} Alert{urgentAlerts !== 1 ? 's' : ''}</span>}</div>
-          <div className="bai-list">{insights.length > 0 ? insights.slice(0, 2).map((ins, i) => <div key={i} className="bai-item"><span className="bai-icn" aria-hidden="true">{ins.icon || <Sparkles size={20} strokeWidth={1.5} opacity={0.7} />}</span><p>{ins.text || 'No insight available'}</p></div>) : <div className="bento-empty"><span className="bento-empty-icon" aria-hidden="true"><Sparkles size={42} strokeWidth={1.5} opacity={0.5} /></span><p className="bento-empty-title">Insights await</p><p className="bento-empty-sub">Add transactions to unlock personalized AI insights.</p></div>}</div>
-        </motion.div>
+
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-pie glass">
           <div className="bt-header"><h3 className="heading-accent">{getLocalizedText('breakdown', 'Breakdown')}</h3></div>

@@ -27,7 +27,7 @@ export function predictNextMonthSpending(transactions) {
   const yMean = values.reduce((a, b) => a + b, 0) / n;
   const slope = n > 1
     ? values.reduce((sum, y, x) => sum + (x - xMean) * (y - yMean), 0) /
-      values.reduce((sum, _, x) => sum + Math.pow(x - xMean, 2), 0)
+    values.reduce((sum, _, x) => sum + Math.pow(x - xMean, 2), 0)
     : 0;
 
   const predicted = weightedAvg + slope;

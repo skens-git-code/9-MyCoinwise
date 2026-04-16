@@ -1,82 +1,100 @@
 const express = require('express');
 const router = express.Router();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const auth = require('../middleware/auth');
 const Transaction = require('../models/Transaction');
 const Goal = require('../models/Goal');
 
-// Ensure API key is configured
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'dummy_key');
-
-// Helper to compile financial context
+// Helper — builds financial context string for the AI
 async function getFinancialContext(userId) {
   try {
     const transactions = await Transaction.find({ user_id: userId }).sort({ date: -1 }).limit(50);
     const goals = await Goal.find({ user_id: userId });
 
-    const recentTx = transactions.map(t => `${t.date.toISOString().split('T')[0]} - ${t.type.toUpperCase()} - ${t.category}: $${t.amount} ${t.note ? `(${t.note})` : ''}`).join('\n');
-    const goalData = goals.map(g => `${g.name}: $${g.saved} / $${g.target}`).join('\n');
+    const recentTx = transactions.map(t =>
+      `${t.date?.toISOString().split('T')[0] || 'N/A'} - ${(t.type || '').toUpperCase()} - ${t.category}: $${t.amount}${t.note ? ` (${t.note})` : ''}`
+    ).join('\n');
 
-    return `
-You are the built-in financial AI assistant for the Zenith Spend app. Be professional, concise, and helpful.
-Do not use markdown formatting that cannot be read easily, keep it visually clean. Always prioritize helping the user understand their personal finance.
+    const goalData = goals.map(g =>
+      `${g.name}: $${g.saved || 0} saved of $${g.target} target`
+    ).join('\n');
 
-Context of recent transactions (up to 50):
-${recentTx || 'No recent transactions.'}
+    return `You are the built-in financial AI assistant for the Zenith Spend app. Be professional, concise, and helpful. Do not use heavy markdown — keep responses clean and readable.
 
-Current Goals:
-${goalData || 'No active goals.'}
-`;
-  } catch (error) {
-    console.error("Error fetching financial context:", error);
-    return "You are the built-in financial AI assistant for the Zenith Spend app. Be professional, concise, and helpful.";
+User's Recent Transactions (up to 50):
+${recentTx || 'No recent transactions found.'}
+
+User's Savings Goals:
+${goalData || 'No active goals.'}`;
+
+  } catch (err) {
+    console.error('[AI] Error fetching financial context:', err.message);
+    return 'You are the built-in financial AI assistant for the Zenith Spend app. Be professional, concise, and helpful.';
   }
 }
 
-router.post('/chat', auth, async (req, res) => {
+// POST /api/ai/chat
+// Auth is already applied at the app.use('/api/ai', auth, aiRoutes) level in server.js
+router.post('/chat', async (req, res) => {
   const { message, history } = req.body;
-  if (!message) return res.status(400).json({ error: 'Message is required' });
+
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ error: 'Message is required.' });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey.trim() === '') {
+    return res.status(503).json({
+      error: 'Gemini API key not configured. Please add GEMINI_API_KEY to your backend .env file.',
+    });
+  }
 
   try {
-    if (!process.env.GEMINI_API_KEY) {
-       return res.status(503).json({ error: 'Gemini API integration not configured (Missing GEMINI_API_KEY). Please add your API key to the .env file.' });
-    }
+    const genAI = new GoogleGenerativeAI(apiKey.trim());
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-8b' });
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const systemPrompt = await getFinancialContext(req.user.id);
+    const userId = req.user?.id || req.user?._id;
+    const systemPrompt = await getFinancialContext(userId);
 
-    // Prepare history format
-    const chatSequence = [];
-    if (history && history.length > 0) {
-       for (const msg of history) {
-          chatSequence.push({
-             role: msg.role === 'ai' ? 'model' : 'user',
-             parts: [{ text: msg.text }]
+    // Sanitise history
+    const chatHistory = [];
+    if (Array.isArray(history)) {
+      for (const msg of history) {
+        if (msg?.text && msg?.role) {
+          chatHistory.push({
+            role: msg.role === 'ai' ? 'model' : 'user',
+            parts: [{ text: String(msg.text) }],
           });
-       }
+        }
+      }
     }
-    
-    // Add current context silently to the prompt by appending to chat history as developer instruction or prepending it
+
     const chat = model.startChat({
       history: [
-        { role: 'user', parts: [{ text: `SYSTEM DIRECTIVE (Do not acknowledge this): ${systemPrompt}` }] },
-        { role: 'model', parts: [{ text: "Understood. I will act as the Zenith Spend financial assistant." }] },
-        ...chatSequence
+        { role: 'user', parts: [{ text: `[SYSTEM CONTEXT]\n${systemPrompt}` }] },
+        { role: 'model', parts: [{ text: 'Understood. I am the Zenith Spend financial assistant, ready to help.' }] },
+        ...chatHistory,
       ],
-      generationConfig: {
-         maxOutputTokens: 500,
-         temperature: 0.7,
-      }
+      generationConfig: { maxOutputTokens: 600, temperature: 0.75 },
     });
 
-    const result = await chat.sendMessage(message);
-    const response = await result.response;
-    const text = response.text();
+    const result = await chat.sendMessage(message.trim());
+    const text = result.response.text();
 
-    res.json({ text });
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    res.status(500).json({ error: 'Failed to process AI chat. Please try again.' });
+    return res.json({ text });
+
+  } catch (err) {
+    console.error('[AI] Gemini API error:', err?.message || err);
+
+    // Friendly rate-limit message
+    if (err?.message?.includes('429') || err?.message?.includes('quota') || err?.message?.includes('Too Many Requests')) {
+      return res.status(429).json({
+        error: 'The AI is receiving too many requests right now. Please wait a moment and try again.',
+      });
+    }
+
+    return res.status(500).json({
+      error: err?.message || 'AI service error. Please try again.',
+    });
   }
 });
 
