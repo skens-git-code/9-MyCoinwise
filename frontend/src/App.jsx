@@ -34,6 +34,7 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('zs-theme') || 'dark');
   const [lang, setLang] = useState(() => localStorage.getItem('zs-lang') || 'en');
   const [user, setUser] = useState(null);
+  const [allUsers, setAllUsers] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [goals, setGoals] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
@@ -92,6 +93,7 @@ export default function App() {
     localStorage.removeItem('zs-token');
     setToken(null);
     setUser(null);
+    setAllUsers([]);
     setTransactions([]);
     setGoals([]);
     setSubscriptions([]);
@@ -108,13 +110,15 @@ export default function App() {
       const me = await api.getMe();
       const activeId = me._id || me.id;
 
-      const [txData, goalsData, subsData, eventsData] = await Promise.all([
+      const [txData, goalsData, subsData, eventsData, usersData] = await Promise.all([
         api.getTransactions(activeId),
         api.getGoals(activeId),
         api.getSubscriptions(activeId),
-        api.getEvents(activeId)
+        api.getEvents(activeId),
+        api.getAllUsers().catch(() => [])
       ]);
       setUser(me);
+      setAllUsers(usersData);
       setTransactions(txData);
       setGoals(goalsData);
       setSubscriptions(subsData);
@@ -141,6 +145,29 @@ export default function App() {
   const editTransaction = async (id, data) => { await api.editTransaction(id, data); await fetchData(); };
   const resetAccount = async () => { await api.resetAccount(user?.id || user?._id); await fetchData(); };
 
+  const createUser = async (data) => {
+    const result = await api.createUser(data);
+    await fetchData();
+    return result;
+  };
+
+  const switchUser = async (userId) => {
+    try {
+      setLoading(true);
+      const response = await api.switchUser(userId);
+      if (response && response.token) {
+        localStorage.setItem('zs-token', response.token);
+        setToken(response.token);
+        // fetchData is triggered automatically by token dependency in useEffect
+      }
+    } catch (error) {
+      console.error('Switch user failed:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const currency = user?.currency || 'USD';
   const currencyInfo = CURRENCIES[currency] || CURRENCIES.USD;
   const fmt = (amount) => formatCurrency(amount, currency);
@@ -152,9 +179,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AppContext.Provider value={{
-        user, transactions, theme, toggleTheme, setThemeDirect,
+        user, allUsers, transactions, theme, toggleTheme, setThemeDirect,
         addTransaction, deleteTransaction, editTransaction,
-        resetAccount, login, logout, loading,
+        resetAccount, createUser, switchUser, login, logout, loading,
         refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
         lang, setLanguage, t, token,
         alerts, insights, deferredPrompt, installPWA, goals, subscriptions, events,

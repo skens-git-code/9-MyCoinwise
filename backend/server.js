@@ -209,6 +209,18 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+// Switch user endpoint - returns new JWT for target user
+app.post('/api/users/:id/switch', auth, async (req, res) => {
+  try {
+    const targetId = req.params.id;
+    const newToken = jwt.sign({ id: targetId }, process.env.JWT_SECRET || 'super_secret', { expiresIn: '7d' });
+    res.json({ token: newToken });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 // 2. Get single user
 app.get('/api/users/:id', async (req, res) => {
   try {
@@ -221,7 +233,7 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
-// 3. Create new user
+// 3. Create new user (family member — generates a default password)
 app.post('/api/users', [
   body('username').notEmpty().trim(),
   body('email').isEmail().normalizeEmail(),
@@ -230,9 +242,11 @@ app.post('/api/users', [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  const { username, email, currency = 'INR', profile_avatar = '😊', profile_color = '#059669' } = req.body;
+  const { username, email, password, currency = 'INR', profile_avatar = '😊', profile_color = '#059669' } = req.body;
   try {
-    const user = await User.create({ username, email, balance: 0, currency, profile_avatar, profile_color });
+    // Use provided password or generate a secure random default
+    const userPassword = password || require('crypto').randomBytes(16).toString('hex');
+    const user = await User.create({ username, email, password: userPassword, balance: 0, currency, profile_avatar, profile_color });
     res.status(201).json({ id: user._id, message: 'User created' });
   } catch (error) {
     if (error.code === 11000) return res.status(409).json({ error: 'Email already exists' });

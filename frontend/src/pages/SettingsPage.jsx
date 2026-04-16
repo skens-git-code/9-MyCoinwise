@@ -249,11 +249,11 @@ const NotificationPreferences = ({ userId, showMessage }) => {
 
     try {
       const response = await api.updateNotificationPreferences(userId, preferences);
-
-      if (response?.success !== false) {
+      // API returns { message: 'Notification preferences updated' }
+      if (response?.message) {
         showMessage('success', 'Notification preferences saved!');
       } else {
-        throw new Error('API returned failure');
+        throw new Error('API returned unexpected response');
       }
     } catch (error) {
       console.error('Save failed:', error);
@@ -824,141 +824,141 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, loading, theme }) =
   const isBase64Avatar = formState.avatar && formState.avatar.length > 20 && formState.avatar.startsWith('data:image');
 
   return (
-  <>
-    <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-      <div className="idp-hero-icon income" style={{ width: 64, height: 64, marginBottom: 16 }}>
-        <User size={28} />
+    <>
+      <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
+        <div className="idp-hero-icon income" style={{ width: 64, height: 64, marginBottom: 16 }}>
+          <User size={28} />
+        </div>
+        <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+          {t?.('profile') || 'Profile'}
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+          Configure your personal identity within Zenith.
+        </p>
       </div>
-      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
-        {t?.('profile') || 'Profile'}
-      </h3>
-      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
-        Configure your personal identity within Zenith.
-      </p>
-    </div>
 
-    <div className="idp-body">
-      <div style={{ display: 'flex', gap: 30, alignItems: 'center', flexWrap: 'wrap' }}>
-        <motion.div
-          whileHover={{ scale: 1.05 }}
-          style={{
-            width: 100,
-            height: 100,
-            borderRadius: '50%',
-            background: formState.avatarColor,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '3rem',
-            boxShadow: `0 0 30px ${formState.avatarColor}55`,
-            flexShrink: 0,
-            position: 'relative',
-            overflow: 'hidden'
-          }}
-        >
-          {isBase64Avatar ? (
-            <img src={formState.avatar} alt="Profile Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            formState.avatar
-          )}
-        </motion.div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
-              Profile Picture & Emoji
-            </label>
-            
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              >
-                😀 Pick Full Emoji
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload size={16} /> Upload Local Image
-              </button>
-              <input
-                type="file"
-                accept="image/*"
-                ref={fileInputRef}
-                style={{ display: 'none' }}
-                onChange={handleImageUpload}
-              />
-            </div>
+      <div className="idp-body">
+        <div style={{ display: 'flex', gap: 30, alignItems: 'center', flexWrap: 'wrap' }}>
+          <motion.div
+            whileHover={{ scale: 1.05 }}
+            style={{
+              width: 100,
+              height: 100,
+              borderRadius: '50%',
+              background: formState.avatarColor,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '3rem',
+              boxShadow: `0 0 30px ${formState.avatarColor}55`,
+              flexShrink: 0,
+              position: 'relative',
+              overflow: 'hidden'
+            }}
+          >
+            {isBase64Avatar ? (
+              <img src={formState.avatar} alt="Profile Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              formState.avatar
+            )}
+          </motion.div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
+                Profile Picture & Emoji
+              </label>
 
-            {showEmojiPicker && (
-              <div style={{ position: 'absolute', zIndex: 100, marginTop: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.2)', borderRadius: 8 }}>
-                <EmojiPicker
-                  theme={theme === 'light' ? EmojiTheme.LIGHT : EmojiTheme.DARK}
-                  onEmojiClick={(emojiData) => {
-                    handleFieldChange('avatar', emojiData.emoji);
-                    setShowEmojiPicker(false);
-                  }}
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                >
+                  😀 Pick Full Emoji
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={16} /> Upload Local Image
+                </button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={fileInputRef}
+                  style={{ display: 'none' }}
+                  onChange={handleImageUpload}
                 />
               </div>
-            )}
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
-              Profile Color
-            </label>
-            <div style={{ display: 'flex', gap: 12 }} role="group" aria-label="Choose your profile color">
-              {AVATAR_COLORS.map(color => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => handleFieldChange('avatarColor', color)}
-                  aria-label={`Select color ${color}`}
-                  aria-pressed={formState.avatarColor === color}
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: '50%',
-                    background: color,
-                    border: formState.avatarColor === color ? '3px solid white' : '2px solid transparent',
-                    cursor: 'pointer',
-                    outline: formState.avatarColor === color ? `3px solid ${color}` : 'none',
-                    boxShadow: formState.avatarColor === color ? `0 0 16px ${color}` : 'none',
-                    transition: 'all 0.2s'
-                  }}
-                />
-              ))}
+
+              {showEmojiPicker && (
+                <div style={{ position: 'absolute', zIndex: 100, marginTop: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.2)', borderRadius: 8 }}>
+                  <EmojiPicker
+                    theme={theme === 'light' ? EmojiTheme.LIGHT : EmojiTheme.DARK}
+                    onEmojiClick={(emojiData) => {
+                      handleFieldChange('avatar', emojiData.emoji);
+                      setShowEmojiPicker(false);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+            <div>
+              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
+                Profile Color
+              </label>
+              <div style={{ display: 'flex', gap: 12 }} role="group" aria-label="Choose your profile color">
+                {AVATAR_COLORS.map(color => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => handleFieldChange('avatarColor', color)}
+                    aria-label={`Select color ${color}`}
+                    aria-pressed={formState.avatarColor === color}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      background: color,
+                      border: formState.avatarColor === color ? '3px solid white' : '2px solid transparent',
+                      cursor: 'pointer',
+                      outline: formState.avatarColor === color ? `3px solid ${color}` : 'none',
+                      boxShadow: formState.avatarColor === color ? `0 0 16px ${color}` : 'none',
+                      transition: 'all 0.2s'
+                    }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </div>
+
+        <div style={{ height: 1, background: 'var(--glass-border)', margin: '10px 0' }} />
+
+        <div className="form-field">
+          <label htmlFor="display_name">{t?.('display_name') || 'Display Name'}</label>
+          <input
+            id="display_name"
+            value={formState.username}
+            onChange={(e) => handleFieldChange('username', e.target.value)}
+            placeholder="Your name"
+            autoCapitalize="words"
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="email_ro">Email (read-only)</label>
+          <input id="email_ro" value={user?.email || ''} readOnly style={{ opacity: 0.5 }} />
+        </div>
       </div>
 
-      <div style={{ height: 1, background: 'var(--glass-border)', margin: '10px 0' }} />
-
-      <div className="form-field">
-        <label htmlFor="display_name">{t?.('display_name') || 'Display Name'}</label>
-        <input
-          id="display_name"
-          value={formState.username}
-          onChange={(e) => handleFieldChange('username', e.target.value)}
-          placeholder="Your name"
-          autoCapitalize="words"
-        />
+      <div className="idp-actions">
+        <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center', padding: 16 }}>
+          <Save size={18} aria-hidden />
+          {loading ? 'Saving...' : 'Save Profile Changes'}
+        </button>
       </div>
-      <div className="form-field">
-        <label htmlFor="email_ro">Email (read-only)</label>
-        <input id="email_ro" value={user?.email || ''} readOnly style={{ opacity: 0.5 }} />
-      </div>
-    </div>
-
-    <div className="idp-actions">
-      <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center', padding: 16 }}>
-        <Save size={18} aria-hidden />
-        {loading ? 'Saving...' : 'Save Profile Changes'}
-      </button>
-    </div>
-  </>
+    </>
   );
 };
 

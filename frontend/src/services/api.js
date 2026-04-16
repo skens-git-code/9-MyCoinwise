@@ -59,11 +59,15 @@ export const api = {
     return res.data;
   },
   createUser: async (data) => {
-    const res = await axios.post(`${API_URL}/auth/register`, data); // Redirected to auth register
+    const res = await axios.post(`${API_URL}/users`, data);
     return res.data;
   },
   resetAccount: async (id) => {
     const res = await axios.post(`${API_URL}/users/${id}/reset`);
+    return res.data;
+  },
+  switchUser: async (id) => {
+    const res = await axios.post(`${API_URL}/users/${id}/switch`);
     return res.data;
   },
 
@@ -174,14 +178,14 @@ export const api = {
   // ── Notification Preferences ──────────────────────────────────────────────
   getNotificationPreferences: async (userId) => {
     try {
-      const res = await axios.get(`${API_URL}/users/${userId}/notification-preferences`);
+      const res = await axios.get(`${API_URL}/users/${userId}/notifications`);
       return res.data;
     } catch {
       return null; // silently fail — use component defaults
     }
   },
   updateNotificationPreferences: async (userId, prefs) => {
-    const res = await axios.put(`${API_URL}/users/${userId}/notification-preferences`, prefs);
+    const res = await axios.put(`${API_URL}/users/${userId}/notifications`, prefs);
     return res.data;
   },
 
