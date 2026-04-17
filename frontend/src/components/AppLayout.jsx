@@ -29,6 +29,14 @@ const NAV_ITEMS = [
   { to: '/wealth', icon: Briefcase, labelKey: 'wealth' },
 ];
 
+// Mobile dock shows only core 4 + Settings (Apple HIG: max 5)
+const MOBILE_NAV_ITEMS = [
+  { to: '/', icon: LayoutDashboard, labelKey: 'dashboard' },
+  { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions' },
+  { to: '/analytics', icon: BarChart3, labelKey: 'analytics' },
+  { to: '/goals', icon: Target, labelKey: 'goals' },
+];
+
 const USER_DISPLAY_RULES = {
   randomIdPattern: /^[0-9a-f]{24}$/i,
   defaultDisplayName: 'friend',
@@ -849,10 +857,11 @@ const Header = React.memo(({
 
 Header.displayName = 'Header';
 
-const MobileBottomNav = React.memo(({ t, logout }) => {
+const MobileBottomNav = React.memo(({ t }) => {
   return (
     <nav className="mobile-bottom-dock glass" aria-label="Mobile navigation">
-      {NAV_ITEMS.map((item) => (
+      {/* Core 4 nav items */}
+      {MOBILE_NAV_ITEMS.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
@@ -878,6 +887,7 @@ const MobileBottomNav = React.memo(({ t, logout }) => {
           )}
         </NavLink>
       ))}
+      {/* Settings — always last */}
       <NavLink
         to="/settings"
         className={({ isActive }) => `dock-item ${isActive ? 'active' : ''}`}
@@ -900,19 +910,6 @@ const MobileBottomNav = React.memo(({ t, logout }) => {
           </motion.div>
         )}
       </NavLink>
-      <button
-        onClick={logout}
-        className="dock-item text-danger"
-        aria-label="Log Out"
-      >
-        <motion.div
-          className="dock-icon-wrapper"
-          whileTap={{ scale: 0.85 }}
-          whileHover={{ scale: 1.05 }}
-        >
-          <LogOut size={22} className="dock-icon" />
-        </motion.div>
-      </button>
     </nav>
   );
 });

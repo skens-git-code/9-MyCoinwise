@@ -27,18 +27,18 @@ const ToastItem = ({ toast, onRemove }) => {
   }, [isPaused, onRemove]);
 
   return (
-    <motion.div 
-      className={`notification-toast ${toast.type}`} 
-      initial={{ opacity: 0, x: 50, scale: 0.9 }} 
-      animate={{ opacity: 1, x: 0, scale: 1 }} 
-      exit={{ opacity: 0, x: 50, scale: 0.9 }} 
+    <motion.div
+      className={`notification-toast ${toast.type}`}
+      initial={{ opacity: 0, x: 50, scale: 0.9 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 50, scale: 0.9 }}
       role="alert"
       layout
       transition={{ type: 'spring', damping: 25, stiffness: 300 }}
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       style={{
-        position: 'relative', display: 'flex', alignItems: 'center', gap: '8px', 
+        position: 'relative', display: 'flex', alignItems: 'center', gap: '8px',
         marginBottom: '10px', width: 'auto', left: 'auto', transform: 'none'
       }}
     >
@@ -147,14 +147,15 @@ const StatCard = React.memo(({
   trend,
   trendVal,
   accentColor,
-  subtitle
+  subtitle,
+  className = ''
 }) => {
   const isValidTrend = ["up", "down", "neutral"].includes(trend);
 
   return (
     <motion.div
       variants={CARD_VARIANTS}
-      className="stat-card glass"
+      className={`stat-card glass ${className}`}
       role="region"
       aria-label={`${label} statistic: ${value}`}
     >
@@ -250,7 +251,7 @@ export default function Dashboard() {
   const [showForm, setShowForm] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [toasts, setToasts] = useState([]);
-  
+
   const addToast = useCallback((msg, type = 'success') => {
     setToasts(prev => {
       const updated = [...prev, { id: Date.now() + Math.random(), msg, type }];
@@ -302,9 +303,9 @@ export default function Dashboard() {
   const { value: animatedIncome } = useCountUp(rawIncome, 800);
   const { value: animatedExpense } = useCountUp(rawExpense, 800);
   const dataVersion = parsedTransactions.length;
-  
-  const prefersReducedMotion = typeof window !== 'undefined' 
-    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
+
+  const prefersReducedMotion = typeof window !== 'undefined'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
     : false;
 
   const goalProgress = useMemo(() => {
@@ -447,10 +448,19 @@ export default function Dashboard() {
           <Sparkles size={14} />{savingsRateText}
         </motion.div>
         <div className="bento-actions">
-          <motion.button className="bbtn-sec" onClick={handleExport} disabled={exporting} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-            <Download size={14} /> {exporting ? getLocalizedText('exporting', 'Exporting...') : getLocalizedText('export_csv', 'Export CSV')}
+          {/* Export moved to icon-only — low-frequency desktop action */}
+          <motion.button
+            className="bbtn-icon"
+            onClick={handleExport}
+            disabled={exporting}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
+            title={exporting ? 'Exporting...' : 'Export CSV'}
+            aria-label="Export CSV"
+          >
+            <Download size={16} />
           </motion.button>
-          <motion.button className="bbtn-pri" onClick={() => setShowForm(true)} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+          <motion.button className="bbtn-pri bbtn-full" onClick={() => setShowForm(true)} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Plus size={14} /> {getLocalizedText('add_transaction', 'Add Transaction')}
           </motion.button>
         </div>
@@ -473,8 +483,8 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
-        <StatCard icon={TrendingUp} label={getLocalizedText('total_income', 'Total Income')} value={safeFormatCurrency(animatedIncome, safeFmt)} colorRgb="16,185,129" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} />
-        <StatCard icon={TrendingDown} label={getLocalizedText('total_expenses', 'Total Expenses')} value={safeFormatCurrency(animatedExpense, safeFmt)} colorRgb="239,68,68" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} />
+        <StatCard icon={TrendingUp} label={getLocalizedText('total_income', 'Total Income')} value={safeFormatCurrency(animatedIncome, safeFmt)} colorRgb="16,185,129" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} className="bento-income" />
+        <StatCard icon={TrendingDown} label={getLocalizedText('total_expenses', 'Total Expenses')} value={safeFormatCurrency(animatedExpense, safeFmt)} colorRgb="239,68,68" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} className="bento-expense" />
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-recent glass">
           <div className="bt-header">

@@ -10,6 +10,9 @@
   box-sizing: border-box;
   scrollbar-width: thin;
   scrollbar-color: var(--brand-primary) var(--glass-1);
+  /* Prevent 300ms tap delay on mobile */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 html {
@@ -25,11 +28,13 @@ body {
   background-attachment: fixed;
   color: var(--text-primary);
   min-height: 100vh;
+  min-height: 100dvh; /* Dynamic viewport height for mobile browsers */
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background var(--transition-slow), color var(--transition-slow);
   overflow-x: hidden;
+  overscroll-behavior: none; /* Prevent rubber-band scroll fighting PWA */
 }
 
 /* ================================================================
@@ -886,3 +891,56 @@ body::after {
   animation: spin 1s linear infinite;
 }
 
+/* ================================================================
+   ACCESSIBILITY — Focus Visible (keyboard navigation)
+   ================================================================ */
+:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Remove default outline for mouse users, keep for keyboard */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ================================================================
+   FLUID TYPOGRAPHY — clamp() for seamless scaling
+   ================================================================ */
+h1 { font-size: clamp(1.4rem, 4vw, 2rem); }
+h2 { font-size: clamp(1.1rem, 3vw, 1.5rem); }
+h3 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
+
+.greeting-title {
+  font-size: clamp(1.3rem, 5vw, 1.8rem) !important;
+}
+
+/* ================================================================
+   REDUCED MOTION — Respect OS accessibility preference
+   ================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ================================================================
+   PERFORMANCE — Contain paint for heavy animated elements
+   ================================================================ */
+.bento-tile,
+.glass,
+.stat-card {
+  contain: layout style;
+  will-change: auto; /* Reset — only apply will-change on :hover */
+}
+
+.bento-tile:hover,
+.glass:hover {
+  will-change: transform;
+}

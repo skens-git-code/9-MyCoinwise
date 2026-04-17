@@ -189,15 +189,15 @@ export default function Transactions() {
 
                 <div className="idp-quick-stats">
                   <div className="iqs-box glass">
-                    <label>Total Earned</label>
+                    <label>Earned</label>
                     <span className="success">{fmt(totalIncome)}</span>
                   </div>
                   <div className="iqs-box glass">
-                    <label>Total Spent</label>
+                    <label>Spent</label>
                     <span className="danger">{fmt(totalExpense)}</span>
                   </div>
                   <div className="iqs-box glass">
-                    <label>Net Change</label>
+                    <label>Net</label>
                     <span className="primary">{fmt(netChange)}</span>
                   </div>
                 </div>

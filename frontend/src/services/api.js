@@ -1,10 +1,13 @@
 import axios from 'axios';
 
-// This will use the Vercel variable in production, 
+// This will use the Vercel variable in production,
 // and your local server while you're coding.
 const API_URL = import.meta.env.VITE_API_URL || 'https://nine-budgettracker.onrender.com/api';
 
-// --- Axios Interceptor for JWT ---
+// ── Global timeout: 15s prevents hanging forever on Render cold start ──
+axios.defaults.timeout = 15000;
+
+// --- Axios Request Interceptor for JWT ---
 axios.interceptors.request.use((config) => {
   const token = localStorage.getItem('mcw-token');
   if (token) {
@@ -14,6 +17,17 @@ axios.interceptors.request.use((config) => {
 }, (error) => {
   return Promise.reject(error);
 });
+
+// --- Axios Response Interceptor: clear token on 401 ---
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('mcw-token');
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const CURRENCIES = {
   INR: { symbol: '₹', name: 'Indian Rupee', flag: '🇮🇳' },

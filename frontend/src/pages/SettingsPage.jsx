@@ -750,16 +750,18 @@ const EmailChangeSection = ({ user, showMessage }) => {
     <>
       <div className="form-field" style={{ marginTop: 24 }}>
         <label>Email Address</label>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        {/* Added flexWrap to prevent squishing on mobile */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             value={user?.email || ''}
             readOnly
-            style={{ flex: 1, opacity: 0.7, background: 'var(--surface-1)' }}
+            style={{ flex: 1, minWidth: 'min(200px, 100%)', opacity: 0.7, background: 'var(--surface-1)' }}
           />
           <button
             type="button"
             className="btn-secondary"
             onClick={() => setShowModal(true)}
+            style={{ whiteSpace: 'nowrap' }}
           >
             Change Email
           </button>
@@ -875,15 +877,17 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, theme, showMessage 
                   type="button"
                   className="btn-secondary"
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  style={{ flex: 1, minWidth: 140, justifyContent: 'center' }}
                 >
-                  😀 Pick Full Emoji
+                  😀 Pick Emoji
                 </button>
                 <button
                   type="button"
                   className="btn-secondary"
                   onClick={() => fileInputRef.current?.click()}
+                  style={{ flex: 1, minWidth: 140, justifyContent: 'center' }}
                 >
-                  <Upload size={16} /> Upload Local Image
+                  <Upload size={16} /> Upload Image
                 </button>
                 <input
                   type="file"

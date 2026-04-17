@@ -106,6 +106,15 @@ export default function App() {
       setLoading(false);
       return;
     }
+
+    // Safety net: if backend doesn't respond in 16s (Render cold start), bail out
+    const timeoutId = setTimeout(() => {
+      console.warn('[App] fetchData timed out — clearing token and redirecting to login');
+      localStorage.removeItem('mcw-token');
+      setToken(null);
+      setLoading(false);
+    }, 16000);
+
     try {
       setLoading(true);
       const me = await api.getMe();
@@ -131,10 +140,11 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error loading data:', err);
-      if (err.response?.status === 401) {
+      if (err.response?.status === 401 || err.code === 'ECONNABORTED') {
         logout();
       }
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   };

@@ -96,9 +96,9 @@ export default function Goals() {
       <div className="carousel-wrapper" style={{ minHeight: 110 }}>
         <div className="carousel-track">
           {[
-            { label: 'Net Balance Available', value: fmt(totalSaved), color: totalSaved >= 0 ? 'var(--success)' : 'var(--danger)', icon: '💰' },
-            { label: 'Total Goal Target', value: fmt(totalGoalTarget), color: 'var(--brand-primary)', icon: '🎯' },
-            { label: 'Total Contributed', value: fmt(totalGoalSaved), color: 'var(--brand-secondary)', icon: '✅' },
+            { label: 'Net Available', value: fmt(totalSaved), color: totalSaved >= 0 ? 'var(--success)' : 'var(--danger)', icon: '💰' },
+            { label: 'Target Amount', value: fmt(totalGoalTarget), color: 'var(--brand-primary)', icon: '🎯' },
+            { label: 'Contributed', value: fmt(totalGoalSaved), color: 'var(--brand-secondary)', icon: '✅' },
           ].map((s, i) => (
             <motion.div key={i} initial={{ opacity: 0, scale: 0.9, x: 20 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ delay: i * 0.1, type: 'spring' }}
               className="carousel-item glass"

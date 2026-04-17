@@ -274,6 +274,60 @@
       transform: translateY(-1px);
     }
   }
+
+  /* Icon-only button — for low-frequency actions like Export */
+  .bbtn-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--glass-1);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition-spring);
+    flex-shrink: 0;
+
+    &:hover {
+      background: var(--glass-2);
+      border-color: var(--glass-border-hover);
+      color: var(--text-primary);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  /* Full-width modifier for primary button on mobile */
+  .bbtn-full {
+    flex: 1;
+  }
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    margin-bottom: 16px;
+
+    .bento-insight-pill {
+      font-size: 0.78rem;
+      padding: 6px 12px;
+    }
+
+    .bento-actions {
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+
+      .bbtn-full {
+        flex: 1; /* Takes remaining space after icon button */
+      }
+    }
+  }
 }
 
 /* ── BENTO CSS GRID ── */
@@ -286,11 +340,17 @@
 }
 
 @mixin bento-tile-base {
-  /* Subtle white lift so tiles pop above island-main (#1E293B) in dark mode */
-  background: rgba(255, 255, 255, 0.05);
+  /* Enhanced glassmorphism — frosted glass above dark canvas */
+  background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-saturation));
   -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-saturation));
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  /* Razor-thin inner border: light catches top-left edge — cyber-industrial effect */
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.12),
+    0 4px 24px rgba(0, 0, 0, 0.25);
   border-radius: 20px;
   padding: 24px;
   box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
@@ -409,23 +469,66 @@
   }
 }
 
-/* Tablet & Mobile */
+/* Tablet & Mobile — Smart financial layout */
 @media (max-width: 900px) {
   .bento-grid {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    /* 2-column base: Balance spans both, Income+Expense side-by-side */
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
   }
 
-  .bento-tile {
-    min-height: 180px;
+  /* Balance card — full width hero */
+  .bento-hero {
+    grid-column: span 2;
+    min-height: 160px;
+  }
+
+  /* Income + Expenses side-by-side (the key improvement) */
+  .bento-income,
+  .bento-expense {
+    grid-column: span 1;
+    min-height: 140px;
+
+    /* Compact inner layout for side-by-side */
+    .bh-mid h2 {
+      font-size: clamp(1.4rem, 5vw, 1.8rem);
+    }
+  }
+
+  /* Everything else full width */
+  .bento-recent,
+  .bento-chart,
+  .bento-goal,
+  .bento-pie,
+  .bento-ai {
+    grid-column: span 2;
   }
 
   .bento-chart {
-    min-height: 350px;
+    min-height: 300px;
   }
 
   .bento-recent {
-    min-height: 400px;
+    min-height: 360px;
+  }
+}
+
+/* Smallest phones — still side-by-side but compact */
+@media (max-width: 480px) {
+  .bento-grid {
+    gap: 12px;
+  }
+
+  .bento-hero {
+    min-height: 140px;
+    padding: 18px !important;
+  }
+
+  .bento-income,
+  .bento-expense {
+    min-height: 120px;
+    padding: 16px !important;
   }
 }
 
@@ -1812,7 +1915,8 @@
 /* --- Masonry Grid --- */
 .masonry-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  /* Use min(100%, 320px) to prevent overflow on very small devices (<360px width) */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
   gap: 20px;
   grid-auto-flow: dense;
 }
@@ -3796,4 +3900,126 @@ textarea:focus-visible {
   border-radius: 50%;
   cursor: pointer;
   padding: 0;
+}
+
+/* ================================================================
+   MOBILE-FIRST COMPONENT FIXES
+   Production-grade touch & responsiveness layer
+   ================================================================ */
+
+/* ── 44px Touch Targets (Apple HIG / WCAG standard) ────────────── */
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+button,
+[role="button"],
+.inav-item,
+.dock-item {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ── iOS Zoom Prevention (inputs < 16px trigger auto-zoom) ─────── */
+input,
+textarea,
+select {
+  font-size: max(16px, 1rem);
+}
+
+/* ── Modal — Full Mobile Constraints ───────────────────────────── */
+@media (max-width: 640px) {
+  .modal-box,
+  .modal-content,
+  [class*="modal"] > div {
+    width: calc(100vw - 32px) !important;
+    max-width: 100% !important;
+    max-height: 88dvh !important;
+    overflow-y: auto;
+    margin: 16px;
+    border-radius: 20px !important;
+  }
+
+  /* Toast — full width on small screens */
+  .notification-toast,
+  [class*="toast"] {
+    right: 16px !important;
+    left: 16px !important;
+    width: calc(100vw - 32px) !important;
+    max-width: 100% !important;
+  }
+
+  /* Bento grid — single column forced */
+  .bento-grid {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .bento-tile {
+    min-height: 160px;
+    width: 100% !important;
+  }
+
+  .bento-chart {
+    min-height: 280px !important;
+  }
+
+  .bento-recent {
+    min-height: 320px !important;
+  }
+
+  /* Stat cards full width */
+  .stat-card,
+  .stats-grid,
+  .summary-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Charts horizontal scroll container */
+  .chart-container,
+  .recharts-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Transaction list items — ensure consistent sizing */
+  .il-item,
+  .transaction-item {
+    padding: 12px 16px;
+    min-height: 56px;
+  }
+
+  /* Form groups — full width */
+  .form-group,
+  .input-group {
+    width: 100%;
+  }
+
+  /* Settings page sections */
+  .settings-grid,
+  .settings-section {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Extra small (Galaxy A series, older iPhones) ───────────────── */
+@media (max-width: 375px) {
+  .modal-box,
+  [class*="modal"] > div {
+    width: calc(100vw - 24px) !important;
+    margin: 12px;
+    border-radius: 16px !important;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    font-size: 0.875rem;
+    padding: 10px 16px;
+  }
+
+  /* Compact header buttons */
+  .ibtn {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+  }
 }
