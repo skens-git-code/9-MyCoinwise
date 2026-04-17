@@ -1,6 +1,6 @@
 /* global clients */
 // MyCoinwise – Service Worker (PWA)
-const CACHE_NAME = 'mycoinwise-v1';
+const CACHE_NAME = 'mycoinwise-v2';
 const STATIC_ASSETS = ['/', '/index.html'];
 
 self.addEventListener('install', (e) => {
@@ -20,24 +20,29 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Network-first for API calls, cache-first for static assets
-  if (e.request.url.includes('/api/')) {
+  // ✅ Never intercept non-GET requests (POST/PUT/DELETE go straight to network)
+  if (e.request.method !== 'GET') return;
+
+  // ✅ Never cache API calls — always go to network, fallback to offline message
+  if (e.request.url.includes('/api/') || e.request.url.includes('onrender.com')) {
     e.respondWith(
       fetch(e.request).catch(() =>
-        caches.match(e.request).then(r => r || new Response('{"error":"offline"}', { headers: { 'Content-Type': 'application/json' } }))
+        new Response('{"error":"offline"}', { headers: { 'Content-Type': 'application/json' } })
       )
     );
-  } else {
-    e.respondWith(
-      fetch(e.request)
-        .then(res => {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
-          return res;
-        })
-        .catch(() => caches.match(e.request))
-    );
+    return;
   }
+
+  // Cache-first for static assets (JS, CSS, images)
+  e.respondWith(
+    fetch(e.request)
+      .then(res => {
+        const clone = res.clone();
+        caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+        return res;
+      })
+      .catch(() => caches.match(e.request))
+  );
 });
 
 // Push notifications for budget alerts
