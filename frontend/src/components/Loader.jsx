@@ -77,7 +77,7 @@ export default function Loader({ fullScreen = false }) {
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
               }}>
-                Zenith Spend
+                MyCoinwise
               </span>
 
               {/* Animated dots */}

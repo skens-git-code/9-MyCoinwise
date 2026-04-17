@@ -37,6 +37,7 @@ const userSchema = new mongoose.Schema({
   // ── Security — Session Tracking ────────────────────────────────────────────
   last_login:    { type: Date, default: null },
   last_login_ip: { type: String, default: null },
+  session_version: { type: Number, default: 0 },
 
   // ── Security — Password Reset ──────────────────────────────────────────────
   password_changed_at:    { type: Date, default: null },

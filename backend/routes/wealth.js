@@ -191,7 +191,7 @@ router.post('/ai-insights', auth, async (req, res) => {
       ? ((liabilities / totalAssets) * 100).toFixed(1)
       : '0';
 
-    const prompt = `You are Zenith, a cyberpunk AI wealth advisor. Portfolio summary: Net Worth ₹${Math.round(netWorth)}, Total Assets ₹${Math.round(totalAssets)}, Liquid ₹${Math.round(liquidAssets)}, Physical ₹${Math.round(physicalAssets)}, Liabilities ₹${Math.round(liabilities)}, Debt-to-Asset: ${debtRatio}%. Write exactly 2 punchy, actionable financial insights. No markdown. No hedging. Be direct and specific.`;
+    const prompt = `You are MyCoinwise, a cyberpunk AI wealth advisor. Portfolio summary: Net Worth ₹${Math.round(netWorth)}, Total Assets ₹${Math.round(totalAssets)}, Liquid ₹${Math.round(liquidAssets)}, Physical ₹${Math.round(physicalAssets)}, Liabilities ₹${Math.round(liabilities)}, Debt-to-Asset: ${debtRatio}%. Write exactly 2 punchy, actionable financial insights. No markdown. No hedging. Be direct and specific.`;
 
     // FIX: Use /v1/ endpoint + gemini-2.5-flash (verified working model for this key)
     const result = await httpsPost(

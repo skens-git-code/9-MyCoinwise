@@ -1,0 +1,158 @@
+/* --- From index.scss --- */
+/* ================================================================
+   MYCOINWISE — iOS 26 Liquid Glass Design System
+   Inspired by Apple's visionOS / iOS 26 aesthetic
+   Supports: Dark, Light, AMOLED modes
+   ================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Space+Grotesk:wght@600;800&family=JetBrains+Mono:wght@400;600&family=Nunito:wght@400;700;800&display=swap');
+
+/* ================================================================
+   DESIGN TOKENS — Default (Dark / iOS 26 Glass)
+   ================================================================ */
+:root {
+  /* ► Brand Palette */
+  --brand-primary-rgb: 16, 185, 129;
+  --brand-secondary-rgb: 99, 102, 241;
+  --danger-rgb: 239, 68, 68;
+  --success-rgb: 16, 185, 129;
+
+  /* ► Z-Index System */
+  --z-negative: -1;
+  --z-base: 1;
+  --z-sticky: 100;
+  --z-dropdown: 200;
+  --z-modal: 1000;
+  --z-tooltip: 2000;
+
+  /* ► Typography Scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  --brand-primary: #007AFF;
+  --brand-secondary: #0056CC;
+  --brand-accent: #60c7ff;
+  --brand-tertiary: #118AB2;
+  --brand-glow: rgba(0, 122, 255, 0.45);
+  --brand-glow-cyan: rgba(96, 199, 255, 0.3);
+  --mc-color: var(--brand-primary);
+  /* Default for masonry card */
+
+  /* ► Signature Gradient (used for headings, CTAs, accents) */
+  --brand-gradient: linear-gradient(135deg, #007AFF 0%, #60c7ff 50%, #0056CC 100%);
+  --brand-gradient-vibrant: linear-gradient(135deg, #60c7ff 0%, #007AFF 40%, #0056CC 100%);
+  --accent-separator: rgba(0, 122, 255, 0.25);
+
+  /* ► Semantic */
+  --success: #10B981;
+  --danger: #EF4444;
+  --warning: #F59E0B;
+  --info: #3B82F6;
+
+  /* ► Deep Surfaces — AMOLED Black */
+  --surface-0: #000000;
+  --surface-1: #0A0A14;
+  --surface-2: #12121F;
+  --surface-3: #1A1A2E;
+
+  /* ► Liquid Glass (Neon AMOLED effect) */
+  --glass-1: rgba(17, 24, 39, 0.15);
+  --glass-2: rgba(17, 24, 39, 0.35);
+  --glass-3: rgba(17, 24, 39, 0.50);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-border-hover: rgba(0, 122, 255, 0.55);
+  --glass-border-active: rgba(0, 122, 255, 0.85);
+  --glass-blur: 20px;
+  --glass-blur-sm: 10px;
+  --glass-blur-lg: 30px;
+
+  /* ► Text */
+  --text-primary: #E5E7EB;
+  --text-secondary: #94A3B8;
+  --text-muted: #475569;
+  --text-dim: #2d3a4e;
+
+  /* ► Sidebar */
+  --sidebar-bg: rgba(0, 0, 0, 0.92);
+
+  /* ► Ambient Magic (Dark default) */
+  --ambient-base: rgba(10, 15, 31, 1);
+  --ambient-mid: rgba(17, 24, 39, 0.95);
+  --ambient-accent: rgba(45, 31, 0, 0.9);
+  --orb-ai-color: rgba(245, 158, 11, 0.35);
+  --orb-goal-color: rgba(16, 185, 129, 0.25);
+  --orb-chart-color: rgba(30, 41, 59, 0.8);
+
+  /* ► Gradients */
+  --bg-gradient:
+    radial-gradient(ellipse at 0% 0%, rgba(0, 122, 255, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse at 100% 0%, rgba(96, 199, 255, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 100%, rgba(221, 74, 255, 0.07) 0%, transparent 55%),
+    radial-gradient(ellipse at 30% 60%, rgba(0, 122, 255, 0.06) 0%, transparent 50%),
+    linear-gradient(160deg, #000000 0%, #05050f 50%, #000000 100%);
+
+  /* ► Layout */
+  --sidebar-width: 260px;
+  --header-height: 68px;
+  --border-radius-2xl: 20px;
+  --border-radius-xs: 6px;
+  --border-radius-sm: 8px;
+  --border-radius-md: 12px;
+  --border-radius-lg: 20px;
+  --border-radius-xl: 20px;
+  --border-radius-pill: 999px;
+
+  /* ► Shadows */
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-sm: 0 4px 6px -1px rgb(0 0 0 / 0.6);
+  --shadow-md: 0 10px 15px -3px rgb(0 0 0 / 0.6);
+  --shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.7);
+  --shadow-xl: 0 32px 80px rgba(0, 0, 0, 0.7);
+  --shadow-2xl: 0 48px 100px rgba(0, 0, 0, 0.8);
+  --shadow-glow: 0 0 48px rgba(0, 122, 255, 0.45), 0 0 96px rgba(0, 122, 255, 0.2);
+  --shadow-glow-sm: 0 0 24px rgba(0, 122, 255, 0.35);
+  --shadow-glow-cyan: 0 0 32px rgba(96, 199, 255, 0.3);
+  --shadow-brand: 0 8px 32px rgba(0, 122, 255, 0.45);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* ► Transitions */
+  --transition-instant: 0.1s ease;
+  --transition-fast: 0.2s ease;
+  --transition-base: 0.3s ease;
+  --transition-slow: 0.5s ease;
+  --transition-spring: 0.3s ease;
+
+  /* ► Typography — Poppins + JetBrains Mono */
+  --font-body: 'Poppins', 'Plus Jakarta Sans', -apple-system, sans-serif;
+  --font-head: 'Poppins', 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-round: 'Poppins', sans-serif;
+
+  /* ► Animation Durations (Reusing Transition Vars) */
+  --duration-slow: var(--transition-slow);
+  --duration-base: var(--transition-base);
+  --duration-fast: var(--transition-fast);
+  --duration-instant: var(--transition-instant);
+  --duration-spring: var(--transition-spring);
+
+  /* ► Glass Morphism Semantic Tokens */
+  --glass-radius: 20px;
+  --glass-blur: 24px;
+  --glass-saturation: 180%;
+  --glass-brightness: 1.08;
+  --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
+  --glass-shadow-hover: 0 20px 56px rgba(0, 0, 0, 0.35);
+  --shadow-soft: 0 10px 25px rgba(0, 0, 0, 0.05);
+  --shadow-elevated: 0 20px 40px rgba(0, 0, 0, 0.08);
+
+  /* ► Container Queries */
+  --container-sm: 640px;
+  --container-md: 768px;
+  --container-lg: 1024px;
+  --container-xl: 1280px;
+}

@@ -1,10 +1,12 @@
 import axios from 'axios';
 
-const API_URL = 'https://nine-budgettracker.onrender.com';
+// This will use the Vercel variable in production, 
+// and your local server while you're coding.
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 // --- Axios Interceptor for JWT ---
 axios.interceptors.request.use((config) => {
-  const token = localStorage.getItem('zs-token');
+  const token = localStorage.getItem('mcw-token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -127,7 +129,7 @@ export const api = {
     const url = window.URL.createObjectURL(new Blob([res.data]));
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `zenith_spend_export_${userId}.xlsx`);
+    link.setAttribute('download', `mycoinwise_export_${userId}.xlsx`);
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -160,6 +162,10 @@ export const api = {
   // ── Security ──────────────────────────────────────────────────────────────
   changePassword: async (userId, data) => {
     const res = await axios.post(`${API_URL}/security/change-password`, data);
+    return res.data;
+  },
+  changeEmail: async (data) => {
+    const res = await axios.post(`${API_URL}/security/change-email`, data);
     return res.data;
   },
   getActiveSessions: async () => {
@@ -215,7 +221,7 @@ export const api = {
 
   // ── Settings & Account ────────────────────────────────────────────────────
   updateSettings: async (userId, settings) => {
-    const res = await axios.put(`${API_URL}/users/${userId}/settings`, settings);
+    const res = await axios.patch(`${API_URL}/users/${userId}/settings`, settings); // Now using atomic PATCH
     return res.data;
   },
   deleteUser: async (userId) => {

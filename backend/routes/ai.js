@@ -18,7 +18,7 @@ async function getFinancialContext(userId) {
       `${g.name}: $${g.saved || 0} saved of $${g.target} target`
     ).join('\n');
 
-    return `You are the built-in financial AI assistant for the Zenith Spend app. Be professional, concise, and helpful. Do not use heavy markdown — keep responses clean and readable.
+    return `You are the built-in financial AI assistant for the MyCoinwise app. Be professional, concise, and helpful. Do not use heavy markdown — keep responses clean and readable.
 
 User's Recent Transactions (up to 50):
 ${recentTx || 'No recent transactions found.'}
@@ -28,7 +28,7 @@ ${goalData || 'No active goals.'}`;
 
   } catch (err) {
     console.error('[AI] Error fetching financial context:', err.message);
-    return 'You are the built-in financial AI assistant for the Zenith Spend app. Be professional, concise, and helpful.';
+    return 'You are the built-in financial AI assistant for the MyCoinwise app. Be professional, concise, and helpful.';
   }
 }
 
@@ -71,7 +71,7 @@ router.post('/chat', async (req, res) => {
     const chat = model.startChat({
       history: [
         { role: 'user', parts: [{ text: `[SYSTEM CONTEXT]\n${systemPrompt}` }] },
-        { role: 'model', parts: [{ text: 'Understood. I am the Zenith Spend financial assistant, ready to help.' }] },
+        { role: 'model', parts: [{ text: 'Understood. I am the MyCoinwise financial assistant, ready to help.' }] },
         ...chatHistory,
       ],
       generationConfig: { maxOutputTokens: 600, temperature: 0.75 },

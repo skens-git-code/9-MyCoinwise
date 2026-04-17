@@ -53,7 +53,7 @@ export default function Login() {
           >
             <Zap size={26} />
           </motion.div>
-          <span className="auth-logo-text">Zenith Spend</span>
+          <span className="auth-logo-text">MyCoinwise</span>
         </div>
 
         <div className="auth-header">
@@ -141,7 +141,7 @@ export default function Login() {
         </form>
 
         <div className="auth-divider">
-          <span>New to Zenith Spend?</span>
+          <span>New to MyCoinwise?</span>
         </div>
 
         <div className="auth-footer">

@@ -132,6 +132,8 @@ export default function Goals() {
             {goals.map((g, i) => {
               const pct = Math.max(0, Math.min(100, (Number(g.saved) / Number(g.target)) * 100)) || 0;
               const done = pct >= 100;
+              const ageInDays = g.created_at ? (new Date() - new Date(g.created_at)) / (1000 * 60 * 60 * 24) : 0;
+              const isStuck = pct < 15 && ageInDays > 14;
               return (
                 <motion.div
                   key={g.id} className={`masonry-card glass ${done ? 'masonry-card-done' : ''}`}
@@ -162,7 +164,7 @@ export default function Goals() {
                   <div className="mc-progress-box">
                     <div className="mc-progress-track">
                       <motion.div
-                        className="mc-progress-fill"
+                        className={`mc-progress-fill ${isStuck ? 'pulse-encouragement' : ''}`}
                         initial={{ width: 0 }}
                         animate={{ width: `${pct}%` }}
                         transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
@@ -172,6 +174,11 @@ export default function Goals() {
                       <span>{pct.toFixed(0)}% completed</span>
                       <span>{fmt(Math.max(0, Number(g.target) - Number(g.saved)))} left</span>
                     </div>
+                    {isStuck && !done && (
+                      <p className="bg-nudge" style={{ marginTop: 8 }}>
+                        Almost there! Add {fmt(Math.max(10, g.target * 0.05))} to reach your goal.
+                      </p>
+                    )}
                   </div>
 
                   <div className="mc-footer">
@@ -209,7 +216,7 @@ export default function Goals() {
       )}
 
       {/* Add Goal Modal */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {showAdd && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAdd(false)}>
             <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22, stiffness: 300 }} onClick={e => e.stopPropagation()}>
@@ -247,7 +254,7 @@ export default function Goals() {
       </AnimatePresence>
 
       {/* Contribute Modal */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {contributeGoal !== null && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setContributeGoal(null)}>
             <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22 }} onClick={e => e.stopPropagation()}>
@@ -271,7 +278,7 @@ export default function Goals() {
       </AnimatePresence>
 
       {/* Confirm Delete Modal */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {goalToDelete !== null && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setGoalToDelete(null)}>
             <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22 }} onClick={e => e.stopPropagation()}>

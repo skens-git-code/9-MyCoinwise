@@ -6,19 +6,19 @@ import { AppContext } from '../App';
 import { User, Mail, KeyRound, AlertTriangle, Zap, Eye, EyeOff, ArrowRight, Shield, CheckCircle2 } from 'lucide-react';
 
 export default function Register() {
-  const [username, setUsername]     = useState('');
-  const [email, setEmail]           = useState('');
-  const [password, setPassword]     = useState('');
-  const [showPwd, setShowPwd]       = useState(false);
-  const [error, setError]           = useState('');
-  const [loading, setLoading]       = useState(false);
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const { login } = useContext(AppContext);
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
 
   const pwdStrength = password.length === 0 ? null
     : password.length < 6 ? 'weak'
-    : password.length < 10 ? 'fair'
-    : 'strong';
+      : password.length < 10 ? 'fair'
+        : 'strong';
 
   const strengthColor = { weak: '#ef4444', fair: '#f59e0b', strong: '#10b981' };
   const strengthWidth = { weak: '33%', fair: '66%', strong: '100%' };
@@ -66,7 +66,7 @@ export default function Register() {
           >
             <Zap size={26} />
           </motion.div>
-          <span className="auth-logo-text">Zenith Spend</span>
+          <span className="auth-logo-text">MyCoinwise</span>
         </div>
 
         <div className="auth-header">

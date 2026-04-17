@@ -577,7 +577,7 @@ const DesktopSidebar = React.memo(({
               animate={{ opacity: 1, width: 'auto' }}
               exit={{ opacity: 0, width: 0 }}
             >
-              Zenith Spend
+              MyCoinwise
             </motion.span>
           )}
         </AnimatePresence>

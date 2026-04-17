@@ -67,10 +67,22 @@ const BackupRestore = ({ userId, showMessage }) => {
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [autoBackup, setAutoBackup] = useState(false);
   const fileInputRef = useRef();
+  // ✅ Fix: Use ref instead of window global — scoped to this instance
+  const autoBackupIntervalRef = useRef(null);
 
   useEffect(() => {
     const savedAutoBackup = localStorage.getItem('auto-backup-enabled');
     if (savedAutoBackup) setAutoBackup(JSON.parse(savedAutoBackup));
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (autoBackupIntervalRef.current) {
+        clearInterval(autoBackupIntervalRef.current);
+        autoBackupIntervalRef.current = null;
+      }
+    };
   }, []);
 
   const handleExportBackup = async () => {
@@ -81,7 +93,7 @@ const BackupRestore = ({ userId, showMessage }) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `zenith-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `mycoinwise-backup-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
       showMessage('success', 'Backup exported successfully!');
@@ -93,22 +105,20 @@ const BackupRestore = ({ userId, showMessage }) => {
     }
   };
 
-  const handleImportBackup = async (event) => {
+  const [confirmRestoreFile, setConfirmRestoreFile] = useState(null);
+
+  const handleImportBackup = (event) => {
     const file = event.target.files[0];
     if (!file) return;
+    setConfirmRestoreFile(file);
+  };
 
-    const confirmed = window.confirm(
-      '⚠️ WARNING: Importing backup will replace ALL current data including transactions, goals, and subscriptions.\n\nThis action CANNOT be undone. Continue?'
-    );
-
-    if (!confirmed) {
-      fileInputRef.current.value = '';
-      return;
-    }
-
+  const executeRestore = async () => {
+    if (!confirmRestoreFile) return;
     setRestoreLoading(true);
+    setConfirmRestoreFile(null);
     try {
-      const text = await file.text();
+      const text = await confirmRestoreFile.text();
       const data = JSON.parse(text);
       await api.importAllData(userId, data);
       showMessage('success', 'Backup restored successfully! Page will reload in 3 seconds.');
@@ -128,22 +138,23 @@ const BackupRestore = ({ userId, showMessage }) => {
     localStorage.setItem('auto-backup-enabled', JSON.stringify(newState));
 
     if (newState) {
-      // Set up automatic weekly backup
       const scheduleBackup = () => {
         const lastBackup = localStorage.getItem('last-auto-backup');
         const oneWeek = 7 * 24 * 60 * 60 * 1000;
-
         if (!lastBackup || Date.now() - new Date(lastBackup).getTime() > oneWeek) {
           handleExportBackup();
           localStorage.setItem('last-auto-backup', new Date().toISOString());
         }
       };
-
       scheduleBackup();
-      const interval = setInterval(scheduleBackup, 7 * 24 * 60 * 60 * 1000);
-      window.autoBackupInterval = interval;
+      // ✅ Fix: clear any existing interval before creating a new one
+      if (autoBackupIntervalRef.current) clearInterval(autoBackupIntervalRef.current);
+      autoBackupIntervalRef.current = setInterval(scheduleBackup, 7 * 24 * 60 * 60 * 1000);
     } else {
-      if (window.autoBackupInterval) clearInterval(window.autoBackupInterval);
+      if (autoBackupIntervalRef.current) {
+        clearInterval(autoBackupIntervalRef.current);
+        autoBackupIntervalRef.current = null;
+      }
     }
   };
 
@@ -194,74 +205,32 @@ const BackupRestore = ({ userId, showMessage }) => {
       <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 12 }}>
         📦 Backup includes all transactions, goals, subscriptions, settings, and user preferences.
       </p>
+
+      <Modal
+        isOpen={!!confirmRestoreFile}
+        onClose={() => {
+          setConfirmRestoreFile(null);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }}
+        title="Confirm Backup Restoration"
+        confirmText="Yes, Replace All Data"
+        onConfirm={executeRestore}
+        isLoading={restoreLoading}
+        danger
+      >
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: 16, lineHeight: 1.6 }}>
+          ⚠️ WARNING: Importing this backup will replace <strong>ALL</strong> current data including transactions, goals, and subscriptions.
+        </p>
+        <p style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '0.9rem' }}>
+          This action CANNOT be undone!
+        </p>
+      </Modal>
     </div>
   );
 };
 
 // ============= NOTIFICATION PREFERENCES =============
-const NotificationPreferences = ({ userId, showMessage }) => {
-  const [preferences, setPreferences] = useState({
-    emailReports: true,
-    budgetAlerts: true,
-    goalMilestones: true,
-    unusualSpending: false,
-    pushNotifications: true,
-    weeklyDigest: true,
-    quietHoursEnabled: false,
-    quietHoursStart: '22:00',
-    quietHoursEnd: '08:00'
-  });
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!userId) return;
-
-    let isMounted = true;
-
-    const loadPrefs = async () => {
-      try {
-        const saved = await api.getNotificationPreferences(userId);
-
-        if (isMounted && saved) {
-          setPreferences(saved);
-        }
-      } catch (error) {
-        console.error('Failed to load notification preferences:', error);
-      }
-    };
-
-    loadPrefs();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [userId]);
-
-  const handleSave = async () => {
-    if (!userId) {
-      showMessage('error', 'User not identified');
-      return;
-    }
-
-    if (loading) return; // prevent double click
-
-    setLoading(true);
-
-    try {
-      const response = await api.updateNotificationPreferences(userId, preferences);
-      // API returns { message: 'Notification preferences updated' }
-      if (response?.message) {
-        showMessage('success', 'Notification preferences saved!');
-      } else {
-        throw new Error('API returned unexpected response');
-      }
-    } catch (error) {
-      console.error('Save failed:', error);
-      showMessage('error', error?.message || 'Failed to save preferences');
-    } finally {
-      setLoading(false);
-    }
-  };
+const NotificationPreferences = ({ preferences, onChange }) => {
 
   return (
     <>
@@ -279,8 +248,8 @@ const NotificationPreferences = ({ userId, showMessage }) => {
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={preferences.emailReports}
-                onChange={(e) => setPreferences(prev => ({ ...prev, emailReports: e.target.checked }))}
+                checked={preferences?.emailReports}
+                onChange={(e) => onChange({ ...preferences, emailReports: e.target.checked })}
               />
               <Mail size={16} /> Monthly Email Reports
             </label>
@@ -290,8 +259,8 @@ const NotificationPreferences = ({ userId, showMessage }) => {
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={preferences.weeklyDigest}
-                onChange={(e) => setPreferences(prev => ({ ...prev, weeklyDigest: e.target.checked }))}
+                checked={preferences?.weeklyDigest}
+                onChange={(e) => onChange({ ...preferences, weeklyDigest: e.target.checked })}
               />
               <Calendar size={16} /> Weekly Digest
             </label>
@@ -301,8 +270,8 @@ const NotificationPreferences = ({ userId, showMessage }) => {
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={preferences.budgetAlerts}
-                onChange={(e) => setPreferences(prev => ({ ...prev, budgetAlerts: e.target.checked }))}
+                checked={preferences?.budgetAlerts}
+                onChange={(e) => onChange({ ...preferences, budgetAlerts: e.target.checked })}
               />
               <BellIcon size={16} /> Budget Alerts
             </label>
@@ -312,8 +281,8 @@ const NotificationPreferences = ({ userId, showMessage }) => {
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={preferences.goalMilestones}
-                onChange={(e) => setPreferences(prev => ({ ...prev, goalMilestones: e.target.checked }))}
+                checked={preferences?.goalMilestones}
+                onChange={(e) => onChange({ ...preferences, goalMilestones: e.target.checked })}
               />
               <Target size={16} /> Goal Milestone Achievements
             </label>
@@ -323,8 +292,8 @@ const NotificationPreferences = ({ userId, showMessage }) => {
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={preferences.unusualSpending}
-                onChange={(e) => setPreferences(prev => ({ ...prev, unusualSpending: e.target.checked }))}
+                checked={preferences?.unusualSpending}
+                onChange={(e) => onChange({ ...preferences, unusualSpending: e.target.checked })}
               />
               <AlertTriangle size={16} /> Unusual Spending Alerts
             </label>
@@ -336,21 +305,21 @@ const NotificationPreferences = ({ userId, showMessage }) => {
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={preferences.quietHoursEnabled}
-                onChange={(e) => setPreferences(prev => ({ ...prev, quietHoursEnabled: e.target.checked }))}
+                checked={preferences?.quietHoursEnabled}
+                onChange={(e) => onChange({ ...preferences, quietHoursEnabled: e.target.checked })}
               />
               <Moon size={16} /> Enable Quiet Hours
             </label>
           </div>
 
-          {preferences.quietHoursEnabled && (
+          {preferences?.quietHoursEnabled && (
             <div style={{ display: 'flex', gap: 12, marginLeft: 24 }}>
               <div className="form-field" style={{ flex: 1 }}>
                 <label>Start Time</label>
                 <input
                   type="time"
                   value={preferences.quietHoursStart}
-                  onChange={(e) => setPreferences(prev => ({ ...prev, quietHoursStart: e.target.value }))}
+                  onChange={(e) => onChange({ ...preferences, quietHoursStart: e.target.value })}
                 />
               </div>
               <div className="form-field" style={{ flex: 1 }}>
@@ -358,17 +327,11 @@ const NotificationPreferences = ({ userId, showMessage }) => {
                 <input
                   type="time"
                   value={preferences.quietHoursEnd}
-                  onChange={(e) => setPreferences(prev => ({ ...prev, quietHoursEnd: e.target.value }))}
+                  onChange={(e) => onChange({ ...preferences, quietHoursEnd: e.target.value })}
                 />
               </div>
             </div>
           )}
-        </div>
-
-        <div className="idp-actions" style={{ marginTop: 24 }}>
-          <button type="button" className="btn-primary" onClick={handleSave} disabled={loading}>
-            <Save size={18} /> {loading ? 'Saving...' : 'Save Preferences'}
-          </button>
         </div>
       </div>
     </>
@@ -385,7 +348,7 @@ const PasswordChange = ({ userId, showMessage }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleChange = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
@@ -419,7 +382,7 @@ const PasswordChange = ({ userId, showMessage }) => {
   };
 
   return (
-    <form onSubmit={handleChange}>
+    <form onSubmit={handleSubmit}>
       <div className="form-field">
         <label>Current Password</label>
         <div style={{ position: 'relative' }}>
@@ -477,7 +440,8 @@ const PasswordChange = ({ userId, showMessage }) => {
 // ============= SESSION MANAGEMENT =============
 const SessionManagement = ({ userId, showMessage }) => {
   const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
 
   const loadSessions = useCallback(async () => {
     if (!userId) return;
@@ -533,17 +497,17 @@ const SessionManagement = ({ userId, showMessage }) => {
       setLoading(false);
     }
   };
-  const revokeAllOtherSessions = async () => {
+  const requestRevokeAll = () => {
     if (!userId) {
       showMessage('error', 'User not identified');
       return;
     }
+    setConfirmRevokeAll(true);
+  };
 
-    const confirmed = window.confirm(
-      'This will log out all other devices. Continue?'
-    );
-
-    if (!confirmed || loading) return;
+  const executeRevokeAllOtherSessions = async () => {
+    setConfirmRevokeAll(false);
+    if (!userId || loading) return;
 
     setLoading(true);
 
@@ -564,7 +528,7 @@ const SessionManagement = ({ userId, showMessage }) => {
     }
   };
 
-  if (loading) return <div style={{ padding: 20, textAlign: 'center' }}>Loading sessions...</div>;
+  if (loading && sessions.length === 0) return <div style={{ padding: 20, textAlign: 'center' }}>Loading sessions...</div>;
 
   return (
     <div>
@@ -573,7 +537,7 @@ const SessionManagement = ({ userId, showMessage }) => {
         <button
           type="button"
           className="btn-secondary"
-          onClick={revokeAllOtherSessions}
+          onClick={requestRevokeAll}
           style={{ padding: '6px 12px', fontSize: '0.8rem' }}
         >
           <LogOut size={14} /> Revoke All Other Sessions
@@ -622,75 +586,30 @@ const SessionManagement = ({ userId, showMessage }) => {
           </div>
         ))}
 
-        {sessions.length === 0 && (
-          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-            No active sessions found
-          </div>
+        {sessions.length === 0 && !loading && (
+          <p style={{ color: 'var(--text-muted)' }}>No other active sessions found.</p>
         )}
       </div>
+
+      <Modal
+        isOpen={confirmRevokeAll}
+        onClose={() => setConfirmRevokeAll(false)}
+        title="Revoke All Other Sessions"
+        confirmText="Yes, Log Out Everywhere Else"
+        onConfirm={executeRevokeAllOtherSessions}
+        isLoading={loading}
+        danger
+      >
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: 16, lineHeight: 1.6 }}>
+          This action will log you out of all other devices you are currently logged into.
+          Are you sure you want to continue?
+        </p>
+      </Modal>
     </div>
   );
 };
 
-// ============= ADVANCED PREFERENCES =============
-const AdvancedPreferences = ({ userId, showMessage }) => {
-  const [prefs, setPrefs] = useState({
-    dateFormat: 'MM/DD/YYYY',
-    timeFormat: '12h',
-    firstDayOfWeek: 'Sunday',
-    decimalSeparator: '.',
-    compactMode: false,
-    autoSave: true,
-    animationsEnabled: true,
-    showWeekNumbers: false
-  });
-  const [loading, setLoading] = useState(false);
-  useEffect(() => {
-    if (!userId) return;
-
-    let isMounted = true;
-
-    const loadPrefs = async () => {
-      try {
-        const saved = await api.getAdvancedPreferences(userId);
-
-        if (isMounted && saved) {
-          setPrefs(saved);
-        }
-      } catch (error) {
-        console.error('Failed to load advanced preferences:', error);
-      }
-    };
-
-    loadPrefs();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [userId]);
-
-  const handleSave = async () => {
-    if (!userId) {
-      showMessage('error', 'User not found');
-      return;
-    }
-
-    if (loading) return;
-
-    setLoading(true);
-
-    try {
-      await api.updateAdvancedPreferences(userId, prefs);
-
-      showMessage('success', 'Preferences saved successfully!');
-    } catch (error) {
-      console.error('Save advanced preferences error:', error);
-      showMessage('error', error?.message || 'Failed to save preferences');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+const AdvancedPreferences = ({ prefs, onChange }) => {
   return (
     <>
       <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
@@ -705,8 +624,8 @@ const AdvancedPreferences = ({ userId, showMessage }) => {
         <div className="form-field">
           <label>Date Format</label>
           <select
-            value={prefs.dateFormat}
-            onChange={(e) => setPrefs(prev => ({ ...prev, dateFormat: e.target.value }))}
+            value={prefs?.dateFormat || 'MM/DD/YYYY'}
+            onChange={(e) => onChange({ ...prefs, dateFormat: e.target.value })}
           >
             <option>MM/DD/YYYY</option>
             <option>DD/MM/YYYY</option>
@@ -717,8 +636,8 @@ const AdvancedPreferences = ({ userId, showMessage }) => {
         <div className="form-field">
           <label>Time Format</label>
           <select
-            value={prefs.timeFormat}
-            onChange={(e) => setPrefs(prev => ({ ...prev, timeFormat: e.target.value }))}
+            value={prefs?.timeFormat || '12h'}
+            onChange={(e) => onChange({ ...prefs, timeFormat: e.target.value })}
           >
             <option value="12h">12h (AM/PM)</option>
             <option value="24h">24h</option>
@@ -728,8 +647,8 @@ const AdvancedPreferences = ({ userId, showMessage }) => {
         <div className="form-field">
           <label>First Day of Week</label>
           <select
-            value={prefs.firstDayOfWeek}
-            onChange={(e) => setPrefs(prev => ({ ...prev, firstDayOfWeek: e.target.value }))}
+            value={prefs?.firstDayOfWeek || 'Sunday'}
+            onChange={(e) => onChange({ ...prefs, firstDayOfWeek: e.target.value })}
           >
             <option>Sunday</option>
             <option>Monday</option>
@@ -739,8 +658,8 @@ const AdvancedPreferences = ({ userId, showMessage }) => {
         <div className="form-field">
           <label>Decimal Separator</label>
           <select
-            value={prefs.decimalSeparator}
-            onChange={(e) => setPrefs(prev => ({ ...prev, decimalSeparator: e.target.value }))}
+            value={prefs?.decimalSeparator || '.'}
+            onChange={(e) => onChange({ ...prefs, decimalSeparator: e.target.value })}
           >
             <option value=".">Period (.) - 1,000.00</option>
             <option value=",">Comma (,) - 1.000,00</option>
@@ -751,8 +670,8 @@ const AdvancedPreferences = ({ userId, showMessage }) => {
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input
               type="checkbox"
-              checked={prefs.compactMode}
-              onChange={(e) => setPrefs(prev => ({ ...prev, compactMode: e.target.checked }))}
+              checked={prefs?.compactMode || false}
+              onChange={(e) => onChange({ ...prefs, compactMode: e.target.checked })}
             />
             <Zap size={16} /> Compact Mode (Denser Layout)
           </label>
@@ -762,8 +681,8 @@ const AdvancedPreferences = ({ userId, showMessage }) => {
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input
               type="checkbox"
-              checked={prefs.autoSave}
-              onChange={(e) => setPrefs(prev => ({ ...prev, autoSave: e.target.checked }))}
+              checked={prefs?.autoSave !== false}
+              onChange={(e) => onChange({ ...prefs, autoSave: e.target.checked })}
             />
             <Save size={16} /> Auto-save Changes
           </label>
@@ -773,8 +692,8 @@ const AdvancedPreferences = ({ userId, showMessage }) => {
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input
               type="checkbox"
-              checked={prefs.animationsEnabled}
-              onChange={(e) => setPrefs(prev => ({ ...prev, animationsEnabled: e.target.checked }))}
+              checked={prefs?.animationsEnabled !== false}
+              onChange={(e) => onChange({ ...prefs, animationsEnabled: e.target.checked })}
             />
             <Activity size={16} /> Enable Animations
           </label>
@@ -784,33 +703,116 @@ const AdvancedPreferences = ({ userId, showMessage }) => {
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input
               type="checkbox"
-              checked={prefs.showWeekNumbers}
-              onChange={(e) => setPrefs(prev => ({ ...prev, showWeekNumbers: e.target.checked }))}
+              checked={prefs?.showWeekNumbers || false}
+              onChange={(e) => onChange({ ...prefs, showWeekNumbers: e.target.checked })}
             />
             <Calendar size={16} /> Show Week Numbers in Calendar
           </label>
         </div>
       </div>
+    </>
+  );
+};
 
-      <div className="idp-actions">
-        <button type="button" className="btn-primary" onClick={handleSave} disabled={loading}>
-          <Save size={18} /> {loading ? 'Saving...' : 'Save Preferences'}
-        </button>
+// ============= EMAIL CHANGE SECTION =============
+const EmailChangeSection = ({ user, showMessage }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [emailForm, setEmailForm] = useState({ newEmail: '', currentPassword: '' });
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!emailForm.newEmail || !emailForm.currentPassword) {
+      showMessage('error', 'All fields are required.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailForm.newEmail)) {
+      showMessage('error', 'Please enter a valid email address.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await api.changeEmail({
+        currentPassword: emailForm.currentPassword,
+        newEmail: emailForm.newEmail
+      });
+      showMessage('success', res.message || 'Email updated! Please log in again.');
+      setShowModal(false);
+      setEmailForm({ newEmail: '', currentPassword: '' });
+      setTimeout(() => window.location.reload(), 2000);
+    } catch (err) {
+      showMessage('error', err.response?.data?.message || 'Failed to update email.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="form-field" style={{ marginTop: 24 }}>
+        <label>Email Address</label>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <input
+            value={user?.email || ''}
+            readOnly
+            style={{ flex: 1, opacity: 0.7, background: 'var(--surface-1)' }}
+          />
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setShowModal(true)}
+          >
+            Change Email
+          </button>
+        </div>
       </div>
+
+      <Modal
+        isOpen={showModal}
+        onClose={() => { setShowModal(false); setEmailForm({ newEmail: '', currentPassword: '' }); }}
+        title="Change Email Address"
+        confirmText="Update Email"
+        onConfirm={handleSubmit}
+        isLoading={loading}
+      >
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20, lineHeight: 1.6 }}>
+          Enter your new email and current password to verify the change.
+        </p>
+        <div className="form-field">
+          <label htmlFor="new_email_input">New Email Address</label>
+          <input
+            id="new_email_input"
+            type="email"
+            value={emailForm.newEmail}
+            onChange={(e) => setEmailForm(prev => ({ ...prev, newEmail: e.target.value }))}
+            placeholder="newaddress@example.com"
+            autoFocus
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="email_change_password">Current Password</label>
+          <input
+            id="email_change_password"
+            type="password"
+            value={emailForm.currentPassword}
+            onChange={(e) => setEmailForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+            placeholder="Your current password"
+          />
+        </div>
+      </Modal>
     </>
   );
 };
 
 // ============= PROFILE TAB =============
-const ProfileTab = ({ formState, handleFieldChange, t, user, loading, theme }) => {
+const ProfileTab = ({ formState, handleFieldChange, t, user, theme, showMessage }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 20 * 1024 * 1024) { // 20MB limit
-        alert('Image must be less than 20MB');
+      if (file.size > 20 * 1024 * 1024) {
+        showMessage('error', 'Image must be less than 20MB');
         return;
       }
       const reader = new FileReader();
@@ -833,7 +835,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, loading, theme }) =
           {t?.('profile') || 'Profile'}
         </h3>
         <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
-          Configure your personal identity within Zenith.
+          Configure your personal identity within MyCoinwise.
         </p>
       </div>
 
@@ -946,24 +948,14 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, loading, theme }) =
             autoCapitalize="words"
           />
         </div>
-        <div className="form-field">
-          <label htmlFor="email_ro">Email (read-only)</label>
-          <input id="email_ro" value={user?.email || ''} readOnly style={{ opacity: 0.5 }} />
-        </div>
-      </div>
-
-      <div className="idp-actions">
-        <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center', padding: 16 }}>
-          <Save size={18} aria-hidden />
-          {loading ? 'Saving...' : 'Save Profile Changes'}
-        </button>
+        <EmailChangeSection user={user} showMessage={showMessage} />
       </div>
     </>
   );
 };
 
 // ============= PREFERENCES TAB =============
-const PreferencesTab = ({ formState, handleFieldChange, t, loading }) => (
+const PreferencesTab = ({ formState, handleFieldChange, t }) => (
   <>
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
       <div className="idp-hero-icon" style={{ width: 64, height: 64, marginBottom: 16, background: 'rgba(56,189,248,0.1)', color: 'var(--brand-secondary)', border: '1px solid rgba(56,189,248,0.3)' }}>
@@ -1006,13 +998,6 @@ const PreferencesTab = ({ formState, handleFieldChange, t, loading }) => (
         />
       </div>
     </div>
-
-    <div className="idp-actions">
-      <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center', padding: 16 }}>
-        <Save size={18} aria-hidden />
-        {loading ? 'Saving...' : 'Save Preferences'}
-      </button>
-    </div>
   </>
 );
 
@@ -1024,7 +1009,7 @@ const LanguageTab = ({ lang, setLanguage, showMessage }) => (
         <Globe size={28} />
       </div>
       <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>Language</h3>
-      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Zenith speaks your language.</p>
+      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>MyCoinwise speaks your language.</p>
     </div>
 
     <div className="idp-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1329,7 +1314,7 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
 );
 
 // ============= MODAL COMPONENT =============
-const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoading, danger }) => {
+const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoading, danger, confirmDisabled }) => {
   const modalId = useId();
 
   useEffect(() => {
@@ -1365,61 +1350,67 @@ const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoa
     return () => document.removeEventListener('keydown', handleTab);
   }, [isOpen, modalId]);
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={`${modalId}-title`}
-      onClick={() => !isLoading && onClose()}
-      onKeyDown={(e) => e.key === 'Escape' && !isLoading && onClose()}
-    >
-      <motion.div
-        id={modalId}
-        className="modal-box glass"
-        initial={{ scale: 0.88, y: 24, opacity: 0 }}
-        animate={{ scale: 1, y: 0, opacity: 1 }}
-        exit={{ scale: 0.88, y: 24, opacity: 0 }}
-        transition={{ type: 'spring', damping: 22 }}
-        onClick={(e) => e.stopPropagation()}
-        style={danger ? { borderColor: 'rgba(239,68,68,0.4)', boxShadow: '0 8px 32px rgba(239,68,68,0.2)' } : {}}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 id={`${modalId}-title`} style={danger ? { color: 'var(--danger)' } : {}}>
-            {title}
-          </h3>
-          {!isLoading && (
-            <button onClick={onClose} aria-label="Close modal" className="icon-button">
-              <X size={20} />
-            </button>
-          )}
-        </div>
-        {children}
-        {confirmText && onConfirm && (
-          <div className="modal-actions" style={{ marginTop: 24 }}>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={onClose}
-              disabled={isLoading}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={onConfirm}
-              disabled={isLoading}
-              style={danger ? { background: 'var(--danger)' } : {}}
-            >
-              {isLoading ? 'Processing...' : confirmText}
-            </button>
-          </div>
-        )}
-      </motion.div>
-    </div>
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`${modalId}-title`}
+          onClick={() => !isLoading && onClose()}
+          onKeyDown={(e) => e.key === 'Escape' && !isLoading && onClose()}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <motion.div
+            id={modalId}
+            className="modal-box glass"
+            initial={{ y: '100%', opacity: 0, scale: 0.95 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: '100%', opacity: 0, scale: 0.95 }}
+            transition={{ type: 'spring', damping: 20, stiffness: 200 }}
+            onClick={(e) => e.stopPropagation()}
+            style={danger ? { borderColor: 'rgba(239,68,68,0.4)', boxShadow: '0 8px 32px rgba(239,68,68,0.2)' } : {}}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 id={`${modalId}-title`} style={danger ? { color: 'var(--danger)' } : {}}>
+                {title}
+              </h3>
+              {!isLoading && (
+                <button onClick={onClose} aria-label="Close modal" className="icon-button">
+                  <X size={20} />
+                </button>
+              )}
+            </div>
+            {children}
+            {confirmText && onConfirm && (
+              <div className="modal-actions" style={{ marginTop: 24 }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={onClose}
+                  disabled={isLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={onConfirm}
+                  disabled={isLoading || confirmDisabled}
+                  style={danger ? { background: 'var(--danger)' } : {}}
+                >
+                  {isLoading ? 'Processing...' : confirmText}
+                </button>
+              </div>
+            )}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
 
@@ -1462,6 +1453,60 @@ const useMessage = () => {
   return { message, showMessage };
 };
 
+// ============= FACTORY RESET MODAL (typed confirmation) =============
+// Inner component that holds the input state — key prop resets it on each open
+const FactoryResetModalInner = ({ onClose, onConfirm, isLoading }) => {
+  const [confirmText, setConfirmText] = useState('');
+  const isConfirmed = confirmText === 'DELETE';
+
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title="Confirm Factory Reset"
+      confirmText="Permanently Delete All Data"
+      onConfirm={onConfirm}
+      isLoading={isLoading}
+      danger
+      confirmDisabled={!isConfirmed}
+    >
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <AlertTriangle size={48} style={{ color: 'var(--danger)', marginBottom: 12 }} />
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6 }}>
+          You are about to permanently delete <strong>all data</strong> associated with your account,
+          including all transactions, budget goals, subscriptions, preferences, and export history.
+        </p>
+        <p style={{ color: '#ef4444', fontWeight: 700, marginTop: 12 }}>
+          This action CANNOT be undone!
+        </p>
+      </div>
+      <div className="form-field">
+        <label htmlFor="reset_confirm_input" style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+          Type <strong style={{ color: '#ef4444', letterSpacing: '0.05em' }}>DELETE</strong> to confirm:
+        </label>
+        <input
+          id="reset_confirm_input"
+          type="text"
+          value={confirmText}
+          onChange={(e) => setConfirmText(e.target.value)}
+          placeholder="Type DELETE here"
+          style={{ borderColor: isConfirmed ? '#ef4444' : undefined }}
+          autoComplete="off"
+          spellCheck={false}
+          autoFocus
+        />
+      </div>
+    </Modal>
+  );
+};
+
+const FactoryResetModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
+  if (!isOpen) return null;
+  // key={Date.toString()} would rotate, but isOpen toggling remounts the inner component,
+  // resetting its local state without needing a useEffect setState call.
+  return <FactoryResetModalInner onClose={onClose} onConfirm={onConfirm} isLoading={isLoading} />;
+};
+
 function SettingsInner({ context }) {
   const {
     user,
@@ -1486,6 +1531,14 @@ function SettingsInner({ context }) {
     currency: user?.currency || 'INR',
     avatar: user?.profile_avatar || '😊',
     avatarColor: user?.profile_color || '#059669',
+    notificationPrefs: user?.notification_prefs || {
+      emailReports: true, budgetAlerts: true, goalMilestones: true, unusualSpending: false,
+      pushNotifications: true, weeklyDigest: true, quietHoursEnabled: false, quietHoursStart: '22:00', quietHoursEnd: '08:00'
+    },
+    advancedPrefs: user?.advanced_prefs || {
+      dateFormat: 'MM/DD/YYYY', timeFormat: '12h', firstDayOfWeek: 'Sunday', decimalSeparator: '.',
+      compactMode: false, autoSave: true, animationsEnabled: true, showWeekNumbers: false
+    },
     isDirty: false
   });
 
@@ -1506,6 +1559,8 @@ function SettingsInner({ context }) {
     excel: false
   });
 
+  const [undoSnapshot, setUndoSnapshot] = useState(null);
+
   const { message, showMessage } = useMessage();
   const isMounted = useRef(true);
 
@@ -1518,7 +1573,15 @@ function SettingsInner({ context }) {
           monthlyGoal: user.monthly_goal?.toString() || '',
           currency: user.currency || 'INR',
           avatar: user.profile_avatar || '😊',
-          avatarColor: user.profile_color || '#059669'
+          avatarColor: user.profile_color || '#059669',
+          notificationPrefs: user.notification_prefs || {
+            emailReports: true, budgetAlerts: true, goalMilestones: true, unusualSpending: false,
+            pushNotifications: true, weeklyDigest: true, quietHoursEnabled: false, quietHoursStart: '22:00', quietHoursEnd: '08:00'
+          },
+          advancedPrefs: user.advanced_prefs || {
+            dateFormat: 'MM/DD/YYYY', timeFormat: '12h', firstDayOfWeek: 'Sunday', decimalSeparator: '.',
+            compactMode: false, autoSave: true, animationsEnabled: true, showWeekNumbers: false
+          }
         }
       });
     }
@@ -1542,27 +1605,16 @@ function SettingsInner({ context }) {
     };
   }, []);
 
-  useEffect(() => {
-    const handleEsc = (e) => {
-      if (e.key === 'Escape') {
-        setModals({
-          addUser: false,
-          resetConfirm: false,
-          deleteUser: null,
-          switchConfirm: null
-        });
-      }
-    };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, []);
+  // ✅ Fix: Removed redundant global Escape key handler — Modal already handles Escape internally.
+  //         A global handler that resets ALL modals simultaneously could interfere with
+  //         modals that need custom escape behavior in the future.
 
   const handleFieldChange = useCallback((field, value) => {
     dispatch({ type: 'SET_FIELD', field, value });
   }, []);
 
   const handleSave = useCallback(async (e) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
     const sanitizedUsername = sanitizeInput(formState.username);
     if (!sanitizedUsername) {
@@ -1579,17 +1631,32 @@ function SettingsInner({ context }) {
     setLoadingStates(prev => ({ ...prev, save: true }));
 
     try {
+      // Snapshot old state for undo
+      const previousState = {
+        username: user?.username,
+        theme: user?.theme,
+        monthly_goal: user?.monthly_goal,
+        currency: user?.currency,
+        profile_avatar: user?.profile_avatar,
+        profile_color: user?.profile_color,
+        notification_prefs: user?.notification_prefs,
+        advanced_prefs: user?.advanced_prefs
+      };
+
       await api.updateSettings(USER_ID, {
         username: sanitizedUsername,
         theme,
         monthly_goal: goalValue,
         currency: formState.currency,
         profile_avatar: formState.avatar,
-        profile_color: formState.avatarColor
+        profile_color: formState.avatarColor,
+        notification_prefs: formState.notificationPrefs,
+        advanced_prefs: formState.advancedPrefs
       });
 
+      setUndoSnapshot(previousState);
       dispatch({ type: 'CLEAR_DIRTY' });
-      showMessage('success', 'Settings saved successfully!');
+      showMessage('success', 'Settings saved! You can undo if needed.');
       if (refetch) await refetch();
     } catch (error) {
       console.error('Save error:', error);
@@ -1599,7 +1666,24 @@ function SettingsInner({ context }) {
         setLoadingStates(prev => ({ ...prev, save: false }));
       }
     }
-  }, [formState, theme, USER_ID, refetch, showMessage]);
+  }, [formState, theme, USER_ID, refetch, showMessage, user]);
+
+  const handleUndo = useCallback(async () => {
+    if (!undoSnapshot) return;
+    setLoadingStates(prev => ({ ...prev, save: true }));
+    try {
+      await api.updateSettings(USER_ID, undoSnapshot);
+      setUndoSnapshot(null);
+      showMessage('success', 'Changes reverted successfully.');
+      if (refetch) await refetch();
+    } catch {
+      showMessage('error', 'Failed to undo changes.');
+    } finally {
+      if (isMounted.current) {
+        setLoadingStates(prev => ({ ...prev, save: false }));
+      }
+    }
+  }, [undoSnapshot, USER_ID, refetch, showMessage]);
 
   const handleCreateUser = useCallback(async () => {
     const sanitizedName = sanitizeInput(modals.addUser?.name);
@@ -1670,7 +1754,7 @@ function SettingsInner({ context }) {
       await api.deleteUser(userId);
 
       if (userId === USER_ID) {
-        localStorage.removeItem('zs-user-id');
+        localStorage.removeItem('mcw-user-id');
         window.location.href = '/login';
       } else {
         if (refetch) await refetch();
@@ -1693,6 +1777,19 @@ function SettingsInner({ context }) {
     setLoadingStates(prev => ({ ...prev, switch: userToSwitch.id }));
 
     try {
+      if (formState.isDirty) {
+        showMessage('success', 'Auto-saving changes before switching...', 2000);
+        await api.updateSettings(USER_ID, {
+          username: formState.username,
+          theme,
+          monthly_goal: formState.monthlyGoal,
+          currency: formState.currency,
+          profile_avatar: formState.avatar,
+          profile_color: formState.avatarColor
+        });
+        dispatch({ type: 'CLEAR_DIRTY' });
+      }
+
       await switchUser(userToSwitch.id);
       showMessage('success', `Switched to ${userToSwitch.username}`);
       if (refetch) await refetch();
@@ -1704,7 +1801,7 @@ function SettingsInner({ context }) {
         setLoadingStates(prev => ({ ...prev, switch: null }));
       }
     }
-  }, [modals.switchConfirm, switchUser, refetch, showMessage]);
+  }, [modals.switchConfirm, switchUser, refetch, showMessage, formState, theme, USER_ID]);
 
   const handleThemeChange = useCallback((newTheme) => {
     setThemeDirect(newTheme);
@@ -1749,20 +1846,8 @@ function SettingsInner({ context }) {
   };
 
   const handleTabChange = useCallback((tabId) => {
-    if (formState.isDirty && user) {
-      dispatch({
-        type: 'RESET_FORM',
-        payload: {
-          username: user.username || '',
-          monthlyGoal: user.monthly_goal?.toString() || '',
-          currency: user.currency || 'INR',
-          avatar: user.profile_avatar || '😊',
-          avatarColor: user.profile_color || '#059669'
-        }
-      });
-    }
     setActiveTab(tabId);
-  }, [formState.isDirty, user]);
+  }, []);
 
   const sortedUsers = useMemo(() =>
     [...allUsers].sort((a, b) => a.username.localeCompare(b.username)),
@@ -1846,7 +1931,7 @@ function SettingsInner({ context }) {
   };
 
   return (
-    <div className="inbox-layout-page settings-page">
+    <div className="inbox-layout-page settings-page shared-page animate-in">
       <div className="inbox-header">
         <div className="ih-titles">
           <h2>{t?.('settings') || 'Settings'}</h2>
@@ -1915,7 +2000,7 @@ function SettingsInner({ context }) {
 
         {/* Content */}
         <div className="inbox-detail-pane glass">
-          <form onSubmit={handleSave} className="idp-content" style={{ maxWidth: '800px', padding: '40px' }}>
+          <div className="idp-content" style={{ maxWidth: '800px', padding: '40px', paddingBottom: '100px' }}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
@@ -1929,9 +2014,103 @@ function SettingsInner({ context }) {
                 {renderTabContent()}
               </motion.div>
             </AnimatePresence>
-          </form>
+          </div>
         </div>
       </div>
+
+      {/* ── Master Save Bar ── */}
+      <AnimatePresence>
+        {(formState.isDirty || undoSnapshot) && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ type: 'spring', damping: 24, stiffness: 300 }}
+            style={{
+              position: 'fixed',
+              bottom: 24,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'var(--glass-2)',
+              border: '1px solid var(--glass-border)',
+              backdropFilter: 'blur(24px)',
+              WebkitBackdropFilter: 'blur(24px)',
+              borderRadius: '18px',
+              padding: '14px 24px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '20px',
+              boxShadow: '0 12px 48px rgba(0,0,0,0.25)',
+              zIndex: 200,
+              minWidth: 340
+            }}
+          >
+            <div>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                {formState.isDirty ? 'Unsaved Changes' : '✓ Saved'}
+              </p>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                {formState.isDirty
+                  ? 'Your profile changes have not been saved yet.'
+                  : 'Changes applied. Tap Undo to revert.'}
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginLeft: 'auto' }}>
+              {undoSnapshot && !formState.isDirty && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleUndo}
+                  disabled={loadingStates.save}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', padding: '8px 14px' }}
+                >
+                  <RefreshCw size={14} /> Undo
+                </button>
+              )}
+              {formState.isDirty && (
+                <>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => dispatch({
+                      type: 'RESET_FORM', payload: {
+                        username: user?.username || '',
+                        monthlyGoal: user?.monthly_goal?.toString() || '',
+                        currency: user?.currency || 'INR',
+                        avatar: user?.profile_avatar || '😊',
+                        avatarColor: user?.profile_color || '#059669',
+                        notificationPrefs: user?.notification_prefs || {
+                          emailReports: true, budgetAlerts: true, goalMilestones: true, unusualSpending: false,
+                          pushNotifications: true, weeklyDigest: true, quietHoursEnabled: false, quietHoursStart: '22:00', quietHoursEnd: '08:00'
+                        },
+                        advancedPrefs: user?.advanced_prefs || {
+                          dateFormat: 'MM/DD/YYYY', timeFormat: '12h', firstDayOfWeek: 'Sunday', decimalSeparator: '.',
+                          compactMode: false, autoSave: true, animationsEnabled: true, showWeekNumbers: false
+                        }
+                      }
+                    })}
+                    disabled={loadingStates.save}
+                    style={{ fontSize: '0.85rem', padding: '8px 14px' }}
+                  >
+                    Discard
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleSave}
+                    disabled={loadingStates.save}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', padding: '8px 16px' }}
+                  >
+                    <Save size={14} />
+                    {loadingStates.save ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modals */}
       <Modal
@@ -1975,33 +2154,12 @@ function SettingsInner({ context }) {
         </div>
       </Modal>
 
-      <Modal
+      <FactoryResetModal
         isOpen={modals.resetConfirm}
         onClose={() => setModals(prev => ({ ...prev, resetConfirm: false }))}
-        title="Confirm Factory Reset"
-        confirmText="Yes, Permanently Delete All Data"
         onConfirm={handleReset}
         isLoading={loadingStates.reset}
-        danger
-      >
-        <div style={{ marginBottom: 16 }}>
-          <AlertTriangle size={48} style={{ margin: '0 auto 16px', display: 'block', color: 'var(--danger)' }} />
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6, textAlign: 'center' }}>
-            You are about to permanently delete <strong>all data</strong> associated with your account.
-            This includes:
-          </p>
-          <ul style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: 12, paddingLeft: 20 }}>
-            <li>All transactions</li>
-            <li>Budget goals</li>
-            <li>Subscription lists</li>
-            <li>User preferences</li>
-            <li>Export history</li>
-          </ul>
-          <p style={{ color: '#ef4444', fontWeight: 'bold', textAlign: 'center', marginTop: 16 }}>
-            This action CANNOT be undone!
-          </p>
-        </div>
-      </Modal>
+      />
 
       <Modal
         isOpen={!!modals.deleteUser}
@@ -2025,16 +2183,20 @@ function SettingsInner({ context }) {
         isOpen={!!modals.switchConfirm}
         onClose={() => setModals(prev => ({ ...prev, switchConfirm: null }))}
         title="Switch User Account"
-        confirmText="Switch Now"
+        confirmText={formState.isDirty ? "Save & Switch" : "Switch Now"}
         onConfirm={handleSwitchUser}
         isLoading={!!loadingStates.switch}
       >
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: 16, lineHeight: 1.6 }}>
           Are you sure you want to switch to <strong>{modals.switchConfirm?.username}</strong>?
         </p>
-        <p style={{ color: 'var(--warning)', fontSize: '0.85rem' }}>
-          Note: Any unsaved changes in your current session will be lost.
-        </p>
+        {formState.isDirty && (
+          <div style={{ padding: '12px', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.3)', borderRadius: '8px', marginTop: '16px' }}>
+            <p style={{ color: 'var(--brand-secondary)', fontSize: '0.85rem', margin: 0, fontWeight: 600 }}>
+              Note: You have unsaved changes in your profile. They will be auto-saved before switching.
+            </p>
+          </div>
+        )}
       </Modal>
     </div>
   );

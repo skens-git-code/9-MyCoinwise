@@ -1,24 +1,25 @@
 /* eslint-disable react-refresh/only-export-components, react-hooks/exhaustive-deps */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import AppLayout from './components/AppLayout';
-import Dashboard from './pages/Dashboard';
-import Transactions from './pages/Transactions';
-import Analytics from './pages/Analytics';
-import Goals from './pages/Goals';
-import Subscriptions from './pages/Subscriptions';
-import Cashflow from './pages/Cashflow';
-import Wealth from './pages/Wealth';
-import SettingsPage from './pages/SettingsPage';
-import Calendar from './pages/Calendar';
-import Login from './pages/Login';
-import Register from './pages/Register';
 import ProtectedRoute from './components/ProtectedRoute';
 import Loader from './components/Loader';
 import { api, CURRENCIES } from './services/api';
 import { generateAlerts, getSpendingInsights } from './services/aiEngine';
 import { getT, LANGUAGES } from './services/i18n';
 import ErrorBoundary from './components/ErrorBoundary';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Transactions = lazy(() => import('./pages/Transactions'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Goals = lazy(() => import('./pages/Goals'));
+const Subscriptions = lazy(() => import('./pages/Subscriptions'));
+const Cashflow = lazy(() => import('./pages/Cashflow'));
+const Wealth = lazy(() => import('./pages/Wealth'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
 
 export const AppContext = React.createContext(null);
 
@@ -31,8 +32,8 @@ export function formatCurrency(amount, currency = 'USD') {
 }
 
 export default function App() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('zs-theme') || 'dark');
-  const [lang, setLang] = useState(() => localStorage.getItem('zs-lang') || 'en');
+  const [theme, setTheme] = useState(() => localStorage.getItem('mcw-theme') || 'dark');
+  const [lang, setLang] = useState(() => localStorage.getItem('mcw-lang') || 'en');
   const [user, setUser] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -40,7 +41,7 @@ export default function App() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(() => localStorage.getItem('zs-token') || null);
+  const [token, setToken] = useState(() => localStorage.getItem('mcw-token') || null);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
   useEffect(() => {
@@ -65,32 +66,32 @@ export default function App() {
     setTheme(prev => {
       const idx = THEME_CYCLE.indexOf(prev);
       const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
-      localStorage.setItem('zs-theme', next);
+      localStorage.setItem('mcw-theme', next);
       return next;
     });
   };
 
   const setThemeDirect = (t) => {
     setTheme(t);
-    localStorage.setItem('zs-theme', t);
+    localStorage.setItem('mcw-theme', t);
     document.documentElement.setAttribute('data-theme', t);
   };
 
   const setLanguage = (code) => {
     setLang(code);
-    localStorage.setItem('zs-lang', code);
+    localStorage.setItem('mcw-lang', code);
   };
 
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
 
   const login = async (newToken, userData) => {
-    localStorage.setItem('zs-token', newToken);
+    localStorage.setItem('mcw-token', newToken);
     setToken(newToken);
     setUser(userData);
   };
 
   const logout = () => {
-    localStorage.removeItem('zs-token');
+    localStorage.removeItem('mcw-token');
     setToken(null);
     setUser(null);
     setAllUsers([]);
@@ -126,7 +127,7 @@ export default function App() {
       if (me?.theme) {
         setTheme(me.theme);
         document.documentElement.setAttribute('data-theme', me.theme);
-        localStorage.setItem('zs-theme', me.theme);
+        localStorage.setItem('mcw-theme', me.theme);
       }
     } catch (err) {
       console.error('Error loading data:', err);
@@ -156,7 +157,7 @@ export default function App() {
       setLoading(true);
       const response = await api.switchUser(userId);
       if (response && response.token) {
-        localStorage.setItem('zs-token', response.token);
+        localStorage.setItem('mcw-token', response.token);
         setToken(response.token);
         // fetchData is triggered automatically by token dependency in useEffect
       }
@@ -187,28 +188,32 @@ export default function App() {
         alerts, insights, deferredPrompt, installPWA, goals, subscriptions, events,
       }}>
         <Router>
-          <Routes>
-            <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-            <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
-            <Route path="/*" element={
-              <ProtectedRoute>
-                <AppLayout>
-                  <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/transactions" element={<Transactions />} />
-                    <Route path="/analytics" element={<Analytics />} />
-                    <Route path="/goals" element={<Goals />} />
-                    <Route path="/subscriptions" element={<Subscriptions />} />
-                    <Route path="/cashflow" element={<Cashflow />} />
-                    <Route path="/wealth" element={<Wealth />} />
-                    <Route path="/calendar" element={<Calendar />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="*" element={<Navigate to="/" />} />
-                  </Routes>
-                </AppLayout>
-              </ProtectedRoute>
-            } />
-          </Routes>
+          <Suspense fallback={<Loader />}>
+            <Routes>
+              <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+              <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+              <Route path="/*" element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <Suspense fallback={<Loader />}>
+                      <Routes>
+                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/transactions" element={<Transactions />} />
+                        <Route path="/analytics" element={<Analytics />} />
+                        <Route path="/goals" element={<Goals />} />
+                        <Route path="/subscriptions" element={<Subscriptions />} />
+                        <Route path="/cashflow" element={<Cashflow />} />
+                        <Route path="/wealth" element={<Wealth />} />
+                        <Route path="/calendar" element={<Calendar />} />
+                        <Route path="/settings" element={<SettingsPage />} />
+                        <Route path="*" element={<Navigate to="/" />} />
+                      </Routes>
+                    </Suspense>
+                  </AppLayout>
+                </ProtectedRoute>
+              } />
+            </Routes>
+          </Suspense>
         </Router>
       </AppContext.Provider>
     </ErrorBoundary>

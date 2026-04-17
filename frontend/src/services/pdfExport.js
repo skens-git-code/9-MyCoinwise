@@ -1,5 +1,5 @@
 // =============================================
-// Zenith Spend – PDF Export (client-side using jsPDF-like approach)
+// MyCoinwise – PDF Export (client-side using jsPDF-like approach)
 // Generates a styled PDF report from transaction data
 // =============================================
 
@@ -19,7 +19,7 @@ export async function exportToPDF(user, transactions, currencyInfo) {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(26);
   doc.setFont('helvetica', 'bold');
-  doc.text('ZENITH SPEND', 15, 20);
+  doc.text('MYCOINWISE', 15, 20);
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
   doc.text('AI-Powered Finance Tracker', 15, 28);
@@ -109,10 +109,10 @@ export async function exportToPDF(user, transactions, currencyInfo) {
     doc.setFontSize(8);
     doc.setTextColor(160, 160, 180);
     doc.text(
-      `© ${new Date().getFullYear()} Zenith Spend · Page ${i} of ${pageCount}`,
+      `© ${new Date().getFullYear()} MyCoinwise · Page ${i} of ${pageCount}`,
       105, 290, { align: 'center' }
     );
   }
 
-  doc.save(`ZenithSpend_${user?.username || 'Report'}_${new Date().toISOString().split('T')[0]}.pdf`);
+  doc.save(`MyCoinwise_${user?.username || 'Report'}_${new Date().toISOString().split('T')[0]}.pdf`);
 }

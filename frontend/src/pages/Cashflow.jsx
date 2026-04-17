@@ -21,6 +21,8 @@ const CustomizedDot = ({ cx, cy, payload }) => {
   return null;
 };
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
 export default function Cashflow() {
   const { transactions, subscriptions, fmt, t, currencyInfo, token } = useContext(AppContext);
   const [whatIfAmount, setWhatIfAmount] = useState('');
@@ -28,8 +30,6 @@ export default function Cashflow() {
   const [aiSummary, setAiSummary] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const aiTriggerRef = useRef('');
-
-  const API_BASE = 'http://localhost:5001/api';
 
   // ─── 1. Current balance from all transactions ──────────────────────────────
   const currentBalance = useMemo(() => {

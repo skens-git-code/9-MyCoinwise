@@ -61,7 +61,7 @@ router.post('/ai-insights', auth, async (req, res) => {
   try {
     const { averageDailyIncome, medianDailyExpense, subscriptionsCount, subscriptionsCost, whatIfAmount, dangerDay } = req.body;
 
-    const basePrompt = `You are the Zenith Spend Cashflow AI Coach.
+    const basePrompt = `You are the MyCoinwise Cashflow AI Coach.
 Analyze the user's 90-day cashflow trajectory. 
 Keep the response under 3 sentences. Be punchy, professional, and directly address their cashflow risk. Do NOT use markdown.
 

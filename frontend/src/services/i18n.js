@@ -1,5 +1,5 @@
 // =============================================
-// Zenith Spend – Internationalization (i18n)
+// MyCoinwise – Internationalization (i18n)
 // Supported: Indian English (en), Hindi (hi), Marathi (mr), Haryanvi (bgc)
 // =============================================
 
@@ -12,7 +12,7 @@ export const LANGUAGES = {
 
 export const TRANSLATIONS = {
   en: {
-    app_name: 'Zenith Spend',
+    app_name: 'MyCoinwise',
     dashboard: 'Dashboard',
     transactions: 'Transactions',
     analytics: 'Analytics',

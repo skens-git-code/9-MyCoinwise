@@ -1,10 +1,12 @@
-const cors = require('cors');
-app.use(cors());
+// ─── Load env vars FIRST (before any module that reads process.env) ─────────
+const dotenv = require('dotenv');
+dotenv.config();
+
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const morgan = require('morgan');
 const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 const mongoose = require('./db');
 const excel = require('exceljs');
 const bcrypt = require('bcryptjs');
@@ -25,16 +27,32 @@ const cashflowRoutes = require('./routes/cashflow');
 const aiRoutes = require('./routes/ai');
 const securityRoutes = require('./routes/security');
 
-dotenv.config();
-
 // ─── Environment Validation ─────────────────────────────────────────────────
 if (!process.env.MONGO_URI) {
-  console.warn('⚠️  MONGO_URI not set in .env — defaulting to mongodb://localhost:27017/ZenithSpend');
+  console.warn('⚠️  MONGO_URI not set in .env — defaulting to mongodb://localhost:27017/MyCoinwise');
 }
 
 const app = express();
 
-app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174'], optionsSuccessStatus: 200 }));
+// ─── CORS — allow deployed frontend + local dev ─────────────────────────────
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  process.env.FRONTEND_URL,  // Set this on Render to your Vercel/Netlify URL
+].filter(Boolean);
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.some(allowed => origin === allowed || origin.startsWith(allowed))) {
+      return callback(null, true);
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
+}));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -47,6 +65,13 @@ app.use('/api/wealth', wealthRoutes);
 app.use('/api/cashflow', cashflowRoutes);
 
 // ─── AUTHENTICATION ROUTES ──────────────────────────────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: { error: 'Too many authentication attempts, please try again later.' }
+});
+app.use('/api/auth', authLimiter);
+
 app.post('/api/auth/register', [
   body('username').notEmpty().trim().isLength({ min: 2, max: 80 }),
   body('email').isEmail().normalizeEmail(),
@@ -62,7 +87,7 @@ app.post('/api/auth/register', [
 
   try {
     const user = await User.create({ username, email, password, currency, profile_avatar, profile_color });
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'super_secret', { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, session_version: user.session_version }, process.env.JWT_SECRET || 'jwt_secret_redacted', { expiresIn: '7d' });
 
     await LoginLog.create({
       user_id: user._id, email, status: 'success', reason: 'registered',
@@ -140,7 +165,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // ✅ Successful login
     await user.resetLoginAttempts(ipAddr);
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'super_secret', { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, session_version: user.session_version }, process.env.JWT_SECRET || 'jwt_secret_redacted', { expiresIn: '7d' });
 
     await LoginLog.create({
       user_id: user._id, email, status: 'success', reason: 'login',
@@ -215,7 +240,9 @@ app.get('/api/users', async (req, res) => {
 app.post('/api/users/:id/switch', auth, async (req, res) => {
   try {
     const targetId = req.params.id;
-    const newToken = jwt.sign({ id: targetId }, process.env.JWT_SECRET || 'super_secret', { expiresIn: '7d' });
+    const targetUser = await User.findById(targetId);
+    if (!targetUser) return res.status(404).json({ error: 'User not found.' });
+    const newToken = jwt.sign({ id: targetId, session_version: targetUser.session_version }, process.env.JWT_SECRET || 'jwt_secret_redacted', { expiresIn: '7d' });
     res.json({ token: newToken });
   } catch (error) {
     console.error(error);
@@ -278,7 +305,35 @@ app.delete('/api/users/:id', async (req, res) => {
   }
 });
 
-// 4. Update user settings
+// 4. Update user settings (Atomic PATCH)
+app.patch('/api/users/:id/settings', [
+  body('username').optional().notEmpty().trim(),
+  body('email').optional().isEmail().normalizeEmail()
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const { username, theme, monthly_goal, currency, profile_avatar, profile_color } = req.body;
+  try {
+    const updates = {};
+    if (username !== undefined) updates.username = username;
+    if (theme !== undefined) updates.theme = theme;
+    if (monthly_goal !== undefined) updates.monthly_goal = monthly_goal;
+    if (currency !== undefined) updates.currency = currency;
+    if (profile_avatar !== undefined) updates.profile_avatar = profile_avatar;
+    if (profile_color !== undefined) updates.profile_color = profile_color;
+
+    const user = await User.findByIdAndUpdate(req.params.id, { $set: updates }, { new: true });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.json({ message: 'Settings updated atomically successfully', user });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Legacy PUT route mapped simply for backwards-compatibility or replaced altogether
 app.put('/api/users/:id/settings', [
   body('username').optional().notEmpty().trim(),
   body('email').optional().isEmail().normalizeEmail()
@@ -665,7 +720,7 @@ app.get('/api/export/:userId', async (req, res) => {
     const transactions = await Transaction.find({ user_id: req.params.userId }).sort({ date: -1 });
 
     const workbook = new excel.Workbook();
-    workbook.creator = 'Zenith Spend';
+    workbook.creator = 'MyCoinwise';
     workbook.created = new Date();
 
     const ws = workbook.addWorksheet('Transactions', { pageSetup: { fitToPage: true } });
@@ -703,7 +758,7 @@ app.get('/api/export/:userId', async (req, res) => {
     }));
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=ZenithSpend_${user.username || 'Report'}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=MyCoinwise_${user.username || 'Report'}.xlsx`);
     await workbook.xlsx.write(res);
     res.status(200).end();
   } catch (error) {
@@ -714,7 +769,7 @@ app.get('/api/export/:userId', async (req, res) => {
 
 const PORT = process.env.PORT || 5001;
 const server = app.listen(PORT, () => {
-  console.log(`🚀 Zenith Spend API running on port ${PORT}`);
+  console.log(`🚀 MyCoinwise API running on port ${PORT}`);
 });
 
 // ─── Graceful Shutdown ───────────────────────────────────────────────────────

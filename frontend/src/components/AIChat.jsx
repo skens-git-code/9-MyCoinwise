@@ -4,7 +4,7 @@ import { api } from '../services/api';
 
 const AIChat = () => {
   const [messages, setMessages] = useState([
-    { role: 'ai', text: 'Hello! I am your Zenith Spend assistant. How can I help you understand your finances today?' }
+    { role: 'ai', text: 'Hello! I am your MyCoinwise assistant. How can I help you understand your finances today?' }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);

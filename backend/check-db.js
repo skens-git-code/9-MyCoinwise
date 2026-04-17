@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-mongoose.connect('mongodb://localhost:27017/ZenithSpend')
+mongoose.connect('mongodb://localhost:27017/MyCoinwise')
   .then(async () => {
     console.log("✅ Successfully connected to MongoDB.");
     

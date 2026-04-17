@@ -1,5 +1,5 @@
 // =============================================
-// Zenith Spend – AI Engine (Client-side ML-like predictions)
+// MyCoinwise – AI Engine (Client-side ML-like predictions)
 // Uses statistical models + trend analysis on transaction data
 // =============================================
 

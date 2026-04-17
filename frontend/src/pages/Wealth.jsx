@@ -11,7 +11,7 @@ import {
 import axios from 'axios';
 import { AppContext } from '../App';
 
-const API_BASE = 'http://localhost:5001/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 // Palette for dynamic asset class pie slices
 const CLASS_COLORS = {
@@ -65,7 +65,7 @@ export default function Wealth() {
       if (err.response?.status === 401) {
         setFetchError('Session expired. Please log out and log back in.');
       } else {
-        setFetchError('Cannot reach the Zenith server. Is the backend running?');
+        setFetchError('Cannot reach the MyCoinwise server. Is the backend running?');
       }
     } finally {
       setIsLoading(false);
@@ -357,7 +357,7 @@ export default function Wealth() {
           whileHover={{ scale: 1.01 }}
         >
           <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#a78bfa' }}>
-            <Sparkles size={18} /> Zenith AI Coach
+            <Sparkles size={18} /> MyCoinwise AI Coach
           </h3>
           <p style={{ color: 'var(--text-secondary)', marginTop: 12, fontSize: '0.95rem', lineHeight: 1.6 }}>
             {isAiLoading

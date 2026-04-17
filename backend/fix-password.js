@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const User = require('./models/User');
 
-mongoose.connect('mongodb://localhost:27017/ZenithSpend')
+mongoose.connect('mongodb://localhost:27017/MyCoinwise')
   .then(async () => {
     // We will just update ALL users to 'password123' so they can log in
     // Since the Mongoose hook handles the hashing automatically:

@@ -11,6 +11,43 @@ import { AppContext } from '../App';
 import { api } from '../services/api';
 import TransactionForm from '../components/TransactionForm';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import useCountUp from '../hooks/useCountUp';
+
+const ToastItem = ({ toast, onRemove }) => {
+  const [isPaused, setIsPaused] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (!isPaused) {
+      timerRef.current = setTimeout(onRemove, 3000); // 3s dismiss
+    }
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [isPaused, onRemove]);
+
+  return (
+    <motion.div 
+      className={`notification-toast ${toast.type}`} 
+      initial={{ opacity: 0, x: 50, scale: 0.9 }} 
+      animate={{ opacity: 1, x: 0, scale: 1 }} 
+      exit={{ opacity: 0, x: 50, scale: 0.9 }} 
+      role="alert"
+      layout
+      transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      style={{
+        position: 'relative', display: 'flex', alignItems: 'center', gap: '8px', 
+        marginBottom: '10px', width: 'auto', left: 'auto', transform: 'none'
+      }}
+    >
+      {toast.type === 'error' && <XCircle size={16} />}
+      <span>{toast.msg}</span>
+      {toast.type === 'error' && <button onClick={onRemove} aria-label="Dismiss error" style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto', opacity: 0.7 }}>×</button>}
+    </motion.div>
+  );
+};
 
 // ==================== CONSTANTS ====================
 
@@ -212,8 +249,18 @@ export default function Dashboard() {
 
   const [showForm, setShowForm] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [error, setError] = useState(null);
-  const [notification, setNotification] = useState(null);
+  const [toasts, setToasts] = useState([]);
+  
+  const addToast = useCallback((msg, type = 'success') => {
+    setToasts(prev => {
+      const updated = [...prev, { id: Date.now() + Math.random(), msg, type }];
+      return updated.slice(-3); // Limit to max 3 toasts
+    });
+  }, []);
+
+  const removeToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
   const abortControllerRef = useRef(null);
 
   useEffect(() => {
@@ -246,10 +293,19 @@ export default function Dashboard() {
 
   // 3. METRICS: Calculated from the safe parsed list
   const financialMetrics = useMemo(() => calculateFinancialMetrics(parsedTransactions), [parsedTransactions]);
-  const { income, expense, netSavings, savingsRate, expenseOfIncome } = financialMetrics;
+  const { income: rawIncome, expense: rawExpense, netSavings, savingsRate, expenseOfIncome } = financialMetrics;
 
-  const balance = useMemo(() => isNaN(Number(user?.balance)) ? 0 : Number(user?.balance), [user?.balance]);
+  const rawBalance = useMemo(() => isNaN(Number(user?.balance)) ? 0 : Number(user?.balance), [user?.balance]);
   const monthlyGoal = useMemo(() => isNaN(Number(user?.monthly_goal)) ? 0 : Number(user?.monthly_goal), [user?.monthly_goal]);
+
+  const { value: animatedBalance, isFinished: balanceDone } = useCountUp(rawBalance, 900);
+  const { value: animatedIncome } = useCountUp(rawIncome, 800);
+  const { value: animatedExpense } = useCountUp(rawExpense, 800);
+  const dataVersion = parsedTransactions.length;
+  
+  const prefersReducedMotion = typeof window !== 'undefined' 
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
+    : false;
 
   const goalProgress = useMemo(() => {
     if (monthlyGoal <= 0) return 0;
@@ -326,7 +382,7 @@ export default function Dashboard() {
 
 
 
-  const balanceColor = balance >= 0 ? 'var(--success)' : 'var(--danger)';
+  const balanceColor = rawBalance >= 0 ? 'var(--success)' : 'var(--danger)';
   const isDark = theme === 'dark' || theme === 'amoled';
 
   const tooltipStyle = useMemo(() => ({
@@ -341,40 +397,34 @@ export default function Dashboard() {
   // ==================== EVENT HANDLERS ====================
 
   const handleExport = useCallback(async () => {
-    if (!USER_ID) return setError('User not authenticated');
+    if (!USER_ID) return addToast('User not authenticated', 'error');
 
     setExporting(true);
-    setError(null);
     abortControllerRef.current = new AbortController();
 
     try {
       await api.exportToExcel(USER_ID, { signal: abortControllerRef.current.signal });
-      setNotification({ type: 'success', message: 'Export completed successfully!' });
-      setTimeout(() => setNotification(null), 5000);
+      addToast('Export completed successfully!', 'success');
     } catch (error) {
-      if (error.name !== 'AbortError') setError(error.message || 'Export failed. Please try again.');
+      if (error.name !== 'AbortError') addToast(error.message || 'Export failed. Please try again.', 'error');
     } finally {
       setExporting(false);
       abortControllerRef.current = null;
     }
-  }, [USER_ID]);
+  }, [USER_ID, addToast]);
 
   const handleAddTransaction = useCallback(async (tx) => {
     const validation = validateTransaction(tx);
-    if (!validation.isValid) return setError(`Validation failed: ${validation.errors.join(', ')}`);
+    if (!validation.isValid) return addToast(`Validation failed: ${validation.errors.join(', ')}`, 'error');
 
-    setError(null);
     try {
       await addTransaction(tx);
       setShowForm(false);
-      setNotification({ type: 'success', message: 'Transaction added successfully!' });
-      setTimeout(() => setNotification(null), 3000);
+      addToast('Transaction added successfully!', 'success');
     } catch (error) {
-      setError(error.message || 'Failed to add transaction. Please try again.');
+      addToast(error.message || 'Failed to add transaction. Please try again.', 'error');
     }
-  }, [addTransaction]);
-
-  const dismissError = useCallback(() => setError(null), []);
+  }, [addTransaction, addToast]);
 
   // ==================== RENDER ====================
 
@@ -382,22 +432,15 @@ export default function Dashboard() {
 
   return (
     <div className="bento-dashboard">
-      <AnimatePresence>
-        {notification && (
-          <motion.div className="notification-toast success" initial={{ opacity: 0, y: -50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -50 }} role="alert">
-            {notification.message}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {error && (
-          <motion.div className="notification-toast error" initial={{ opacity: 0, y: -50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -50 }} role="alert">
-            <XCircle size={16} /><span>{error}</span>
-            <button onClick={dismissError} aria-label="Dismiss error">×</button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="toast-queue-container" style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, display: 'flex', flexDirection: 'column-reverse', alignItems: 'flex-end', pointerEvents: 'none' }}>
+        <div style={{ pointerEvents: 'auto' }}>
+          <AnimatePresence>
+            {toasts.map(t => (
+              <ToastItem key={t.id} toast={t} onRemove={() => removeToast(t.id)} />
+            ))}
+          </AnimatePresence>
+        </div>
+      </div>
 
       <div className="bento-header">
         <motion.div className="bento-insight-pill" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}>
@@ -418,11 +461,11 @@ export default function Dashboard() {
         <div className="ambient-orb orb-goal" style={{ bottom: '10%', left: '10%' }} aria-hidden="true"></div>
         <div className="ambient-orb orb-ai" style={{ bottom: '2%', right: '2%' }} aria-hidden="true"></div>
 
-        <motion.div variants={CARD_VARIANTS} className="bento-tile bento-hero glass" style={{ borderColor: balance >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)' }} role="region" aria-label="Account balance">
-          <div className="blob-glow" style={{ background: balance >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)' }}></div>
+        <motion.div variants={CARD_VARIANTS} className={`bento-tile bento-hero glass ${balanceDone ? 'numberGlow' : ''}`} style={{ borderColor: rawBalance >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)' }} role="region" aria-label="Account balance">
+          <div className="blob-glow" style={{ background: rawBalance >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)' }}></div>
           <div className="bh-top"><span className="bh-label">{getLocalizedText('total_balance', 'Total Balance')}</span><Wallet size={20} className="bh-icon" style={{ color: balanceColor }} /></div>
           <div className="bh-mid">
-            <h2 style={{ fontSize: '2.4rem', fontWeight: '900', color: balanceColor, margin: '8px 0' }}>{safeFormatCurrency(balance, safeFmt)}</h2>
+            <h2 style={{ fontSize: '2.4rem', fontWeight: '900', color: balanceColor, margin: '8px 0' }}>{safeFormatCurrency(animatedBalance, safeFmt)}</h2>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
               <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{getLocalizedText('net_position', 'Net position')}</span>
               <div className="bh-trend neutral" style={{ background: 'var(--glass-2)' }}><Minus size={14} /><span>{getLocalizedText('vs_last_month', '+0% vs last month')}</span></div>
@@ -430,8 +473,8 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
-        <StatCard icon={TrendingUp} label={getLocalizedText('total_income', 'Total Income')} value={safeFormatCurrency(income, safeFmt)} colorRgb="16,185,129" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} />
-        <StatCard icon={TrendingDown} label={getLocalizedText('total_expenses', 'Total Expenses')} value={safeFormatCurrency(expense, safeFmt)} colorRgb="239,68,68" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} />
+        <StatCard icon={TrendingUp} label={getLocalizedText('total_income', 'Total Income')} value={safeFormatCurrency(animatedIncome, safeFmt)} colorRgb="16,185,129" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} />
+        <StatCard icon={TrendingDown} label={getLocalizedText('total_expenses', 'Total Expenses')} value={safeFormatCurrency(animatedExpense, safeFmt)} colorRgb="239,68,68" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} />
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-recent glass">
           <div className="bt-header">
@@ -460,7 +503,7 @@ export default function Dashboard() {
           <div className="bt-chart-wrap">
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart key={`area-${dataVersion}`} data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gIn" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.75} /><stop offset="95%" stopColor="#10b981" stopOpacity={0} /></linearGradient>
                     <linearGradient id="gEx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={0.65} /><stop offset="95%" stopColor="#ef4444" stopOpacity={0} /></linearGradient>
@@ -470,13 +513,13 @@ export default function Dashboard() {
                   <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={tooltipStyle} formatter={(val) => safeFormatCurrency(val, safeFmt)} />
                   <Legend wrapperStyle={{ paddingTop: 12, fontSize: '0.78rem', fontWeight: 700 }} formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value === 'income' ? getLocalizedText('income_label', 'Income') : getLocalizedText('expense_label', 'Expenses')}</span>} />
-                  <Area type="monotone" dataKey="income" stroke="#10b981" fill="url(#gIn)" strokeWidth={2.5} strokeLinecap="round" dot={{ r: 0 }} activeDot={{ r: 6, strokeWidth: 0, fill: '#10b981' }} />
-                  <Area type="monotone" dataKey="expense" stroke="#ef4444" fill="url(#gEx)" strokeWidth={2.5} strokeLinecap="round" dot={{ r: 0 }} activeDot={{ r: 6, strokeWidth: 0, fill: '#ef4444' }} />
+                  <Area isAnimationActive={!prefersReducedMotion} animationBegin={800} type="monotone" dataKey="income" stroke="#10b981" fill="url(#gIn)" strokeWidth={2.5} strokeLinecap="round" dot={{ r: 0 }} activeDot={{ r: 6, strokeWidth: 0, fill: '#10b981' }} />
+                  <Area isAnimationActive={!prefersReducedMotion} animationBegin={800} type="monotone" dataKey="expense" stroke="#ef4444" fill="url(#gEx)" strokeWidth={2.5} strokeLinecap="round" dot={{ r: 0 }} activeDot={{ r: 6, strokeWidth: 0, fill: '#ef4444' }} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : <div className="bento-empty"><span className="bento-empty-icon" aria-hidden="true"><LineChart size={42} strokeWidth={1.5} opacity={0.5} /></span><p className="bento-empty-title">{getLocalizedText('story_starts', 'Your story starts here')}</p><p className="bento-empty-sub">{getLocalizedText('add_tx_timeline', 'Add transactions to see your spending timeline.')}</p></div>}
           </div>
-          {chartData.length > 0 && <div className="bt-chart-summary" role="note">{expense > income ? getLocalizedText('spent_pct', `⚠️ You spent {pct}% of your income this period`).replace('{pct}', expenseOfIncome) : income > 0 ? getLocalizedText('saved_pct', `✅ You saved {pct}% of your income this period`).replace('{pct}', savingsRate) : getLocalizedText('add_income_rate', 'Add income transactions to see your savings rate')}</div>}
+          {chartData.length > 0 && <div className="bt-chart-summary" role="note">{rawExpense > rawIncome ? getLocalizedText('spent_pct', `⚠️ You spent {pct}% of your income this period`).replace('{pct}', expenseOfIncome) : rawIncome > 0 ? getLocalizedText('saved_pct', `✅ You saved {pct}% of your income this period`).replace('{pct}', savingsRate) : getLocalizedText('add_income_rate', 'Add income transactions to see your savings rate')}</div>}
         </motion.div>
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-goal glass">
@@ -493,8 +536,8 @@ export default function Dashboard() {
           <div className="bt-pie-wrap">
             {pieData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius="55%" outerRadius="80%" paddingAngle={4} dataKey="value" stroke="none">{pieData.map((_, i) => <Cell key={`cell-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie>
+                <PieChart key={`pie-${dataVersion}`}>
+                  <Pie isAnimationActive={!prefersReducedMotion} animationBegin={800} data={pieData} cx="50%" cy="50%" innerRadius="55%" outerRadius="80%" paddingAngle={4} dataKey="value" stroke="none">{pieData.map((_, i) => <Cell key={`cell-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie>
                   <Tooltip contentStyle={tooltipStyle} formatter={(val) => safeFormatCurrency(val, safeFmt)} />
                   <Legend wrapperStyle={{ fontSize: '0.72rem', fontWeight: 700 }} formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value}</span>} />
                 </PieChart>

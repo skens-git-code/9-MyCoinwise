@@ -159,11 +159,11 @@ export default function Subscriptions() {
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         <h4 style={{ marginBottom: 16, fontWeight: 800, fontFamily: 'var(--font-head)', fontSize: '1.1rem' }}>Your Subscriptions</h4>
         {subs.length === 0 ? (
-           <motion.div className="glass empty-state" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-             <RefreshCw size={52} />
-             <p className="primary-msg">No active subscriptions.</p>
-             <p className="secondary-msg">Add custom subscriptions or use the quick presets above.</p>
-           </motion.div>
+          <motion.div className="glass empty-state" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            <RefreshCw size={52} />
+            <p className="primary-msg">No active subscriptions.</p>
+            <p className="secondary-msg">Add custom subscriptions or use the quick presets above.</p>
+          </motion.div>
         ) : (
           <div className="masonry-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
             <AnimatePresence>
@@ -180,9 +180,9 @@ export default function Subscriptions() {
                       <div className="mc-icon" style={{ filter: `drop-shadow(0 0 12px ${s.color}66)` }}>{s.icon || '💳'}</div>
                       <button className="del-btn" onClick={() => setSubToDelete(s.id)}><Trash2 size={16} /></button>
                     </div>
-                    
+
                     <h3 className="mc-title">{s.name}</h3>
-                    
+
                     <div className="mc-amounts" style={{ marginBottom: 16, alignItems: 'center' }}>
                       <span className="mc-saved" style={{ fontSize: '1.8rem', letterSpacing: '-0.5px' }}>{fmt(s.amount)}</span>
                       <span className="mc-target" style={{ textTransform: 'capitalize', background: 'var(--surface-1)', padding: '2px 8px', borderRadius: 8, fontSize: '0.75rem' }}>/{s.cycle}</span>
@@ -190,7 +190,7 @@ export default function Subscriptions() {
 
                     <div className="mc-footer" style={{ marginTop: 'auto', borderTop: '1px solid var(--glass-border)', paddingTop: 16 }}>
                       <div className="mc-ai-pred" style={{ justifyContent: 'space-between', background: 'var(--surface-1)', border: 'none' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)', fontWeight: 600 }}><Calendar size={12}/> Equiv. Monthly</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)', fontWeight: 600 }}><Calendar size={12} /> Equiv. Monthly</span>
                         <span style={{ color: 'var(--text-primary)', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>~{fmt(monthly)}</span>
                       </div>
                     </div>
@@ -203,7 +203,7 @@ export default function Subscriptions() {
       </motion.div>
 
       {/* Add Modal */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {showAdd && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAdd(false)}>
             <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22, stiffness: 300 }} onClick={e => e.stopPropagation()}>
@@ -230,7 +230,7 @@ export default function Subscriptions() {
       </AnimatePresence>
 
       {/* Confirm Delete Modal */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {subToDelete !== null && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSubToDelete(null)}>
             <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22 }} onClick={e => e.stopPropagation()}>

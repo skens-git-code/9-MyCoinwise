@@ -1,0 +1,92 @@
+/* ================================================================
+   LIGHT THEME — iOS 26 Frosted
+   ================================================================ */
+
+[data-theme="light"] {
+  --surface-0: #F0F4FF;
+  --surface-1: #FFFFFF;
+  --surface-2: #E4ECFF;
+  --surface-3: #D0DCFF;
+  --glass-1: rgba(255, 255, 255, 0.25);
+  --glass-2: rgba(255, 255, 255, 0.45);
+  --glass-3: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(0, 122, 255, 0.12);
+  --glass-border-hover: rgba(0, 122, 255, 0.3);
+  --glass-border-active: rgba(0, 122, 255, 0.5);
+  --glass-brightness: 1.02;
+  --glass-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+  --glass-shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.08);
+  --text-primary: #0A1628;
+  --text-secondary: #3A5080;
+  --text-muted: #7090B0;
+  --text-dim: #A0B8D0;
+  --brand-primary: #007AFF;
+  --brand-secondary: #0056CC;
+  --brand-primary-rgb: 0, 122, 255;
+  --brand-secondary-rgb: 0, 86, 204;
+  --brand-accent: #60c7ff;
+  --brand-gradient: linear-gradient(135deg, #007AFF 0%, #60c7ff 50%, #0056CC 100%);
+  --brand-gradient-vibrant: linear-gradient(135deg, #60c7ff 0%, #007AFF 40%, #0056CC 100%);
+  --brand-glow: rgba(0, 122, 255, 0.2);
+  --brand-glow-cyan: rgba(96, 199, 255, 0.2);
+  --sidebar-bg: rgba(240, 244, 255, 0.92);
+  --shadow-glow: 0 0 40px rgba(0, 122, 255, 0.18), 0 0 80px rgba(0, 122, 255, 0.08);
+  --shadow-brand: 0 8px 32px rgba(0, 122, 255, 0.3);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.06);
+  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.09);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  /* ► Ambient Magic (Light) */
+  --ambient-base: rgba(240, 244, 255, 1);
+  --ambient-mid: rgba(228, 236, 255, 0.95);
+  --ambient-accent: rgba(208, 220, 255, 0.85);
+  --orb-ai-color: rgba(0, 122, 255, 0.12);
+  --orb-goal-color: rgba(96, 199, 255, 0.12);
+  --orb-chart-color: rgba(210, 225, 255, 0.5);
+
+  --bg-gradient:
+    radial-gradient(ellipse at 0% 0%, rgba(0, 122, 255, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse at 100% 0%, rgba(96, 199, 255, 0.08) 0%, transparent 60%),
+    linear-gradient(160deg, #f0f4ff 0%, #e8eeff 100%);
+}
+
+/* ================================================================
+   AMOLED THEME — Pure Black + Neon
+   ================================================================ */
+[data-theme="amoled"] {
+  --surface-0: #000000;
+  --surface-1: #050508;
+  --surface-2: #0a0a0f;
+  --surface-3: #0f0f18;
+  --glass-1: rgba(255, 255, 255, 0.015);
+  --glass-2: rgba(255, 255, 255, 0.035);
+  --glass-3: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-hover: rgba(255, 255, 255, 0.25);
+  --glass-border-active: rgba(255, 255, 255, 0.40);
+  --glass-brightness: 1.1;
+  --brand-primary: #34d399;
+  --brand-secondary: #22d3ee;
+  --brand-secondary-rgb: 34, 211, 238;
+  --brand-accent: #fb923c;
+  --brand-glow: rgba(52, 211, 153, 0.6);
+  --success: #22c55e;
+  --danger: #ef4444;
+  --sidebar-bg: rgba(0, 0, 0, 0.95);
+  --shadow-glow: 0 0 60px rgba(52, 211, 153, 0.5), 0 0 120px rgba(52, 211, 153, 0.2);
+  --shadow-brand: 0 8px 32px rgba(52, 211, 153, 0.5);
+
+  /* ► Ambient Magic (AMOLED) */
+  --ambient-base: rgba(0, 0, 0, 1);
+  --ambient-mid: rgba(5, 5, 8, 0.95);
+  --ambient-accent: rgba(20, 10, 0, 0.9);
+  --orb-ai-color: rgba(245, 158, 11, 0.3);
+  --orb-goal-color: rgba(52, 211, 153, 0.2);
+  --orb-chart-color: rgba(10, 10, 15, 0.8);
+
+  --bg-gradient:
+    radial-gradient(ellipse at 20% 20%, rgba(52, 211, 153, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 80%, rgba(34, 211, 238, 0.07) 0%, transparent 55%),
+    linear-gradient(160deg, #000000 0%, #050508 100%);
+}
+

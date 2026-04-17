@@ -1,6 +1,6 @@
 /* global clients */
-// Zenith Spend – Service Worker (PWA)
-const CACHE_NAME = 'zenith-v2';
+// MyCoinwise – Service Worker (PWA)
+const CACHE_NAME = 'mycoinwise-v1';
 const STATIC_ASSETS = ['/', '/index.html'];
 
 self.addEventListener('install', (e) => {
@@ -42,13 +42,13 @@ self.addEventListener('fetch', (e) => {
 
 // Push notifications for budget alerts
 self.addEventListener('push', (e) => {
-  const data = e.data?.json() || { title: 'Zenith Spend', body: 'Budget alert!' };
+  const data = e.data?.json() || { title: 'MyCoinwise', body: 'Budget alert!' };
   e.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      tag: 'zenith-alert',
+      tag: 'mycoinwise-alert',
       vibrate: [200, 100, 200],
     })
   );

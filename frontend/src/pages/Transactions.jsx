@@ -208,7 +208,7 @@ export default function Transactions() {
 
       </div>
 
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {isAdding && <TransactionForm onClose={() => setIsAdding(false)} onSubmit={async (tx) => { await addTransaction(tx); setIsAdding(false); }} />}
         {editingTx && <TransactionForm initialData={editingTx} onClose={() => setEditingTx(null)} onSubmit={async (tx) => { await editTransaction(tx.id, tx); setEditingTx(null); }} />}
         
