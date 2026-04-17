@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // This will use the Vercel variable in production, 
 // and your local server while you're coding.
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://nine-budgettracker.onrender.com';
 
 // --- Axios Interceptor for JWT ---
 axios.interceptors.request.use((config) => {
