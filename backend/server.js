@@ -38,12 +38,14 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
-  process.env.FRONTEND_URL,  // Set this on Render to your Vercel/Netlify URL
+  'https://9-budget-tracker.vercel.app',      // hardcoded Vercel fallback
+  process.env.FRONTEND_URL,                   // preferred env var name
+  process.env.CLIENT_URL,                     // alternate name (some guides use this)
 ].filter(Boolean);
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    // Allow requests with no origin (mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
     if (allowedOrigins.some(allowed => origin === allowed || origin.startsWith(allowed))) {
       return callback(null, true);
@@ -51,6 +53,8 @@ app.use(cors({
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 200
 }));
 app.use(morgan('dev'));
