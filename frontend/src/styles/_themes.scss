@@ -80,7 +80,7 @@
   --ambient-base: rgba(0, 0, 0, 1);
   --ambient-mid: rgba(5, 5, 8, 0.95);
   --ambient-accent: rgba(20, 10, 0, 0.9);
-  --orb-ai-color: rgba(245, 158, 11, 0.3);
+  --orb-ai-color: rgba(var(--warning-rgb), 0.3);
   --orb-goal-color: rgba(52, 211, 153, 0.2);
   --orb-chart-color: rgba(10, 10, 15, 0.8);
 

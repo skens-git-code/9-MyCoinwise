@@ -151,6 +151,7 @@ body::after {
 /* ================================================================
    LIQUID GLASS CARD (iOS 26 Core Component)
    ================================================================ */
+/* Glass hover uses brand-primary glow */
 .glass {
   background: var(--glass-2);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)) brightness(var(--glass-brightness));
@@ -158,22 +159,27 @@ body::after {
   border: 1px solid var(--glass-border);
   border-radius: var(--glass-radius);
   box-shadow: var(--glass-shadow), var(--shadow-inner);
-  transition:
-    border-color var(--transition-base),
-    box-shadow var(--transition-base),
-    transform var(--transition-base),
-    background var(--transition-base);
+  transition: all var(--transition-base);
 
   &:hover {
     border-color: var(--glass-border-hover);
     box-shadow:
       var(--shadow-elevated),
       var(--shadow-inner),
-      0 0 0 1px rgba(16, 185, 129, 0.12),
-      0 8px 32px rgba(16, 185, 129, 0.10),
+      0 0 0 1px rgba(var(--brand-primary-rgb), 0.1),
+      0 8px 32px rgba(var(--brand-primary-rgb), 0.08),
       var(--glass-shadow-hover);
-    transform: translateY(-4px) scale(1.008);
+    transform: translateY(-3px) scale(1.006);
   }
+}
+
+/* Small glass variant for chips, badges */
+.glass-sm {
+  background: var(--glass-1);
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-md);
 }
 
 /* @supports fallback for browsers without backdrop-filter */
@@ -228,15 +234,15 @@ body::after {
    SELECTION & FOCUS
    ================================================================ */
 ::selection {
-  background: rgba(16, 185, 129, 0.35);
+  background: rgba(var(--brand-primary-rgb), 0.35);
   color: var(--text-primary);
 }
 
 :focus-visible {
   outline: 2px solid var(--brand-primary);
   outline-offset: 3px;
-  border-radius: 4px;
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2);
+  border-radius: var(--border-radius-sm);
+  box-shadow: 0 0 0 4px rgba(var(--brand-primary-rgb), 0.18);
 }
 
 /* ================================================================
@@ -429,14 +435,13 @@ body::after {
 
 /* Number count-up shimmer */
 @keyframes numberGlow {
-
   0%,
   100% {
-    text-shadow: 0 0 20px rgba(16, 185, 129, 0);
+    text-shadow: 0 0 20px rgba(var(--brand-primary-rgb), 0);
   }
 
   50% {
-    text-shadow: 0 0 20px rgba(16, 185, 129, 0.6), 0 0 40px rgba(56, 189, 248, 0.3);
+    text-shadow: 0 0 20px rgba(var(--brand-primary-rgb), 0.6), 0 0 40px rgba(var(--brand-secondary-rgb), 0.3);
   }
 }
 
@@ -467,15 +472,15 @@ body::after {
 /* Pulse ring for CTA buttons in empty states */
 @keyframes pulseRing {
   0% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+    box-shadow: 0 0 0 0 rgba(var(--brand-primary-rgb), 0.5);
   }
 
   70% {
-    box-shadow: 0 0 0 14px rgba(16, 185, 129, 0);
+    box-shadow: 0 0 0 14px rgba(var(--brand-primary-rgb), 0);
   }
 
   100% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    box-shadow: 0 0 0 0 rgba(var(--brand-primary-rgb), 0);
   }
 }
 
@@ -492,16 +497,15 @@ body::after {
 
 /* Breathing pulse for low-progress goals */
 @keyframes breathePulse {
-
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
+    box-shadow: 0 0 8px rgba(var(--success-rgb), 0.2);
   }
 
   50% {
     opacity: 0.7;
-    box-shadow: 0 0 16px rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 16px rgba(var(--success-rgb), 0.4);
   }
 }
 
@@ -555,33 +559,34 @@ body::after {
   background-clip: text;
 }
 
-/* ── Inline group for header action buttons ── */
-.ih-btn-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--glass-1);
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  padding: 4px;
-}
-
-.ih-separator {
-  width: 1px;
-  height: 28px;
-  background: var(--glass-border);
-  margin: 0 4px;
-  flex-shrink: 0;
-}
 
 /* Gradient text (used widely for headings) */
 .gradient-text {
-  background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary), var(--brand-accent));
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-accent));
   background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: gradientShift 4s linear infinite;
+}
+
+/* Page section utility */
+.page-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: var(--font-head);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--glass-border);
 }
 
 @keyframes gradientShift {
@@ -719,13 +724,13 @@ body::after {
 
     &.error-msg {
       border: 1px solid var(--danger);
-      background: rgba(239, 68, 68, 0.1);
+      background: rgba(var(--danger-rgb), 0.1);
       color: var(--danger);
     }
 
     &.warning-msg {
       border: 1px solid var(--warning);
-      background: rgba(245, 158, 11, 0.1);
+      background: rgba(var(--warning-rgb), 0.1);
       color: var(--warning);
     }
   }
@@ -795,8 +800,8 @@ body::after {
     align-items: center;
     gap: 6px;
     padding: 4px 12px;
-    background: rgba(16, 185, 129, 0.12);
-    border: 1px solid rgba(16, 185, 129, 0.25);
+    background: rgba(var(--brand-primary-rgb), 0.12);
+    border: 1px solid rgba(var(--brand-primary-rgb), 0.25);
     border-radius: 99px;
     color: var(--success);
     font-size: 0.72rem;
@@ -861,7 +866,7 @@ body::after {
 .bbtn-sec:focus-visible {
   outline: 2px solid var(--brand-primary);
   outline-offset: 3px;
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 0 4px rgba(var(--brand-primary-rgb), 0.2);
 }
 
 

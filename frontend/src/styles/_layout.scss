@@ -2,20 +2,19 @@
 
 /* ================================================================
    ISLAND LAYOUT ARCHITECTURE
+   Mobile-first, responsive, glassmorphism sidebar layout
    ================================================================ */
 
 .app-island-layout {
   display: flex;
   height: 100vh;
   height: 100dvh;
-  /* Use dynamic viewport height */
   width: 100vw;
   overflow: hidden;
   background: var(--surface-0);
   position: relative;
   box-sizing: border-box;
   padding: 16px;
-  /* The outer gap for the "island" effect */
   gap: 16px;
 }
 
@@ -246,6 +245,7 @@
 
   &.active {
     color: var(--brand-primary);
+    background: rgba(0, 122, 255, 0.08);
 
     .inav-icon {
       transform: scale(1.15);
@@ -253,13 +253,14 @@
     }
   }
 
+  /* Active indicator pill */
   .inav-active-pill {
     position: absolute;
     inset: 0;
     border-radius: 14px;
-    background: rgba(99, 102, 241, 0.1);
-    border-left: 3px solid #6366F1;
-    box-shadow: -2px 0 10px rgba(99, 102, 241, 0.3);
+    background: rgba(0, 122, 255, 0.1);
+    border-left: 3px solid var(--brand-primary);
+    box-shadow: -2px 0 10px var(--brand-glow);
     z-index: 0;
     pointer-events: none;
   }
@@ -316,25 +317,38 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 32px;
+  padding: 18px 28px;
   border-bottom: 1px solid var(--glass-border);
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   z-index: 50;
+  min-height: 72px;
+  flex-shrink: 0;
+
+  .ih-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+    flex: 1;
+  }
 
   .ih-titles {
     h1 {
-      font-size: 1.6rem;
+      font-size: clamp(1.2rem, 2.5vw, 1.55rem);
       font-weight: 900;
       font-family: var(--font-head);
       letter-spacing: -0.5px;
+      color: var(--text-primary);
+      margin: 0;
     }
 
     p {
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       color: var(--text-secondary);
-      font-weight: 600;
+      font-weight: 500;
+      margin: 2px 0 0;
     }
   }
 }
@@ -385,16 +399,19 @@
 .ih-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   flex-shrink: 0;
-  /* Prevent shrinking on small viewports */
 }
 
-/* Group of secondary header action buttons (lang/theme/converter) */
+/* Group of secondary header action buttons */
 .ih-btn-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  background: var(--glass-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding: 4px;
 }
 
 /* Vertical divider between button groups */
@@ -406,9 +423,9 @@
 }
 
 .ibtn {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   background: var(--glass-1);
   border: 1px solid var(--glass-border);
   display: flex;
@@ -417,7 +434,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--transition-spring);
-  font-size: 1.1rem;
+  font-size: 1rem;
 
   &:hover {
     background: var(--glass-2);
@@ -486,12 +503,21 @@
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
-  /* Ensure content doesn't get hidden behind dock on mobile */
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  scroll-behavior: smooth;
+
+  /* Custom scrollbar */
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb {
+    background: var(--glass-border);
+    border-radius: 99px;
+    &:hover { background: var(--glass-border-hover); }
+  }
 }
 
 .island-page {
-  padding: 32px;
+  padding: 28px 32px;
   max-width: 1600px;
   margin: 0 auto;
 }
@@ -558,11 +584,11 @@
   .dock-active-dot {
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(56, 189, 248, 0.1));
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb), 0.2), rgba(56, 189, 248, 0.1));
+    border: 1px solid rgba(var(--brand-primary-rgb), 0.3);
     border-radius: 16px;
     z-index: 1;
-    box-shadow: 0 8px 16px rgba(16, 185, 129, 0.15);
+    box-shadow: 0 8px 16px rgba(var(--brand-primary-rgb), 0.15);
   }
 }
 
@@ -577,12 +603,10 @@
   .app-island-layout {
     padding: 0;
     gap: 0;
-    /* padding-bottom removed from here to prevent background clipping */
   }
 
-  /* Move padding to the scrollable content instead */
   .island-content-wrapper {
-    padding-bottom: 104px;
+    padding-bottom: 100px; /* dock height + breathing room */
   }
 
   .island-sidebar {
@@ -602,18 +626,21 @@
 
   .island-header {
     padding: 14px 20px;
+    min-height: 60px;
   }
 
   .island-page {
-    padding: clamp(16px, 4vw, 20px);
+    padding: clamp(16px, 4vw, 24px);
   }
 
-  /* Hide non-essential header buttons on tablet/mobile */
+  /* Show lang/theme on tablet but hide currency converter */
   .ih-btn-group {
+    display: flex !important;
+  }
+  .ih-separator {
     display: none !important;
   }
-
-  .ih-separator {
+  .ih-balance {
     display: none !important;
   }
 
@@ -622,11 +649,10 @@
   }
 }
 
+/* On smallest phones, hide the balance chip */
 @media (max-width: 640px) {
-
-  /* Move padding to the scrollable content */
   .island-content-wrapper {
-    padding-bottom: 110px;
+    padding-bottom: 108px;
   }
 
   .ih-balance {
@@ -634,7 +660,7 @@
   }
 
   .ih-titles h1 {
-    font-size: clamp(1.1rem, 5vw, 1.3rem);
+    font-size: clamp(1rem, 5vw, 1.25rem);
   }
 
   .ih-right {
@@ -642,11 +668,12 @@
   }
 
   .island-header {
-    padding: 12px 16px;
+    padding: 10px 14px;
+    min-height: 56px;
   }
 
   .island-page {
-    padding: 16px;
+    padding: 14px;
   }
 
   .island-dropdown {
@@ -707,17 +734,20 @@
 }
 
 /* ================================================================
-   DROPDOWNS
+   DROPDOWN
    ================================================================ */
 .island-dropdown {
   position: absolute;
-  top: calc(100% + 12px);
+  top: calc(100% + 10px);
   left: 0;
   right: 0;
   z-index: 500;
-  background: rgba(var(--surface-2), 0.9) !important;
-  border-radius: 20px;
-  padding: 12px;
+  background: var(--surface-2);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  border: 1px solid var(--glass-border-hover);
+  border-radius: 18px;
+  padding: 10px;
   box-shadow: var(--shadow-2xl), 0 0 0 1px var(--glass-border-hover);
 
   .drp-label {
@@ -759,7 +789,7 @@
     }
 
     &.active {
-      background: rgba(16, 185, 129, 0.15);
+      background: rgba(var(--brand-primary-rgb), 0.15);
     }
   }
 
@@ -799,6 +829,36 @@
     color: var(--brand-primary);
     flex-shrink: 0;
   }
+}
+
+/* ================================================================
+   TEXT UTILITIES
+   ================================================================ */
+.text-danger {
+  color: var(--danger) !important;
+}
+
+.text-success {
+  color: var(--success) !important;
+}
+
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* Animated background particles */
+.animated-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -10;
+  overflow: hidden;
+}
+
+.gradient-bg {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-gradient);
 }
 
 .click-away-overlay {

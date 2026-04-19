@@ -25,15 +25,28 @@
   --z-modal: 1000;
   --z-tooltip: 2000;
 
-  /* ► Typography Scale */
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.25rem;
-  --text-2xl: 1.5rem;
-  --text-3xl: 1.875rem;
-  --text-4xl: 2.25rem;
+  /* ► Typography Scale (Major Second) */
+  --text-xs: 0.75rem;     /* 12px */
+  --text-sm: 0.875rem;    /* 14px */
+  --text-base: 1rem;      /* 16px */
+  --text-lg: 1.125rem;    /* 18px */
+  --text-xl: 1.25rem;     /* 20px */
+  --text-2xl: 1.5rem;     /* 24px */
+  --text-3xl: 1.875rem;   /* 30px */
+  --text-4xl: 2.25rem;    /* 36px */
+  --text-5xl: 3rem;       /* 48px */
+
+  /* ► Spacing Scale (8px based) */
+  --space-1: 0.25rem;     /* 4px */
+  --space-2: 0.5rem;      /* 8px */
+  --space-3: 0.75rem;     /* 12px */
+  --space-4: 1rem;        /* 16px */
+  --space-5: 1.25rem;     /* 20px */
+  --space-6: 1.5rem;      /* 24px */
+  --space-8: 2rem;        /* 32px */
+  --space-10: 2.5rem;     /* 40px */
+  --space-12: 3rem;       /* 48px */
+  --space-16: 4rem;       /* 64px */
   --brand-primary: #007AFF;
   --brand-secondary: #0056CC;
   --brand-accent: #60c7ff;
@@ -67,9 +80,9 @@
   --glass-border: rgba(255, 255, 255, 0.06);
   --glass-border-hover: rgba(0, 122, 255, 0.55);
   --glass-border-active: rgba(0, 122, 255, 0.85);
-  --glass-blur: 20px;
-  --glass-blur-sm: 10px;
-  --glass-blur-lg: 30px;
+  --glass-blur: 24px;
+  --glass-blur-sm: 12px;
+  --glass-blur-lg: 36px;
 
   /* ► Text */
   --text-primary: #E5E7EB;
@@ -84,8 +97,8 @@
   --ambient-base: rgba(10, 15, 31, 1);
   --ambient-mid: rgba(17, 24, 39, 0.95);
   --ambient-accent: rgba(45, 31, 0, 0.9);
-  --orb-ai-color: rgba(245, 158, 11, 0.35);
-  --orb-goal-color: rgba(16, 185, 129, 0.25);
+  --orb-ai-color: rgba(var(--warning-rgb), 0.35);
+  --orb-goal-color: rgba(var(--brand-primary-rgb), 0.25);
   --orb-chart-color: rgba(30, 41, 59, 0.8);
 
   /* ► Gradients */
@@ -127,11 +140,18 @@
   --transition-slow: 0.5s ease;
   --transition-spring: 0.3s ease;
 
-  /* ► Typography — Poppins + JetBrains Mono */
-  --font-body: 'Poppins', 'Plus Jakarta Sans', -apple-system, sans-serif;
-  --font-head: 'Poppins', 'Plus Jakarta Sans', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --font-round: 'Poppins', sans-serif;
+  /* ► Typography Families — Aligned with @import */
+  --font-body: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-head: 'Outfit', sans-serif;
+  --font-accent: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-round: 'Space Grotesk', sans-serif;
+
+  /* ► Font Weights */
+  --weight-regular: 400;
+  --weight-medium: 600;
+  --weight-bold: 700;
+  --weight-black: 800;
 
   /* ► Animation Durations (Reusing Transition Vars) */
   --duration-slow: var(--transition-slow);
@@ -142,7 +162,6 @@
 
   /* ► Glass Morphism Semantic Tokens */
   --glass-radius: 20px;
-  --glass-blur: 24px;
   --glass-saturation: 180%;
   --glass-brightness: 1.08;
   --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
