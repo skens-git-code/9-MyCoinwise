@@ -5,10 +5,10 @@ import {
   DollarSign, TrendingUp, TrendingDown, Target,
   Download, Plus, ArrowUpRight, ArrowDownRight,
   Wallet, Sparkles, Zap, Brain, AlertTriangle,
-  Settings, Minus, XCircle, Rocket, LineChart, Tag
+  Settings, Minus, XCircle, Rocket, LineChart, Tag,
+  RefreshCw, Share2
 } from 'lucide-react';
 import { AppContext } from '../App';
-import { api } from '../services/api';
 import TransactionForm from '../components/TransactionForm';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import useCountUp from '../hooks/useCountUp';
@@ -249,8 +249,15 @@ export default function Dashboard() {
   );
 
   const [showForm, setShowForm] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [toasts, setToasts] = useState([]);
+  const [dateFilter, setDateFilter] = useState(() => localStorage.getItem('budgeta_date_filter') || 'all');
+  const [categoryFilter, setCategoryFilter] = useState(() => localStorage.getItem('budgeta_category_filter') || 'all');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('budgeta_date_filter', dateFilter);
+    localStorage.setItem('budgeta_category_filter', categoryFilter);
+  }, [dateFilter, categoryFilter]);
 
   const addToast = useCallback((msg, type = 'success') => {
     setToasts(prev => {
@@ -262,18 +269,11 @@ export default function Dashboard() {
   const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
-  const abortControllerRef = useRef(null);
-
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-    };
-  }, []);
 
   // 1. BASE DATA: Parse numbers and dates exactly once
   const parsedTransactions = useMemo(() => {
     if (!Array.isArray(rawTransactions)) return [];
-    return rawTransactions
+    let processed = rawTransactions
       .filter(tx => tx && typeof tx === 'object')
       .map(tx => ({
         ...tx,
@@ -281,7 +281,27 @@ export default function Dashboard() {
         parsedAmount: parseFloat(tx.amount) || 0
       }))
       .filter(tx => tx.parsedDate !== null);
-  }, [rawTransactions]);
+
+    // Apply Category Filter
+    if (categoryFilter !== 'all') {
+      processed = processed.filter(tx => tx.category === categoryFilter);
+    }
+    
+    // Apply Date Filter
+    if (dateFilter !== 'all') {
+      const now = new Date();
+      processed = processed.filter(tx => {
+        const diffTime = Math.abs(now - tx.parsedDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (dateFilter === '7days') return diffDays <= 7;
+        if (dateFilter === '30days') return diffDays <= 30;
+        if (dateFilter === 'thisMonth') return tx.parsedDate.getMonth() === now.getMonth() && tx.parsedDate.getFullYear() === now.getFullYear();
+        return true;
+      });
+    }
+      
+    return processed;
+  }, [rawTransactions, categoryFilter, dateFilter]);
 
   // 2. SORTED DATA: Single source of truth for sorted lists to prevent lag
   const sortedDescTransactions = useMemo(() => {
@@ -397,22 +417,65 @@ export default function Dashboard() {
 
   // ==================== EVENT HANDLERS ====================
 
-  const handleExport = useCallback(async () => {
-    if (!USER_ID) return addToast('User not authenticated', 'error');
+  const handleExportJSON = useCallback(() => {
+    const dataStr = JSON.stringify(parsedTransactions, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "transactions_export.json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    addToast('Data exported to JSON successfully!', 'success');
+  }, [parsedTransactions, addToast]);
 
-    setExporting(true);
-    abortControllerRef.current = new AbortController();
-
-    try {
-      await api.exportToExcel(USER_ID, { signal: abortControllerRef.current.signal });
-      addToast('Export completed successfully!', 'success');
-    } catch (error) {
-      if (error.name !== 'AbortError') addToast(error.message || 'Export failed. Please try again.', 'error');
-    } finally {
-      setExporting(false);
-      abortControllerRef.current = null;
+  const handleRefresh = useCallback(async () => {
+    if (context.fetchTransactions) {
+      setIsRefreshing(true);
+      try {
+        await context.fetchTransactions();
+        addToast('Data refreshed successfully', 'success');
+      } catch (err) {
+        console.error(err);
+        addToast('Failed to refresh data', 'error');
+      } finally {
+        setIsRefreshing(false);
+      }
+    } else {
+      addToast('Data is up to date', 'success'); // fallback if fetchTransactions is unavailable
     }
-  }, [USER_ID, addToast]);
+  }, [context, addToast]);
+
+  const handleShare = useCallback(async () => {
+    const summary = `My Budget Dashboard\nBalance: ${safeFmt ? safeFmt(rawBalance) : rawBalance}\nNet Savings: ${safeFmt ? safeFmt(netSavings) : netSavings}\nSavings Rate: ${savingsRate}%`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'My Financial Dashboard', text: summary });
+      } else {
+        await navigator.clipboard.writeText(summary);
+        addToast('Dashboard summary copied to clipboard!', 'success');
+      }
+    } catch (err) {
+      console.error(err);
+      if (err.name !== 'AbortError') addToast('Sharing failed', 'error');
+    }
+  }, [rawBalance, netSavings, savingsRate, safeFmt, addToast]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        setShowForm(true);
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        handleRefresh();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleRefresh]);
 
   const handleAddTransaction = useCallback(async (tx) => {
     const validation = validateTransaction(tx);
@@ -448,23 +511,43 @@ export default function Dashboard() {
           <Sparkles size={14} />{savingsRateText}
         </motion.div>
         <div className="bento-actions">
-          {/* Export moved to icon-only — low-frequency desktop action */}
+          <motion.button className="bbtn-icon" onClick={handleRefresh} disabled={isRefreshing} title="Refresh (Ctrl+R)" aria-label="Refresh Data" whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}>
+            <RefreshCw size={16} className={isRefreshing ? 'spin' : ''} />
+          </motion.button>
+          <motion.button className="bbtn-icon" onClick={handleShare} title="Share Dashboard" aria-label="Share" whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}>
+            <Share2 size={16} />
+          </motion.button>
           <motion.button
             className="bbtn-icon"
-            onClick={handleExport}
-            disabled={exporting}
+            onClick={handleExportJSON}
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.92 }}
-            title={exporting ? 'Exporting...' : 'Export CSV'}
-            aria-label="Export CSV"
+            title="Export JSON"
+            aria-label="Export JSON"
           >
             <Download size={16} />
           </motion.button>
-          <motion.button className="bbtn-pri bbtn-full" onClick={() => setShowForm(true)} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+          <motion.button className="bbtn-pri bbtn-full" onClick={() => setShowForm(true)} title="Ctrl+N" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Plus size={14} /> {getLocalizedText('add_transaction', 'Add Transaction')}
           </motion.button>
         </div>
       </div>
+
+      <motion.div className="bento-filters" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }} role="search" aria-label="Filter transactions">
+        <select className="filter-select" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} aria-label="Filter by date">
+          <option value="all">All Time</option>
+          <option value="7days">Last 7 Days</option>
+          <option value="30days">Last 30 Days</option>
+          <option value="thisMonth">This Month</option>
+        </select>
+        <select className="filter-select" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="Filter by category">
+          <option value="all">All Categories</option>
+          {Object.keys(CATEGORY_ICONS).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+        </select>
+        {(dateFilter !== 'all' || categoryFilter !== 'all') && (
+          <button className="filter-clear" onClick={() => { setDateFilter('all'); setCategoryFilter('all'); }} aria-label="Clear filters">Clear Filters</button>
+        )}
+      </motion.div>
 
       <motion.div className="bento-grid" variants={STAGGER} initial="hidden" animate="show">
         <div className="ambient-orb orb-chart" style={{ top: '15%', right: '5%' }} aria-hidden="true"></div>
