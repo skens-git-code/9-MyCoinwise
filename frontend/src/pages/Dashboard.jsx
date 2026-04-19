@@ -9,7 +9,9 @@ import {
   RefreshCw, Share2
 } from 'lucide-react';
 import { AppContext } from '../App';
+import ErrorBoundary from '../components/ErrorBoundary';
 import TransactionForm from '../components/TransactionForm';
+import PropTypes from 'prop-types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import useCountUp from '../hooks/useCountUp';
 
@@ -47,6 +49,15 @@ const ToastItem = ({ toast, onRemove }) => {
       {toast.type === 'error' && <button onClick={onRemove} aria-label="Dismiss error" style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto', opacity: 0.7 }}>×</button>}
     </motion.div>
   );
+};
+
+ToastItem.propTypes = {
+  toast: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    msg: PropTypes.string.isRequired,
+    type: PropTypes.string
+  }).isRequired,
+  onRemove: PropTypes.func.isRequired
 };
 
 // ==================== CONSTANTS ====================
@@ -139,6 +150,13 @@ const calculateFinancialMetrics = (transactions) => {
 
 // ==================== SUB-COMPONENTS ====================
 
+const CARD_VARIANTS = {
+  hidden: { opacity: 0, y: 24, scale: 0.97 },
+  show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', damping: 20, stiffness: 260 } }
+};
+
+const STAGGER = { hidden: {}, show: { transition: { staggerChildren: 0.09 } } };
+
 const StatCard = React.memo(({
   icon: Icon,
   label = "Unknown",
@@ -208,6 +226,18 @@ const StatCard = React.memo(({
 
 StatCard.displayName = 'StatCard';
 
+StatCard.propTypes = {
+  icon: PropTypes.elementType,
+  label: PropTypes.string,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.node]),
+  colorRgb: PropTypes.string,
+  trend: PropTypes.oneOf(['up', 'down', 'neutral']),
+  trendVal: PropTypes.string,
+  accentColor: PropTypes.string,
+  subtitle: PropTypes.string,
+  className: PropTypes.string
+};
+
 const DashboardLoading = () => (
   <div className="loading-container" role="status" aria-label="Loading dashboard">
     <div className="loading-spinner"></div>
@@ -226,12 +256,9 @@ const EmptyTransactionState = ({ onAddClick }) => (
   </div>
 );
 
-const CARD_VARIANTS = {
-  hidden: { opacity: 0, y: 24, scale: 0.97 },
-  show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', damping: 20, stiffness: 260 } }
+EmptyTransactionState.propTypes = {
+  onAddClick: PropTypes.func.isRequired
 };
-
-const STAGGER = { hidden: {}, show: { transition: { staggerChildren: 0.09 } } };
 
 // ==================== MAIN COMPONENT ====================
 
@@ -240,7 +267,7 @@ export default function Dashboard() {
 
   const {
     user = null, transactions: rawTransactions = [], theme = 'light',
-    addTransaction, USER_ID = null, fmt, t
+    addTransaction, USER_ID = null, fmt, t, fetchTransactions
   } = context;
 
   const safeFmt = useCallback(
@@ -431,10 +458,10 @@ export default function Dashboard() {
   }, [parsedTransactions, addToast]);
 
   const handleRefresh = useCallback(async () => {
-    if (context.fetchTransactions) {
+    if (fetchTransactions) {
       setIsRefreshing(true);
       try {
-        await context.fetchTransactions();
+        await fetchTransactions();
         addToast('Data refreshed successfully', 'success');
       } catch (err) {
         console.error(err);
@@ -445,7 +472,7 @@ export default function Dashboard() {
     } else {
       addToast('Data is up to date', 'success'); // fallback if fetchTransactions is unavailable
     }
-  }, [context, addToast]);
+  }, [fetchTransactions, addToast]);
 
   const handleShare = useCallback(async () => {
     const summary = `My Budget Dashboard\nBalance: ${safeFmt ? safeFmt(rawBalance) : rawBalance}\nNet Savings: ${safeFmt ? safeFmt(netSavings) : netSavings}\nSavings Rate: ${savingsRate}%`;
@@ -495,7 +522,8 @@ export default function Dashboard() {
   if (!user) return <DashboardLoading />;
 
   return (
-    <div className="bento-dashboard">
+    <ErrorBoundary>
+      <div className="bento-dashboard">
       <div className="toast-queue-container" style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, display: 'flex', flexDirection: 'column-reverse', alignItems: 'flex-end', pointerEvents: 'none' }}>
         <div style={{ pointerEvents: 'auto' }}>
           <AnimatePresence>
@@ -644,6 +672,7 @@ export default function Dashboard() {
       <AnimatePresence>
         {showForm && <TransactionForm onClose={() => setShowForm(false)} onSubmit={handleAddTransaction} />}
       </AnimatePresence>
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 }
