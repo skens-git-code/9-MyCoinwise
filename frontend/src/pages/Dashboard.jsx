@@ -15,6 +15,8 @@ import PropTypes from 'prop-types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import useCountUp from '../hooks/useCountUp';
 
+
+
 const ToastItem = ({ toast, onRemove }) => {
   const [isPaused, setIsPaused] = useState(false);
   const timerRef = useRef(null);
@@ -90,6 +92,7 @@ const safeFormatCurrency = (amount, fmt) => {
 };
 
 const safeParseDate = (dateInput) => {
+  if (dateInput instanceof Date) return dateInput;
   if (typeof dateInput !== "string" && typeof dateInput !== "number") {
     return null;
   }
@@ -263,7 +266,8 @@ EmptyTransactionState.propTypes = {
 // ==================== MAIN COMPONENT ====================
 
 export default function Dashboard() {
-  const context = useContext(AppContext) || {};
+  const contextValue = useContext(AppContext);
+  const context = useMemo(() => contextValue || {}, [contextValue]);
 
   const {
     user = null, transactions: rawTransactions = [], theme = 'light',
@@ -280,6 +284,7 @@ export default function Dashboard() {
   const [dateFilter, setDateFilter] = useState(() => localStorage.getItem('budgeta_date_filter') || 'all');
   const [categoryFilter, setCategoryFilter] = useState(() => localStorage.getItem('budgeta_category_filter') || 'all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('budgeta_date_filter', dateFilter);
@@ -444,17 +449,26 @@ export default function Dashboard() {
 
   // ==================== EVENT HANDLERS ====================
 
-  const handleExportJSON = useCallback(() => {
-    const dataStr = JSON.stringify(parsedTransactions, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "transactions_export.json";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    addToast('Data exported to JSON successfully!', 'success');
+  const handleExportJSON = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const dataStr = JSON.stringify(parsedTransactions, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `transactions_${new Date().toISOString()}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      addToast('Data exported to JSON successfully!', 'success');
+    } catch (error) {
+      console.error(error);
+      addToast('Failed to export data', 'error');
+    } finally {
+      setIsExporting(false);
+    }
   }, [parsedTransactions, addToast]);
 
   const handleRefresh = useCallback(async () => {
@@ -519,6 +533,11 @@ export default function Dashboard() {
 
   // ==================== RENDER ====================
 
+  const categoryOptions = useMemo(() => 
+    Object.keys(CATEGORY_ICONS).map(cat => <option key={cat} value={cat}>{cat}</option>),
+    []
+  );
+
   if (!user) return <DashboardLoading />;
 
   return (
@@ -548,12 +567,13 @@ export default function Dashboard() {
           <motion.button
             className="bbtn-icon"
             onClick={handleExportJSON}
+            disabled={isExporting}
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.92 }}
-            title="Export JSON"
+            title={isExporting ? "Exporting..." : "Export JSON"}
             aria-label="Export JSON"
           >
-            <Download size={16} />
+            {isExporting ? <RefreshCw size={16} className="spin" /> : <Download size={16} />}
           </motion.button>
           <motion.button className="bbtn-pri bbtn-full" onClick={() => setShowForm(true)} title="Ctrl+N" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Plus size={14} /> {getLocalizedText('add_transaction', 'Add Transaction')}
@@ -570,7 +590,7 @@ export default function Dashboard() {
         </select>
         <select className="filter-select" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="Filter by category">
           <option value="all">All Categories</option>
-          {Object.keys(CATEGORY_ICONS).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+          {categoryOptions}
         </select>
         {(dateFilter !== 'all' || categoryFilter !== 'all') && (
           <button className="filter-clear" onClick={() => { setDateFilter('all'); setCategoryFilter('all'); }} aria-label="Clear filters">Clear Filters</button>
@@ -676,3 +696,10 @@ export default function Dashboard() {
     </ErrorBoundary>
   );
 }
+
+
+
+
+
+
+
