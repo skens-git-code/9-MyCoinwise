@@ -54,10 +54,10 @@
 }
 
 .bbtn-icon {
-  min-width: 38px;
-  min-height: 38px;
-  padding: 0 10px;
-  border-radius: 10px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 12px;
   border: 1px solid var(--glass-border);
   background: var(--glass-1);
   color: var(--text-secondary);
@@ -69,6 +69,12 @@
   transition: all var(--transition-base);
   font-family: var(--font-body);
   font-size: 0.875rem;
+
+  @media (max-width: 640px) {
+    min-width: 36px;
+    min-height: 36px;
+    border-radius: 10px;
+  }
 
   &:hover {
     background: var(--glass-2);
@@ -236,6 +242,16 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  max-width: 400px;
+  pointer-events: auto;
+
+  @media (max-width: 640px) {
+    padding: 10px 16px;
+    font-size: 0.85rem;
+    max-width: calc(100vw - 32px);
+    width: 100%;
+    margin-bottom: 8px;
+  }
 
   &.success {
     border-color: rgba(var(--brand-primary-rgb), 0.4);
@@ -1098,11 +1114,16 @@
   }
 
   .stat-value {
-    font-size: 2.1rem;
+    font-size: clamp(1.6rem, 8vw, 2.1rem);
     font-weight: 900;
     font-family: var(--font-head);
     margin-bottom: 8px;
     letter-spacing: -0.5px;
+    line-height: 1;
+
+    @media (max-width: 640px) {
+      margin-bottom: 4px;
+    }
   }
 
   .stat-trend {
@@ -1147,6 +1168,17 @@
     align-items: flex-end;
     margin-top: auto;
     width: 100%;
+
+    @media (max-width: 640px) {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    padding: 16px !important;
+    gap: 8px;
   }
 }
 

@@ -722,15 +722,18 @@ const Header = React.memo(({
             transition={{ duration: ANIMATION_DURATIONS.slow, ease: "easeOut" }}
           >
             <h1 className="greeting-title">
-              {t('welcome_back')} <span className="greeting-name">{userInfo.displayName}</span>
-              <motion.span
-                className="wave-emoji"
-                animate={{ rotate: [0, 15, -10, 15, -5, 10, 0] }}
-                transition={{ duration: 2, repeat: Infinity, repeatDelay: 4 }}
-                style={styles.waveEmoji}
-              >
-                👋
-              </motion.span>
+              <span className="greeting-main-msg">{t('welcome_back')} </span>
+              <span className="greeting-name">
+                {userInfo.displayName}
+                <motion.span
+                  className="wave-emoji"
+                  animate={{ rotate: [0, 15, -10, 15, -5, 10, 0] }}
+                  transition={{ duration: 2, repeat: Infinity, repeatDelay: 4 }}
+                  style={styles.waveEmoji}
+                >
+                  👋
+                </motion.span>
+              </span>
             </h1>
             <p className="greeting-subtitle">
               {hasIncome

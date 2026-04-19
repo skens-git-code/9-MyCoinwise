@@ -543,7 +543,18 @@ export default function Dashboard() {
   return (
     <ErrorBoundary>
       <div className="bento-dashboard">
-      <div className="toast-queue-container" style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, display: 'flex', flexDirection: 'column-reverse', alignItems: 'flex-end', pointerEvents: 'none' }}>
+      <div className="toast-queue-container" style={{ 
+        position: 'fixed', 
+        top: 20, 
+        right: 'var(--toast-right, 20px)', 
+        left: 'var(--toast-left, auto)',
+        width: 'var(--toast-width, auto)',
+        zIndex: 9999, 
+        display: 'flex', 
+        flexDirection: 'column-reverse', 
+        alignItems: 'var(--toast-align, flex-end)', 
+        pointerEvents: 'none' 
+      }}>
         <div style={{ pointerEvents: 'auto' }}>
           <AnimatePresence>
             {toasts.map(t => (
@@ -602,20 +613,20 @@ export default function Dashboard() {
         <div className="ambient-orb orb-goal" style={{ bottom: '10%', left: '10%' }} aria-hidden="true"></div>
         <div className="ambient-orb orb-ai" style={{ bottom: '2%', right: '2%' }} aria-hidden="true"></div>
 
-        <motion.div variants={CARD_VARIANTS} className={`bento-tile bento-hero glass ${balanceDone ? 'numberGlow' : ''}`} style={{ borderColor: rawBalance >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)' }} role="region" aria-label="Account balance">
-          <div className="blob-glow" style={{ background: rawBalance >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)' }}></div>
+        <motion.div variants={CARD_VARIANTS} className={`bento-tile bento-hero glass ${balanceDone ? 'numberGlow' : ''}`} style={{ borderColor: rawBalance >= 0 ? 'rgba(var(--brand-primary-rgb), 0.3)' : 'rgba(var(--danger-rgb), 0.3)' }} role="region" aria-label="Account balance">
+          <div className="blob-glow" style={{ background: rawBalance >= 0 ? 'rgba(var(--brand-primary-rgb), 0.15)' : 'rgba(var(--danger-rgb), 0.15)' }}></div>
           <div className="bh-top"><span className="bh-label">{getLocalizedText('total_balance', 'Total Balance')}</span><Wallet size={20} className="bh-icon" style={{ color: balanceColor }} /></div>
           <div className="bh-mid">
-            <h2 style={{ fontSize: '2.4rem', fontWeight: '900', color: balanceColor, margin: '8px 0' }}>{safeFormatCurrency(animatedBalance, safeFmt)}</h2>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <h2 style={{ fontSize: 'clamp(1.8rem, 10vw, 2.4rem)', fontWeight: '900', color: balanceColor, margin: '8px 0' }}>{safeFormatCurrency(animatedBalance, safeFmt)}</h2>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '8px' }}>
               <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{getLocalizedText('net_position', 'Net position')}</span>
               <div className="bh-trend neutral" style={{ background: 'var(--glass-2)' }}><Minus size={14} /><span>{getLocalizedText('vs_last_month', '+0% vs last month')}</span></div>
             </div>
           </div>
         </motion.div>
 
-        <StatCard icon={TrendingUp} label={getLocalizedText('total_income', 'Total Income')} value={safeFormatCurrency(animatedIncome, safeFmt)} colorRgb="16,185,129" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} className="bento-income" />
-        <StatCard icon={TrendingDown} label={getLocalizedText('total_expenses', 'Total Expenses')} value={safeFormatCurrency(animatedExpense, safeFmt)} colorRgb="239,68,68" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} className="bento-expense" />
+        <StatCard icon={TrendingUp} label={getLocalizedText('total_income', 'Total Income')} value={safeFormatCurrency(animatedIncome, safeFmt)} colorRgb="34, 197, 94" accentColor="var(--success)" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} className="bento-income" />
+        <StatCard icon={TrendingDown} label={getLocalizedText('total_expenses', 'Total Expenses')} value={safeFormatCurrency(animatedExpense, safeFmt)} colorRgb="239, 68, 68" accentColor="var(--danger)" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} className="bento-expense" />
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-recent glass">
           <div className="bt-header">

@@ -359,14 +359,25 @@
   flex-direction: column;
   justify-content: center;
 
+  .greeting-main-msg {
+    color: var(--text-secondary);
+    font-size: 0.9em;
+    font-weight: 500;
+  }
+
   .greeting-title {
-    font-size: 1.8rem;
+    font-size: clamp(1.4rem, 6vw, 1.8rem);
     font-weight: 900;
     font-family: var(--font-head);
     letter-spacing: -0.5px;
     line-height: 1.2;
     color: var(--text-primary);
     margin-bottom: 2px;
+
+    @media (max-width: 480px) {
+      font-size: 1.25rem;
+      line-height: 1.1;
+    }
 
     .greeting-name {
       position: relative;
@@ -376,23 +387,26 @@
       &::after {
         content: '';
         position: absolute;
-        bottom: 4px;
+        bottom: 2px;
         left: 0;
         width: 100%;
         height: 6px;
         background: var(--brand-gradient);
-        opacity: 0.5;
+        opacity: 0.4;
         z-index: -1;
         border-radius: 3px;
-        transition: width 0.3s ease;
       }
     }
   }
 
   .greeting-subtitle {
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     color: var(--text-secondary);
     font-weight: 500;
+
+    @media (max-width: 480px) {
+      font-size: 0.8rem;
+    }
   }
 }
 
@@ -420,6 +434,10 @@
   height: 24px;
   background: var(--glass-border);
   flex-shrink: 0;
+
+  @media (max-width: 640px) {
+    display: none !important;
+  }
 }
 
 .ibtn {
@@ -606,7 +624,7 @@
   }
 
   .island-content-wrapper {
-    padding-bottom: 100px; /* dock height + breathing room */
+    padding-bottom: 110px; /* dock height + breathing room */
   }
 
   .island-sidebar {
@@ -646,13 +664,20 @@
 
   .ih-right {
     gap: 8px;
+    padding-top: 4px; /* Space between title row and icon row */
+  }
+
+  .ih-btn-group {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
   }
 }
 
 /* On smallest phones, hide the balance chip */
 @media (max-width: 640px) {
   .island-content-wrapper {
-    padding-bottom: 108px;
+    padding-bottom: 112px;
   }
 
   .ih-balance {
@@ -660,16 +685,38 @@
   }
 
   .ih-titles h1 {
-    font-size: clamp(1rem, 5vw, 1.25rem);
+    font-size: clamp(1.1rem, 5.5vw, 1.4rem);
+    line-height: 1.2;
+    white-space: normal;
+    overflow: visible;
+  }
+
+  .ih-titles p {
+    font-size: 0.75rem;
+    line-height: 1.3;
   }
 
   .ih-right {
-    gap: 6px;
+    gap: 4px;
   }
 
   .island-header {
-    padding: 10px 14px;
-    min-height: 56px;
+    padding: 12px 16px;
+    min-height: 80px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+
+    .ih-left {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .ih-right {
+      width: 100%;
+      justify-content: space-between;
+      gap: 6px;
+    }
   }
 
   .island-page {
@@ -726,6 +773,8 @@
 
   .island-header {
     padding: 10px 12px;
+    min-height: 72px;
+    gap: 10px;
   }
 
   .island-page {
