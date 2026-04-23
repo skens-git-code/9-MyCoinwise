@@ -296,8 +296,8 @@ const LanguageDropdown = React.memo(({
 }) => {
   return (
     <motion.div
-      className="island-dropdown glass"
-      style={{ right: 0, left: 'auto', minWidth: 160 }}
+      className="island-dropdown glass language-dropdown"
+      style={{ minWidth: 160 }}
       initial={{ opacity: 0, y: -10, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -10, scale: 0.95 }}
@@ -725,15 +725,15 @@ const Header = React.memo(({
               <span className="greeting-main-msg">{t('welcome_back')} </span>
               <span className="greeting-name">
                 {userInfo.displayName}
-                <motion.span
-                  className="wave-emoji"
-                  animate={{ rotate: [0, 15, -10, 15, -5, 10, 0] }}
-                  transition={{ duration: 2, repeat: Infinity, repeatDelay: 4 }}
-                  style={styles.waveEmoji}
-                >
-                  👋
-                </motion.span>
               </span>
+              <motion.span
+                className="wave-emoji"
+                animate={{ rotate: [0, 15, -10, 15, -5, 10, 0] }}
+                transition={{ duration: 2, repeat: Infinity, repeatDelay: 4 }}
+                style={{ ...styles.waveEmoji, display: 'inline-block', marginLeft: '8px' }}
+              >
+                👋
+              </motion.span>
             </h1>
             <p className="greeting-subtitle">
               {hasIncome

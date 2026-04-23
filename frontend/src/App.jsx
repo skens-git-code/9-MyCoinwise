@@ -40,7 +40,9 @@ export default function App() {
   const [goals, setGoals] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [isInitialAuthLoad, setIsInitialAuthLoad] = useState(true);
+  const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
+  const [globalError, setGlobalError] = useState(null);
   const [token, setToken] = useState(() => localStorage.getItem('mcw-token') || null);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
@@ -103,7 +105,7 @@ export default function App() {
 
   const fetchData = async () => {
     if (!token) {
-      setLoading(false);
+      setIsInitialAuthLoad(false);
       return;
     }
 
@@ -112,11 +114,15 @@ export default function App() {
       console.warn('[App] fetchData timed out — clearing token and redirecting to login');
       localStorage.removeItem('mcw-token');
       setToken(null);
-      setLoading(false);
+      setIsInitialAuthLoad(false);
+      setIsBackgroundSyncing(false);
     }, 16000);
 
     try {
-      setLoading(true);
+      if (!user) setIsInitialAuthLoad(true);
+      else setIsBackgroundSyncing(true);
+      setGlobalError(null);
+      
       const me = await api.getMe();
       const activeId = me._id || me.id;
 
@@ -142,10 +148,13 @@ export default function App() {
       console.error('Error loading data:', err);
       if (err.response?.status === 401 || err.code === 'ECONNABORTED') {
         logout();
+      } else {
+        setGlobalError("Failed to synchronize data. Please try again.");
       }
     } finally {
       clearTimeout(timeoutId);
-      setLoading(false);
+      setIsInitialAuthLoad(false);
+      setIsBackgroundSyncing(false);
     }
   };
 
@@ -164,7 +173,7 @@ export default function App() {
 
   const switchUser = async (userId) => {
     try {
-      setLoading(true);
+      setIsInitialAuthLoad(true);
       const response = await api.switchUser(userId);
       if (response && response.token) {
         localStorage.setItem('mcw-token', response.token);
@@ -175,7 +184,7 @@ export default function App() {
       console.error('Switch user failed:', error);
       throw error;
     } finally {
-      setLoading(false);
+      setIsInitialAuthLoad(false);
     }
   };
 
@@ -192,7 +201,8 @@ export default function App() {
       <AppContext.Provider value={{
         user, allUsers, transactions, theme, toggleTheme, setThemeDirect,
         addTransaction, deleteTransaction, editTransaction,
-        resetAccount, createUser, switchUser, login, logout, loading,
+        resetAccount, createUser, switchUser, login, logout, 
+        isInitialAuthLoad, isBackgroundSyncing, globalError,
         refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
         lang, setLanguage, t, token,
         alerts, insights, deferredPrompt, installPWA, goals, subscriptions, events,

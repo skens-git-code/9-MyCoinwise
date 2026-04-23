@@ -38,7 +38,7 @@ const goalSchema = new mongoose.Schema({
   },
   color: { 
     type: String, 
-    default: '#7c3aed', 
+    default: '#0ea5e9', 
     maxlength: 20,
     match: [/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Please provide a valid hex color code']
   },
@@ -376,7 +376,7 @@ goalSchema.statics.getUserGoals = function(userId, filters = {}) {
 
 goalSchema.statics.getDashboardStats = async function(userId) {
   const stats = await this.aggregate([
-    { $match: { user_id: mongoose.Types.ObjectId(userId), is_archived: false } },
+    { $match: { user_id: new mongoose.Types.ObjectId(userId), is_archived: false } },
     { $group: {
       _id: null,
       total_goals: { $sum: 1 },

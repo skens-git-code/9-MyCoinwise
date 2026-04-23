@@ -247,9 +247,14 @@ export default function Wealth() {
   // ─── Render ───────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="flex-center" style={{ height: '80vh', flexDirection: 'column', gap: 16 }}>
-        <RefreshCw size={40} color="var(--brand-primary)" style={{ animation: 'spin 1s linear infinite' }} />
-        <p style={{ color: 'var(--text-secondary)' }}>Analyzing wealth structure…</p>
+      <div className="masonry-layout-page" style={{ opacity: 0.7 }}>
+        <div className="masonry-header shimmer" style={{ height: 60, borderRadius: 16, marginBottom: 24 }}></div>
+        <div className="masonry-grid" style={{ gridTemplateColumns: 'minmax(300px, 1fr)', gap: 24 }}>
+          <div className="glass bento-tile shimmer" style={{ height: 240, borderRadius: 24 }}></div>
+          <div className="glass bento-tile shimmer" style={{ height: 180, borderRadius: 24 }}></div>
+          <div className="glass bento-tile shimmer" style={{ height: 320, borderRadius: 24 }}></div>
+          <div className="glass bento-tile shimmer" style={{ height: 300, borderRadius: 24 }}></div>
+        </div>
       </div>
     );
   }

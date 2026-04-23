@@ -19,6 +19,7 @@ html {
   scroll-behavior: smooth;
   scroll-padding-top: 80px;
   font-size: 16px;
+  overflow: hidden; /* Fix double scroll */
 }
 
 body {
@@ -27,13 +28,13 @@ body {
   background-color: var(--surface-0);
   background-attachment: fixed;
   color: var(--text-primary);
-  min-height: 100vh;
-  min-height: 100dvh; /* Dynamic viewport height for mobile browsers */
+  height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for mobile browsers */
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background var(--transition-slow), color var(--transition-slow);
-  overflow-x: hidden;
+  overflow: hidden; /* Lock body scrolling to container */
   overscroll-behavior: none; /* Prevent rubber-band scroll fighting PWA */
 }
 

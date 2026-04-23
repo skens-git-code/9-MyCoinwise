@@ -48,7 +48,7 @@ export const CURRENCIES = {
 };
 
 export const AVATARS = ['😊', '😎', '🦁', '🐯', '🦊', '🐺', '🦄', '🐉', '🦋', '🌟', '🔥', '💎', '🚀', '🎯', '💼', '✈️'];
-export const AVATAR_COLORS = ['#059669', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#f97316', '#8b5cf6'];
+export const AVATAR_COLORS = ['#059669', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#f97316', '#64748b'];
 
 export const api = {
   // Auth

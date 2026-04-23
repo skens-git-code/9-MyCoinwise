@@ -301,11 +301,11 @@ export default function Analytics() {
           <h2>Analytics Dashboard</h2>
           <span className="badge">Financial Insights</span>
         </div>
-        <div className="analytics-actions">
-          <button onClick={exportAnalytics} className="export-btn">
+        <div className="analytics-actions" style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={exportAnalytics} className="btn-secondary">
             📥 Export Data
           </button>
-          <button onClick={resetDateRange} className="reset-btn">
+          <button onClick={resetDateRange} className="btn-secondary">
             Reset Filters
           </button>
         </div>

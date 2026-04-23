@@ -866,7 +866,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, theme, showMessage 
               formState.avatar
             )}
           </motion.div>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ flex: 1, minWidth: '240px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
                 Profile Picture & Emoji
@@ -2004,7 +2004,7 @@ function SettingsInner({ context }) {
 
         {/* Content */}
         <div className="inbox-detail-pane glass">
-          <div className="idp-content" style={{ maxWidth: '800px', padding: '40px', paddingBottom: '100px' }}>
+          <div className="idp-content" style={{ maxWidth: '800px', padding: 'clamp(16px, 5vw, 40px)', paddingBottom: '100px' }}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}

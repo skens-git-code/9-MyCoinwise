@@ -20,18 +20,18 @@
   --text-secondary: #3A5080;
   --text-muted: #7090B0;
   --text-dim: #A0B8D0;
-  --brand-primary: #007AFF;
-  --brand-secondary: #0056CC;
-  --brand-primary-rgb: 0, 122, 255;
-  --brand-secondary-rgb: 0, 86, 204;
-  --brand-accent: #60c7ff;
-  --brand-gradient: linear-gradient(135deg, #007AFF 0%, #60c7ff 50%, #0056CC 100%);
-  --brand-gradient-vibrant: linear-gradient(135deg, #60c7ff 0%, #007AFF 40%, #0056CC 100%);
-  --brand-glow: rgba(0, 122, 255, 0.2);
-  --brand-glow-cyan: rgba(96, 199, 255, 0.2);
+  --brand-primary: #0ea5e9;
+  --brand-secondary: #059669;
+  --brand-primary-rgb: 14, 165, 233;
+  --brand-secondary-rgb: 5, 150, 105;
+  --brand-accent: #38bdf8;
+  --brand-gradient: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 50%, #059669 100%);
+  --brand-gradient-vibrant: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 40%, #059669 100%);
+  --brand-glow: rgba(14, 165, 233, 0.2);
+  --brand-glow-cyan: rgba(56, 189, 248, 0.2);
   --sidebar-bg: rgba(240, 244, 255, 0.92);
-  --shadow-glow: 0 0 40px rgba(0, 122, 255, 0.18), 0 0 80px rgba(0, 122, 255, 0.08);
-  --shadow-brand: 0 8px 32px rgba(0, 122, 255, 0.3);
+  --shadow-glow: 0 0 40px rgba(14, 165, 233, 0.18), 0 0 80px rgba(14, 165, 233, 0.08);
+  --shadow-brand: 0 8px 32px rgba(14, 165, 233, 0.3);
   --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.06);
   --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.09);
   --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.9);
@@ -40,9 +40,9 @@
   --ambient-base: rgba(240, 244, 255, 1);
   --ambient-mid: rgba(228, 236, 255, 0.95);
   --ambient-accent: rgba(208, 220, 255, 0.85);
-  --orb-ai-color: rgba(0, 122, 255, 0.12);
-  --orb-goal-color: rgba(96, 199, 255, 0.12);
-  --orb-chart-color: rgba(210, 225, 255, 0.5);
+  --orb-ai-color: rgba(14, 165, 233, 0.12);
+  --orb-goal-color: rgba(5, 150, 105, 0.12);
+  --orb-chart-color: rgba(56, 189, 248, 0.2);
 
   --bg-gradient:
     radial-gradient(ellipse at 0% 0%, rgba(0, 122, 255, 0.10) 0%, transparent 60%),

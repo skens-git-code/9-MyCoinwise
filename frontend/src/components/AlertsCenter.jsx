@@ -27,7 +27,7 @@ export default function AlertsCenter({ alerts = [], onClose }) {
         exit={{ scale: 0.9, x: 60 }}
         transition={{ type: 'spring', damping: 24, stiffness: 280 }}
         onClick={e => e.stopPropagation()}
-        style={{ maxWidth: 440, width: '100%', borderTop: '4px solid var(--brand-primary)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+        style={{ maxWidth: 440, width: 'calc(100% - 32px)', margin: '0 16px', borderTop: '4px solid var(--brand-primary)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
       >
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>

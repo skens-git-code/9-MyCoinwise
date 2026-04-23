@@ -241,10 +241,18 @@ StatCard.propTypes = {
   className: PropTypes.string
 };
 
-const DashboardLoading = () => (
-  <div className="loading-container" role="status" aria-label="Loading dashboard">
-    <div className="loading-spinner"></div>
-    <p>Loading dashboard...</p>
+const DashboardSkeleton = () => (
+  <div className="bento-dashboard" aria-label="Loading dashboard data..." role="status">
+    <div className="bento-header shimmer" style={{ height: '40px', borderRadius: '14px', width: '200px', marginBottom: '24px', border: '1px solid var(--glass-border)' }}></div>
+    <div className="bento-grid">
+      <div className="bento-tile bento-hero glass shimmer" style={{ minHeight: '180px' }}></div>
+      <div className="bento-tile bento-income glass shimmer" style={{ minHeight: '140px' }}></div>
+      <div className="bento-tile bento-expense glass shimmer" style={{ minHeight: '140px' }}></div>
+      <div className="bento-tile bento-recent glass shimmer" style={{ minHeight: '360px' }}></div>
+      <div className="bento-tile bento-chart glass shimmer" style={{ minHeight: '320px' }}></div>
+      <div className="bento-tile bento-goal glass shimmer" style={{ minHeight: '220px' }}></div>
+      <div className="bento-tile bento-pie glass shimmer" style={{ minHeight: '220px' }}></div>
+    </div>
   </div>
 );
 
@@ -538,7 +546,7 @@ export default function Dashboard() {
     []
   );
 
-  if (!user) return <DashboardLoading />;
+  if (!user) return <DashboardSkeleton />;
 
   return (
     <ErrorBoundary>

@@ -6,7 +6,7 @@ const subscriptionSchema = new mongoose.Schema({
   name:    { type: String, required: true, maxlength: 255, trim: true },
   amount:  { type: Number, required: true, min: 0 },
   cycle:   { type: String, enum: ['daily', 'weekly', 'monthly', 'quarterly', 'yearly'], default: 'monthly' },
-  color:   { type: String, default: '#7c3aed', maxlength: 20 },
+  color:   { type: String, default: '#0ea5e9', maxlength: 20 },
   icon:    { type: String, default: '💳', maxlength: 10 },
 
   // ── Subscription Details ──────────────────────────────────────────────────

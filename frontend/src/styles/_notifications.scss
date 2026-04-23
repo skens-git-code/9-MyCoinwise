@@ -1,0 +1,79 @@
+/* ================================================================
+   NOTIFICATIONS & MESSAGES (LIVING GLASS)
+   ================================================================ */
+
+.toast-queue-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.notification-toast {
+  background: var(--glass-2);
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 14px 20px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 0.95rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 300px;
+  max-width: 400px;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    border-radius: 16px 0 0 16px;
+  }
+
+  &.success {
+    &::before { background: var(--success); }
+    box-shadow: 0 10px 30px rgba(16, 185, 129, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  }
+
+  &.error {
+    &::before { background: var(--danger); }
+    box-shadow: 0 10px 30px rgba(239, 68, 68, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  }
+
+  &.warning {
+    &::before { background: var(--warning); }
+  }
+
+  &.info {
+    &::before { background: var(--info); }
+  }
+
+  button {
+    background: var(--glass-1);
+    border: 1px solid var(--glass-border);
+    color: var(--text-muted);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover {
+      background: var(--glass-border-hover);
+      color: var(--text-primary);
+      transform: scale(1.1);
+    }
+  }
+}

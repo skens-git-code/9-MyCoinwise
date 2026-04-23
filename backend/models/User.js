@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema({
   // ── Appearance ─────────────────────────────────────────────────────────────
   theme:          { type: String, enum: ['dark', 'light', 'amoled'], default: 'dark' },
   profile_avatar: { type: String, default: '😊' },
-  profile_color:  { type: String, default: '#7c3aed', maxlength: 20 },
+  profile_color:  { type: String, default: '#0ea5e9', maxlength: 20 },
 
   // ── Account Status ─────────────────────────────────────────────────────────
   is_active:       { type: Boolean, default: true },

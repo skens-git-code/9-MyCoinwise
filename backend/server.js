@@ -57,7 +57,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 200
 }));
-app.options('*', cors()); // Handle all preflight OPTIONS requests explicitly
+app.options(/.*/, cors()); // Handle all preflight OPTIONS requests explicitly
 app.use(morgan('dev'));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -776,7 +776,7 @@ const PORT = process.env.PORT || 5001;
 const server = app.listen(PORT, () => {
   console.log(`🚀 MyCoinwise API running on port ${PORT}`);
 });
-s
+
 // ─── Graceful Shutdown ───────────────────────────────────────────────────────
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
