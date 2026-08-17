@@ -1,4 +1,4 @@
-import React, { useContext, useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useContext, useState, useMemo, useCallback, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -13,60 +13,7 @@ import TransactionForm from '../components/TransactionForm';
 import PropTypes from 'prop-types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import useCountUp from '../hooks/useCountUp';
-
-const ToastItem = ({ toast, onRemove }) => {
-  const [isPaused, setIsPaused] = useState(false);
-  const timerRef = useRef(null);
-
-  useEffect(() => {
-    if (!isPaused) {
-      // Fixed: Pass the ID to onRemove internally rather than via inline prop
-      timerRef.current = setTimeout(() => onRemove(toast.id), 3000); // 3s dismiss
-    }
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [isPaused, onRemove, toast.id]);
-
-  return (
-    <motion.div
-      className={`notification-toast ${toast.type}`}
-      initial={{ opacity: 0, x: 50, scale: 0.9 }}
-      animate={{ opacity: 1, x: 0, scale: 1 }}
-      exit={{ opacity: 0, x: 50, scale: 0.9 }}
-      role="alert"
-      layout
-      transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
-      style={{
-        position: 'relative', display: 'flex', alignItems: 'center', gap: '8px',
-        marginBottom: '10px', width: 'auto', left: 'auto', transform: 'none'
-      }}
-    >
-      {toast.type === 'error' && <XCircle size={16} />}
-      <span>{toast.msg}</span>
-      {toast.type === 'error' && (
-        <button 
-          onClick={() => onRemove(toast.id)} 
-          aria-label="Dismiss error" 
-          style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto', opacity: 0.7 }}
-        >
-          ×
-        </button>
-      )}
-    </motion.div>
-  );
-};
-
-ToastItem.propTypes = {
-  toast: PropTypes.shape({
-    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
-    msg: PropTypes.string.isRequired,
-    type: PropTypes.string
-  }).isRequired,
-  onRemove: PropTypes.func.isRequired
-};
+import { useToast } from '../components/ToastProvider';
 
 // ==================== CONSTANTS ====================
 
@@ -82,18 +29,18 @@ const PIE_COLORS = ['#059669', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4
 
 // ==================== SAFE HELPER FUNCTIONS ====================
 
-const safeFormatCurrency = (amount, fmt) => {
+const safeFormatCurrency = (amount, fmt, fallbackSymbol = '$') => {
   try {
     let numAmount = typeof amount === 'string' ? parseFloat(amount) : (typeof amount === 'number' ? amount : 0);
-    if (isNaN(numAmount)) return <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>₹<span style={{ fontSize: '0.85em' }}>0.00</span></span>;
+    if (isNaN(numAmount)) return <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{fallbackSymbol}<span style={{ fontSize: '0.85em' }}>0.00</span></span>;
     if (fmt && typeof fmt === 'function') {
       const formatted = fmt(numAmount);
       return <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{formatted}</span>;
     }
-    return <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}><span style={{ fontSize: '0.85em' }}>₹</span>{numAmount.toFixed(2)}</span>;
+    return <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}><span style={{ fontSize: '0.85em' }}>{fallbackSymbol}</span>{numAmount.toFixed(2)}</span>;
   } catch (error) {
     console.error('Currency formatting error:', error);
-    return <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}><span style={{ fontSize: '0.85em' }}>₹</span>0.00</span>;
+    return <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}><span style={{ fontSize: '0.85em' }}>{fallbackSymbol}</span>0.00</span>;
   }
 };
 
@@ -285,16 +232,19 @@ export default function Dashboard() {
 
   const {
     user = null, transactions: rawTransactions = [], theme = 'light',
-    addTransaction, USER_ID = null, fmt, t, fetchTransactions
+    addTransaction, USER_ID = null, fmt, t, fetchTransactions, currencyInfo
   } = context;
 
+  const currencySymbol = currencyInfo?.symbol || '$';
+
   const safeFmt = useCallback(
-    (val) => (fmt && typeof fmt === 'function' ? fmt(val) : `₹${Number(val).toFixed(2)}`),
-    [fmt]
+    (val) => (fmt && typeof fmt === 'function' ? fmt(val) : `${currencySymbol}${Number(val).toFixed(2)}`),
+    [fmt, currencySymbol]
   );
 
+  const { showToast } = useToast();
+
   const [showForm, setShowForm] = useState(false);
-  const [toasts, setToasts] = useState([]);
   
   // Fixed: Safe initialization for SSR compatibility
   const [dateFilter, setDateFilter] = useState(() => {
@@ -317,17 +267,6 @@ export default function Dashboard() {
       localStorage.setItem('budgeta_category_filter', categoryFilter);
     }
   }, [dateFilter, categoryFilter]);
-
-  const addToast = useCallback((msg, type = 'success') => {
-    setToasts(prev => {
-      const updated = [...prev, { id: crypto.randomUUID(), msg, type }];
-      return updated.slice(-3); // Limit to max 3 toasts
-    });
-  }, []);
-
-  const removeToast = useCallback((id) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
 
   // 1. BASE DATA: Parse numbers and dates exactly once
   const parsedTransactions = useMemo(() => {
@@ -375,7 +314,7 @@ export default function Dashboard() {
   const financialMetrics = useMemo(() => calculateFinancialMetrics(parsedTransactions), [parsedTransactions]);
   const { income: rawIncome, expense: rawExpense, netSavings, savingsRate, expenseOfIncome } = financialMetrics;
 
-  const rawBalance = useMemo(() => isNaN(Number(user?.balance)) ? 0 : Number(user?.balance), [user?.balance]);
+  const rawBalance = useMemo(() => isNaN(Number(netSavings)) ? 0 : Number(netSavings), [netSavings]);
   const monthlyGoal = useMemo(() => isNaN(Number(user?.monthly_goal)) ? 0 : Number(user?.monthly_goal), [user?.monthly_goal]);
 
   const { value: animatedBalance, isFinished: balanceDone } = useCountUp(rawBalance, 900);
@@ -462,8 +401,8 @@ export default function Dashboard() {
 
 
 
-  const balanceColor = rawBalance >= 0 ? 'var(--success)' : 'var(--danger)';
-  const isDark = theme === 'dark' || theme === 'amoled';
+  const balanceColor = rawBalance >= 0 ? 'var(--balance-accent)' : 'var(--danger)';
+  const isDark = theme === 'amoled';
 
   const tooltipStyle = useMemo(() => ({
     backgroundColor: isDark ? 'rgba(8,8,22,0.98)' : 'rgba(255,255,255,0.97)',
@@ -489,31 +428,31 @@ export default function Dashboard() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      addToast('Data exported to JSON successfully!', 'success');
+      showToast('success', 'Data exported to JSON successfully!');
     } catch (error) {
       console.error(error);
-      addToast('Failed to export data', 'error');
+      showToast('error', 'Failed to export data');
     } finally {
       setIsExporting(false);
     }
-  }, [parsedTransactions, addToast]);
+  }, [parsedTransactions, showToast]);
 
   const handleRefresh = useCallback(async () => {
     if (fetchTransactions) {
       setIsRefreshing(true);
       try {
         await fetchTransactions();
-        addToast('Data refreshed successfully', 'success');
+        showToast('success', 'Data refreshed successfully');
       } catch (err) {
         console.error(err);
-        addToast('Failed to refresh data', 'error');
+        showToast('error', 'Failed to refresh data');
       } finally {
         setIsRefreshing(false);
       }
     } else {
-      addToast('Data is up to date', 'success'); 
+      showToast('success', 'Data is up to date'); 
     }
-  }, [fetchTransactions, addToast]);
+  }, [fetchTransactions, showToast]);
 
   const handleShare = useCallback(async () => {
     const summary = `My Budget Dashboard\nBalance: ${safeFmt ? safeFmt(rawBalance) : rawBalance}\nNet Savings: ${safeFmt ? safeFmt(netSavings) : netSavings}\nSavings Rate: ${savingsRate}%`;
@@ -522,13 +461,13 @@ export default function Dashboard() {
         await navigator.share({ title: 'My Financial Dashboard', text: summary });
       } else {
         await navigator.clipboard.writeText(summary);
-        addToast('Dashboard summary copied to clipboard!', 'success');
+        showToast('success', 'Dashboard summary copied to clipboard!');
       }
     } catch (err) {
       console.error(err);
-      if (err.name !== 'AbortError') addToast('Sharing failed', 'error');
+      if (err.name !== 'AbortError') showToast('error', 'Sharing failed');
     }
-  }, [rawBalance, netSavings, savingsRate, safeFmt, addToast]);
+  }, [rawBalance, netSavings, savingsRate, safeFmt, showToast]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -547,16 +486,16 @@ export default function Dashboard() {
 
   const handleAddTransaction = useCallback(async (tx) => {
     const validation = validateTransaction(tx);
-    if (!validation.isValid) return addToast(`Validation failed: ${validation.errors.join(', ')}`, 'error');
+    if (!validation.isValid) return showToast('error', `Validation failed: ${validation.errors.join(', ')}`);
 
     try {
       await addTransaction(tx);
       setShowForm(false);
-      addToast('Transaction added successfully!', 'success');
+      showToast('success', 'Transaction added successfully!');
     } catch (error) {
-      addToast(error.message || 'Failed to add transaction. Please try again.', 'error');
+      showToast('error', error.message || 'Failed to add transaction. Please try again.');
     }
-  }, [addTransaction, addToast]);
+  }, [addTransaction, showToast]);
 
   // ==================== RENDER ====================
 
@@ -570,29 +509,8 @@ export default function Dashboard() {
   return (
     <ErrorBoundary>
       <div className="bento-dashboard">
-      <div className="toast-queue-container" style={{ 
-        position: 'fixed', 
-        top: 20, 
-        right: 'var(--toast-right, 20px)', 
-        left: 'var(--toast-left, auto)',
-        width: 'var(--toast-width, auto)',
-        zIndex: 9999, 
-        display: 'flex', 
-        flexDirection: 'column-reverse', 
-        alignItems: 'var(--toast-align, flex-end)', 
-        pointerEvents: 'none' 
-      }}>
-        <div style={{ pointerEvents: 'auto' }}>
-          <AnimatePresence>
-            {/* Fixed: Pass the stable removeToast function, not an inline recreating function */}
-            {toasts.map(t => (
-              <ToastItem key={t.id} toast={t} onRemove={removeToast} />
-            ))}
-          </AnimatePresence>
-        </div>
-      </div>
-
       <div className="bento-header">
+
         <motion.div className="bento-insight-pill" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}>
           <Sparkles size={14} />{savingsRateText}
         </motion.div>
@@ -641,11 +559,11 @@ export default function Dashboard() {
         <div className="ambient-orb orb-goal" style={{ bottom: '10%', left: '10%' }} aria-hidden="true"></div>
         <div className="ambient-orb orb-ai" style={{ bottom: '2%', right: '2%' }} aria-hidden="true"></div>
 
-        <motion.div variants={CARD_VARIANTS} className={`bento-tile bento-hero glass ${balanceDone ? 'numberGlow' : ''}`} style={{ borderColor: rawBalance >= 0 ? 'rgba(var(--brand-primary-rgb), 0.3)' : 'rgba(var(--danger-rgb), 0.3)' }} role="region" aria-label="Account balance">
-          <div className="blob-glow" style={{ background: rawBalance >= 0 ? 'rgba(var(--brand-primary-rgb), 0.15)' : 'rgba(var(--danger-rgb), 0.15)' }}></div>
+        <motion.div variants={CARD_VARIANTS} className={`bento-tile bento-hero glass ${balanceDone ? 'numberGlow' : ''}`} style={{ borderColor: rawBalance >= 0 ? 'rgba(var(--balance-accent-rgb), 0.34)' : 'rgba(var(--danger-rgb), 0.3)' }} role="region" aria-label="Account balance">
+          <div className="blob-glow" style={{ background: rawBalance >= 0 ? 'rgba(var(--balance-accent-rgb), 0.15)' : 'rgba(var(--danger-rgb), 0.15)' }}></div>
           <div className="bh-top"><span className="bh-label">{getLocalizedText('total_balance', 'Total Balance')}</span><Wallet size={20} className="bh-icon" style={{ color: balanceColor }} /></div>
           <div className="bh-mid">
-            <h2 style={{ fontSize: 'clamp(1.8rem, 10vw, 2.4rem)', fontWeight: '900', color: balanceColor, margin: '8px 0' }}>{safeFormatCurrency(animatedBalance, safeFmt)}</h2>
+            <h2 style={{ fontSize: 'clamp(1.8rem, 10vw, 2.4rem)', fontWeight: '900', color: balanceColor, margin: '8px 0' }}>{safeFormatCurrency(animatedBalance, safeFmt, currencySymbol)}</h2>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '8px' }}>
               <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{getLocalizedText('net_position', 'Net position')}</span>
               <div className="bh-trend neutral" style={{ background: 'var(--glass-2)' }}><Minus size={14} /><span>{getLocalizedText('vs_last_month', '+0% vs last month')}</span></div>
@@ -653,8 +571,8 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
-        <StatCard icon={TrendingUp} label={getLocalizedText('total_income', 'Total Income')} value={safeFormatCurrency(animatedIncome, safeFmt)} colorRgb="34, 197, 94" accentColor="var(--success)" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} className="bento-income" />
-        <StatCard icon={TrendingDown} label={getLocalizedText('total_expenses', 'Total Expenses')} value={safeFormatCurrency(animatedExpense, safeFmt)} colorRgb="239, 68, 68" accentColor="var(--danger)" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} className="bento-expense" />
+        <StatCard icon={TrendingUp} label={getLocalizedText('total_income', 'Total Income')} value={safeFormatCurrency(animatedIncome, safeFmt, currencySymbol)} colorRgb="34, 197, 94" accentColor="var(--success)" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} className="bento-income" />
+        <StatCard icon={TrendingDown} label={getLocalizedText('total_expenses', 'Total Expenses')} value={safeFormatCurrency(animatedExpense, safeFmt, currencySymbol)} colorRgb="239, 68, 68" accentColor="var(--danger)" subtitle={getLocalizedText('all_time', 'All time')} trend="neutral" trendVal={getLocalizedText('vs_last_month', '+0% vs last month')} className="bento-expense" />
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-recent glass">
           <div className="bt-header">
@@ -670,7 +588,7 @@ export default function Dashboard() {
                   <div key={tx.id || `tx-${idx}`} className="bt-item" role="listitem">
                     <div className={`bt-icn ${tx.type}`}><span className="bt-cat-emoji" aria-hidden="true">{getCatIcon(tx.category)}</span></div>
                     <div className="bt-info"><span className="bt-cat">{tx.category || 'Uncategorized'}</span><span className="bt-date">{tx.description || getDateLabel(tx.date)}</span></div>
-                    <div className={`bt-amt ${tx.type}`}>{tx.type === 'income' ? '+' : '-'}{safeFormatCurrency(tx.amount, safeFmt)}</div>
+                    <div className={`bt-amt ${tx.type}`}>{tx.type === 'income' ? '+' : '-'}{safeFormatCurrency(tx.amount, safeFmt, currencySymbol)}</div>
                   </div>
                 );
               })}
@@ -691,7 +609,7 @@ export default function Dashboard() {
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'} vertical={false} />
                   <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(val) => safeFormatCurrency(val, safeFmt)} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(val) => safeFormatCurrency(val, safeFmt, currencySymbol)} />
                   <Legend wrapperStyle={{ paddingTop: 12, fontSize: '0.78rem', fontWeight: 700 }} formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value === 'income' ? getLocalizedText('income_label', 'Income') : getLocalizedText('expense_label', 'Expenses')}</span>} />
                   <Area isAnimationActive={!prefersReducedMotion} animationBegin={800} type="monotone" dataKey="income" stroke="#10b981" fill="url(#gIn)" strokeWidth={2.5} strokeLinecap="round" dot={{ r: 0 }} activeDot={{ r: 6, strokeWidth: 0, fill: '#10b981' }} />
                   <Area isAnimationActive={!prefersReducedMotion} animationBegin={800} type="monotone" dataKey="expense" stroke="#ef4444" fill="url(#gEx)" strokeWidth={2.5} strokeLinecap="round" dot={{ r: 0 }} activeDot={{ r: 6, strokeWidth: 0, fill: '#ef4444' }} />
@@ -718,7 +636,7 @@ export default function Dashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart key={`pie-${dataVersion}`}>
                   <Pie isAnimationActive={!prefersReducedMotion} animationBegin={800} data={pieData} cx="50%" cy="50%" innerRadius="55%" outerRadius="80%" paddingAngle={4} dataKey="value" stroke="none">{pieData.map((_, i) => <Cell key={`cell-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie>
-                  <Tooltip contentStyle={tooltipStyle} formatter={(val) => safeFormatCurrency(val, safeFmt)} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(val) => safeFormatCurrency(val, safeFmt, currencySymbol)} />
                   <Legend wrapperStyle={{ fontSize: '0.72rem', fontWeight: 700 }} formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value}</span>} />
                 </PieChart>
               </ResponsiveContainer>

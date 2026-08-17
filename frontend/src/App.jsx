@@ -24,6 +24,9 @@ const Register = lazy(() => import('./pages/Register'));
 
 import { AppContext } from './contexts/AppContext';
 
+const AVAILABLE_THEMES = ['light', 'amoled'];
+const normalizeTheme = (value) => AVAILABLE_THEMES.includes(value) ? value : 'light';
+
 export function formatCurrency(amount, currency = 'USD') {
   const info = CURRENCIES[currency] || CURRENCIES.USD;
   const val = Number(amount);
@@ -33,7 +36,7 @@ export function formatCurrency(amount, currency = 'USD') {
 }
 
 export default function App() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('mcw-theme') || 'dark');
+  const [theme, setTheme] = useState(() => normalizeTheme(localStorage.getItem('mcw-theme')));
   const [lang, setLang] = useState(() => localStorage.getItem('mcw-lang') || 'en');
   const [user, setUser] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
@@ -64,20 +67,20 @@ export default function App() {
     setDeferredPrompt(null);
   };
 
-  const THEME_CYCLE = ['dark', 'light', 'amoled'];
   const toggleTheme = () => {
     setTheme(prev => {
-      const idx = THEME_CYCLE.indexOf(prev);
-      const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+      const idx = AVAILABLE_THEMES.indexOf(prev);
+      const next = AVAILABLE_THEMES[(idx + 1) % AVAILABLE_THEMES.length];
       localStorage.setItem('mcw-theme', next);
       return next;
     });
   };
 
   const setThemeDirect = (t) => {
-    setTheme(t);
-    localStorage.setItem('mcw-theme', t);
-    document.documentElement.setAttribute('data-theme', t);
+    const nextTheme = normalizeTheme(t);
+    setTheme(nextTheme);
+    localStorage.setItem('mcw-theme', nextTheme);
+    document.documentElement.setAttribute('data-theme', nextTheme);
   };
 
   const setLanguage = (code) => {
@@ -85,7 +88,10 @@ export default function App() {
     localStorage.setItem('mcw-lang', code);
   };
 
-  useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('mcw-theme', theme);
+  }, [theme]);
 
   const login = async (newToken, userData) => {
     localStorage.setItem('mcw-token', newToken);
@@ -134,17 +140,19 @@ export default function App() {
         api.getEvents(activeId),
         api.getAllUsers().catch(() => [])
       ]);
-      setUser(me);
+      const normalizedTheme = normalizeTheme(me?.theme);
+      setUser({ ...me, theme: normalizedTheme });
       setAllUsers(usersData);
       setTransactions(txData);
       setGoals(goalsData);
       setSubscriptions(subsData);
       setEvents(eventsData);
-      if (me?.theme) {
-        setTheme(me.theme);
-        document.documentElement.setAttribute('data-theme', me.theme);
-        localStorage.setItem('mcw-theme', me.theme);
+      if (me?.theme !== normalizedTheme) {
+        api.updateSettings(activeId, { theme: normalizedTheme }).catch(() => { });
       }
+      setTheme(normalizedTheme);
+      document.documentElement.setAttribute('data-theme', normalizedTheme);
+      localStorage.setItem('mcw-theme', normalizedTheme);
     } catch (err) {
       console.error('Error loading data:', err);
       if (err.response?.status === 401 || err.code === 'ECONNABORTED') {
@@ -221,6 +229,29 @@ export default function App() {
   const alerts = useMemo(() => generateAlerts(transactions, user), [transactions, user]);
   const insights = useMemo(() => getSpendingInsights(transactions, fmt), [transactions, currency]);
   const t = useMemo(() => getT(lang), [lang]);
+
+  // While the initial token validation is in flight, show a spinner so neither
+  // the login page nor the protected app content flashes before auth is known.
+  if (isInitialAuthLoad) {
+    return (
+      <ErrorBoundary>
+        <AppContext.Provider value={{
+          user, allUsers, transactions, theme, toggleTheme, setThemeDirect,
+          addTransaction, deleteTransaction, editTransaction,
+          resetAccount, createUser, switchUser, login, logout,
+          isInitialAuthLoad, isBackgroundSyncing, globalError,
+          fetchTransactions: fetchData,
+          refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
+          lang, setLanguage, t, token,
+          alerts, insights, deferredPrompt, installPWA, goals, subscriptions, events,
+        }}>
+          <ToastProvider>
+            <Loader />
+          </ToastProvider>
+        </AppContext.Provider>
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>

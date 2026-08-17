@@ -1,0 +1,496 @@
+/* ================================================================
+   SPACIOUS PRODUCT SYSTEM
+   A calmer, more editorial layer over the existing visual language.
+   Keeps the glass/emerald identity while giving content room to breathe.
+   ================================================================ */
+
+:root {
+  --sidebar-width: 292px;
+  --glass-radius: 24px;
+  --page-gutter: clamp(1.25rem, 3vw, 3.25rem);
+  --content-max-width: 1480px;
+}
+
+/* Light mode is the product default: soft contrast, clear surfaces, quiet depth. */
+[data-theme="light"] {
+  --surface-0: #f4f7f7;
+  --surface-1: #ffffff;
+  --surface-2: #edf2f1;
+  --surface-3: #e3eae8;
+  --glass-1: rgba(255, 255, 255, 0.72);
+  --glass-2: rgba(255, 255, 255, 0.88);
+  --glass-3: rgba(255, 255, 255, 0.96);
+  --glass-border: rgba(15, 35, 31, 0.09);
+  --glass-border-hover: rgba(5, 150, 105, 0.32);
+  --glass-shadow: 0 12px 32px rgba(30, 55, 49, 0.07);
+  --glass-shadow-hover: 0 18px 42px rgba(30, 55, 49, 0.12);
+  --text-primary: #14231f;
+  --text-secondary: #596a68;
+  --text-muted: #7f908c;
+  --text-dim: #a7b5b1;
+  --brand-primary: #078b68;
+  --brand-secondary: #6d5ce7;
+  --brand-accent: #0797a4;
+  --brand-primary-rgb: 7, 139, 104;
+  --brand-secondary-rgb: 109, 92, 231;
+  --brand-gradient: linear-gradient(135deg, #078b68 0%, #0ca7a4 55%, #6d5ce7 100%);
+  --brand-glow: rgba(7, 139, 104, 0.18);
+  --sidebar-bg: rgba(255, 255, 255, 0.94);
+  --nav-active-bg: rgba(7, 139, 104, 0.10);
+  --nav-active-text: #078b68;
+  --nav-hover-bg: rgba(7, 139, 104, 0.055);
+  --shadow-lg: 0 12px 28px rgba(30, 55, 49, 0.08);
+  --shadow-xl: 0 22px 48px rgba(30, 55, 49, 0.10);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --ambient-base: rgba(244, 247, 247, 1);
+  --ambient-mid: rgba(237, 242, 241, 0.96);
+  --ambient-accent: rgba(227, 234, 232, 0.92);
+  --orb-ai-color: rgba(109, 92, 231, 0.08);
+  --orb-goal-color: rgba(7, 139, 104, 0.08);
+  --orb-chart-color: rgba(7, 151, 164, 0.08);
+  --bg-gradient:
+    radial-gradient(ellipse at 0% 0%, rgba(7, 139, 104, 0.075) 0%, transparent 52%),
+    radial-gradient(ellipse at 100% 0%, rgba(109, 92, 231, 0.055) 0%, transparent 48%),
+    linear-gradient(145deg, #f8faf9 0%, #eef4f2 100%);
+
+  .island-main {
+    background: rgba(255, 255, 255, 0.82);
+  }
+
+  .island-header {
+    background: rgba(255, 255, 255, 0.84);
+  }
+
+  .bento-tile,
+  .stat-card.glass {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(247, 251, 250, 0.82));
+    border-color: rgba(15, 35, 31, 0.085);
+    box-shadow: 0 12px 30px rgba(30, 55, 49, 0.065), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  }
+
+  .bento-tile:hover,
+  .stat-card.glass:hover {
+    background: #ffffff;
+    border-color: rgba(7, 139, 104, 0.28);
+    box-shadow: 0 18px 42px rgba(30, 55, 49, 0.11), 0 0 0 1px rgba(7, 139, 104, 0.05);
+  }
+
+  .il-item {
+    background: rgba(255, 255, 255, 0.58);
+  }
+
+  .il-item:hover {
+    background: #ffffff;
+  }
+
+  .mobile-bottom-dock {
+    background: rgba(255, 255, 255, 0.90);
+    border-color: rgba(15, 35, 31, 0.10);
+    box-shadow: 0 18px 42px rgba(30, 55, 49, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  }
+}
+
+/* App frame */
+.app-island-layout {
+  padding: 20px;
+  gap: 20px;
+}
+
+.island-sidebar {
+  border-radius: 28px;
+}
+
+.island-brand {
+  min-height: 86px;
+  padding: 26px 22px;
+  gap: 14px;
+}
+
+.island-user {
+  margin: 0 16px 18px;
+  padding: 14px;
+  border-radius: 18px;
+}
+
+.island-nav {
+  padding: 8px 14px 0;
+  gap: 6px;
+}
+
+.inav-item {
+  min-height: 48px;
+  padding: 13px 14px;
+  border-radius: 14px;
+}
+
+.island-footer {
+  padding: 16px 14px 18px;
+  gap: 6px;
+}
+
+.island-main {
+  border-radius: 28px;
+}
+
+.island-header {
+  min-height: 84px;
+  padding: 20px 32px;
+  gap: 24px;
+}
+
+.island-content-wrapper {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.island-page {
+  width: 100%;
+  max-width: var(--content-max-width);
+  padding: 38px var(--page-gutter) 56px;
+}
+
+/* Consistent page rhythm */
+.shared-page,
+.inbox-layout-page,
+.bento-dashboard {
+  gap: 30px;
+}
+
+.spage-header,
+.inbox-header,
+.masonry-header {
+  margin-bottom: 2px;
+  padding: 0;
+  gap: 20px;
+}
+
+.spage-title h1,
+.spage-title h2,
+.ih-titles h1,
+.ih-titles h2,
+.mh-titles h1,
+.mh-titles h2 {
+  font-size: clamp(1.65rem, 2.3vw, 2.15rem);
+  line-height: 1.1;
+  letter-spacing: -0.045em;
+}
+
+.ih-badge,
+.badge {
+  padding: 7px 13px;
+}
+
+/* Dashboard */
+.bento-dashboard {
+  gap: 32px;
+}
+
+.bento-header {
+  margin-bottom: 0;
+  gap: 22px;
+}
+
+.bento-grid {
+  grid-auto-rows: minmax(154px, auto);
+  gap: 28px;
+}
+
+.bento-tile,
+.stat-card.glass {
+  padding: 30px;
+  border-radius: 26px;
+}
+
+.bento-tile:hover {
+  transform: translateY(-3px) scale(1.002);
+}
+
+.bento-hero {
+  min-height: 190px;
+}
+
+.bento-recent,
+.bento-chart {
+  min-height: 390px;
+}
+
+/* Transactions and other split panes */
+.inbox-split-pane {
+  gap: 28px;
+}
+
+.inbox-list-pane {
+  flex-basis: 430px;
+}
+
+.il-filters {
+  padding: 22px;
+  gap: 16px;
+}
+
+.il-search {
+  min-height: 48px;
+}
+
+.il-controls select {
+  min-height: 44px;
+}
+
+.il-scrollable {
+  padding: 16px;
+  gap: 10px;
+}
+
+.il-item {
+  min-height: 72px;
+  padding: 16px;
+  border-radius: 18px;
+}
+
+.inbox-detail-pane {
+  min-height: 560px;
+}
+
+.idp-content,
+.idp-empty {
+  padding: 42px;
+}
+
+/* Forms, cards, and actions */
+.settings-card {
+  padding: 30px;
+  gap: 22px;
+  border-radius: 22px;
+}
+
+.form-field {
+  gap: 10px;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  min-height: 50px;
+  padding: 14px 17px;
+}
+
+.btn-primary,
+.btn-secondary {
+  min-height: 46px;
+  padding: 12px 24px;
+  border-radius: 14px;
+}
+
+.modal-box {
+  max-width: 520px;
+  padding: 36px;
+  border-radius: 26px;
+  gap: 22px;
+}
+
+/* Auth screens get a more confident, breathable composition */
+.auth-page {
+  padding: 32px 24px;
+}
+
+.auth-card {
+  max-width: 520px;
+  padding: 52px 48px;
+  border-radius: 28px;
+}
+
+.auth-logo {
+  gap: 12px;
+  margin-bottom: 2.5rem;
+}
+
+.auth-header {
+  margin-bottom: 2.25rem;
+}
+
+.auth-header h1 {
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  line-height: 1.05;
+  margin-bottom: 10px;
+}
+
+.auth-benefits {
+  gap: 10px;
+  padding: 18px 20px;
+  margin-bottom: 2.25rem;
+  border-radius: 16px;
+}
+
+.auth-form {
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.form-group {
+  gap: 8px;
+}
+
+.form-group .input-wrapper input {
+  min-height: 54px;
+  padding-top: 0.95rem;
+  padding-bottom: 0.95rem;
+  border-radius: 14px;
+}
+
+.auth-submit,
+.auth-alt-btn {
+  min-height: 52px;
+  padding: 1rem;
+  border-radius: 14px;
+}
+
+.auth-secure-note {
+  margin-top: 2rem;
+}
+
+/* Tablet: keep the extra breathing room without wasting horizontal space. */
+@media (max-width: 1024px) {
+  .app-island-layout {
+    padding: 0;
+    gap: 0;
+  }
+
+  .island-header {
+    min-height: 76px;
+    padding: 18px 28px;
+  }
+
+  .island-page {
+    padding: 32px 28px 48px;
+  }
+
+  .bento-grid {
+    gap: 22px;
+  }
+
+  .inbox-split-pane {
+    gap: 22px;
+  }
+}
+
+/* Mobile: spacious vertically, compact only where the viewport demands it. */
+@media (max-width: 640px) {
+  .island-header {
+    min-height: 64px;
+    padding: 12px 18px;
+  }
+
+  .island-page {
+    padding: 24px 18px 36px;
+  }
+
+  .island-content-wrapper {
+    padding-bottom: 128px;
+  }
+
+  .mobile-bottom-dock {
+    padding-inline: 8px;
+  }
+
+  .dock-item {
+    min-width: 0;
+    max-width: none;
+    gap: 3px;
+  }
+
+  .dock-label {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+    font-size: 0.58rem;
+  }
+
+  .shared-page,
+  .inbox-layout-page,
+  .bento-dashboard {
+    gap: 24px;
+  }
+
+  .spage-header,
+  .inbox-header,
+  .masonry-header {
+    align-items: flex-start;
+    margin-bottom: 0;
+  }
+
+  .spage-title h1,
+  .spage-title h2,
+  .ih-titles h1,
+  .ih-titles h2,
+  .mh-titles h1,
+  .mh-titles h2 {
+    font-size: 1.55rem;
+  }
+
+  .bento-header {
+    gap: 16px;
+  }
+
+  .bento-grid {
+    gap: 16px;
+  }
+
+  .bento-tile,
+  .stat-card.glass {
+    padding: 22px;
+    border-radius: 22px;
+  }
+
+  .bento-hero {
+    min-height: 168px;
+  }
+
+  .inbox-list-pane {
+    height: 520px;
+  }
+
+  .inbox-detail-pane {
+    min-height: 480px;
+  }
+
+  .idp-content,
+  .idp-empty {
+    padding: 28px 22px;
+  }
+
+  .auth-page {
+    padding: 18px;
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  .auth-card {
+    margin: auto 0;
+    padding: 34px 24px;
+    border-radius: 24px;
+  }
+
+  .auth-logo {
+    margin-bottom: 2rem;
+  }
+
+  .auth-header {
+    margin-bottom: 1.75rem;
+  }
+
+  .auth-benefits {
+    margin-bottom: 1.75rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .island-page {
+    padding-inline: 14px;
+  }
+
+  .auth-card {
+    padding-inline: 20px;
+  }
+}

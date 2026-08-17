@@ -58,22 +58,24 @@ export default function Transactions() {
   }, [transactions, searchTerm, filterType, sortBy]);
 
   const [selectedTxId, setSelectedTxId] = useState(null);
+
+  const getTransactionId = (transaction) => String(transaction?.id || transaction?._id || '');
   
   const selectedTx = useMemo(() => {
-    return transactions.find(t => t.id === selectedTxId) || null;
+    return transactions.find(t => getTransactionId(t) === String(selectedTxId)) || null;
   }, [selectedTxId, transactions]);
 
   const confirmDelete = async () => {
     if (!deletingTx) return;
     setIsDeleting(true);
     try {
-      await deleteTransaction(deletingTx.id);
+      await deleteTransaction(getTransactionId(deletingTx));
       showToast('success', 'Transaction deleted');
     } catch {
       showToast('error', 'Failed to delete transaction');
     } finally {
       setIsDeleting(false);
-      if (selectedTxId === deletingTx.id) setSelectedTxId(null);
+      if (String(selectedTxId) === getTransactionId(deletingTx)) setSelectedTxId(null);
       setDeletingTx(null);
     }
   };
@@ -129,16 +131,18 @@ export default function Transactions() {
                </div>
             ) : (
               <AnimatePresence>
-                {filtered.map((t) => (
-                  <motion.div key={t.id} variants={ITEM_VARIANTS} initial="hidden" animate="show" exit={{ opacity: 0, height: 0 }} layout
-                    className={`il-item ${selectedTxId === t.id ? 'active' : ''}`}
-                    onClick={() => setSelectedTxId(t.id)}
+                {filtered.map((t) => {
+                  const transactionId = getTransactionId(t);
+                  return (
+                  <motion.div key={transactionId} variants={ITEM_VARIANTS} initial="hidden" animate="show" exit={{ opacity: 0, height: 0 }} layout
+                    className={`il-item ${String(selectedTxId) === transactionId ? 'active' : ''}`}
+                    onClick={() => setSelectedTxId(transactionId)}
                     role="button"
                     tabIndex="0"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        setSelectedTxId(t.id);
+                        setSelectedTxId(transactionId);
                       }
                     }}
                   >
@@ -153,7 +157,8 @@ export default function Transactions() {
                       <span className={t.type}>{t.type === 'income' ? '+' : '-'}{fmt(t.amount)}</span>
                     </div>
                   </motion.div>
-                ))}
+                  );
+                })}
               </AnimatePresence>
             )}
           </div>
@@ -163,7 +168,7 @@ export default function Transactions() {
         <div className="inbox-detail-pane glass">
           <AnimatePresence mode="wait">
             {selectedTx ? (
-              <motion.div key={selectedTx.id} className="idp-content"
+              <motion.div key={getTransactionId(selectedTx)} className="idp-content"
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}
               >
                 <div className="idp-header">
@@ -232,7 +237,7 @@ export default function Transactions() {
 
       <AnimatePresence mode="wait">
         {isAdding && <TransactionForm onClose={() => setIsAdding(false)} onSubmit={async (tx) => { await addTransaction(tx); setIsAdding(false); }} />}
-        {editingTx && <TransactionForm initialData={editingTx} onClose={() => setEditingTx(null)} onSubmit={async (tx) => { await editTransaction(tx.id, tx); setEditingTx(null); }} />}
+        {editingTx && <TransactionForm initialData={editingTx} onClose={() => setEditingTx(null)} onSubmit={async (tx) => { await editTransaction(getTransactionId(tx), tx); setEditingTx(null); }} />}
         
         {/* Confirm Delete Modal */}
         <Modal

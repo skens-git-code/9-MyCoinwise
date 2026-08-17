@@ -923,7 +923,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, theme, showMessage 
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
                 Profile Color
               </label>
-              <div style={{ display: 'flex', gap: 12 }} role="group" aria-label="Choose your profile color">
+              <div className="profile-color-options" role="group" aria-label="Choose your profile color">
                 {AVATAR_COLORS.map(color => (
                   <button
                     key={color}
@@ -951,7 +951,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, theme, showMessage 
 
         <div style={{ height: 1, background: 'var(--glass-border)', margin: '10px 0' }} />
 
-        <div style={{ display: 'flex', gap: 16 }}>
+        <div className="profile-name-row">
           <div className="form-field" style={{ flex: 1 }}>
             <label htmlFor="first_name">{t?.('first_name') || 'First Name'}</label>
             <input
@@ -1078,8 +1078,7 @@ const LanguageTab = ({ lang, setLanguage, showMessage }) => (
 // ============= APPEARANCE TAB =============
 const AppearanceTab = ({ theme, handleThemeChange }) => {
   const themes = [
-    { id: 'dark', label: 'Dark', icon: '🌙', bg: '#06060f', accent: '#10b981', sub: 'Deep Purple' },
-    { id: 'light', label: 'Light', icon: '☀️', bg: '#e8ecff', accent: '#059669', sub: 'Frosted Glass' },
+    { id: 'light', label: 'Light', icon: '☀️', bg: '#e8f7ed', accent: '#059669', sub: 'Grassy Glass' },
     { id: 'amoled', label: 'AMOLED', icon: '⚡', bg: '#000000', accent: '#34d399', sub: 'True Black' },
   ];
 

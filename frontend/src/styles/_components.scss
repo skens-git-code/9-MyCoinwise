@@ -1148,7 +1148,7 @@
   }
 
   /* Left-border brand accent for stat cards */
-  border-left: 2px solid rgba(0, 122, 255, 0.35);
+  border-left: 2px solid rgba(var(--brand-primary-rgb), 0.35);
 
   &.bento-income {
     border-left-color: rgba(var(--brand-primary-rgb), 0.35);
@@ -2580,6 +2580,16 @@
   }
 }
 
+/* Date input: follow the active theme's color scheme so the native
+   date picker calendar matches dark/light mode correctly.            */
+.date-input {
+  color-scheme: dark;
+}
+
+[data-theme="light"] .date-input {
+  color-scheme: light;
+}
+
 /* ================================================================
    FEEDBACK MESSAGES
    ================================================================ */
@@ -2648,11 +2658,6 @@
     border: 2px solid transparent;
     transition: all var(--transition-spring);
     cursor: pointer;
-
-    &.pvdark {
-      background: #06060f;
-      color: #f1f5f9;
-    }
 
     &.pvlight {
       background: #eef0ff;
@@ -4042,28 +4047,6 @@ textarea:focus-visible {
 
   /* ── Scrollbar ── */
   scrollbar-color: var(--brand-primary) rgba(0, 0, 0, 0.05);
-}
-
-/* Dark theme explicit reinforcement (prevent any bleeding) */
-[data-theme="dark"] {
-  .glass {
-    background: var(--glass-2);
-    border-color: var(--glass-border);
-  }
-
-  .bento-tile {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.10);
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.08);
-    }
-  }
-
-  .island-sidebar {
-    background: var(--sidebar-bg);
-    border-right-color: var(--glass-border);
-  }
 }
 
 /* ================================================================

@@ -1,5 +1,5 @@
 import React, { useState, useContext, useMemo, useCallback, useEffect, useRef } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ArrowLeftRight, BarChart3, Target, Activity, Briefcase,
@@ -360,9 +360,10 @@ export default function AppLayout({ children }) {
 
   // Context
   const contextData = useContext(AppContext) || {};
-  const { user, theme, toggleTheme, currencyInfo, alerts, t, lang, setLanguage, transactions, logout } = contextData;
+  const { user, theme, toggleTheme, currencyInfo, alerts, t, lang, setLanguage, logout } = contextData;
 
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Custom hooks
   const userInfo = useUserDisplay(user);
@@ -403,11 +404,6 @@ export default function AppLayout({ children }) {
     [alerts]
   );
 
-  const hasIncome = useMemo(() =>
-    transactions?.some(tx => tx.type === 'income') ?? false,
-    [transactions]
-  );
-
   // Fixed: Added '/calendar' to map correctly
   const pageTitleKey = useMemo(() => ({
     '/': 'dashboard',
@@ -421,17 +417,28 @@ export default function AppLayout({ children }) {
     '/settings': 'settings',
   }), []);
 
-  const pageTitle = useMemo(() =>
-    t(pageTitleKey[location.pathname] || 'dashboard'),
-    [location.pathname, t, pageTitleKey]
-  );
+  const pageTitle = useMemo(() => {
+    const key = pageTitleKey[location.pathname] || 'dashboard';
+    const translated = t(key);
+    const fallbackLabels = {
+      dashboard: 'Dashboard',
+      transactions: 'Transactions',
+      calendar: 'Calendar',
+      analytics: 'Analytics',
+      goals: 'Savings Goals',
+      subscriptions: 'Subscriptions',
+      cashflow: 'Forecasting',
+      wealth: 'Wealth Management',
+      settings: 'Settings'
+    };
+
+    return translated && translated !== key ? translated : fallbackLabels[key];
+  }, [location.pathname, t, pageTitleKey]);
 
   const formattedBalance = useMemo(() =>
     formatBalance(user?.balance, currencyInfo?.symbol),
     [user?.balance, currencyInfo?.symbol]
   );
-
-  const isDashboard = location.pathname === '/';
 
   // Handlers
   const handleSidebarToggle = useCallback(() => {
@@ -450,6 +457,10 @@ export default function AppLayout({ children }) {
   const handleOpenAI         = useCallback(() => setIsAIOpen(true),       []);
   const handleOpenDrawer     = useCallback(() => setDrawerOpen(true),      []);
   const handleCloseDrawer    = useCallback(() => setDrawerOpen(false),     []);
+  const handleOpenProfile    = useCallback(() => {
+    closeAll();
+    navigate('/settings');
+  }, [closeAll, navigate]);
 
   // Drawer → open modal (closes drawer first)
   const handleDrawerConverter = useCallback(() => {
@@ -523,10 +534,8 @@ export default function AppLayout({ children }) {
         {/* Main Content */}
         <main className="island-main">
           <Header
-            isDashboard={isDashboard}
             pageTitle={pageTitle}
             userInfo={userInfo}
-            hasIncome={hasIncome}
             activeDropdown={activeDropdown}
             onDropdownToggle={toggleDropdown}
             onCloseDropdowns={closeAll}
@@ -539,10 +548,7 @@ export default function AppLayout({ children }) {
             onToggleTheme={toggleTheme}
             lang={lang}
             onLanguageChange={handleLanguageChange}
-            t={t}
-            logout={logout}
-            onOpenDrawer={handleOpenDrawer}
-            deviceType={deviceType}
+            onOpenProfile={handleOpenProfile}
           />
 
           <div className="island-content-wrapper">
@@ -643,7 +649,7 @@ const DesktopSidebar = React.memo(({
       className={`island-sidebar glass ${sidebarOpen ? 'open' : 'collapsed'}`}
       aria-label="Main navigation sidebar"
       aria-hidden={!sidebarOpen}
-      inert={sidebarOpen ? undefined : ""}
+      inert={sidebarOpen ? undefined : true}
     >
       <div className="island-brand">
         <motion.div className="brand-icon" whileHover={{ rotate: 15, scale: 1.1 }}>
@@ -777,58 +783,18 @@ const DesktopSidebar = React.memo(({
 DesktopSidebar.displayName = 'DesktopSidebar';
 
 const Header = React.memo(({
-  isDashboard, pageTitle, userInfo, hasIncome,
+  pageTitle, userInfo,
   activeDropdown, onDropdownToggle, onCloseDropdowns,
   onShowConverter, onShowAlerts, onShowAI, urgentAlertsCount,
   formattedBalance, theme, onToggleTheme,
-  lang, onLanguageChange, t, logout, onOpenDrawer, deviceType
+  lang, onLanguageChange, onOpenProfile
 }) => {
   return (
     <header className="island-header glass">
       <div className="ih-left">
-        {/* Hamburger — only on tablet/mobile */}
-        {deviceType !== 'desktop' && (
-          <button
-            className="mobile-hamburger-btn"
-            onClick={onOpenDrawer}
-            aria-label="Open navigation menu"
-          >
-            <Menu size={20} />
-          </button>
-        )}
-        {isDashboard ? (
-          <motion.div
-            className="dashboard-greeting-block"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: ANIMATION_DURATIONS.slow, ease: "easeOut" }}
-          >
-            <h1 className="greeting-title">
-              <span className="greeting-main-msg">{t('welcome_back')} </span>
-              <span className="greeting-name">
-                {userInfo.firstName}
-              </span>
-              <motion.span
-                className="wave-emoji"
-                animate={{ rotate: [0, 15, -10, 15, -5, 10, 0] }}
-                transition={{ duration: 2, repeat: Infinity, repeatDelay: 4 }}
-                style={{ ...styles.waveEmoji, display: 'inline-block', marginLeft: '8px' }}
-              >
-                👋
-              </motion.span>
-            </h1>
-            <p className="greeting-subtitle">
-              {hasIncome
-                ? t('latest_financial_summary')
-                : t('add_first_income')}
-            </p>
-          </motion.div>
-        ) : (
-          <div className="ih-titles">
-            <h1>{pageTitle}</h1>
-            <p>{t('track_plan_grow')}</p>
-          </div>
-        )}
+        <div className="ih-titles">
+          <h1>{pageTitle}</h1>
+        </div>
       </div>
 
       <div className="ih-right">
@@ -868,7 +834,7 @@ const Header = React.memo(({
           <button
             className="ibtn"
             onClick={onToggleTheme}
-            aria-label="Toggle theme"
+            aria-label={`Switch to ${theme === 'amoled' ? 'Light' : 'AMOLED'} theme`}
           >
             <AnimatePresence mode="wait">
               <motion.span
@@ -877,7 +843,7 @@ const Header = React.memo(({
                 animate={{ rotate: 0, opacity: 1 }}
                 exit={{ rotate: 90, opacity: 0 }}
               >
-                {theme === 'dark' ? '☀️' : '🌙'}
+                {theme === 'amoled' ? '☀️' : '⚡'}
               </motion.span>
             </AnimatePresence>
           </button>
@@ -922,8 +888,9 @@ const Header = React.memo(({
         <div className="dropdown-container" style={{ position: 'relative' }}>
           <button
             className="ih-avatar-btn"
-            onClick={logout}
-            title="Log Out"
+            onClick={onOpenProfile}
+            title="Open profile settings"
+            aria-label="Open profile settings"
             style={{
               ...styles.avatarButton,
               background: userInfo.avatarColor,
@@ -1109,8 +1076,8 @@ const MobileDrawer = React.memo(({
           )}
         </button>
         <button className="drawer-tool-chip" onClick={() => { onToggleTheme(); }}>
-          {theme === 'dark' ? '☀️' : theme === 'light' ? '🌙' : '✨'}
-          {theme === 'dark' ? 'Light' : theme === 'light' ? 'Dark' : 'AMOLED'}
+          {theme === 'amoled' ? '☀️' : '⚡'}
+          {theme === 'amoled' ? 'Light' : 'AMOLED'}
         </button>
       </div>
 

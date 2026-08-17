@@ -14,7 +14,7 @@ const QuantumRuntime = (() => {
   const AppState = {
     isMobile: false,
     prefersReducedMotion: false,
-    currentTheme: 'dark',
+    currentTheme: 'light',
   };
 
   const Storage = Object.freeze({
@@ -214,7 +214,8 @@ const QuantumRuntime = (() => {
       AppState.isMobile = window.matchMedia('(max-width: 768px)').matches;
       AppState.prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const themeRoot = this.root.querySelector?.('.app-island-layout') || this.root.documentElement || this.root;
-      AppState.currentTheme = themeRoot.dataset?.theme || Storage.get('mcw-theme', 'dark');
+      const storedTheme = themeRoot.dataset?.theme || Storage.get('mcw-theme', 'light');
+      AppState.currentTheme = storedTheme === 'amoled' ? 'amoled' : 'light';
       this.animation.init();
       this.interactive.init();
       this.commands.init();

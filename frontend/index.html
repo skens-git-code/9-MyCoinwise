@@ -11,6 +11,16 @@
     <meta name="apple-mobile-web-app-title" content="MyCoinwise" />
     <meta name="mobile-web-app-capable" content="yes" />
 
+    <script>
+      (() => {
+        try {
+          document.documentElement.dataset.theme = localStorage.getItem('mcw-theme') === 'amoled' ? 'amoled' : 'light';
+        } catch {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
 

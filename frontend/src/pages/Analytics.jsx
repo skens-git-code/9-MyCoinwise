@@ -63,7 +63,7 @@ export default function Analytics() {
   const [chartType, setChartType] = useState('bar'); // 'bar', 'line'
   const [showComparative, setShowComparative] = useState(false);
   
-  const isDark = theme === 'dark';
+  const isDark = theme === 'amoled';
   
   // Memoized filtered transactions based on date range
   const filteredTransactions = useMemo(() => {

@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema({
   currency:     { type: String, default: 'USD', maxlength: 10 },
 
   // ── Appearance ─────────────────────────────────────────────────────────────
-  theme:          { type: String, enum: ['dark', 'light', 'amoled'], default: 'dark' },
+  theme:          { type: String, enum: ['light', 'amoled'], default: 'light' },
   profile_avatar: { type: String, default: '😊' },
   profile_color:  { type: String, default: '#0ea5e9', maxlength: 20 },
 

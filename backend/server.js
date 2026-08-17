@@ -22,6 +22,8 @@ const Goal = require('./models/Goal');
 const Subscription = require('./models/Subscription');
 const Event = require('./models/Event');
 const LoginLog = require('./models/LoginLog');
+const WealthItem = require('./models/WealthItem');
+const NetWorthHistory = require('./models/NetWorthHistory');
 
 // ─── Middleware ─────────────────────────────────────────────────────────────
 const auth = require('./middleware/auth');
@@ -32,6 +34,9 @@ const aiRoutes = require('./routes/ai');
 const securityRoutes = require('./routes/security');
 
 const TRANSACTION_TYPES = new Set(['income', 'expense']);
+const THEME_VALUES = new Set(['light', 'amoled']);
+const CURRENCY_CODES = new Set(['USD', 'INR', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SGD', 'AED', 'CHF', 'CNY', 'MXN', 'BRL', 'KRW', 'THB']);
+const HEX_COLOR = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/;
 
 const parseTransactionAmount = (value) => {
   const amount = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
@@ -79,6 +84,48 @@ const validateTransactionPayload = ({ type, category, amount, date, note }) => {
   return { numericAmount, parsedDate };
 };
 
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+const parseMoney = (value, { allowZero = true } = {}) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const amount = typeof value === 'string' ? Number(value.trim()) : value;
+  if (!Number.isFinite(amount) || amount < (allowZero ? 0 : Number.EPSILON) || amount > 999999999.99) return null;
+  if (Math.round(amount * 100) !== amount * 100) return null;
+  return Number(amount.toFixed(2));
+};
+
+const buildSettingsUpdate = (payload = {}) => {
+  const updates = {};
+  if (payload.username !== undefined) updates.username = String(payload.username).trim();
+  if (payload.theme !== undefined) {
+    if (!THEME_VALUES.has(payload.theme)) return { error: 'Theme must be light or amoled.' };
+    updates.theme = payload.theme;
+  }
+  if (payload.monthly_goal !== undefined) {
+    const monthlyGoal = parseMoney(payload.monthly_goal);
+    if (monthlyGoal === null) return { error: 'Monthly goal must be a valid non-negative amount with at most 2 decimals.' };
+    updates.monthly_goal = monthlyGoal;
+  }
+  if (payload.currency !== undefined) {
+    const currency = String(payload.currency).trim().toUpperCase();
+    if (!CURRENCY_CODES.has(currency)) return { error: 'Unsupported currency.' };
+    updates.currency = currency;
+  }
+  if (payload.profile_avatar !== undefined) {
+    if (typeof payload.profile_avatar !== 'string' || payload.profile_avatar.length > 4000000) {
+      return { error: 'Profile avatar is invalid or too large.' };
+    }
+    updates.profile_avatar = payload.profile_avatar;
+  }
+  if (payload.profile_color !== undefined) {
+    if (typeof payload.profile_color !== 'string' || !HEX_COLOR.test(payload.profile_color)) {
+      return { error: 'Profile color must be a valid hex color.' };
+    }
+    updates.profile_color = payload.profile_color;
+  }
+  return { updates };
+};
+
 // ─── Environment Validation ─────────────────────────────────────────────────
 if (!process.env.MONGO_URI) {
   console.warn('⚠️  MONGO_URI not set in .env — defaulting to mongodb://localhost:27017/MyCoinwise');
@@ -97,13 +144,15 @@ const allowedOrigins = [
   'https://9-budget-tracker.vercel.app',      // hardcoded Vercel fallback
   process.env.FRONTEND_URL,                   // preferred env var name
   process.env.CLIENT_URL,                     // alternate name (some guides use this)
-].filter(Boolean);
+].filter(Boolean).map((value) => {
+  try { return new URL(value).origin; } catch { return null; }
+}).filter(Boolean);
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.some(allowed => origin === allowed || origin.startsWith(allowed))) {
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     callback(new Error('Not allowed by CORS'));
@@ -112,8 +161,9 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 200
-}));
-app.options(/.*/, cors()); // Handle all preflight OPTIONS requests explicitly
+};
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions)); // Handle all preflight OPTIONS requests explicitly
 app.use(morgan('dev'));
 app.use(helmet());
 app.use(compression());
@@ -121,7 +171,12 @@ app.use(express.json({ limit: '5mb' })); // reduced limit from 50mb for security
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  const databaseReady = mongoose.connection.readyState === 1;
+  res.status(databaseReady ? 200 : 503).json({
+    status: databaseReady ? 'OK' : 'DEGRADED',
+    database: databaseReady ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.use('/api/wealth', wealthRoutes);
@@ -143,7 +198,12 @@ app.post('/api/auth/register', [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  const { username, email, password, currency, profile_avatar, profile_color } = req.body;
+  const { username, password, profile_avatar, profile_color } = req.body;
+  const email = normalizeEmail(req.body.email);
+  const currency = req.body.currency === undefined ? undefined : String(req.body.currency).trim().toUpperCase();
+  if (currency !== undefined && !CURRENCY_CODES.has(currency)) {
+    return res.status(400).json({ error: 'Unsupported currency.' });
+  }
   const ipAddr = req.ip || req.headers['x-forwarded-for'] || null;
   const ua = req.headers['user-agent'] || null;
   const { device_type, browser, os } = LoginLog.parseUserAgent(ua);
@@ -172,7 +232,8 @@ app.post('/api/auth/register', [
 
 
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
+  const email = normalizeEmail(req.body.email);
+  const { password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
   const ipAddr = req.ip || req.headers['x-forwarded-for'] || null;
@@ -260,8 +321,8 @@ app.get('/api/auth/me', auth, async (req, res) => {
 // View login logs for current user (auth protected)
 app.get('/api/auth/login-logs', auth, async (req, res) => {
   try {
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 50;
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
     const skip = (page - 1) * limit;
 
     const logs = await LoginLog.find({ user_id: req.user.id })
@@ -287,6 +348,14 @@ const CURRENCIES = {
   JPY: { symbol: '¥', code: 'JPY' },
   CAD: { symbol: 'CA$', code: 'CAD' },
   AUD: { symbol: 'A$', code: 'AUD' },
+  SGD: { symbol: 'S$', code: 'SGD' },
+  AED: { symbol: 'د.إ', code: 'AED' },
+  CHF: { symbol: 'Fr', code: 'CHF' },
+  CNY: { symbol: '¥', code: 'CNY' },
+  MXN: { symbol: '$', code: 'MXN' },
+  BRL: { symbol: 'R$', code: 'BRL' },
+  KRW: { symbol: '₩', code: 'KRW' },
+  THB: { symbol: '฿', code: 'THB' },
 };
 
 // ─── ROUTES ──────────────────────────────────────────────────────────────────
@@ -367,6 +436,10 @@ app.delete('/api/users/:id', checkOwnership('id'), async (req, res) => {
     await Transaction.deleteMany({ user_id: userId });
     await Goal.deleteMany({ user_id: userId });
     await Subscription.deleteMany({ user_id: userId });
+    await Event.deleteMany({ user_id: userId });
+    await WealthItem.deleteMany({ user_id: userId });
+    await NetWorthHistory.deleteMany({ user_id: userId });
+    await LoginLog.deleteMany({ user_id: userId });
     await User.findByIdAndDelete(userId);
     
     auditLogger.info('User deleted account', { userId: req.user.id, targetId: userId, ip: req.ip });
@@ -386,17 +459,10 @@ app.patch('/api/users/:id/settings', checkOwnership('id'), [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  const { username, theme, monthly_goal, currency, profile_avatar, profile_color } = req.body;
+  const settings = buildSettingsUpdate(req.body);
+  if (settings.error) return res.status(400).json({ error: settings.error });
   try {
-    const updates = {};
-    if (username !== undefined) updates.username = username;
-    if (theme !== undefined) updates.theme = theme;
-    if (monthly_goal !== undefined) updates.monthly_goal = monthly_goal;
-    if (currency !== undefined) updates.currency = currency;
-    if (profile_avatar !== undefined) updates.profile_avatar = profile_avatar;
-    if (profile_color !== undefined) updates.profile_color = profile_color;
-
-    const user = await User.findByIdAndUpdate(req.params.id, { $set: updates }, { new: true });
+    const user = await User.findByIdAndUpdate(req.params.id, { $set: settings.updates }, { new: true, runValidators: true });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     res.json({ message: 'Settings updated atomically successfully', user });
@@ -414,22 +480,14 @@ app.put('/api/users/:id/settings', checkOwnership('id'), [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  const { username, theme, monthly_goal, currency, profile_avatar, profile_color } = req.body;
+  const settings = buildSettingsUpdate(req.body);
+  if (settings.error) return res.status(400).json({ error: settings.error });
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const updates = {
-      username: username || user.username,
-      theme: theme || user.theme,
-      monthly_goal: monthly_goal !== undefined ? monthly_goal : user.monthly_goal,
-      currency: currency || user.currency,
-      profile_avatar: profile_avatar || user.profile_avatar,
-      profile_color: profile_color || user.profile_color
-    };
-
-    await User.findByIdAndUpdate(req.params.id, updates);
-    res.json({ message: 'Settings updated successfully' });
+    const updated = await User.findByIdAndUpdate(req.params.id, { $set: settings.updates }, { new: true, runValidators: true });
+    res.json({ message: 'Settings updated successfully', user: updated });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -497,12 +555,12 @@ app.put('/api/users/:id/advanced-preferences', checkOwnership('id'), async (req,
 // 5. Get user transactions
 app.get('/api/transactions/:userId', checkOwnership('userId'), async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit, 10) || 2000;
-    const page = parseInt(req.query.page, 10) || 1;
+    const limit = Math.min(2000, Math.max(1, Number.parseInt(req.query.limit, 10) || 2000));
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const skip = (page - 1) * limit;
 
     const transactions = await Transaction.find({ user_id: req.params.userId, is_deleted: { $ne: true } })
-      .sort({ date: -1 })
+      .sort({ date: -1, _id: -1 })
       .skip(skip)
       .limit(limit);
     
@@ -541,7 +599,7 @@ app.post('/api/transactions', async (req, res) => {
 app.put('/api/transactions/:id', async (req, res) => {
   const { amount, category, note, date, type } = req.body;
   try {
-    const t = await Transaction.findById(req.params.id);
+    const t = await Transaction.findOne({ _id: req.params.id, is_deleted: { $ne: true } });
     if (!t) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
@@ -602,6 +660,9 @@ app.post('/api/users/:id/reset', checkOwnership('id'), async (req, res) => {
     await Transaction.deleteMany({ user_id: userId });
     await Goal.deleteMany({ user_id: userId });
     await Subscription.deleteMany({ user_id: userId });
+    await Event.deleteMany({ user_id: userId });
+    await WealthItem.deleteMany({ user_id: userId });
+    await NetWorthHistory.deleteMany({ user_id: userId });
     await User.findByIdAndUpdate(userId, { balance: 0 });
     
     auditLogger.info('User reset account', { userId: req.user.id, targetId: userId, ip: req.ip });

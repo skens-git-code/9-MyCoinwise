@@ -1,0 +1,1802 @@
+/* ================================================================
+   GRASSY MORPHISM — Quantum Glass translated for MyCoinwise
+   CSS-only visual layer. Existing markup, behavior, and interactions
+   remain unchanged.
+   ================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Orbitron:wght@500;600;700;800&family=Poppins:wght@400;500;600;700;800&family=Zen+Dots&display=swap');
+
+:root {
+  --font-body: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-head: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-accent: 'Orbitron', 'Poppins', sans-serif;
+  --font-round: 'Poppins', sans-serif;
+  --font-mono: 'Fira Code', monospace;
+  --grass-radius: 24px;
+  --grass-radius-lg: 30px;
+  --grass-blur: blur(22px) saturate(155%);
+  --grass-ease: cubic-bezier(.16, 1, .3, 1);
+}
+
+/* Default grassy light theme */
+[data-theme="light"] {
+  --surface-0: #edf8f0;
+  --surface-1: rgba(255, 255, 255, 0.84);
+  --surface-2: #e2f2e8;
+  --surface-3: #d5e9dc;
+  --glass-1: rgba(255, 255, 255, 0.56);
+  --glass-2: rgba(255, 255, 255, 0.76);
+  --glass-3: rgba(255, 255, 255, 0.92);
+  --glass-border: rgba(18, 102, 65, 0.13);
+  --glass-border-hover: rgba(5, 150, 105, 0.38);
+  --glass-border-active: rgba(5, 150, 105, 0.62);
+  --text-primary: #123126;
+  --text-secondary: #4f6c5d;
+  --text-muted: #789184;
+  --text-dim: #a5b9ac;
+  --brand-primary: #078b68;
+  --brand-secondary: #6558d8;
+  --brand-accent: #0797a4;
+  --brand-primary-rgb: 7, 139, 104;
+  --brand-secondary-rgb: 101, 88, 216;
+  --brand-gradient: linear-gradient(135deg, #078b68 0%, #0797a4 52%, #6558d8 100%);
+  --brand-gradient-vibrant: linear-gradient(135deg, #18b982 0%, #0797a4 58%, #7568ee 100%);
+  --brand-glow: rgba(7, 139, 104, 0.24);
+  --sidebar-bg: rgba(248, 255, 250, 0.78);
+  --nav-active-bg: rgba(7, 139, 104, 0.12);
+  --nav-active-text: #057856;
+  --nav-hover-bg: rgba(7, 139, 104, 0.065);
+  --bg-gradient:
+    radial-gradient(ellipse at 10% 0%, rgba(16, 185, 129, 0.18) 0%, transparent 42%),
+    radial-gradient(ellipse at 92% 8%, rgba(6, 182, 212, 0.12) 0%, transparent 38%),
+    radial-gradient(ellipse at 78% 100%, rgba(101, 88, 216, 0.10) 0%, transparent 42%),
+    linear-gradient(145deg, #f7fcf8 0%, #e8f5ed 50%, #e2f0eb 100%);
+  --ambient-base: rgba(237, 248, 240, 1);
+  --ambient-mid: rgba(226, 242, 232, 0.92);
+  --ambient-accent: rgba(213, 233, 220, 0.86);
+  --orb-ai-color: rgba(101, 88, 216, 0.10);
+  --orb-goal-color: rgba(7, 139, 104, 0.13);
+  --orb-chart-color: rgba(7, 151, 164, 0.10);
+  --glass-shadow: 0 18px 44px rgba(37, 92, 62, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-shadow-hover: 0 24px 56px rgba(37, 92, 62, 0.15), 0 0 0 1px rgba(7, 139, 104, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --shadow-brand: 0 12px 30px rgba(7, 139, 104, 0.26);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+/* AMOLED typography keeps the same grassy identity on true-black surfaces. */
+[data-theme="amoled"] {
+  --font-body: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-head: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-accent: 'Orbitron', 'Poppins', sans-serif;
+}
+
+/* Background: an understated botanical/aurora texture, not a busy image. */
+body {
+  font-family: var(--font-body);
+  background-image: var(--bg-gradient);
+  letter-spacing: -0.01em;
+}
+
+body::before {
+  width: 920px;
+  height: 920px;
+  top: -390px;
+  left: -300px;
+  opacity: 0.72;
+  filter: blur(4px);
+}
+
+body::after {
+  width: 720px;
+  height: 720px;
+  bottom: -260px;
+  right: -220px;
+  opacity: 0.62;
+  filter: blur(6px);
+}
+
+/* Brand and high-value numbers carry the Quantum Glass identity. */
+.brand-name,
+.auth-logo-text {
+  font-family: var(--font-accent);
+  letter-spacing: 0.015em;
+}
+
+.bento-hero .bh-mid h2,
+.stat-value,
+.idp-amount,
+.ili-amount span,
+.ih-balance,
+.drawer-balance-pill {
+  font-family: var(--font-accent);
+  letter-spacing: -0.035em;
+}
+
+.spage-title h1,
+.spage-title h2,
+.ih-titles h1,
+.ih-titles h2,
+.mh-titles h1,
+.mh-titles h2,
+.dashboard-greeting-block .greeting-title,
+.auth-header h1,
+.modal-box h3 {
+  font-family: var(--font-head);
+  letter-spacing: -0.045em;
+}
+
+/* Core glass surfaces */
+.glass,
+.glass-sm,
+.glass-deep,
+.island-sidebar,
+.island-main,
+.island-header,
+.bento-tile,
+.stat-card.glass,
+.inbox-list-pane,
+.inbox-detail-pane,
+.settings-card,
+.modal-box,
+.auth-card,
+.mobile-bottom-dock {
+  border-radius: var(--grass-radius);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: var(--grass-blur);
+  -webkit-backdrop-filter: var(--grass-blur);
+}
+
+.glass:hover,
+.bento-tile:hover,
+.stat-card.glass:hover {
+  transform: translateY(-4px);
+  border-color: var(--glass-border-hover);
+  box-shadow: var(--glass-shadow-hover);
+}
+
+.app-island-layout {
+  position: relative;
+  isolation: isolate;
+  background: transparent;
+}
+
+.app-island-layout::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.42;
+  background:
+    radial-gradient(ellipse at 18% 22%, rgba(var(--brand-primary-rgb), 0.13), transparent 28%),
+    radial-gradient(ellipse at 84% 76%, rgba(var(--brand-secondary-rgb), 0.09), transparent 31%),
+    repeating-linear-gradient(120deg, transparent 0 88px, rgba(var(--brand-primary-rgb), 0.018) 89px 90px);
+}
+
+.island-sidebar {
+  background: var(--sidebar-bg);
+  border-color: var(--glass-border);
+}
+
+.island-main {
+  background: color-mix(in srgb, var(--surface-1) 78%, transparent);
+  border-color: var(--glass-border);
+}
+
+.island-header {
+  background: color-mix(in srgb, var(--surface-1) 74%, transparent);
+  border-color: var(--glass-border);
+}
+
+.island-header .ih-titles {
+  min-width: 0;
+}
+
+.island-header .ih-titles h1 {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.island-brand .brand-icon,
+.mobile-drawer-header .brand-icon,
+.auth-logo-icon {
+  background: var(--brand-gradient);
+  box-shadow: 0 10px 28px var(--brand-glow), inset 0 1px 0 rgba(255,255,255,.34);
+}
+
+.island-user,
+.drawer-user-card,
+.ih-btn-group,
+.bento-insight-pill,
+.bai-item,
+.iqs-box {
+  background: var(--glass-1);
+  border-color: var(--glass-border);
+}
+
+.inav-item.active {
+  background: linear-gradient(100deg, var(--nav-active-bg), rgba(var(--brand-secondary-rgb), 0.055));
+  box-shadow: inset 3px 0 0 var(--brand-primary), 0 8px 22px rgba(var(--brand-primary-rgb), 0.08);
+}
+
+.inav-active-pill {
+  border-left: 0;
+  background: transparent;
+}
+
+/* Grass blades: thin decorative accent on hero and primary sections. */
+.bento-hero,
+.auth-card,
+.inbox-list-pane {
+  position: relative;
+  overflow: hidden;
+}
+
+.bento-hero::after,
+.auth-card::before,
+.inbox-list-pane::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  opacity: 0.32;
+  background:
+    linear-gradient(78deg, transparent 0 44%, rgba(var(--brand-primary-rgb), 0.36) 45% 46%, transparent 47% 100%),
+    linear-gradient(102deg, transparent 0 62%, rgba(var(--brand-accent-rgb, 7, 151, 164), 0.22) 63% 64%, transparent 65% 100%);
+  background-size: 34px 60px, 44px 74px;
+  background-repeat: repeat-x;
+}
+
+.bento-hero::after {
+  width: 180px;
+  height: 86px;
+  right: -12px;
+  bottom: -18px;
+  transform: rotate(-9deg);
+  mask-image: linear-gradient(to top, #000, transparent);
+}
+
+.auth-card::before {
+  width: 220px;
+  height: 120px;
+  right: -46px;
+  top: -36px;
+  transform: rotate(18deg);
+  mask-image: linear-gradient(to bottom, #000, transparent);
+}
+
+.inbox-list-pane::after {
+  width: 150px;
+  height: 74px;
+  right: -26px;
+  top: 52px;
+  transform: rotate(12deg);
+  mask-image: linear-gradient(to bottom, #000, transparent);
+}
+
+/* Buttons and controls */
+.btn-primary,
+.bbtn-pri,
+.auth-submit,
+.hero-btn,
+.cta-button {
+  background: var(--brand-gradient);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 15px;
+  box-shadow: var(--shadow-brand), inset 0 1px 0 rgba(255,255,255,.30);
+  font-family: var(--font-body);
+  letter-spacing: -0.01em;
+}
+
+.btn-primary:hover,
+.bbtn-pri:hover,
+.auth-submit:hover,
+.hero-btn:hover,
+.cta-button:hover {
+  box-shadow: 0 16px 36px rgba(var(--brand-primary-rgb), 0.34), inset 0 1px 0 rgba(255,255,255,.34);
+}
+
+.btn-secondary,
+.bbtn-sec,
+.bbtn-icon,
+.ibtn,
+.filter-select,
+.filter-clear,
+.theme-toggle-big {
+  border-color: var(--glass-border);
+  background: var(--glass-1);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22);
+}
+
+.btn-secondary:hover,
+.bbtn-sec:hover,
+.bbtn-icon:hover,
+.ibtn:hover,
+.filter-select:hover,
+.theme-toggle-big:hover {
+  border-color: var(--glass-border-hover);
+  background: var(--glass-2);
+  box-shadow: 0 10px 24px rgba(var(--brand-primary-rgb), 0.10), inset 0 1px 0 rgba(255,255,255,.30);
+}
+
+input,
+textarea,
+select,
+.form-field input,
+.form-field select,
+.form-field textarea,
+.form-group .input-wrapper input {
+  border-color: var(--glass-border);
+  background: var(--glass-1);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.24);
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus,
+.form-group .input-wrapper input:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 4px rgba(var(--brand-primary-rgb), 0.13), 0 8px 22px rgba(var(--brand-primary-rgb), 0.08), inset 0 1px 0 rgba(255,255,255,.26);
+}
+
+/* Transactions: make income/expense states feel intentional, not alarming. */
+.il-item.active {
+  background: linear-gradient(110deg, rgba(var(--brand-primary-rgb), .14), rgba(var(--brand-secondary-rgb), .07));
+  border-color: rgba(var(--brand-primary-rgb), .30);
+}
+
+.ili-icon.income,
+.stat-card.bento-income .stat-icon {
+  background: rgba(var(--success-rgb), .14);
+  color: var(--success);
+}
+
+.ili-icon.expense,
+.stat-card.bento-expense .stat-icon {
+  background: rgba(var(--danger-rgb), .12);
+  color: var(--danger);
+}
+
+/* Auth and modal rhythm */
+.auth-card,
+.modal-box {
+  background: color-mix(in srgb, var(--surface-1) 74%, transparent);
+  border-radius: var(--grass-radius-lg);
+}
+
+.auth-benefits,
+.auth-alt-btn {
+  background: linear-gradient(110deg, rgba(var(--brand-primary-rgb), .09), rgba(var(--brand-secondary-rgb), .055));
+  border-color: rgba(var(--brand-primary-rgb), .18);
+}
+
+.auth-secure-note,
+.form-hint,
+.dock-label {
+  font-family: var(--font-mono);
+}
+
+/* Mobile retains the same glass language without becoming visually heavy. */
+.mobile-bottom-dock {
+  background: color-mix(in srgb, var(--surface-1) 82%, transparent);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.dock-item.active {
+  color: var(--brand-primary);
+}
+
+.dock-active-dot {
+  background: var(--nav-active-bg);
+  border-color: rgba(var(--brand-primary-rgb), .28);
+  box-shadow: 0 8px 18px rgba(var(--brand-primary-rgb), .10);
+}
+
+@media (max-width: 640px) {
+  .bento-tile,
+  .stat-card.glass,
+  .auth-card,
+  .modal-box {
+    border-radius: 22px;
+  }
+
+  .bento-hero::after,
+  .inbox-list-pane::after {
+    opacity: 0.20;
+  }
+}
+
+@media (max-width: 1200px) {
+  .island-header .ih-titles p {
+    display: none;
+  }
+
+  .settings-page .inbox-detail-pane .idp-content {
+    width: 100%;
+    max-width: none !important;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1100px) {
+  .settings-page .inbox-split-pane {
+    flex-direction: column;
+  }
+
+  .settings-page .inbox-list-pane {
+    width: 100%;
+    min-height: 0;
+    height: auto;
+    flex-basis: auto !important;
+  }
+
+  .settings-page .inbox-list-pane .il-scrollable {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-page .inbox-detail-pane {
+    min-height: 600px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before,
+  body::after,
+  .bento-dashboard::before,
+  .bento-dashboard::after {
+    animation: none !important;
+  }
+}
+
+/* ================================================================
+   BLUE NAVIGATION SYSTEM
+   A calm blue layer for navigation surfaces, controls, and menus.
+   The finance canvas keeps its grassy identity; navigation gets a
+   clearer blue wayfinding signal for stronger hierarchy and focus.
+   ================================================================ */
+
+.island-sidebar,
+.island-header,
+.mobile-drawer,
+.mobile-bottom-dock {
+  --nav-primary: #0088cc;
+  --nav-primary-rgb: 0, 136, 204;
+  --nav-secondary: #6f00ff;
+  --nav-secondary-rgb: 111, 0, 255;
+  --nav-gradient: linear-gradient(135deg, #00b4ff 0%, #6f00ff 100%);
+  --nav-active-bg: rgba(0, 136, 204, 0.10);
+  --nav-active-text: #006da3;
+  --nav-hover-bg: rgba(0, 136, 204, 0.065);
+  --nav-border: rgba(0, 136, 204, 0.18);
+  --nav-glow: rgba(0, 212, 255, 0.22);
+}
+
+[data-theme="amoled"] .island-sidebar,
+[data-theme="amoled"] .island-header,
+[data-theme="amoled"] .mobile-drawer,
+[data-theme="amoled"] .mobile-bottom-dock {
+  --nav-primary: #00d4ff;
+  --nav-primary-rgb: 0, 212, 255;
+  --nav-secondary: #6f00ff;
+  --nav-secondary-rgb: 111, 0, 255;
+  --nav-gradient: linear-gradient(135deg, #00d4ff 0%, #6f00ff 100%);
+  --nav-active-bg: rgba(0, 212, 255, 0.14);
+  --nav-active-text: #7ce9ff;
+  --nav-hover-bg: rgba(0, 212, 255, 0.085);
+  --nav-border: rgba(0, 212, 255, 0.28);
+  --nav-glow: rgba(0, 212, 255, 0.30);
+}
+
+.island-sidebar {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--sidebar-bg) 91%, var(--nav-primary) 9%), var(--sidebar-bg));
+  border-color: color-mix(in srgb, var(--glass-border) 70%, var(--nav-primary) 30%);
+  box-shadow: 0 22px 54px rgba(var(--nav-primary-rgb), 0.08), var(--glass-shadow);
+}
+
+.island-brand {
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-border) 68%, var(--nav-primary) 32%);
+}
+
+.island-brand .brand-icon,
+.mobile-drawer-header .brand-icon {
+  background: var(--nav-gradient);
+  box-shadow: 0 12px 28px var(--nav-glow), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.island-brand .brand-name {
+  background: linear-gradient(135deg, var(--nav-primary) 0%, var(--nav-secondary) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.island-user {
+  background: linear-gradient(135deg, rgba(var(--nav-primary-rgb), 0.07), var(--glass-1));
+  border-color: color-mix(in srgb, var(--glass-border) 66%, var(--nav-primary) 34%);
+}
+
+.island-user:hover {
+  background: linear-gradient(135deg, rgba(var(--nav-primary-rgb), 0.12), var(--glass-2));
+  border-color: var(--nav-border);
+  box-shadow: 0 10px 24px rgba(var(--nav-primary-rgb), 0.09);
+}
+
+.island-sidebar .u-role,
+.inav-item.active,
+.inav-item.active .inav-icon {
+  color: var(--nav-active-text);
+}
+
+.inav-item,
+.drawer-nav-item,
+.dock-item,
+.drawer-tool-chip,
+.drawer-pref-btn,
+.drawer-logout-btn,
+.drp-btn,
+.drp-link {
+  font-family: var(--font-body);
+}
+
+.inav-item {
+  min-height: 50px;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  letter-spacing: -0.012em;
+}
+
+.inav-item:hover:not(.active) {
+  color: var(--nav-primary);
+  background: linear-gradient(100deg, var(--nav-hover-bg), rgba(var(--nav-primary-rgb), 0.025));
+  border-color: rgba(var(--nav-primary-rgb), 0.12);
+  transform: translateX(2px);
+}
+
+.inav-item.active {
+  background: linear-gradient(100deg, var(--nav-active-bg), rgba(var(--nav-secondary-rgb), 0.055));
+  border-color: var(--nav-border);
+  box-shadow: inset 3px 0 0 var(--nav-primary), 0 10px 24px rgba(var(--nav-primary-rgb), 0.12);
+}
+
+.inav-item.active > .inav-icon,
+.inav-item.active > .inav-label {
+  position: relative;
+  z-index: 1;
+}
+
+.island-sidebar .inav-item.active,
+.island-sidebar .inav-item.active .inav-label {
+  color: var(--nav-active-text) !important;
+}
+
+.inav-active-pill {
+  inset: 0;
+  border-left: 3px solid var(--nav-primary);
+  background: linear-gradient(100deg, rgba(var(--nav-primary-rgb), 0.06), transparent 78%);
+}
+
+.collapse-toggle:hover,
+.island-sidebar .collapse-toggle:focus-visible {
+  color: var(--nav-primary);
+  border-color: var(--nav-primary);
+  box-shadow: 0 0 0 4px rgba(var(--nav-primary-rgb), 0.12), 0 8px 18px rgba(var(--nav-primary-rgb), 0.12);
+}
+
+.island-sidebar .inav-item:focus-visible,
+.island-header .ibtn:focus-visible,
+.mobile-drawer .drawer-nav-item:focus-visible,
+.mobile-drawer .drawer-tool-chip:focus-visible,
+.mobile-drawer .drawer-pref-btn:focus-visible,
+.mobile-bottom-dock .dock-item:focus-visible,
+.island-dropdown .drp-btn:focus-visible,
+.island-dropdown .drp-link:focus-visible {
+  outline: 3px solid rgba(var(--nav-primary-rgb), 0.34);
+  outline-offset: 2px;
+}
+
+.island-header {
+  border-color: color-mix(in srgb, var(--glass-border) 76%, var(--nav-primary) 24%);
+}
+
+.island-header .ibtn {
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.island-header .ibtn:hover,
+.island-header .ibtn[aria-expanded="true"] {
+  color: var(--nav-primary);
+  background: var(--nav-active-bg);
+  border-color: var(--nav-border);
+  box-shadow: 0 8px 20px rgba(var(--nav-primary-rgb), 0.12);
+  transform: translateY(-1px);
+}
+
+.island-dropdown {
+  border-color: var(--nav-border);
+  box-shadow: 0 22px 48px rgba(var(--nav-primary-rgb), 0.15), var(--shadow-2xl), 0 0 0 1px rgba(var(--nav-primary-rgb), 0.06);
+}
+
+.island-dropdown .drp-label {
+  color: var(--nav-secondary);
+}
+
+.island-dropdown .drp-btn,
+.island-dropdown .drp-link {
+  min-height: 40px;
+}
+
+.island-dropdown .drp-btn:hover,
+.island-dropdown .drp-link:hover {
+  color: var(--nav-primary);
+  background: var(--nav-hover-bg);
+}
+
+.island-dropdown .drp-btn.active,
+.island-dropdown .drp-link.active {
+  color: var(--nav-active-text);
+  background: var(--nav-active-bg);
+  box-shadow: inset 3px 0 0 var(--nav-primary);
+}
+
+.mobile-drawer {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-1) 92%, var(--nav-primary) 8%), var(--surface-1));
+  border-right-color: var(--nav-border);
+  box-shadow: 24px 0 64px rgba(var(--nav-primary-rgb), 0.16), 24px 0 64px rgba(0, 0, 0, 0.55);
+}
+
+.mobile-drawer-header {
+  border-bottom-color: var(--nav-border);
+}
+
+.drawer-user-card {
+  background: linear-gradient(135deg, rgba(var(--nav-primary-rgb), 0.10), var(--glass-1));
+  border-color: var(--nav-border);
+}
+
+.drawer-user-card .u-role,
+.drawer-section-title {
+  color: var(--nav-secondary);
+}
+
+.drawer-nav-item {
+  min-height: 48px;
+  padding: 10px 12px;
+  border-color: transparent;
+}
+
+.drawer-nav-item:hover {
+  color: var(--nav-primary);
+  background: var(--nav-hover-bg);
+  border-color: rgba(var(--nav-primary-rgb), 0.13);
+}
+
+.drawer-nav-item:hover .drawer-nav-icon-box {
+  color: var(--nav-primary);
+  background: rgba(var(--nav-primary-rgb), 0.12);
+}
+
+.drawer-nav-item.active {
+  color: var(--nav-active-text);
+  background: var(--nav-active-bg);
+  border-color: var(--nav-border);
+  box-shadow: 0 8px 20px rgba(var(--nav-primary-rgb), 0.10);
+}
+
+.drawer-nav-item.active .drawer-nav-icon-box {
+  background: var(--nav-gradient);
+  box-shadow: 0 8px 18px var(--nav-glow);
+}
+
+.drawer-nav-item .drawer-nav-active-indicator {
+  background: var(--nav-primary);
+  box-shadow: 0 0 10px var(--nav-glow);
+}
+
+.drawer-tool-chip,
+.drawer-pref-btn {
+  min-height: 42px;
+  border-color: rgba(var(--nav-primary-rgb), 0.15);
+  background: rgba(var(--nav-primary-rgb), 0.045);
+}
+
+.drawer-tool-chip:hover,
+.drawer-pref-btn:hover,
+.drawer-pref-btn[aria-pressed="true"] {
+  color: var(--nav-primary);
+  border-color: var(--nav-border);
+  background: var(--nav-active-bg);
+  box-shadow: 0 8px 18px rgba(var(--nav-primary-rgb), 0.10);
+}
+
+.mobile-bottom-dock {
+  border-color: var(--nav-border);
+  box-shadow: 0 20px 48px rgba(var(--nav-primary-rgb), 0.14), var(--glass-shadow);
+}
+
+.dock-item {
+  min-height: 68px;
+  letter-spacing: -0.012em;
+}
+
+.dock-item.active {
+  color: var(--nav-primary);
+}
+
+.dock-item.active .dock-label {
+  color: var(--nav-primary);
+}
+
+.dock-active-dot {
+  background: var(--nav-active-bg);
+  border-color: rgba(var(--nav-primary-rgb), 0.26);
+  box-shadow: 0 8px 18px rgba(var(--nav-primary-rgb), 0.14);
+}
+
+.dock-item:not(.active):hover {
+  color: var(--nav-primary);
+}
+
+@media (max-width: 640px) {
+  .mobile-bottom-dock {
+    height: 76px;
+    left: 14px;
+    right: 14px;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    border-radius: 22px;
+  }
+
+  .dock-item {
+    min-height: 70px;
+  }
+
+  .drawer-nav-item {
+    min-height: 50px;
+  }
+}
+
+/* ================================================================
+   FLOATING HEADER
+   Adapted from the supplied pill-style header system to the app's
+   existing header structure so all current controls remain functional.
+   ================================================================ */
+
+.island-header {
+  position: sticky;
+  top: 16px;
+  width: calc(100% - 32px);
+  margin: 0 16px 12px;
+  min-height: 72px;
+  padding: 10px 14px 10px 22px;
+  border: 1px solid var(--nav-border);
+  border-radius: 50px;
+  background: color-mix(in srgb, var(--glass-2) 88%, transparent);
+  backdrop-filter: var(--grass-blur);
+  -webkit-backdrop-filter: var(--grass-blur);
+  box-shadow: var(--glass-shadow), 0 0 24px var(--nav-glow);
+  transition: padding var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
+}
+
+.island-header.scrolled {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.island-header:hover {
+  border-color: color-mix(in srgb, var(--nav-primary) 58%, var(--glass-border) 42%);
+  box-shadow: var(--glass-shadow-hover), 0 0 40px var(--nav-glow);
+}
+
+.island-header .ih-left,
+.island-header .ih-right {
+  min-width: 0;
+}
+
+.island-header .ih-left {
+  gap: 14px;
+}
+
+.island-header .ih-titles h1,
+.island-header .greeting-title {
+  font-family: var(--font-head);
+  letter-spacing: -0.045em;
+}
+
+.island-header .ih-titles p {
+  color: var(--nav-secondary);
+}
+
+.island-header .greeting-name {
+  background-image: linear-gradient(to right, rgba(var(--nav-primary-rgb), 0.34), rgba(var(--nav-secondary-rgb), 0.34));
+}
+
+/* Pill-style control container from the supplied header reference. */
+.island-header .ih-btn-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 50px;
+  background: color-mix(in srgb, var(--glass-1) 82%, transparent);
+  border: 1px solid var(--nav-border);
+  box-shadow: var(--glass-shadow), 0 0 20px rgba(var(--nav-primary-rgb), 0.08);
+  transition: border-color var(--transition-base), box-shadow var(--transition-base), background var(--transition-base);
+}
+
+.island-header .ih-btn-group:hover {
+  background: color-mix(in srgb, var(--glass-2) 88%, transparent);
+  border-color: var(--nav-primary);
+  box-shadow: var(--glass-shadow), 0 0 34px var(--nav-glow);
+}
+
+.island-header .ibtn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(var(--nav-primary-rgb), 0.045);
+  border: 1px solid rgba(var(--nav-primary-rgb), 0.12);
+  color: var(--text-secondary);
+}
+
+.island-header .ibtn:hover,
+.island-header .ibtn[aria-expanded="true"] {
+  background: var(--nav-primary);
+  color: #fff;
+  border-color: var(--nav-primary);
+  box-shadow: 0 0 16px var(--nav-glow);
+  transform: scale(1.06) rotate(3deg);
+}
+
+.island-header .ih-separator {
+  background: var(--nav-border);
+}
+
+.island-header .ih-balance {
+  height: 42px;
+  padding-inline: 15px;
+  border-radius: 50px;
+  background: rgba(var(--nav-primary-rgb), 0.09);
+  border-color: var(--nav-border);
+  color: var(--nav-primary);
+  box-shadow: 0 0 16px rgba(var(--nav-primary-rgb), 0.08);
+}
+
+.island-header .ih-avatar-btn {
+  width: 42px;
+  height: 42px;
+  border: 2px solid rgba(var(--nav-primary-rgb), 0.24);
+  box-shadow: 0 6px 18px rgba(var(--nav-primary-rgb), 0.15);
+}
+
+.island-header .ih-avatar-btn:hover {
+  box-shadow: 0 0 0 4px rgba(var(--nav-primary-rgb), 0.14), 0 8px 22px var(--nav-glow);
+}
+
+@media (max-width: 640px) {
+  .island-header {
+    top: 10px;
+    width: calc(100% - 20px);
+    margin: 0 10px 10px;
+    min-height: 60px;
+    padding: 7px 9px 7px 12px;
+    border-radius: 34px;
+  }
+
+  .island-header .ih-btn-group {
+    gap: 2px;
+    padding: 4px 6px;
+  }
+
+  /* The drawer and bottom-nav More action already expose these utilities on
+     phones. Keep the floating header focused on title + theme only. */
+  .island-header .ih-btn-group > .dropdown-container:nth-child(1),
+  .island-header .ih-btn-group > .dropdown-container:nth-child(2),
+  .island-header .ai-btn,
+  .island-header .ih-balance,
+  .island-header .ih-separator {
+    display: none;
+  }
+
+  .island-header .ih-btn-group {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .island-header .ibtn,
+  .island-header .ih-avatar-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .island-header .ih-right {
+    gap: 4px;
+  }
+}
+
+/* ================================================================
+   MOBILE NAV PARITY + NAV TYPOGRAPHY
+   Keep the same cyan/violet wayfinding language across the dock,
+   drawer, desktop sidebar, and floating header at every breakpoint.
+   ================================================================ */
+
+.island-sidebar .inav-label,
+.island-sidebar .u-role,
+.island-header .ih-titles,
+.island-header .greeting-title,
+.mobile-bottom-dock .dock-label,
+.mobile-drawer .drawer-nav-label,
+.mobile-drawer .drawer-section-title,
+.mobile-drawer .drawer-tool-chip,
+.mobile-drawer .drawer-pref-btn,
+.island-dropdown .drp-label,
+.island-dropdown .drp-btn,
+.island-dropdown .drp-link {
+  font-family: var(--font-body);
+}
+
+.mobile-bottom-dock {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--glass-2) 88%, var(--nav-primary) 12%), color-mix(in srgb, var(--glass-1) 88%, var(--nav-secondary) 12%));
+  border-color: var(--nav-border);
+  box-shadow: var(--glass-shadow), 0 0 30px rgba(var(--nav-primary-rgb), 0.14);
+}
+
+.mobile-bottom-dock .dock-item {
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+}
+
+.mobile-bottom-dock .dock-item.active,
+.mobile-bottom-dock .dock-item.active .dock-label,
+.mobile-bottom-dock .dock-item.active .dock-icon {
+  color: var(--nav-primary);
+}
+
+.mobile-bottom-dock .dock-active-dot {
+  background: linear-gradient(135deg, rgba(var(--nav-primary-rgb), 0.14), rgba(var(--nav-secondary-rgb), 0.10));
+  border-color: rgba(var(--nav-primary-rgb), 0.30);
+  box-shadow: 0 0 18px rgba(var(--nav-primary-rgb), 0.16);
+}
+
+.mobile-bottom-dock .dock-item:not(.active):hover {
+  color: var(--nav-primary);
+}
+
+.mobile-drawer .drawer-nav-label,
+.mobile-drawer .drawer-tool-chip,
+.mobile-drawer .drawer-pref-btn {
+  color: var(--text-secondary);
+}
+
+.mobile-drawer .drawer-nav-item.active .drawer-nav-label,
+.mobile-drawer .drawer-nav-item.active {
+  color: var(--nav-active-text);
+}
+
+.mobile-drawer .drawer-tool-chip:hover,
+.mobile-drawer .drawer-pref-btn:hover {
+  color: var(--nav-primary);
+}
+
+@media (max-width: 1024px) {
+  .island-main {
+    min-width: 0;
+  }
+
+  .island-header {
+    z-index: var(--z-nav, 1000);
+  }
+
+  .island-header .ih-left,
+  .island-header .ih-right {
+    min-width: 0;
+  }
+
+  .island-header .ih-titles h1,
+  .island-header .greeting-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-bottom-dock {
+    z-index: var(--z-nav, 1000);
+  }
+}
+
+@media (max-width: 640px) {
+  .island-header .ih-titles h1,
+  .island-header .greeting-title {
+    font-size: clamp(1rem, 4.5vw, 1.2rem);
+  }
+
+  .mobile-bottom-dock {
+    padding-inline: 6px;
+  }
+
+  .mobile-bottom-dock .dock-item {
+    max-width: none;
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  .mobile-bottom-dock .dock-label {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: clamp(0.50rem, 2vw, 0.62rem);
+    letter-spacing: -0.015em;
+  }
+}
+
+@media (max-width: 375px) {
+  .mobile-bottom-dock .dock-label {
+    display: block;
+    font-size: 0.50rem;
+  }
+
+  .mobile-bottom-dock .dock-icon-wrapper {
+    width: 32px;
+    height: 29px;
+  }
+}
+
+/* ================================================================
+   TRANSACTION PANE GUARDRAILS
+   Keep the empty state and its summary cards inside the detail pane at
+   narrow desktop widths and on phones. The original flex children could
+   keep their min-content width, which clipped the last card.
+   ================================================================ */
+
+.inbox-split-pane,
+.inbox-detail-pane,
+.idp-empty,
+.idp-quick-stats,
+.iqs-box {
+  min-width: 0;
+}
+
+.inbox-detail-pane {
+  overflow-x: hidden;
+  container-type: inline-size;
+}
+
+.idp-empty {
+  width: 100%;
+  max-width: 100%;
+  padding-inline: clamp(18px, 3vw, 42px);
+}
+
+.idp-quick-stats {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(8px, 1.4vw, 16px);
+  width: 100%;
+  max-width: 500px;
+}
+
+.idp-quick-stats .iqs-box {
+  width: 100%;
+  min-width: 0;
+  padding: 18px 10px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.idp-quick-stats .iqs-box label,
+.idp-quick-stats .iqs-box span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .inbox-split-pane {
+    flex-direction: column;
+  }
+
+  .inbox-list-pane,
+  .inbox-detail-pane {
+    width: 100%;
+    flex: none;
+  }
+
+  .inbox-list-pane {
+    height: 500px;
+  }
+
+  .inbox-detail-pane {
+    min-height: 460px;
+  }
+}
+
+/* An expanded desktop sidebar leaves too little room for a two-pane inbox
+   at medium widths. Stack the panes before their content becomes cramped. */
+@media (min-width: 901px) and (max-width: 1200px) {
+  .island-sidebar.open + .island-main .inbox-split-pane {
+    flex-direction: column;
+  }
+
+  .island-sidebar.open + .island-main .inbox-list-pane,
+  .island-sidebar.open + .island-main .inbox-detail-pane {
+    width: 100%;
+    flex: none;
+  }
+
+  .island-sidebar.open + .island-main .inbox-list-pane {
+    height: 500px;
+  }
+
+  .island-sidebar.open + .island-main .inbox-detail-pane {
+    min-height: 460px;
+  }
+}
+
+@container (max-width: 300px) {
+  .idp-quick-stats {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 180px;
+  }
+}
+
+@media (max-width: 640px) {
+  .inbox-split-pane {
+    gap: 16px;
+  }
+
+  .inbox-list-pane {
+    height: 430px;
+  }
+
+  .inbox-detail-pane {
+    min-height: 420px;
+  }
+
+  .idp-empty {
+    padding-inline: 14px;
+  }
+
+  .idp-quick-stats {
+    gap: 8px;
+  }
+
+  .idp-quick-stats .iqs-box {
+    padding: 14px 7px;
+    border-radius: 16px;
+  }
+
+  .idp-quick-stats .iqs-box label {
+    font-size: 0.64rem;
+  }
+
+  .idp-quick-stats .iqs-box span {
+    font-size: 1rem;
+  }
+}
+
+/* Keep common currency values readable inside compact summary cards. */
+.idp-empty .idp-quick-stats .iqs-box span {
+  font-size: clamp(0.9rem, 1.5vw, 1.1rem);
+  letter-spacing: -0.04em;
+}
+
+/* ================================================================
+   HEADER ALIGNMENT
+   The header now uses the page title as its single left-side anchor.
+   Keep both sides centered and prevent long titles or controls from
+   pushing the pill out of alignment at smaller widths.
+   ================================================================ */
+
+.island-header {
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(10px, 2vw, 24px);
+}
+
+.island-header .ih-left {
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+}
+
+.island-header .ih-titles {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.island-header .ih-titles h1 {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.15;
+}
+
+.island-header .ih-right {
+  flex: 0 0 auto;
+  align-items: center;
+  gap: clamp(4px, 1vw, 10px);
+}
+
+.island-header .ih-btn-group {
+  flex-shrink: 1;
+}
+
+.island-header .ih-balance,
+.stat-value,
+.idp-amount,
+.ili-amount span,
+.mc-saved,
+.mc-target {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1024px) {
+  .island-header {
+    top: 10px;
+    width: calc(100% - 24px);
+    margin: 0 12px 10px;
+    padding: 9px 12px 9px 14px;
+    min-height: 60px;
+  }
+
+  .island-header .ih-left {
+    gap: 9px;
+  }
+
+  .island-header .ih-titles h1 {
+    max-width: 52vw;
+  }
+}
+
+@media (max-width: 640px) {
+  .island-header {
+    width: calc(100% - 20px);
+    margin: 0 10px 10px;
+    padding: 7px 9px 7px 11px;
+    min-height: 58px;
+  }
+
+  .island-header .ih-titles h1 {
+    max-width: 62vw;
+    font-size: clamp(1rem, 4.5vw, 1.2rem);
+  }
+
+  .island-header .ih-right {
+    gap: 4px;
+  }
+
+  /* Keep the floating header focused on the page title and theme control.
+     Navigation, alerts, profile, and utilities remain available from the dock/drawer. */
+  .island-header .alert-btn,
+  .island-header .ih-avatar-btn {
+    display: none;
+  }
+
+  .mobile-bottom-dock {
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    width: auto;
+    padding-inline: 6px;
+  }
+
+  .mobile-bottom-dock .dock-item {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+/* ================================================================
+   MOBILE FINISHING PASS
+   Keep compact controls legible without letting labels or profile fields
+   overflow the phone viewport. These rules intentionally come last so
+   they take precedence over the earlier responsive defaults.
+   ================================================================ */
+
+.profile-name-row {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+}
+
+.profile-name-row .form-field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.profile-name-row input,
+.profile-name-row select,
+.profile-name-row textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.profile-color-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+}
+
+.profile-color-options > button {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .profile-name-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .profile-color-options {
+    gap: 8px;
+  }
+
+  .profile-color-options > button {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .island-header .ih-btn-group {
+    gap: 2px;
+    padding: 4px 6px;
+  }
+
+  .island-header .ibtn {
+    width: 34px;
+    height: 34px;
+    font-size: 0.92rem;
+  }
+
+  .mobile-bottom-dock {
+    height: 68px;
+    padding: 4px 6px;
+    border-radius: 20px;
+  }
+
+  .mobile-bottom-dock .dock-item {
+    height: 60px;
+    min-height: 60px;
+    gap: 1px;
+    border-radius: 14px;
+  }
+
+  .mobile-bottom-dock .dock-icon-wrapper {
+    width: 30px;
+    height: 26px;
+    border-radius: 8px;
+  }
+
+  .mobile-bottom-dock .dock-icon {
+    width: 17px;
+    height: 17px;
+  }
+
+  .mobile-bottom-dock .dock-label {
+    max-width: 100%;
+    font-size: 0.55rem;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  .mobile-bottom-dock .dock-active-dot {
+    inset: 1px;
+    border-radius: 10px;
+  }
+
+  /* Goals and dashboard summaries remain swipeable, but no longer dominate
+     a narrow phone or expose oversized clipped cards. */
+  .carousel-wrapper {
+    margin-inline: 0;
+    padding-left: 0;
+    padding-right: 4px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .carousel-wrapper::-webkit-scrollbar {
+    display: none;
+  }
+
+  .carousel-track {
+    gap: 10px;
+  }
+
+  .carousel-item {
+    flex-basis: 190px;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .carousel-item .ci-icon-box {
+    width: 36px;
+    height: 36px;
+    font-size: 0.9rem;
+  }
+
+  .carousel-item .ci-info .ci-val {
+    font-size: 1.15rem;
+  }
+
+  .carousel-item .ci-info .ci-lbl {
+    font-size: 0.62rem;
+    line-height: 1.2;
+  }
+}
+
+@media (max-width: 375px) {
+  .mobile-bottom-dock {
+    height: 64px;
+    padding: 3px 4px;
+  }
+
+  .mobile-bottom-dock .dock-item {
+    height: 56px;
+    min-height: 56px;
+  }
+
+  .mobile-bottom-dock .dock-label {
+    font-size: 0.5rem;
+  }
+}
+
+/* ================================================================
+   PREMIUM CONTRAST PASS
+   Separate the application canvas from its raised containers. Light mode
+   uses a cool mist background; AMOLED uses true black outside and layered
+   charcoal panels inside. Finance semantics (income/expense) stay intact,
+   while the account balance gets its own calm blue focus color.
+   ================================================================ */
+
+[data-theme="light"] {
+  --surface-0: #edf2f8;
+  --surface-1: #ffffff;
+  --surface-2: #e5ebf3;
+  --surface-3: #d8e2ee;
+  --glass-1: rgba(255, 255, 255, 0.78);
+  --glass-2: rgba(255, 255, 255, 0.91);
+  --glass-3: rgba(255, 255, 255, 0.98);
+  --glass-border: rgba(26, 52, 84, 0.13);
+  --glass-border-hover: rgba(37, 99, 235, 0.34);
+  --glass-border-active: rgba(37, 99, 235, 0.54);
+  --text-primary: #14233a;
+  --text-secondary: #50627a;
+  --text-muted: #7b8ba1;
+  --text-dim: #a9b7c9;
+  --brand-primary: #2563eb;
+  --brand-secondary: #7c3aed;
+  --brand-accent: #0891b2;
+  --brand-primary-rgb: 37, 99, 235;
+  --brand-secondary-rgb: 124, 58, 237;
+  --brand-accent-rgb: 8, 145, 178;
+  --brand-gradient: linear-gradient(135deg, #2563eb 0%, #0891b2 55%, #7c3aed 100%);
+  --brand-gradient-vibrant: linear-gradient(135deg, #3b82f6 0%, #06b6d4 56%, #8b5cf6 100%);
+  --brand-glow: rgba(37, 99, 235, 0.22);
+  --balance-accent: #2563eb;
+  --balance-accent-rgb: 37, 99, 235;
+  --sidebar-bg: rgba(255, 255, 255, 0.9);
+  --bg-gradient:
+    radial-gradient(ellipse at 0% 0%, rgba(37, 99, 235, 0.09) 0%, transparent 47%),
+    radial-gradient(ellipse at 100% 7%, rgba(124, 58, 237, 0.075) 0%, transparent 42%),
+    radial-gradient(ellipse at 80% 100%, rgba(8, 145, 178, 0.07) 0%, transparent 42%),
+    linear-gradient(145deg, #f8fafc 0%, #edf2f8 55%, #e7edf5 100%);
+  --ambient-base: #edf2f8;
+  --ambient-mid: rgba(229, 235, 243, 0.94);
+  --ambient-accent: rgba(216, 226, 238, 0.9);
+  --glass-shadow: 0 18px 44px rgba(31, 55, 87, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --glass-shadow-hover: 0 24px 56px rgba(31, 55, 87, 0.15), 0 0 0 1px rgba(37, 99, 235, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.98);
+  --shadow-brand: 0 12px 30px rgba(37, 99, 235, 0.24);
+}
+
+[data-theme="amoled"] {
+  --surface-0: #000000;
+  --surface-1: #0c121d;
+  --surface-2: #111b2a;
+  --surface-3: #17243a;
+  --glass-1: rgba(12, 18, 29, 0.9);
+  --glass-2: rgba(18, 28, 44, 0.96);
+  --glass-3: rgba(25, 38, 59, 0.99);
+  --glass-border: rgba(145, 194, 255, 0.16);
+  --glass-border-hover: rgba(86, 184, 255, 0.42);
+  --glass-border-active: rgba(125, 211, 252, 0.64);
+  --text-primary: #f4f8ff;
+  --text-secondary: #a7b8ce;
+  --text-muted: #788ba5;
+  --text-dim: #52647d;
+  --brand-primary: #38bdf8;
+  --brand-secondary: #a78bfa;
+  --brand-accent: #22d3ee;
+  --brand-primary-rgb: 56, 189, 248;
+  --brand-secondary-rgb: 167, 139, 250;
+  --brand-accent-rgb: 34, 211, 238;
+  --brand-gradient: linear-gradient(135deg, #38bdf8 0%, #22d3ee 55%, #8b5cf6 100%);
+  --brand-gradient-vibrant: linear-gradient(135deg, #7dd3fc 0%, #22d3ee 55%, #a78bfa 100%);
+  --brand-glow: rgba(56, 189, 248, 0.28);
+  --balance-accent: #7dd3fc;
+  --balance-accent-rgb: 125, 211, 252;
+  --sidebar-bg: #070c14;
+  --bg-gradient:
+    radial-gradient(ellipse at 0% 0%, rgba(56, 189, 248, 0.11) 0%, transparent 40%),
+    radial-gradient(ellipse at 100% 4%, rgba(139, 92, 246, 0.12) 0%, transparent 38%),
+    radial-gradient(ellipse at 75% 100%, rgba(34, 211, 238, 0.06) 0%, transparent 42%),
+    linear-gradient(145deg, #000000 0%, #02050a 55%, #040914 100%);
+  --ambient-base: #000000;
+  --ambient-mid: #050911;
+  --ambient-accent: #091322;
+  --glass-shadow: 0 24px 72px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --glass-shadow-hover: 0 28px 86px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(125, 211, 252, 0.13), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-brand: 0 14px 38px rgba(56, 189, 248, 0.2);
+}
+
+body {
+  background-color: var(--surface-0);
+  background-image: var(--bg-gradient);
+  color: var(--text-primary);
+}
+
+.app-island-layout {
+  background: transparent;
+}
+
+.island-main {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-1) 94%, transparent), color-mix(in srgb, var(--surface-2) 38%, var(--surface-1) 62%));
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.island-sidebar {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-1) 94%, transparent), color-mix(in srgb, var(--surface-2) 60%, var(--surface-1) 40%));
+  border-color: var(--glass-border);
+}
+
+.island-header {
+  background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+  border-color: var(--glass-border);
+  box-shadow: 0 12px 32px rgba(20, 44, 78, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.bento-tile,
+.stat-card.glass,
+.inbox-list-pane,
+.inbox-detail-pane,
+.settings-card,
+.auth-card,
+.modal-box {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--surface-1) 98%, transparent), color-mix(in srgb, var(--surface-2) 34%, var(--surface-1) 66%));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.bento-tile:hover,
+.stat-card.glass:hover,
+.settings-card:hover {
+  background: var(--glass-3);
+  border-color: var(--glass-border-hover);
+  box-shadow: var(--glass-shadow-hover);
+}
+
+.bento-dashboard .bento-hero {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--surface-1) 88%, var(--balance-accent) 12%), color-mix(in srgb, var(--surface-2) 68%, var(--balance-accent) 32%));
+  border-color: rgba(var(--balance-accent-rgb), 0.34);
+  border-top-color: rgba(var(--balance-accent-rgb), 0.62);
+}
+
+.bento-dashboard .bento-hero .bh-label,
+.bento-dashboard .bento-hero .bh-icon {
+  color: var(--balance-accent);
+}
+
+.bento-dashboard .bento-hero .bh-mid h2 {
+  text-shadow: 0 10px 28px rgba(var(--balance-accent-rgb), 0.2);
+}
+
+.stat-card.glass .stat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.bbtn-icon,
+.bt-icon-btn,
+.island-header .ibtn {
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.bento-header {
+  gap: 16px;
+}
+
+.bento-grid {
+  gap: 20px;
+}
+
+@media (min-width: 1025px) {
+  .island-page {
+    padding: 30px clamp(22px, 3vw, 44px) 48px;
+  }
+
+  .bento-tile,
+  .stat-card.glass {
+    padding: 24px;
+    border-radius: 22px;
+  }
+}
+
+@media (max-width: 767px) {
+  .island-main {
+    background: var(--surface-0);
+  }
+
+  .island-header {
+    box-shadow: 0 10px 28px rgba(20, 44, 78, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+
+  .bento-grid {
+    gap: 12px;
+  }
+
+  .bento-tile,
+  .stat-card.glass {
+    border-radius: 18px;
+  }
+
+  .mobile-bottom-dock {
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    width: auto;
+    height: 64px;
+    padding: 3px 5px;
+    border-radius: 19px;
+    background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+    border: 1px solid var(--glass-border-active);
+    box-shadow: 0 18px 44px rgba(12, 35, 70, 0.16), var(--glass-shadow);
+  }
+
+  .mobile-bottom-dock .dock-item {
+    height: 56px;
+    min-height: 56px;
+    max-width: none;
+    padding: 3px 2px;
+    gap: 1px;
+    border-radius: 13px;
+  }
+
+  .mobile-bottom-dock .dock-icon-wrapper {
+    width: 28px;
+    height: 24px;
+    border-radius: 8px;
+  }
+
+  .mobile-bottom-dock .dock-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .mobile-bottom-dock .dock-label {
+    font-size: 0.53rem;
+    line-height: 1;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 375px) {
+  .mobile-bottom-dock {
+    height: 60px;
+    padding: 2px 4px;
+  }
+
+  .mobile-bottom-dock .dock-item {
+    height: 54px;
+    min-height: 54px;
+  }
+
+  .mobile-bottom-dock .dock-label {
+    font-size: 0.49rem;
+  }
+}
+
+[data-theme="amoled"] .island-main {
+  background: linear-gradient(180deg, #080e18 0%, #04070d 100%);
+  border-color: rgba(125, 211, 252, 0.1);
+}
+
+[data-theme="amoled"] .island-sidebar {
+  background: linear-gradient(180deg, #0a101b 0%, #050910 100%);
+  border-color: rgba(125, 211, 252, 0.13);
+}
+
+[data-theme="amoled"] .island-header {
+  background: linear-gradient(180deg, #101a29 0%, #0b121e 100%);
+  border-color: rgba(125, 211, 252, 0.18);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+[data-theme="amoled"] .bento-tile,
+[data-theme="amoled"] .stat-card.glass,
+[data-theme="amoled"] .inbox-list-pane,
+[data-theme="amoled"] .inbox-detail-pane,
+[data-theme="amoled"] .settings-card,
+[data-theme="amoled"] .auth-card,
+[data-theme="amoled"] .modal-box {
+  background: linear-gradient(145deg, #111c2b 0%, #0a111d 100%);
+  border-color: rgba(145, 194, 255, 0.16);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.54), inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+[data-theme="amoled"] .bento-tile:hover,
+[data-theme="amoled"] .stat-card.glass:hover,
+[data-theme="amoled"] .settings-card:hover {
+  background: linear-gradient(145deg, #17263b 0%, #0d1726 100%);
+  border-color: rgba(125, 211, 252, 0.34);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.68), 0 0 0 1px rgba(125, 211, 252, 0.08);
+}
+
+[data-theme="amoled"] .bento-dashboard .bento-hero {
+  background: linear-gradient(145deg, #142b42 0%, #0d1727 58%, #0a111d 100%);
+  border-color: rgba(125, 211, 252, 0.32);
+  border-top-color: rgba(125, 211, 252, 0.68);
+}
+
+[data-theme="amoled"] .mobile-bottom-dock {
+  background: linear-gradient(145deg, #121f31 0%, #080e18 100%);
+  border-color: rgba(125, 211, 252, 0.3);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.74), 0 0 26px rgba(56, 189, 248, 0.09);
+}
+
+/* Legacy light-mode selectors are intentionally repeated with the theme
+   ancestor so the new canvas/container separation wins by specificity. */
+[data-theme="light"] .app-island-layout {
+  background: var(--surface-0);
+}
+
+[data-theme="light"] .island-main {
+  background: linear-gradient(180deg, #f8fafc 0%, #eef3f8 100%);
+  border-color: var(--glass-border);
+  box-shadow: 0 18px 44px rgba(31, 55, 87, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+[data-theme="light"] .island-header {
+  background: linear-gradient(180deg, #ffffff 0%, #f5f8fc 100%);
+  border-color: rgba(37, 99, 235, 0.2);
+  box-shadow: 0 12px 30px rgba(31, 55, 87, 0.1), inset 0 1px 0 #ffffff;
+}
+
+[data-theme="light"] .bento-tile,
+[data-theme="light"] .stat-card.glass,
+[data-theme="light"] .inbox-list-pane,
+[data-theme="light"] .inbox-detail-pane,
+[data-theme="light"] .settings-card,
+[data-theme="light"] .auth-card,
+[data-theme="light"] .modal-box {
+  background: linear-gradient(145deg, #ffffff 0%, #f3f6fb 100%);
+  border-color: rgba(26, 52, 84, 0.13);
+  box-shadow: 0 16px 38px rgba(31, 55, 87, 0.1), inset 0 1px 0 #ffffff;
+}
+
+[data-theme="light"] .bento-tile:hover,
+[data-theme="light"] .stat-card.glass:hover,
+[data-theme="light"] .settings-card:hover {
+  background: #ffffff;
+  border-color: rgba(37, 99, 235, 0.32);
+  box-shadow: 0 22px 48px rgba(31, 55, 87, 0.15), 0 0 0 1px rgba(37, 99, 235, 0.06);
+}

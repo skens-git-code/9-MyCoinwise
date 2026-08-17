@@ -384,10 +384,10 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
                   onChange={e => setDate(e.target.value)}
                   disabled={isSubmitting}
                   aria-required="true"
+                  className="date-input"
                   style={{ 
                     fontSize: '0.9rem', 
                     fontWeight: 600,
-                    colorScheme: 'dark',
                     opacity: isSubmitting ? 0.7 : 1
                   }}
                 />

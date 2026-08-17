@@ -7,7 +7,7 @@ const checkOwnership = (paramName = 'userId') => {
     if (!targetId) return next();
     
     // Ensure the requested target ID matches the authenticated user's ID
-    if (targetId !== req.user.id) {
+    if (String(targetId) !== String(req.user.id)) {
       return res.status(403).json({ error: 'Access denied: You do not have permission to access or modify this resource.' });
     }
     
