@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, User as UserIcon, Sparkles, Loader } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -14,7 +14,7 @@ const AIChat = () => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async (e) => {
+  const handleSend = useCallback(async (e) => {
     e?.preventDefault();
     if (!input.trim() || isLoading) return;
 
@@ -49,7 +49,7 @@ const AIChat = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [input, isLoading, messages]);
 
   return (
     <div className="ai-chat-container">
@@ -88,7 +88,7 @@ const AIChat = () => {
           onChange={(e) => setInput(e.target.value)}
           disabled={isLoading}
         />
-        <button type="submit" className="send-btn" disabled={!input.trim() || isLoading}>
+        <button type="submit" className="send-btn" disabled={!input.trim() || isLoading} aria-label="Send message">
           <Send size={18} />
         </button>
       </form>

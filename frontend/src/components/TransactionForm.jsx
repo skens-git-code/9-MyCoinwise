@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check } from 'lucide-react';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
+import Modal from './Modal';
 
 const CATEGORIES = {
   income: ['Allowance', 'Job', 'Gift', 'Sale', 'Other'],
@@ -45,25 +46,46 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
   });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  const modalRef = useRef(null);
+
+  // Focus trap
+  useEffect(() => {
+    const focusable = modalRef.current?.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable && focusable.length) {
+      // Find the autoFocus input if it exists, otherwise focus first element
+      const autoFocusEl = Array.from(focusable).find(el => el.hasAttribute('autofocus'));
+      if (autoFocusEl) autoFocusEl.focus();
+      else focusable[0].focus();
+      
+      const handleTab = (e) => {
+        if (e.key !== 'Tab') return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      };
+      
+      document.addEventListener('keydown', handleTab);
+      return () => document.removeEventListener('keydown', handleTab);
+    }
+  }, []);
 
   // Update categories when type changes
   useEffect(() => {
-    // When type changes, we need to handle category selection carefully
-    if (CATEGORIES[type]) {
-      // Check if current category exists in the new type's categories
-      const categoryExists = CATEGORIES[type].includes(category);
-      
-      if (!categoryExists) {
-        // If editing and we have initial data, try to preserve original category
-        if (initialData && initialData.type === type && CATEGORIES[type].includes(initialData.category)) {
-          setCategory(initialData.category);
-        } else {
-          // Otherwise set to first category of the new type
-          setCategory(CATEGORIES[type][0]);
-        }
-      }
+    if (initialData && initialData.type === type && CATEGORIES[type].includes(initialData.category)) {
+      setCategory(initialData.category);
+    } else {
+      setCategory(CATEGORIES[type][0]);
     }
-  }, [type, initialData, category]);
+  }, [type, initialData]);
 
   // Validate amount input
   const handleAmountChange = useCallback((e) => {
@@ -181,7 +203,7 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
         amount: amt,
         category,
         note: note.trim(),
-        date: new Date(date).toISOString() // Store as ISO string for consistency
+        date // Date inputs already provide the API-safe YYYY-MM-DD representation
       };
       
       await onSubmit(transactionData);
@@ -204,9 +226,7 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
     const isDirty = (initialData === null) && (amount !== '' || note !== '');
     
     if (isDirty) {
-      if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
-        onClose();
-      }
+      setShowUnsavedModal(true);
     } else {
       onClose();
     }
@@ -220,7 +240,8 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
   }, [initialData, type]);
 
   return (
-    <AnimatePresence>
+    <>
+      <AnimatePresence>
       <motion.div 
         className="modal-overlay"
         initial={{ opacity: 0 }}
@@ -229,6 +250,10 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
         onClick={handleCancel}
       >
         <motion.div 
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={initialData ? 'Edit Transaction' : 'New Transaction'}
           className="modal-box glass"
           initial={{ scale: 0.88, y: 24 }}
           animate={{ scale: 1, y: 0 }}
@@ -340,6 +365,7 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
                     placeholder="0.00"
                     autoFocus={!initialData}
                     disabled={isSubmitting}
+                    aria-required="true"
                     style={{ 
                       paddingLeft: 28, 
                       fontSize: '1.1rem', 
@@ -357,6 +383,7 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
                   value={date}
                   onChange={e => setDate(e.target.value)}
                   disabled={isSubmitting}
+                  aria-required="true"
                   style={{ 
                     fontSize: '0.9rem', 
                     fontWeight: 600,
@@ -373,6 +400,7 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
                 value={category} 
                 onChange={e => setCategory(e.target.value)}
                 disabled={isSubmitting}
+                aria-required="true"
                 style={{ opacity: isSubmitting ? 0.7 : 1 }}
               >
                 <option value="">Select category...</option>
@@ -443,6 +471,19 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
           </form>
         </motion.div>
       </motion.div>
-    </AnimatePresence>
+      </AnimatePresence>
+      <Modal
+        isOpen={showUnsavedModal}
+        title="Discard Changes?"
+        onClose={() => setShowUnsavedModal(false)}
+        onConfirm={onClose}
+        confirmText="Discard"
+        danger={true}
+      >
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+          You have unsaved changes. Are you sure you want to close without saving?
+        </p>
+      </Modal>
+    </>
   );
 }

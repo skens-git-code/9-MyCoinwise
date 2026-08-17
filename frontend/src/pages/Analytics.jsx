@@ -1,6 +1,6 @@
 import React, { useContext, useMemo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, LineChart, Line, AreaChart, Area
@@ -59,8 +59,7 @@ const CustomTooltip = ({ active, payload, label, isDark, fmt }) => {
 
 // Main Component
 export default function Analytics() {
-  const { transactions, theme, fmt } = useContext(AppContext);
-  const [dateRange, setDateRange] = useState({ start: null, end: null });
+  const { transactions, theme, fmt, isBackgroundSyncing } = useContext(AppContext);
   const [chartType, setChartType] = useState('bar'); // 'bar', 'line'
   const [showComparative, setShowComparative] = useState(false);
   
@@ -72,15 +71,8 @@ export default function Analytics() {
     
     let filtered = transactions.filter(validateTransaction);
     
-    if (dateRange.start) {
-      filtered = filtered.filter(t => new Date(t.date) >= dateRange.start);
-    }
-    if (dateRange.end) {
-      filtered = filtered.filter(t => new Date(t.date) <= dateRange.end);
-    }
-    
     return filtered;
-  }, [transactions, dateRange]);
+  }, [transactions]);
   
   // Memoized summary calculations
   const summary = useMemo(() => {
@@ -93,7 +85,8 @@ export default function Analytics() {
       .reduce((sum, t) => sum + safeParseAmount(t.amount), 0);
     
     const netSavings = totalIncome - totalExpense;
-    const savingsRate = totalIncome > 0 ? ((netSavings / totalIncome) * 100) : 0;
+    let savingsRate = totalIncome > 0 ? ((netSavings / totalIncome) * 100) : 0;
+    if (Number.isNaN(savingsRate)) savingsRate = 0;
     const avgTransaction = filteredTransactions.length > 0 
       ? (totalIncome + totalExpense) / filteredTransactions.length 
       : 0;
@@ -256,10 +249,7 @@ export default function Analytics() {
   const topExpenseCategory = expenseCategories[0]?.name || 'N/A';
   const topIncomeCategory = incomeCategories[0]?.name || 'N/A';
   
-  // Reset date range handler
-  const resetDateRange = useCallback(() => {
-    setDateRange({ start: null, end: null });
-  }, []);
+
   
   // Export data handler
   const exportAnalytics = useCallback(() => {
@@ -283,12 +273,15 @@ export default function Analytics() {
   }, [summary, monthlyData, expenseCategories, incomeCategories, comparativeData]);
   
   // Loading state
-  if (!transactions) {
+  if (isBackgroundSyncing && transactions.length === 0) {
     return (
-      <div className="shared-page">
-        <div className="loading-state">
-          <div className="spinner"></div>
-          <p>Loading analytics data...</p>
+      <div className="masonry-layout-page" style={{ opacity: 0.7 }}>
+        <div className="masonry-header shimmer" style={{ height: 60, borderRadius: 16, marginBottom: 24 }}></div>
+        <div className="masonry-grid" style={{ gridTemplateColumns: 'minmax(300px, 1fr)', gap: 24 }}>
+          <div className="glass bento-tile shimmer" style={{ height: 240, borderRadius: 24 }}></div>
+          <div className="glass bento-tile shimmer" style={{ height: 180, borderRadius: 24 }}></div>
+          <div className="glass bento-tile shimmer" style={{ height: 320, borderRadius: 24 }}></div>
+          <div className="glass bento-tile shimmer" style={{ height: 300, borderRadius: 24 }}></div>
         </div>
       </div>
     );
@@ -305,9 +298,7 @@ export default function Analytics() {
           <button onClick={exportAnalytics} className="btn-secondary">
             📥 Export Data
           </button>
-          <button onClick={resetDateRange} className="btn-secondary">
-            Reset Filters
-          </button>
+
         </div>
       </div>
       
@@ -346,9 +337,7 @@ export default function Analytics() {
         <div className="insight-item">
           <span className="insight-label">📅 Period:</span>
           <span className="insight-value">
-            {dateRange.start && dateRange.end 
-              ? `${dateRange.start.toLocaleDateString()} - ${dateRange.end.toLocaleDateString()}`
-              : 'All Time'}
+            {'All Time'}
           </span>
         </div>
       </div>

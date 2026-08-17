@@ -7,6 +7,9 @@ const cors = require('cors');
 const morgan = require('morgan');
 const { body, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+const compression = require('compression');
+const { logger, auditLogger } = require('./utils/logger');
 const mongoose = require('./db');
 const excel = require('exceljs');
 const bcrypt = require('bcryptjs');
@@ -22,14 +25,67 @@ const LoginLog = require('./models/LoginLog');
 
 // ─── Middleware ─────────────────────────────────────────────────────────────
 const auth = require('./middleware/auth');
+const checkOwnership = require('./middleware/ownership');
 const wealthRoutes = require('./routes/wealth');
 const cashflowRoutes = require('./routes/cashflow');
 const aiRoutes = require('./routes/ai');
 const securityRoutes = require('./routes/security');
 
+const TRANSACTION_TYPES = new Set(['income', 'expense']);
+
+const parseTransactionAmount = (value) => {
+  const amount = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 999999999.99) return null;
+  if (Math.round(amount * 100) !== amount * 100) return null;
+  return amount;
+};
+
+const parseTransactionDate = (value) => {
+  if (value === undefined || value === null || value === '') return new Date();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getTransactionBalance = async (userId) => {
+  const [result] = await Transaction.aggregate([
+    { $match: { user_id: new mongoose.Types.ObjectId(userId), is_deleted: { $ne: true } } },
+    { $group: {
+      _id: null,
+      income: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
+      expense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } }
+    } }
+  ]);
+  return Number(((result?.income || 0) - (result?.expense || 0)).toFixed(2));
+};
+
+const syncUserBalance = async (userId) => {
+  const balance = await getTransactionBalance(userId);
+  await User.findByIdAndUpdate(userId, { $set: { balance } });
+  return balance;
+};
+
+const validateTransactionPayload = ({ type, category, amount, date, note }) => {
+  const numericAmount = parseTransactionAmount(amount);
+  if (!TRANSACTION_TYPES.has(type)) return { error: 'Type must be income or expense.' };
+  if (typeof category !== 'string' || !category.trim() || category.trim().length > 80) {
+    return { error: 'A valid category is required.' };
+  }
+  if (numericAmount === null) return { error: 'Amount must be a positive number with at most 2 decimals.' };
+  const parsedDate = parseTransactionDate(date);
+  if (!parsedDate) return { error: 'Date must be valid.' };
+  if (note !== undefined && note !== null && String(note).length > 500) {
+    return { error: 'Note must be 500 characters or fewer.' };
+  }
+  return { numericAmount, parsedDate };
+};
+
 // ─── Environment Validation ─────────────────────────────────────────────────
 if (!process.env.MONGO_URI) {
   console.warn('⚠️  MONGO_URI not set in .env — defaulting to mongodb://localhost:27017/MyCoinwise');
+}
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL ERROR: JWT_SECRET is not defined in the environment variables.');
+  process.exit(1);
 }
 
 const app = express();
@@ -59,8 +115,10 @@ app.use(cors({
 }));
 app.options(/.*/, cors()); // Handle all preflight OPTIONS requests explicitly
 app.use(morgan('dev'));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(helmet());
+app.use(compression());
+app.use(express.json({ limit: '5mb' })); // reduced limit from 50mb for security
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
@@ -91,8 +149,11 @@ app.post('/api/auth/register', [
   const { device_type, browser, os } = LoginLog.parseUserAgent(ua);
 
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: 'Database unavailable. Start MongoDB or configure a reachable MONGO_URI.' });
+    }
     const user = await User.create({ username, email, password, currency, profile_avatar, profile_color });
-    const token = jwt.sign({ id: user._id, session_version: user.session_version }, process.env.JWT_SECRET || 'jwt_secret_redacted', { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, session_version: user.session_version }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     await LoginLog.create({
       user_id: user._id, email, status: 'success', reason: 'registered',
@@ -170,7 +231,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // ✅ Successful login
     await user.resetLoginAttempts(ipAddr);
-    const token = jwt.sign({ id: user._id, session_version: user.session_version }, process.env.JWT_SECRET || 'jwt_secret_redacted', { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, session_version: user.session_version }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     await LoginLog.create({
       user_id: user._id, email, status: 'success', reason: 'login',
@@ -187,7 +248,9 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', auth, async (req, res) => {
   try {
+    await syncUserBalance(req.user.id);
     const user = await User.findById(req.user.id);
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.json(user);
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
@@ -197,13 +260,21 @@ app.get('/api/auth/me', auth, async (req, res) => {
 // View login logs for current user (auth protected)
 app.get('/api/auth/login-logs', auth, async (req, res) => {
   try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const skip = (page - 1) * limit;
+
     const logs = await LoginLog.find({ user_id: req.user.id })
       .sort({ created_at: -1 })
-      .limit(50)
+      .skip(skip)
+      .limit(limit)
       .select('-__v');
-    res.json(logs);
+    
+    const total = await LoginLog.countDocuments({ user_id: req.user.id });
+    res.json({ logs, total, page, limit });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -233,7 +304,7 @@ app.use('/api/security', auth, securityRoutes);
 // 1. Get all users (for user switcher - keeping for backward compat if needed, but really shouldn't be used now)
 app.get('/api/users', async (req, res) => {
   try {
-    const users = await User.find({}, 'username email balance theme monthly_goal currency profile_avatar profile_color').sort({ _id: 1 });
+    const users = await User.find({ _id: req.user.id }, 'username email balance theme monthly_goal currency profile_avatar profile_color').sort({ _id: 1 });
     res.json(users);
   } catch (error) {
     console.error(error);
@@ -242,12 +313,12 @@ app.get('/api/users', async (req, res) => {
 });
 
 // Switch user endpoint - returns new JWT for target user
-app.post('/api/users/:id/switch', auth, async (req, res) => {
+app.post('/api/users/:id/switch', auth, checkOwnership('id'), async (req, res) => {
   try {
     const targetId = req.params.id;
     const targetUser = await User.findById(targetId);
     if (!targetUser) return res.status(404).json({ error: 'User not found.' });
-    const newToken = jwt.sign({ id: targetId, session_version: targetUser.session_version }, process.env.JWT_SECRET || 'jwt_secret_redacted', { expiresIn: '7d' });
+    const newToken = jwt.sign({ id: targetId, session_version: targetUser.session_version }, process.env.JWT_SECRET, { expiresIn: '7d' });
     res.json({ token: newToken });
   } catch (error) {
     console.error(error);
@@ -256,7 +327,7 @@ app.post('/api/users/:id/switch', auth, async (req, res) => {
 });
 
 // 2. Get single user
-app.get('/api/users/:id', async (req, res) => {
+app.get('/api/users/:id', checkOwnership('id'), async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -290,28 +361,25 @@ app.post('/api/users', [
 });
 
 // 3.5 Delete user
-app.delete('/api/users/:id', async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+app.delete('/api/users/:id', checkOwnership('id'), async (req, res) => {
   try {
     const userId = req.params.id;
-    await Transaction.deleteMany({ user_id: userId }, { session });
-    await Goal.deleteMany({ user_id: userId }, { session });
-    await Subscription.deleteMany({ user_id: userId }, { session });
-    await User.findByIdAndDelete(userId, { session });
-    await session.commitTransaction();
+    await Transaction.deleteMany({ user_id: userId });
+    await Goal.deleteMany({ user_id: userId });
+    await Subscription.deleteMany({ user_id: userId });
+    await User.findByIdAndDelete(userId);
+    
+    auditLogger.info('User deleted account', { userId: req.user.id, targetId: userId, ip: req.ip });
+    
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
-    await session.abortTransaction();
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
-  } finally {
-    session.endSession();
   }
 });
 
 // 4. Update user settings (Atomic PATCH)
-app.patch('/api/users/:id/settings', [
+app.patch('/api/users/:id/settings', checkOwnership('id'), [
   body('username').optional().notEmpty().trim(),
   body('email').optional().isEmail().normalizeEmail()
 ], async (req, res) => {
@@ -339,7 +407,7 @@ app.patch('/api/users/:id/settings', [
 });
 
 // Legacy PUT route mapped simply for backwards-compatibility or replaced altogether
-app.put('/api/users/:id/settings', [
+app.put('/api/users/:id/settings', checkOwnership('id'), [
   body('username').optional().notEmpty().trim(),
   body('email').optional().isEmail().normalizeEmail()
 ], async (req, res) => {
@@ -369,7 +437,7 @@ app.put('/api/users/:id/settings', [
 });
 
 // 4.5. Notifications Preferences
-app.get('/api/users/:id/notifications', async (req, res) => {
+app.get('/api/users/:id/notifications', checkOwnership('id'), async (req, res) => {
   try {
     const user = await User.findById(req.params.id, 'notification_prefs');
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -384,7 +452,7 @@ app.get('/api/users/:id/notifications', async (req, res) => {
   }
 });
 
-app.put('/api/users/:id/notifications', async (req, res) => {
+app.put('/api/users/:id/notifications', checkOwnership('id'), async (req, res) => {
   try {
     await User.findByIdAndUpdate(req.params.id, { notification_prefs: req.body });
     res.json({ message: 'Notification preferences updated' });
@@ -395,7 +463,7 @@ app.put('/api/users/:id/notifications', async (req, res) => {
 });
 
 // 4.6 Advanced Preferences
-app.get('/api/users/:id/advanced-preferences', async (req, res) => {
+app.get('/api/users/:id/advanced-preferences', checkOwnership('id'), async (req, res) => {
   try {
     const user = await User.findById(req.params.id, 'advanced_prefs');
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -416,7 +484,7 @@ app.get('/api/users/:id/advanced-preferences', async (req, res) => {
   }
 });
 
-app.put('/api/users/:id/advanced-preferences', async (req, res) => {
+app.put('/api/users/:id/advanced-preferences', checkOwnership('id'), async (req, res) => {
   try {
     await User.findByIdAndUpdate(req.params.id, { advanced_prefs: req.body });
     res.json({ message: 'Advanced preferences updated' });
@@ -427,9 +495,18 @@ app.put('/api/users/:id/advanced-preferences', async (req, res) => {
 });
 
 // 5. Get user transactions
-app.get('/api/transactions/:userId', async (req, res) => {
+app.get('/api/transactions/:userId', checkOwnership('userId'), async (req, res) => {
   try {
-    const transactions = await Transaction.find({ user_id: req.params.userId }).sort({ date: -1 });
+    const limit = parseInt(req.query.limit, 10) || 2000;
+    const page = parseInt(req.query.page, 10) || 1;
+    const skip = (page - 1) * limit;
+
+    const transactions = await Transaction.find({ user_id: req.params.userId, is_deleted: { $ne: true } })
+      .sort({ date: -1 })
+      .skip(skip)
+      .limit(limit);
+    
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.json(transactions);
   } catch (error) {
     console.error(error);
@@ -441,115 +518,105 @@ app.get('/api/transactions/:userId', async (req, res) => {
 app.post('/api/transactions', async (req, res) => {
   const { type, category, amount, date, note } = req.body;
   const user_id = req.user.id;
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const txData = { user_id, type, category, amount, note: note || null };
-    if (date) txData.date = new Date(date);
+    const validation = validateTransactionPayload({ type, category, amount, date, note });
+    if (validation.error) return res.status(400).json({ error: validation.error });
+    const txData = {
+      user_id, type, category: category.trim(), amount: validation.numericAmount,
+      date: validation.parsedDate, note: note ? String(note).trim() : null
+    };
 
-    const [transaction] = await Transaction.create([txData], { session });
+    const transaction = await Transaction.create(txData);
 
-    const modifier = type === 'income' ? amount : -amount;
-    await User.findByIdAndUpdate(user_id, { $inc: { balance: modifier } }, { session });
+    const balance = await syncUserBalance(user_id);
 
-    await session.commitTransaction();
-    res.status(201).json({ id: transaction._id, message: 'Transaction added' });
+    res.status(201).json({ transaction, balance, message: 'Transaction added' });
   } catch (error) {
-    await session.abortTransaction();
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
-  } finally {
-    session.endSession();
   }
 });
 
 // 7. Edit transaction (amount, category, note, date, type)
 app.put('/api/transactions/:id', async (req, res) => {
   const { amount, category, note, date, type } = req.body;
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const t = await Transaction.findById(req.params.id).session(session);
+    const t = await Transaction.findById(req.params.id);
     if (!t) {
-      await session.abortTransaction();
       return res.status(404).json({ error: 'Transaction not found' });
     }
+    if (t.user_id.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
-    const reverseModifier = t.type === 'income' ? -Number(t.amount) : Number(t.amount);
-    const newType = type || t.type;
-    const newAmount = amount !== undefined ? Number(amount) : Number(t.amount);
-    const newModifier = newType === 'income' ? newAmount : -newAmount;
+    const next = {
+      type: type === undefined ? t.type : type,
+      category: category === undefined ? t.category : category,
+      amount: amount === undefined ? t.amount : amount,
+      date: date === undefined ? t.date : date,
+      note: note === undefined ? t.note : note
+    };
+    const validation = validateTransactionPayload(next);
+    if (validation.error) return res.status(400).json({ error: validation.error });
 
-    t.type = newType;
-    t.amount = newAmount;
-    t.category = category || t.category;
-    t.note = note !== undefined ? note : t.note;
-    t.date = date ? new Date(date) : t.date;
-    await t.save({ session });
+    t.type = next.type;
+    t.amount = validation.numericAmount;
+    t.category = next.category.trim();
+    t.note = next.note ? String(next.note).trim() : null;
+    t.date = validation.parsedDate;
+    await t.save();
 
-    await User.findByIdAndUpdate(t.user_id, { $inc: { balance: reverseModifier + newModifier } }, { session });
+    const balance = await syncUserBalance(t.user_id);
 
-    await session.commitTransaction();
-    res.json({ message: 'Transaction updated' });
+    res.json({ transaction: t, balance, message: 'Transaction updated' });
   } catch (error) {
-    await session.abortTransaction();
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
-  } finally {
-    session.endSession();
   }
 });
 
 // 8. Delete transaction
 app.delete('/api/transactions/:id', async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const t = await Transaction.findById(req.params.id).session(session);
+    const t = await Transaction.findById(req.params.id);
     if (!t) {
-      await session.abortTransaction();
       return res.status(404).json({ error: 'Transaction not found' });
     }
-    const modifier = t.type === 'income' ? -t.amount : t.amount;
-    await User.findByIdAndUpdate(t.user_id, { $inc: { balance: modifier } }, { session });
-    await Transaction.findByIdAndDelete(req.params.id, { session });
+    if (t.user_id.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    await Transaction.findByIdAndDelete(req.params.id);
+    const balance = await syncUserBalance(t.user_id);
 
-    await session.commitTransaction();
-    res.json({ message: 'Transaction deleted' });
+    res.json({ balance, message: 'Transaction deleted' });
   } catch (error) {
-    await session.abortTransaction();
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
-  } finally {
-    session.endSession();
   }
 });
 
-// 9. RESET — delete all transactions, goals, subscriptions, and reset balance to 0
-app.post('/api/users/:id/reset', async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+// 9. Reset user data
+app.post('/api/users/:id/reset', checkOwnership('id'), async (req, res) => {
   try {
     const userId = req.params.id;
-    await Transaction.deleteMany({ user_id: userId }, { session });
-    await Goal.deleteMany({ user_id: userId }, { session });
-    await Subscription.deleteMany({ user_id: userId }, { session });
-    await User.findByIdAndUpdate(userId, { balance: 0 }, { session });
-    await session.commitTransaction();
+    await Transaction.deleteMany({ user_id: userId });
+    await Goal.deleteMany({ user_id: userId });
+    await Subscription.deleteMany({ user_id: userId });
+    await User.findByIdAndUpdate(userId, { balance: 0 });
+    
+    auditLogger.info('User reset account', { userId: req.user.id, targetId: userId, ip: req.ip });
+    
     res.json({ message: 'Account reset successfully' });
   } catch (error) {
-    await session.abortTransaction();
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
-  } finally {
-    session.endSession();
   }
 });
 
 // --- GOALS API ---
 
 // G1. Get all goals for a user
-app.get('/api/goals/:userId', async (req, res) => {
+app.get('/api/goals/:userId', checkOwnership('userId'), async (req, res) => {
   try {
     const goals = await Goal.find({ user_id: req.params.userId }).sort({ created_at: 1 });
     res.json(goals);
@@ -584,7 +651,12 @@ app.post('/api/goals', async (req, res) => {
 // G3. Update goal saved amount
 app.put('/api/goals/:id', async (req, res) => {
   try {
-    await Goal.findByIdAndUpdate(req.params.id, { saved: req.body.saved });
+    const goal = await Goal.findById(req.params.id);
+    if (!goal) return res.status(404).json({ error: 'Goal not found' });
+    if (goal.user_id.toString() !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
+    goal.saved = req.body.saved;
+    await goal.save();
     res.json({ message: 'Goal updated' });
   } catch (error) {
     console.error(error);
@@ -595,6 +667,10 @@ app.put('/api/goals/:id', async (req, res) => {
 // G4. Delete a goal
 app.delete('/api/goals/:id', async (req, res) => {
   try {
+    const goal = await Goal.findById(req.params.id);
+    if (!goal) return res.status(404).json({ error: 'Goal not found' });
+    if (goal.user_id.toString() !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
     await Goal.findByIdAndDelete(req.params.id);
     res.json({ message: 'Goal deleted' });
   } catch (error) {
@@ -606,7 +682,7 @@ app.delete('/api/goals/:id', async (req, res) => {
 // --- SUBSCRIPTIONS API ---
 
 // S1. Get all subscriptions for a user
-app.get('/api/subscriptions/:userId', async (req, res) => {
+app.get('/api/subscriptions/:userId', checkOwnership('userId'), async (req, res) => {
   try {
     const subs = await Subscription.find({ user_id: req.params.userId }).sort({ created_at: 1 });
     res.json(subs);
@@ -642,6 +718,10 @@ app.post('/api/subscriptions', async (req, res) => {
 // S3. Delete a subscription
 app.delete('/api/subscriptions/:id', async (req, res) => {
   try {
+    const sub = await Subscription.findById(req.params.id);
+    if (!sub) return res.status(404).json({ error: 'Subscription not found' });
+    if (sub.user_id.toString() !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
     await Subscription.findByIdAndDelete(req.params.id);
     res.json({ message: 'Subscription deleted' });
   } catch (error) {
@@ -651,7 +731,7 @@ app.delete('/api/subscriptions/:id', async (req, res) => {
 });
 
 // 8. Calendar Events endpoints
-app.get('/api/events/:userId', async (req, res) => {
+app.get('/api/events/:userId', checkOwnership('userId'), async (req, res) => {
   try {
     const events = await Event.find({ user_id: req.params.userId }).sort({ date: 1 });
     res.json(events);
@@ -687,16 +767,18 @@ app.post('/api/events', [
 
 app.put('/api/events/:id', async (req, res) => {
   try {
-    const updateData = {};
-    if (req.body.title) updateData.title = req.body.title;
-    if (req.body.date) updateData.date = new Date(req.body.date);
-    if (req.body.type) updateData.type = req.body.type;
-    if (req.body.amount !== undefined) updateData.amount = req.body.amount;
-    if (req.body.description !== undefined) updateData.description = req.body.description;
-    if (req.body.color) updateData.color = req.body.color;
-
-    const event = await Event.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    const event = await Event.findById(req.params.id);
     if (!event) return res.status(404).json({ error: 'Event not found' });
+    if (event.user_id.toString() !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
+    if (req.body.title) event.title = req.body.title;
+    if (req.body.date) event.date = new Date(req.body.date);
+    if (req.body.type) event.type = req.body.type;
+    if (req.body.amount !== undefined) event.amount = req.body.amount;
+    if (req.body.description !== undefined) event.description = req.body.description;
+    if (req.body.color) event.color = req.body.color;
+
+    await event.save();
     res.json(event);
   } catch (error) {
     console.error(error);
@@ -706,8 +788,11 @@ app.put('/api/events/:id', async (req, res) => {
 
 app.delete('/api/events/:id', async (req, res) => {
   try {
-    const event = await Event.findByIdAndDelete(req.params.id);
+    const event = await Event.findById(req.params.id);
     if (!event) return res.status(404).json({ error: 'Event not found' });
+    if (event.user_id.toString() !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
+    await Event.findByIdAndDelete(req.params.id);
     res.json({ message: 'Event deleted' });
   } catch (error) {
     console.error(error);
@@ -716,7 +801,7 @@ app.delete('/api/events/:id', async (req, res) => {
 });
 
 // 9. Export logic Excel
-app.get('/api/export/:userId', async (req, res) => {
+app.get('/api/export/:userId', checkOwnership('userId'), async (req, res) => {
   try {
     const user = await User.findById(req.params.userId) || {};
     const currency = user.currency || 'USD';
@@ -772,9 +857,17 @@ app.get('/api/export/:userId', async (req, res) => {
   }
 });
 
+// ─── ERROR HANDLER MIDDLEWARE ────────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  logger.error(err.stack);
+  const status = err.status || 500;
+  const message = err.message || 'Internal Server Error';
+  res.status(status).json({ error: message });
+});
+
 const PORT = process.env.PORT || 5001;
 const server = app.listen(PORT, () => {
-  console.log(`🚀 MyCoinwise API running on port ${PORT}`);
+  logger.info(`🚀 MyCoinwise API running on port ${PORT}`);
 });
 
 // ─── Graceful Shutdown ───────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Activity, ArrowUpRight, ArrowDownRight, Wallet } from 'lucide-react';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
 
 export default function Calendar() {
@@ -82,7 +82,8 @@ export default function Calendar() {
       const isToday = new Date().toDateString() === new Date(currentDate.getFullYear(), currentDate.getMonth(), d).toDateString();
 
       calendarDays.push(
-        <div key={`day-${d}`} className={`cal-day ${isToday ? 'today' : ''}`} onClick={() => openDayDetails(key)}>
+        <div key={`day-${d}`} className={`cal-day ${isToday ? 'today' : ''}`} onClick={() => openDayDetails(key)}
+             role="button" tabIndex="0" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDayDetails(key); } }}>
           <span className="cal-date-num">{d}</span>
           {dayData && (
             <div className="cal-day-summaries">
@@ -105,10 +106,11 @@ export default function Calendar() {
     for (let d = 1; d <= daysInMonth; d++) {
       const key = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const dayData = txByDate[key] || { expense: 0 };
-      const heatLevel = Math.min(Math.ceil((dayData.expense / maxExpense) * 4), 4); // 0 to 4
+      const heatLevel = maxExpense === 0 ? 0 : Math.min(Math.ceil((dayData.expense / maxExpense) * 4), 4); // 0 to 4
 
       calendarDays.push(
-        <div key={`day-${d}`} className={`cal-day heatmap-level-${heatLevel}`} onClick={() => openDayDetails(key)} title={dayData.expense > 0 ? `Expense: ${fmt(dayData.expense)}` : 'No expenses'}>
+        <div key={`day-${d}`} className={`cal-day heatmap-level-${heatLevel}`} onClick={() => openDayDetails(key)} title={dayData.expense > 0 ? `Expense: ${fmt(dayData.expense)}` : 'No expenses'}
+             role="button" tabIndex="0" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDayDetails(key); } }}>
           <span className="cal-date-num">{d}</span>
         </div>
       );
@@ -221,9 +223,10 @@ export default function Calendar() {
 
               <div className="day-transactions-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
                 {(!txByDate[selectedDate] || txByDate[selectedDate].items.length === 0) ? (
-                  <div style={{ textAlign: 'center', padding: '2rem', opacity: 0.5 }}>
-                    <Wallet size={32} style={{ margin: '0 auto 10px' }} />
-                    <p>No transactions on this day.</p>
+                  <div className="glass empty-state" style={{ padding: '48px 24px', textAlign: 'center' }}>
+                    <Wallet size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 16px', opacity: 0.4 }} />
+                    <h3 style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>No Transactions</h3>
+                    <p style={{ color: 'var(--text-muted)' }}>No transactions on this day.</p>
                   </div>
                 ) : (
                   txByDate[selectedDate].items.map(tx => (

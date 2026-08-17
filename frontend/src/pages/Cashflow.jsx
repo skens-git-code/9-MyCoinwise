@@ -5,7 +5,7 @@ import {
   XAxis, YAxis, Tooltip, ReferenceLine
 } from 'recharts';
 import { AlertTriangle, Target, Zap, Activity, BrainCircuit, TrendingDown, CheckCircle } from 'lucide-react';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 
 // ─── Custom danger dot for the area chart ─────────────────────────────────────
 const CustomizedDot = ({ cx, cy, payload }) => {
@@ -84,14 +84,23 @@ export default function Cashflow() {
 
       subscriptions.forEach(sub => {
         const amt = Number(sub.amount);
-        const fallbackDate = sub.start_date || new Date().toISOString();
-        const extractedDay = sub.next_billing_date ? new Date(sub.next_billing_date).getDate() : new Date(fallbackDate).getDate() || 1;
+        const fallback = new Date();
+        const t1 = sub.next_billing_date ? new Date(sub.next_billing_date) : null;
+        const t2 = sub.start_date ? new Date(sub.start_date) : null;
+        
+        const validT1 = t1 && !isNaN(t1.getTime());
+        const validT2 = t2 && !isNaN(t2.getTime());
+        
+        const parsedDate = validT1 ? t1 : (validT2 ? t2 : fallback);
+        const extractedDay = parsedDate.getDate();
+        const extractedMonth = parsedDate.getMonth();
+        const extractedWeekday = parsedDate.getDay();
         
         if (sub.cycle === 'monthly' && d.getDate() === extractedDay) {
           dailyOutflow += amt;
-        } else if (sub.cycle === 'yearly' && d.getDate() === extractedDay && d.getMonth() === (sub.next_billing_date ? new Date(sub.next_billing_date).getMonth() : 0)) {
+        } else if (sub.cycle === 'yearly' && d.getDate() === extractedDay && d.getMonth() === extractedMonth) {
           dailyOutflow += amt;
-        } else if (sub.cycle === 'weekly' && d.getDay() === (sub.next_billing_date ? new Date(sub.next_billing_date).getDay() : 1)) {
+        } else if (sub.cycle === 'weekly' && d.getDay() === extractedWeekday) {
           dailyOutflow += amt;
         }
       });
@@ -410,6 +419,7 @@ export default function Cashflow() {
                 }}>-</span>
                 <input
                   type="number"
+                  aria-label="What if amount"
                   value={whatIfAmount}
                   onChange={e => setWhatIfAmount(e.target.value)}
                   placeholder="e.g. 15000"

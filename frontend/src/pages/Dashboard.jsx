@@ -2,20 +2,17 @@ import React, { useContext, useState, useMemo, useCallback, useEffect, useRef } 
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  DollarSign, TrendingUp, TrendingDown, Target,
+  TrendingUp, TrendingDown, Target,
   Download, Plus, ArrowUpRight, ArrowDownRight,
-  Wallet, Sparkles, Zap, Brain, AlertTriangle,
-  Settings, Minus, XCircle, Rocket, LineChart, Tag,
-  RefreshCw, Share2
+  Wallet, Sparkles, Zap, Settings, Minus, XCircle, 
+  Rocket, LineChart, Tag, RefreshCw, Share2
 } from 'lucide-react';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 import ErrorBoundary from '../components/ErrorBoundary';
 import TransactionForm from '../components/TransactionForm';
 import PropTypes from 'prop-types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import useCountUp from '../hooks/useCountUp';
-
-
 
 const ToastItem = ({ toast, onRemove }) => {
   const [isPaused, setIsPaused] = useState(false);
@@ -23,12 +20,13 @@ const ToastItem = ({ toast, onRemove }) => {
 
   useEffect(() => {
     if (!isPaused) {
-      timerRef.current = setTimeout(onRemove, 3000); // 3s dismiss
+      // Fixed: Pass the ID to onRemove internally rather than via inline prop
+      timerRef.current = setTimeout(() => onRemove(toast.id), 3000); // 3s dismiss
     }
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [isPaused, onRemove]);
+  }, [isPaused, onRemove, toast.id]);
 
   return (
     <motion.div
@@ -48,7 +46,15 @@ const ToastItem = ({ toast, onRemove }) => {
     >
       {toast.type === 'error' && <XCircle size={16} />}
       <span>{toast.msg}</span>
-      {toast.type === 'error' && <button onClick={onRemove} aria-label="Dismiss error" style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto', opacity: 0.7 }}>×</button>}
+      {toast.type === 'error' && (
+        <button 
+          onClick={() => onRemove(toast.id)} 
+          aria-label="Dismiss error" 
+          style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto', opacity: 0.7 }}
+        >
+          ×
+        </button>
+      )}
     </motion.div>
   );
 };
@@ -289,19 +295,32 @@ export default function Dashboard() {
 
   const [showForm, setShowForm] = useState(false);
   const [toasts, setToasts] = useState([]);
-  const [dateFilter, setDateFilter] = useState(() => localStorage.getItem('budgeta_date_filter') || 'all');
-  const [categoryFilter, setCategoryFilter] = useState(() => localStorage.getItem('budgeta_category_filter') || 'all');
+  
+  // Fixed: Safe initialization for SSR compatibility
+  const [dateFilter, setDateFilter] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('budgeta_date_filter') || 'all';
+    return 'all';
+  });
+  
+  const [categoryFilter, setCategoryFilter] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('budgeta_category_filter') || 'all';
+    return 'all';
+  });
+  
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  // Fixed: Ensure safe execution context for side effects
   useEffect(() => {
-    localStorage.setItem('budgeta_date_filter', dateFilter);
-    localStorage.setItem('budgeta_category_filter', categoryFilter);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('budgeta_date_filter', dateFilter);
+      localStorage.setItem('budgeta_category_filter', categoryFilter);
+    }
   }, [dateFilter, categoryFilter]);
 
   const addToast = useCallback((msg, type = 'success') => {
     setToasts(prev => {
-      const updated = [...prev, { id: Date.now() + Math.random(), msg, type }];
+      const updated = [...prev, { id: crypto.randomUUID(), msg, type }];
       return updated.slice(-3); // Limit to max 3 toasts
     });
   }, []);
@@ -437,7 +456,7 @@ export default function Dashboard() {
 
   const savingsRateText = useMemo(() => {
     if (parsedTransactions.length === 0) return getLocalizedText('no_transactions', 'No transactions yet');
-    if (Number(savingsRate) <= 0) return 'No savings yet — let\'s change that 📈';
+    if (Number.isNaN(Number(savingsRate)) || Number(savingsRate) <= 0) return 'No savings yet — let\'s change that 📈';
     return `Saving ${savingsRate}% · ${parsedTransactions.length} transactions`;
   }, [parsedTransactions, savingsRate, getLocalizedText]);
 
@@ -492,7 +511,7 @@ export default function Dashboard() {
         setIsRefreshing(false);
       }
     } else {
-      addToast('Data is up to date', 'success'); // fallback if fetchTransactions is unavailable
+      addToast('Data is up to date', 'success'); 
     }
   }, [fetchTransactions, addToast]);
 
@@ -565,8 +584,9 @@ export default function Dashboard() {
       }}>
         <div style={{ pointerEvents: 'auto' }}>
           <AnimatePresence>
+            {/* Fixed: Pass the stable removeToast function, not an inline recreating function */}
             {toasts.map(t => (
-              <ToastItem key={t.id} toast={t} onRemove={() => removeToast(t.id)} />
+              <ToastItem key={t.id} toast={t} onRemove={removeToast} />
             ))}
           </AnimatePresence>
         </div>
@@ -578,7 +598,7 @@ export default function Dashboard() {
         </motion.div>
         <div className="bento-actions">
           <motion.button className="bbtn-icon" onClick={handleRefresh} disabled={isRefreshing} title="Refresh (Ctrl+R)" aria-label="Refresh Data" whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}>
-            <RefreshCw size={16} className={isRefreshing ? 'spin' : ''} />
+            <RefreshCw size={16} className={isRefreshing ? 'spinning' : ''} />
           </motion.button>
           <motion.button className="bbtn-icon" onClick={handleShare} title="Share Dashboard" aria-label="Share" whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}>
             <Share2 size={16} />
@@ -592,7 +612,7 @@ export default function Dashboard() {
             title={isExporting ? "Exporting..." : "Export JSON"}
             aria-label="Export JSON"
           >
-            {isExporting ? <RefreshCw size={16} className="spin" /> : <Download size={16} />}
+            {isExporting ? <RefreshCw size={16} className="spinning" /> : <Download size={16} />}
           </motion.button>
           <motion.button className="bbtn-pri bbtn-full" onClick={() => setShowForm(true)} title="Ctrl+N" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Plus size={14} /> {getLocalizedText('add_transaction', 'Add Transaction')}
@@ -715,10 +735,3 @@ export default function Dashboard() {
     </ErrorBoundary>
   );
 }
-
-
-
-
-
-
-

@@ -9,7 +9,9 @@ import {
   RefreshCw, Plus, X, Trash2, Camera, ShieldAlert
 } from 'lucide-react';
 import axios from 'axios';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
+import Modal from '../components/Modal';
+import { useToast } from '../components/ToastProvider';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
@@ -20,22 +22,23 @@ const CLASS_COLORS = {
   liability: '#ef4444',
 };
 
-const CLASS_LABELS = {
-  liquid_asset: 'Liquid Assets',
-  illiquid_asset: 'Physical Assets',
-  liability: 'Liabilities',
-};
+const getClassLabels = (t = (k, def) => def) => ({
+  liquid_asset: t('liquid_assets'),
+  illiquid_asset: t('physical_assets'),
+  liability: t('liabilities'),
+});
 
 export default function Wealth() {
   const { fmt, token, t } = useContext(AppContext);
+  const { showToast } = useToast();
 
   const [wealthItems, setWealthItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [aiInsight, setAiInsight] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isAddingItem, setIsAddingItem] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [fetchError, setFetchError] = useState(null);
-  const [formError, setFormError] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
 
   // Stable refs to prevent AI refetching
@@ -61,16 +64,18 @@ export default function Wealth() {
       const cfg = { headers: { Authorization: `Bearer ${token}` } };
       const itemsRes = await axios.get(`${API_BASE}/wealth/items`, cfg);
       setWealthItems(Array.isArray(itemsRes.data) ? itemsRes.data : []);
-    } catch (err) {
+      } catch (err) {
       if (err.response?.status === 401) {
         setFetchError('Session expired. Please log out and log back in.');
+        showToast('error', 'Session expired. Please log out and log back in.');
       } else {
         setFetchError('Cannot reach the MyCoinwise server. Is the backend running?');
+        showToast('error', 'Failed to fetch wealth data.');
       }
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, [token, showToast]);
 
   useEffect(() => {
     if (token) fetchWealthData();
@@ -113,7 +118,7 @@ export default function Wealth() {
     const allocation = Object.entries(classTotals)
       .filter(([, v]) => v > 0)
       .map(([cls, v]) => ({
-        name: CLASS_LABELS[cls] || cls,
+        name: getClassLabels(t)[cls] || cls,
         value: v,
         color: CLASS_COLORS[cls] || '#64748b',
       }));
@@ -147,7 +152,7 @@ export default function Wealth() {
       debtMsg,
       hasHighInterestDebts: highDebts.length > 0,
     };
-  }, [wealthItems]);
+  }, [wealthItems, t]);
 
   const nwColor = netWorth >= 0 ? 'var(--brand-primary)' : 'var(--danger)';
 
@@ -192,20 +197,19 @@ export default function Wealth() {
   }, [totalAssets, totalLiabilities, liquidAssets, physicalAssets, token, wealthItems.length]);
 
   // ─── 4. CRUD Actions ──────────────────────────────────────────────────────
-  const handleAddItem = async (e) => {
-    e.preventDefault();
-    setFormError(null);
+  const handleAddItem = async () => {
 
     if (formData.asset_class === 'liquid_asset') {
       const hasSymbol = formData.symbol && formData.symbol.trim() !== '';
       const hasQuantity = formData.quantity && Number(formData.quantity) > 0;
 
       if (hasSymbol && !hasQuantity) {
-        setFormError('A valid Quantity (> 0) is required when a Ticker is provided.');
+        showToast('error', 'A valid Quantity (> 0) is required when a Ticker is provided.');
         return;
       }
     }
 
+    setIsSubmitting(true);
     try {
       await axios.post(`${API_BASE}/wealth/items`, formData, {
         headers: { Authorization: `Bearer ${token}` },
@@ -217,8 +221,11 @@ export default function Wealth() {
         acquisition_date: new Date().toISOString().split('T')[0],
       });
       fetchWealthData();
+      showToast('success', 'Entry added successfully');
     } catch (err) {
-      setFormError(err.response?.data?.error || 'Failed to save entry. Please try again.');
+      showToast('error', err.response?.data?.error || 'Failed to save entry. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -232,15 +239,18 @@ export default function Wealth() {
     setItemToDelete(null);
 
     try {
+      setIsSubmitting(true);
       await axios.delete(`${API_BASE}/wealth/items/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       // Silent refresh to update backend historical snaps quietly
       fetchWealthData();
-    } catch (err) {
-      console.error('Delete Error:', err.response?.data || err.message);
+      showToast('success', 'Item deleted');
+    } catch {
       setWealthItems(backupItems); // Revert
-      setFetchError('Failed to delete item from cloud. Local state reverted.');
+      showToast('error', 'Failed to delete item from cloud. Local state reverted.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -277,7 +287,7 @@ export default function Wealth() {
 
       {/* ── Error Banner ── */}
       {fetchError && (
-        <div className="glass" style={{
+        <div className="glass" role="alert" aria-live="assertive" style={{
           margin: '0 0 24px', padding: '12px 20px',
           borderLeft: '4px solid var(--danger)',
           background: 'rgba(239,68,68,0.05)',
@@ -430,10 +440,11 @@ export default function Wealth() {
         <motion.div className="glass bento-tile" style={{ padding: 24, marginTop: 12 }} whileHover={{ y: -2 }}>
           <h3 className="heading-accent" style={{ marginBottom: 16 }}>Portfolio Details</h3>
           {wealthItems.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
-              <Briefcase size={36} opacity={0.3} style={{ marginBottom: 12 }} />
-              <p>Your portfolio is empty. Add an asset or liability to get started.</p>
-            </div>
+            <motion.div className="glass empty-state" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ padding: '48px 24px', textAlign: 'center' }}>
+              <Briefcase size={48} style={{ color: 'var(--text-muted)', marginBottom: 16, opacity: 0.4 }} />
+              <h3 style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>No Wealth Assets Logged</h3>
+              <p style={{ color: 'var(--text-muted)', maxWidth: 320, margin: '0 auto' }}>Your portfolio is empty. Add an asset or liability to get started.</p>
+            </motion.div>
           ) : (
             wealthItems.map((item, idx) => (
               <div key={item._id || idx} style={{
@@ -443,7 +454,7 @@ export default function Wealth() {
                 <div>
                   <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.name}</div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                    {CLASS_LABELS[item.asset_class] || item.asset_class}
+                    {getClassLabels(t)[item.asset_class] || item.asset_class}
                     {item.symbol && (
                       <span style={{ marginLeft: 8, color: '#3b82f6', fontWeight: 600 }}>
                         {item.symbol}
@@ -480,153 +491,114 @@ export default function Wealth() {
 
       </div>
 
-      {/* ── Add Entry Modal ── */}
-      <AnimatePresence>
-        {isAddingItem && (
-          <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setIsAddingItem(false); }}>
-            <motion.div
-              className="glass-deep modal-content"
-              style={{ maxWidth: 500 }}
-              initial={{ y: 20, opacity: 0, scale: 0.95 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 10, opacity: 0, scale: 0.95 }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 700, m: 0 }}>New Wealth Entry</h2>
-                <button
-                  onClick={() => setIsAddingItem(false)}
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 4, display: 'flex' }}
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              {formError && (
-                <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, color: 'var(--danger)', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <AlertOctagon size={16} /> {formError}
-                </div>
-              )}
-
-              <form onSubmit={handleAddItem}>
-                <div style={{ marginBottom: 20 }}>
-                  <label style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 6, fontWeight: 600 }}>Name</label>
-                  <input
-                    style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', padding: '12px 14px', borderRadius: 8, color: 'var(--text-primary)', fontSize: '0.95rem', outline: 'none', transition: 'border-color 0.2s' }}
-                    value={formData.name}
-                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    required placeholder="e.g. HDFC Savings, Honda City, SBI Home Loan"
-                  />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                  <div>
-                    <label style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 6, fontWeight: 600 }}>Type</label>
-                    <select
-                      style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', padding: '12px 14px', borderRadius: 8, color: 'var(--text-primary)', fontSize: '0.95rem', outline: 'none' }}
-                      value={formData.asset_class}
-                      onChange={e => setFormData({ ...formData, asset_class: e.target.value })}
-                    >
-                      <option value="liquid_asset" style={{ background: '#1a1a1a' }}>💧 Liquid Asset</option>
-                      <option value="illiquid_asset" style={{ background: '#1a1a1a' }}>🏠 Physical Asset</option>
-                      <option value="liability" style={{ background: '#1a1a1a' }}>💳 Liability / Debt</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 6, fontWeight: 600 }}>
-                      {formData.asset_class === 'liability' ? 'Principal Owed' : 'Base Value (₹)'}
-                    </label>
-                    <input
-                      type="number"
-                      style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', padding: '12px 14px', borderRadius: 8, color: 'var(--text-primary)', fontSize: '0.95rem', outline: 'none' }}
-                      value={formData.base_value}
-                      onChange={e => setFormData({ ...formData, base_value: e.target.value })}
-                      required min="0" step="any" placeholder="0.00"
-                    />
-                  </div>
-                </div>
-
-                {formData.asset_class === 'liquid_asset' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                    <div>
-                      <label style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 6, fontWeight: 600 }}>Ticker (optional)</label>
-                      <input
-                        style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', padding: '12px 14px', borderRadius: 8, color: 'var(--text-primary)', fontSize: '0.95rem', outline: 'none' }}
-                        value={formData.symbol}
-                        onChange={e => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
-                        placeholder="AAPL / BTC-USD"
-                      />
-                    </div>
-                    <div>
-                      <label style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 6, fontWeight: 600 }}>Quantity / Units</label>
-                      <input
-                        type="number"
-                        style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', padding: '12px 14px', borderRadius: 8, color: 'var(--text-primary)', fontSize: '0.95rem', outline: 'none' }}
-                        value={formData.quantity}
-                        onChange={e => setFormData({ ...formData, quantity: e.target.value })}
-                        min="0" step="any" placeholder="0"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {formData.asset_class === 'liability' && (
-                  <div style={{ marginBottom: 20 }}>
-                    <label style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 6, fontWeight: 600 }}>Annual Interest Rate (%)</label>
-                    <input
-                      type="number"
-                      style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', padding: '12px 14px', borderRadius: 8, color: 'var(--text-primary)', fontSize: '0.95rem', outline: 'none' }}
-                      value={formData.interest_rate}
-                      onChange={e => setFormData({ ...formData, interest_rate: e.target.value })}
-                      min="0" max="100" step="0.1" placeholder="e.g. 18"
-                    />
-                  </div>
-                )}
-
-                {formData.asset_class === 'illiquid_asset' && (
-                  <div style={{ marginBottom: 20 }}>
-                    <label style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 6, fontWeight: 600 }}>Acquisition Date</label>
-                    <input
-                      type="date"
-                      style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', padding: '12px 14px', borderRadius: 8, color: 'var(--text-primary)', fontSize: '0.95rem', outline: 'none' }}
-                      value={formData.acquisition_date}
-                      onChange={e => setFormData({ ...formData, acquisition_date: e.target.value })}
-                    />
-                  </div>
-                )}
-
-                <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: 12, padding: '14px', fontSize: '1rem', fontWeight: 600, justifyContent: 'center' }}>
-                  Save Entry
-                </button>
-              </form>
-            </motion.div>
+      <Modal
+        isOpen={isAddingItem}
+        onClose={() => setIsAddingItem(false)}
+        title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Plus size={20} /> Add Wealth Entry</span>}
+        confirmText="Save Entry"
+        onConfirm={handleAddItem}
+        isLoading={isSubmitting}
+      >
+        <form onSubmit={(e) => { e.preventDefault(); handleAddItem(); }} className="auth-form" style={{ marginBottom: 0 }}>
+          <div className="form-group" style={{ marginBottom: 20 }}>
+            <label>Name</label>
+            <input
+              value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              required placeholder="e.g. HDFC Savings, Honda City, SBI Home Loan"
+            />
           </div>
-        )}
-      </AnimatePresence>
 
-      <AnimatePresence>
-        {itemToDelete && (
-          <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setItemToDelete(null); }}>
-            <motion.div
-              className="glass-deep modal-content"
-              style={{ maxWidth: 400, textAlign: 'center', padding: '32px 24px' }}
-              initial={{ y: 20, opacity: 0, scale: 0.95 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 10, opacity: 0, scale: 0.95 }}
-            >
-              <Trash2 size={48} color="var(--danger)" style={{ marginBottom: 16, opacity: 0.8 }} />
-              <h3 style={{ marginBottom: 8 }}>Delete Item?</h3>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: 24, fontSize: '0.9rem' }}>
-                Are you sure you want to completely remove this from your portfolio? This action cannot be undone.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <button onClick={() => setItemToDelete(null)} className="btn-glass" style={{ justifyContent: 'center' }}>Cancel</button>
-                <button onClick={confirmDelete} className="btn-primary" style={{ background: 'var(--danger)', justifyContent: 'center' }}>Delete</button>
-              </div>
-            </motion.div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+            <div className="form-group">
+              <label>Type</label>
+              <select
+                value={formData.asset_class}
+                onChange={e => setFormData({ ...formData, asset_class: e.target.value })}
+              >
+                <option value="liquid_asset">💧 Liquid Asset</option>
+                <option value="illiquid_asset">🏠 Physical Asset</option>
+                <option value="liability">💳 Liability / Debt</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>
+                {formData.asset_class === 'liability' ? 'Principal Owed' : 'Base Value (₹)'}
+              </label>
+              <input
+                type="number"
+                value={formData.base_value}
+                onChange={e => setFormData({ ...formData, base_value: e.target.value })}
+                required min="0" step="any" placeholder="0.00"
+              />
+            </div>
           </div>
-        )}
-      </AnimatePresence>
+
+          {formData.asset_class === 'liquid_asset' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+              <div className="form-group">
+                <label>Ticker (optional)</label>
+                <input
+                  value={formData.symbol}
+                  onChange={e => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
+                  placeholder="AAPL / BTC-USD"
+                />
+              </div>
+              <div className="form-group">
+                <label>Quantity / Units</label>
+                <input
+                  type="number"
+                  value={formData.quantity}
+                  onChange={e => setFormData({ ...formData, quantity: e.target.value })}
+                  min="0" step="any" placeholder="0"
+                />
+              </div>
+            </div>
+          )}
+
+          {formData.asset_class === 'liability' && (
+            <div className="form-group" style={{ marginBottom: 20 }}>
+              <label>Annual Interest Rate (%)</label>
+              <input
+                type="number"
+                value={formData.interest_rate}
+                onChange={e => setFormData({ ...formData, interest_rate: e.target.value })}
+                min="0" max="100" step="0.1" placeholder="e.g. 18"
+              />
+            </div>
+          )}
+
+          {formData.asset_class === 'illiquid_asset' && (
+            <div className="form-group" style={{ marginBottom: 20 }}>
+              <label>Acquisition Date</label>
+              <input
+                type="date"
+                value={formData.acquisition_date}
+                onChange={e => setFormData({ ...formData, acquisition_date: e.target.value })}
+              />
+            </div>
+          )}
+          {/* Hide the actual submit button, Modal handles the submittal via onConfirm */}
+          <button type="submit" style={{ display: 'none' }}></button>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={itemToDelete !== null}
+        onClose={() => setItemToDelete(null)}
+        title={t("delete_item")}
+        confirmText={t("delete")}
+        onConfirm={confirmDelete}
+        isLoading={isSubmitting}
+        danger={true}
+      >
+        <div style={{ textAlign: 'center', padding: '16px 0' }}>
+          <Trash2 size={48} color="var(--danger)" style={{ marginBottom: 16, opacity: 0.8 }} />
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            Are you sure you want to completely remove this from your portfolio? This action cannot be undone.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 // SettingsPage.jsx - COMPLETE VERSION
-import React, { useState, useContext, useEffect, useRef, useCallback, useMemo, useReducer, useId } from 'react';
+import React, { useState, useContext, useEffect, useRef, useCallback, useMemo, useReducer } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Save, User, Users, Target, Moon, Sun, Download, CheckCircle, AlertCircle,
@@ -9,11 +9,13 @@ import {
   Mail, Lock, Smartphone as Phone, Fingerprint, History, TrendingUp,
   LogOut, RefreshCw, Copy, Check, AlertTriangle, EyeOff
 } from 'lucide-react';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 import { CURRENCIES, AVATARS, AVATAR_COLORS, api } from '../services/api';
 import { LANGUAGES } from '../services/i18n';
 import { exportToPDF } from '../services/pdfExport';
 import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
+import Modal from '../components/Modal';
+import { useToast } from '../components/ToastProvider';
 // ============= HELPER FUNCTIONS =============
 const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email?.trim() || '');
 const validateGoal = (goal) => {
@@ -528,7 +530,14 @@ const SessionManagement = ({ userId, showMessage }) => {
     }
   };
 
-  if (loading && sessions.length === 0) return <div style={{ padding: 20, textAlign: 'center' }}>Loading sessions...</div>;
+  if (loading && sessions.length === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="shimmer" style={{ height: 60, borderRadius: 12 }}></div>
+        <div className="shimmer" style={{ height: 60, borderRadius: 12 }}></div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -942,15 +951,29 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, theme, showMessage 
 
         <div style={{ height: 1, background: 'var(--glass-border)', margin: '10px 0' }} />
 
-        <div className="form-field">
-          <label htmlFor="display_name">{t?.('display_name') || 'Display Name'}</label>
-          <input
-            id="display_name"
-            value={formState.username}
-            onChange={(e) => handleFieldChange('username', e.target.value)}
-            placeholder="Your name"
-            autoCapitalize="words"
-          />
+        <div style={{ display: 'flex', gap: 16 }}>
+          <div className="form-field" style={{ flex: 1 }}>
+            <label htmlFor="first_name">{t?.('first_name') || 'First Name'}</label>
+            <input
+              id="first_name"
+              value={formState.firstName}
+              onChange={(e) => handleFieldChange('firstName', e.target.value)}
+              placeholder="First name"
+              autoCapitalize="words"
+            />
+          </div>
+          <div className="form-field" style={{ flex: 1 }}>
+            <label htmlFor="last_name">{t?.('last_name') || 'Surname'}</label>
+            <input
+              id="last_name"
+              value={formState.lastName}
+              placeholder="Surname"
+              autoCapitalize="words"
+              disabled
+              title="Surname cannot be edited"
+              style={{ cursor: 'not-allowed', opacity: 0.7 }}
+            />
+          </div>
         </div>
         <EmailChangeSection user={user} showMessage={showMessage} />
       </div>
@@ -1317,107 +1340,6 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
   </>
 );
 
-// ============= MODAL COMPONENT =============
-const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoading, danger, confirmDisabled }) => {
-  const modalId = useId();
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const modal = document.getElementById(modalId);
-    if (!modal) return;
-
-    const focusableElements = modal.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    const firstFocusable = focusableElements[0];
-    const lastFocusable = focusableElements[focusableElements.length - 1];
-
-    const handleTab = (e) => {
-      if (e.key !== 'Tab') return;
-      if (e.shiftKey) {
-        if (document.activeElement === firstFocusable) {
-          e.preventDefault();
-          lastFocusable?.focus();
-        }
-      } else {
-        if (document.activeElement === lastFocusable) {
-          e.preventDefault();
-          firstFocusable?.focus();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleTab);
-    firstFocusable?.focus();
-
-    return () => document.removeEventListener('keydown', handleTab);
-  }, [isOpen, modalId]);
-
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={`${modalId}-title`}
-          onClick={() => !isLoading && onClose()}
-          onKeyDown={(e) => e.key === 'Escape' && !isLoading && onClose()}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-        >
-          <motion.div
-            id={modalId}
-            className="modal-box glass"
-            initial={{ y: '100%', opacity: 0, scale: 0.95 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: '100%', opacity: 0, scale: 0.95 }}
-            transition={{ type: 'spring', damping: 20, stiffness: 200 }}
-            onClick={(e) => e.stopPropagation()}
-            style={danger ? { borderColor: 'rgba(239,68,68,0.4)', boxShadow: '0 8px 32px rgba(239,68,68,0.2)' } : {}}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 id={`${modalId}-title`} style={danger ? { color: 'var(--danger)' } : {}}>
-                {title}
-              </h3>
-              {!isLoading && (
-                <button onClick={onClose} aria-label="Close modal" className="icon-button">
-                  <X size={20} />
-                </button>
-              )}
-            </div>
-            {children}
-            {confirmText && onConfirm && (
-              <div className="modal-actions" style={{ marginTop: 24 }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={onClose}
-                  disabled={isLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={onConfirm}
-                  disabled={isLoading || confirmDisabled}
-                  style={danger ? { background: 'var(--danger)' } : {}}
-                >
-                  {isLoading ? 'Processing...' : confirmText}
-                </button>
-              </div>
-            )}
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-};
-
 // ============= MAIN SETTINGS COMPONENT =============
 const settingsReducer = (state, action) => {
   switch (action.type) {
@@ -1430,31 +1352,6 @@ const settingsReducer = (state, action) => {
     default:
       return state;
   }
-};
-
-const useMessage = () => {
-  const [message, setMessage] = useState(null);
-  const timeoutRef = useRef(null);
-  const isMounted = useRef(true);
-
-  useEffect(() => {
-    isMounted.current = true;
-    return () => {
-      isMounted.current = false;
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
-
-  const showMessage = useCallback((type, text, duration = 4000) => {
-    if (!isMounted.current) return;
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setMessage({ type, text });
-    timeoutRef.current = setTimeout(() => {
-      if (isMounted.current) setMessage(null);
-    }, duration);
-  }, []);
-
-  return { message, showMessage };
 };
 
 // ============= FACTORY RESET MODAL (typed confirmation) =============
@@ -1530,7 +1427,8 @@ function SettingsInner({ context }) {
   } = context;
 
   const [formState, dispatch] = useReducer(settingsReducer, {
-    username: user?.username || '',
+    firstName: (user?.username || '').split(' ')[0] || '',
+    lastName: (user?.username || '').split(' ').slice(1).join(' ') || '',
     monthlyGoal: user?.monthly_goal?.toString() || '',
     currency: user?.currency || 'INR',
     avatar: user?.profile_avatar || '😊',
@@ -1565,7 +1463,7 @@ function SettingsInner({ context }) {
 
   const [undoSnapshot, setUndoSnapshot] = useState(null);
 
-  const { message, showMessage } = useMessage();
+  const { showToast: showMessage } = useToast();
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -1573,7 +1471,8 @@ function SettingsInner({ context }) {
       dispatch({
         type: 'RESET_FORM',
         payload: {
-          username: user.username || '',
+          firstName: (user.username || '').split(' ')[0] || '',
+          lastName: (user.username || '').split(' ').slice(1).join(' ') || '',
           monthlyGoal: user.monthly_goal?.toString() || '',
           currency: user.currency || 'INR',
           avatar: user.profile_avatar || '😊',
@@ -1620,9 +1519,11 @@ function SettingsInner({ context }) {
   const handleSave = useCallback(async (e) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
-    const sanitizedUsername = sanitizeInput(formState.username);
-    if (!sanitizedUsername) {
-      showMessage('error', 'Display name cannot be empty.');
+    const sanitizedFirstName = sanitizeInput(formState.firstName);
+    const sanitizedLastName = sanitizeInput(formState.lastName);
+    const sanitizedUsername = `${sanitizedFirstName} ${sanitizedLastName}`.trim();
+    if (!sanitizedFirstName) {
+      showMessage('error', 'First name cannot be empty.');
       return;
     }
 
@@ -1784,7 +1685,7 @@ function SettingsInner({ context }) {
       if (formState.isDirty) {
         showMessage('success', 'Auto-saving changes before switching...', 2000);
         await api.updateSettings(USER_ID, {
-          username: formState.username,
+          username: `${formState.firstName || ''} ${formState.lastName || ''}`.trim(),
           theme,
           monthly_goal: formState.monthlyGoal,
           currency: formState.currency,
@@ -1941,22 +1842,6 @@ function SettingsInner({ context }) {
           <h2>{t?.('settings') || 'Settings'}</h2>
           <span className="ih-badge">{TABS.find(t => t.id === activeTab)?.label}</span>
         </div>
-        <AnimatePresence>
-          {message && (
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className={`feedback-msg ${message.type}`}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}
-              role="alert"
-              aria-live="polite"
-            >
-              {message.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-              {message.text}
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       <div className="inbox-split-pane">
@@ -2079,7 +1964,8 @@ function SettingsInner({ context }) {
                     className="btn-secondary"
                     onClick={() => dispatch({
                       type: 'RESET_FORM', payload: {
-                        username: user?.username || '',
+                        firstName: (user?.username || '').split(' ')[0] || '',
+                        lastName: (user?.username || '').split(' ').slice(1).join(' ') || '',
                         monthlyGoal: user?.monthly_goal?.toString() || '',
                         currency: user?.currency || 'INR',
                         avatar: user?.profile_avatar || '😊',

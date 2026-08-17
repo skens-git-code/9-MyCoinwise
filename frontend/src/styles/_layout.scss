@@ -1,10 +1,9 @@
-/* --- From AppLayout.scss --- */
-
 /* ================================================================
-   ISLAND LAYOUT ARCHITECTURE
-   Mobile-first, responsive, glassmorphism sidebar layout
+   ISLAND LAYOUT ARCHITECTURE v3
+   Mobile-first · Glassmorphism · Premium AMOLED dark
    ================================================================ */
 
+/* ── Outer Shell ── */
 .app-island-layout {
   display: flex;
   height: 100vh;
@@ -14,82 +13,75 @@
   background: var(--surface-0);
   position: relative;
   box-sizing: border-box;
-  padding: 16px;
-  gap: 16px;
+  padding: 14px;
+  gap: 14px;
 }
 
-
 /* ================================================================
-   DESKTOP ISLAND SIDEBAR (FIXED)
+   DESKTOP SIDEBAR
    ================================================================ */
-
 .island-sidebar {
   display: flex;
   flex-direction: column;
   height: 100%;
   border-radius: var(--border-radius-2xl);
-  /* Use sidebar-bg token so dark/light themes control this properly */
   background: var(--sidebar-bg);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  border-right: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-sm), inset -1px 0 0 rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-lg), inset -1px 0 0 rgba(255, 255, 255, 0.03);
   overflow: hidden;
   flex-shrink: 0;
-
-  width: 280px;
-  transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  width: var(--sidebar-width);
+  transition: width 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
   will-change: width;
 
   &.collapsed {
-    width: 84px;
+    width: var(--sidebar-collapsed, 72px);
   }
 }
 
-/* ================================================================
-   BRAND HEADER
-   ================================================================ */
-
+/* ── Brand Header ── */
 .island-brand {
   display: flex;
   align-items: center;
-  padding: 24px 20px;
+  padding: 22px 18px;
   position: relative;
-  gap: 14px;
+  gap: 12px;
+  min-height: 74px;
 
   .brand-icon {
-    width: 44px;
-    height: 44px;
-    background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
-    border-radius: 14px;
+    width: 42px;
+    height: 42px;
+    background: var(--brand-gradient);
+    border-radius: 13px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
     flex-shrink: 0;
-    box-shadow: 0 0 24px var(--brand-glow);
-    animation: liquidMorph 8s ease-in-out infinite;
+    box-shadow: 0 0 20px var(--brand-glow);
+    animation: liquidMorph 10s ease-in-out infinite;
   }
 
   .brand-name {
     font-family: var(--font-head);
     font-weight: 800;
-    font-size: 1.25rem;
+    font-size: 1.15rem;
     white-space: nowrap;
-    background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+    overflow: hidden;
+    background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    letter-spacing: -0.5px;
+    letter-spacing: -0.3px;
   }
 
   .collapse-toggle {
-    position: absolute;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 28px;
-    height: 28px;
+    margin-left: auto;
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
     background: var(--glass-1);
     border: 1px solid var(--glass-border);
     border-radius: 8px;
@@ -99,78 +91,64 @@
     align-items: center;
     justify-content: center;
     transition: all var(--transition-spring);
-    z-index: 10;
 
     &:hover {
       background: var(--glass-2);
       color: var(--text-primary);
       border-color: var(--brand-primary);
+      box-shadow: 0 0 10px var(--brand-glow);
     }
   }
 
-  /* collapsed behavior — keep toggle always accessible */
+  /* Collapsed: center the icon, hide toggle inside brand */
   .island-sidebar.collapsed & {
     justify-content: center;
-    padding: 24px 0;
+    padding: 22px 0;
 
     .collapse-toggle {
-      /* Float the toggle outside brand area, anchored to sidebar right edge */
-      position: fixed;
-      left: calc(84px + 16px - 14px);
-      /* sidebar width + outer padding - half toggle */
-      top: 50%;
-      transform: translateY(-50%);
-      opacity: 0.55;
-      pointer-events: auto;
-      z-index: 200;
-      background: var(--glass-2);
-      border-color: var(--glass-border-hover);
-
-      &:hover {
-        opacity: 1;
-        border-color: var(--brand-primary);
-        box-shadow: 0 0 12px var(--brand-glow);
-      }
+      display: none;
     }
   }
 }
 
-/* ================================================================
-   USER SWITCHER
-   ================================================================ */
+/* Collapsed: show toggle as a floating button over the right edge */
+.sidebar-edge-toggle {
+  display: none;
 
+  .island-sidebar.collapsed ~ & {
+    display: flex;
+  }
+}
+
+/* ── User Info Block ── */
 .island-user {
-  margin: 0 16px 16px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  margin: 0 12px 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--glass-border);
-  border-radius: 20px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 14px;
-  cursor: pointer;
+  gap: 12px;
   transition: all var(--transition-spring);
 
   &:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.06);
     border-color: var(--glass-border-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   }
 
   .user-avatar {
-    width: 44px;
-    height: 44px;
-    border-radius: 14px;
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 800;
+    font-weight: 700;
+    font-size: 1.1rem;
     color: #fff;
-    font-family: var(--font-round);
     flex-shrink: 0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     overflow: hidden;
 
     img {
@@ -185,13 +163,12 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    gap: 2px;
+    gap: 1px;
 
     .u-name {
       font-weight: 700;
       font-family: var(--font-head);
-      font-size: 1rem;
+      font-size: 0.9rem;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -199,72 +176,84 @@
     }
 
     .u-role {
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       color: var(--brand-primary);
-      font-weight: 700;
+      font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
   }
 
-  /* collapsed FIXED */
+  /* Collapsed: center avatar, hide text */
   .island-sidebar.collapsed & {
     justify-content: center;
-    padding: 12px 0;
+    padding: 10px 0;
     background: transparent;
     border-color: transparent;
     box-shadow: none;
-  }
 
-  .island-sidebar.collapsed &:hover {
-    background: var(--glass-1);
-    border-color: var(--glass-border);
+    &:hover {
+      background: var(--glass-1);
+      border-color: var(--glass-border);
+    }
   }
 }
 
-/* ================================================================
-   NAVIGATION
-   ================================================================ */
-
+/* ── Navigation ── */
 .island-nav {
   flex: 1;
-  padding: 0 16px;
+  padding: 4px 10px 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .inav-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px;
-  border-radius: 14px;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: 12px;
   color: var(--text-secondary);
   text-decoration: none;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  font-family: var(--font-body);
   transition: all var(--transition-base);
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
 
   .inav-icon {
+    flex-shrink: 0;
     transition: transform var(--transition-spring), color var(--transition-fast);
   }
 
+  .inav-label {
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
   &:hover:not(.active) {
-    background: var(--glass-1);
+    background: var(--nav-hover-bg);
     color: var(--text-primary);
-    transform: translateX(4px);
+
+    .inav-icon {
+      transform: scale(1.1);
+    }
   }
 
   &.active {
-    color: var(--brand-primary);
-    background: rgba(0, 122, 255, 0.08);
+    color: var(--nav-active-text, var(--brand-primary));
+    background: var(--nav-active-bg);
 
     .inav-icon {
-      transform: scale(1.15);
-      filter: drop-shadow(0 0 8px var(--brand-glow));
+      transform: scale(1.12);
     }
   }
 
@@ -272,208 +261,225 @@
   .inav-active-pill {
     position: absolute;
     inset: 0;
-    border-radius: 14px;
-    background: rgba(0, 122, 255, 0.1);
-    border-left: 3px solid var(--brand-primary);
-    box-shadow: -2px 0 10px var(--brand-glow);
+    border-radius: 12px;
+    background: var(--nav-active-bg);
+    border-left: 2px solid var(--brand-primary);
     z-index: 0;
     pointer-events: none;
   }
 
+  /* Collapsed: center icon */
   .island-sidebar.collapsed & {
     justify-content: center;
-    padding: 14px 0;
-  }
+    padding: 12px 0;
 
-  .island-sidebar.collapsed &:hover:not(.active) {
-    transform: translateY(-4px);
-  }
+    .inav-label { display: none; }
 
-  .island-sidebar.collapsed &.active .inav-active-pill {
-    width: 48px;
-    left: 50%;
-    transform: translateX(-50%);
+    .inav-active-pill {
+      width: 44px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
   }
 }
 
-/* ================================================================
-   FOOTER
-   ================================================================ */
-
+/* ── Sidebar Footer ── */
 .island-footer {
-  padding: 16px;
+  padding: 10px 10px 14px;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--glass-border);
   margin-top: auto;
 }
 
 /* ================================================================
    MAIN CANVAS
    ================================================================ */
-
 .island-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  /* Slightly lighter than surface-0 outer shell for depth hierarchy */
   background: var(--surface-1);
   border-radius: var(--border-radius-2xl);
   border: 1px solid var(--glass-border);
   box-shadow:
     var(--shadow-xl),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 0 0 1px rgba(255, 255, 255, 0.02);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
   overflow: hidden;
+  min-width: 0;
 }
 
 /* ================================================================
    HEADER
    ================================================================ */
-
 .island-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 18px 28px;
+  padding: 16px 24px;
   border-bottom: 1px solid var(--glass-border);
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
   z-index: 50;
-  min-height: 72px;
+  min-height: 68px;
   flex-shrink: 0;
+  gap: 16px;
 
   .ih-left {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     min-width: 0;
     flex: 1;
   }
 
   .ih-titles {
     h1 {
-      font-size: clamp(1.2rem, 2.5vw, 1.55rem);
-      font-weight: 900;
+      font-size: clamp(1.15rem, 2.2vw, 1.45rem);
+      font-weight: 800;
       font-family: var(--font-head);
-      letter-spacing: -0.5px;
+      letter-spacing: -0.4px;
       color: var(--text-primary);
       margin: 0;
+      line-height: 1.2;
     }
 
     p {
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       color: var(--brand-primary);
       font-weight: 600;
-      margin: 4px 0 0;
+      margin: 3px 0 0;
+      letter-spacing: 0.01em;
     }
   }
 }
 
-/* --- Refined Greeting Block --- */
+/* ── Dashboard Greeting ── */
 .dashboard-greeting-block {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
 
-  .greeting-main-msg {
-    color: var(--brand-primary);
-    font-size: 0.95em;
+  .greeting-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.72rem;
     font-weight: 700;
-    letter-spacing: 0.02em;
+    color: var(--brand-primary);
     text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 2px;
   }
 
   .greeting-title {
-    font-size: clamp(1.6rem, 6vw, 2rem);
-    font-weight: 900;
+    font-size: clamp(1.35rem, 4vw, 1.75rem);
+    font-weight: 800;
     font-family: var(--font-head);
-    letter-spacing: -0.5px;
+    letter-spacing: -0.4px;
     line-height: 1.2;
     color: var(--text-primary);
-    margin-bottom: 4px;
-
-    @media (max-width: 480px) {
-      font-size: 1.4rem;
-      line-height: 1.15;
-    }
+    margin: 0;
 
     .greeting-name {
       display: inline;
       color: var(--text-primary);
       word-break: break-word;
-      white-space: normal;
-      background-image: linear-gradient(to right, rgba(14, 165, 233, 0.4), rgba(5, 150, 105, 0.4));
-      background-position: 0 88%;
-      background-size: 100% 10px;
+      background-image: linear-gradient(
+        to right,
+        rgba(16, 185, 129, 0.35),
+        rgba(6, 182, 212, 0.35)
+      );
+      background-position: 0 90%;
+      background-size: 100% 8px;
       background-repeat: no-repeat;
     }
   }
 
   .greeting-subtitle {
-    font-size: 0.95rem;
+    font-size: 0.875rem;
     color: var(--text-secondary);
     font-weight: 500;
-    margin-top: 2px;
+    margin-top: 1px;
 
-    @media (max-width: 480px) {
-      font-size: 0.85rem;
+    @media (max-width: 480px) { font-size: 0.82rem; }
+  }
+
+  @media (max-width: 640px) {
+    .greeting-title {
+      font-size: 1.18rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      column-gap: 6px;
+      line-height: 1.3;
     }
+    .greeting-subtitle { display: none; }
   }
 }
 
+/* ── Header Right ── */
 .ih-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-shrink: 0;
 }
 
-/* Group of secondary header action buttons */
+/* Pill container for secondary buttons */
 .ih-btn-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   background: var(--glass-1);
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
-  padding: 4px;
+  border-radius: 12px;
+  padding: 3px;
 }
 
-/* Vertical divider between button groups */
+/* Separator */
 .ih-separator {
   width: 1px;
-  height: 24px;
+  height: 20px;
   background: var(--glass-border);
   flex-shrink: 0;
 
-  @media (max-width: 640px) {
-    display: none !important;
-  }
+  @media (max-width: 640px) { display: none; }
 }
 
+/* Icon button */
 .ibtn {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: var(--glass-1);
-  border: 1px solid var(--glass-border);
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-spring);
+  transition: all var(--transition-base);
   font-size: 1rem;
+  font-family: var(--font-body);
 
   &:hover {
     background: var(--glass-2);
     color: var(--text-primary);
-    border-color: var(--glass-border-hover);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    border-color: var(--glass-border);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: scale(0.95);
   }
 }
 
+/* Alert button with badge */
 .alert-btn {
   position: relative;
 
@@ -483,48 +489,53 @@
     right: -4px;
     background: var(--danger);
     color: white;
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     font-weight: 800;
-    width: 18px;
-    height: 18px;
+    width: 17px;
+    height: 17px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 10px rgba(248, 113, 113, 0.6);
+    box-shadow: 0 0 8px rgba(var(--danger-rgb), 0.5);
     border: 2px solid var(--surface-1);
   }
 }
 
+/* Balance chip */
 .ih-balance {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 20px;
-  height: 44px;
-  border-radius: 14px;
-  background: rgba(74, 222, 128, 0.12);
-  border: 1px solid rgba(74, 222, 128, 0.25);
+  gap: 7px;
+  padding: 0 16px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(var(--success-rgb), 0.10);
+  border: 1px solid rgba(var(--success-rgb), 0.22);
   color: var(--success);
-  font-weight: 800;
+  font-weight: 700;
   font-family: var(--font-head);
-  font-size: 1.05rem;
-  box-shadow: inset 0 0 12px rgba(74, 222, 128, 0.05);
+  font-size: 0.95rem;
+  white-space: nowrap;
 }
 
-.ih-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+/* Avatar button */
+.ih-avatar-btn {
+  border: none;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  font-weight: 800;
-  font-family: var(--font-round);
-  box-shadow: var(--shadow-brand);
-}
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-size: 1.15rem;
+  transition: transform var(--transition-spring), box-shadow var(--transition-base);
 
+  &:hover {
+    transform: scale(1.08);
+  }
+}
 
 /* ── Content Area ── */
 .island-content-wrapper {
@@ -535,9 +546,10 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
   scroll-behavior: smooth;
 
-  /* Custom scrollbar */
-  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar { width: 3px; }
   &::-webkit-scrollbar-track { background: transparent; }
+
+  
   &::-webkit-scrollbar-thumb {
     background: var(--glass-border);
     border-radius: 99px;
@@ -546,9 +558,368 @@
 }
 
 .island-page {
-  padding: 28px 32px;
-  max-width: 1600px;
+  padding: 26px 28px;
+  max-width: 1560px;
   margin: 0 auto;
+}
+
+/* ================================================================
+   MOBILE HAMBURGER BUTTON
+   ================================================================ */
+.mobile-hamburger-btn {
+  display: none;
+  flex-shrink: 0;
+
+  @media (max-width: 1024px) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--glass-2);
+    border: 1px solid var(--glass-border-hover);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    margin-right: 10px;
+    flex-shrink: 0;
+
+    &:hover {
+      background: var(--nav-hover-bg);
+      border-color: var(--brand-primary);
+      color: var(--brand-primary);
+      box-shadow: 0 0 12px var(--brand-glow);
+    }
+
+    &:active {
+      transform: scale(0.92);
+    }
+  }
+}
+
+/* ================================================================
+   MOBILE DRAWER & OVERLAY
+   ================================================================ */
+.mobile-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: var(--z-drawer);
+}
+
+.mobile-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(330px, 86vw);
+  background: var(--surface-1);
+  backdrop-filter: blur(36px) saturate(160%);
+  -webkit-backdrop-filter: blur(36px) saturate(160%);
+  border-right: 1px solid var(--glass-border-hover);
+  box-shadow: 24px 0 64px rgba(0, 0, 0, 0.85);
+  z-index: calc(var(--z-drawer) + 1);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  gap: 12px;
+  box-sizing: border-box;
+
+  &::-webkit-scrollbar { width: 3px; }
+  &::-webkit-scrollbar-thumb {
+    background: var(--glass-border);
+    border-radius: 99px;
+  }
+}
+
+.mobile-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+
+  .drawer-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .brand-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--brand-gradient);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      box-shadow: 0 0 16px var(--brand-glow);
+    }
+
+    .brand-name {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 1.15rem;
+      color: var(--text-primary);
+      letter-spacing: -0.3px;
+    }
+  }
+
+  .drawer-close-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+  }
+}
+
+.drawer-user-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--border-radius-lg);
+  background: var(--glass-1);
+  border: 1px solid var(--glass-border);
+  flex-shrink: 0;
+
+  .user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.2rem;
+    color: #fff;
+    flex-shrink: 0;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+  }
+
+  .user-info {
+    flex: 1;
+    min-width: 0;
+
+    .u-name {
+      font-weight: 700;
+      font-size: 0.92rem;
+      font-family: var(--font-head);
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin: 0;
+    }
+
+    .u-role {
+      font-size: 0.72rem;
+      color: var(--brand-primary);
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin: 2px 0 0;
+    }
+  }
+
+  .drawer-balance-pill {
+    font-size: 0.8rem;
+    font-weight: 700;
+    font-family: var(--font-head);
+    color: var(--success);
+    background: rgba(var(--success-rgb), 0.12);
+    border: 1px solid rgba(var(--success-rgb), 0.25);
+    padding: 3px 8px;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+}
+
+.drawer-section-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 4px 6px 0;
+  font-family: var(--font-head);
+  flex-shrink: 0;
+}
+
+.drawer-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.drawer-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: var(--border-radius-md);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.88rem;
+  transition: all var(--transition-base);
+  position: relative;
+  border: 1px solid transparent;
+
+  .drawer-nav-icon-box {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--glass-1);
+    color: inherit;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+  }
+
+  .drawer-nav-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &:hover {
+    background: var(--nav-hover-bg);
+    color: var(--text-primary);
+
+    .drawer-nav-icon-box {
+      background: var(--glass-2);
+      color: var(--brand-primary);
+    }
+  }
+
+  &.active {
+    color: var(--nav-active-text);
+    background: var(--nav-active-bg);
+    border-color: rgba(var(--brand-primary-rgb), 0.2);
+    font-weight: 700;
+
+    .drawer-nav-icon-box {
+      background: var(--brand-primary);
+      color: #fff;
+      box-shadow: 0 0 10px var(--brand-glow);
+    }
+  }
+
+  .drawer-nav-active-indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--brand-primary);
+    box-shadow: 0 0 8px var(--brand-glow);
+    flex-shrink: 0;
+  }
+}
+
+.drawer-tools-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.drawer-tool-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-1);
+  color: var(--text-primary);
+  font-size: 0.80rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: var(--font-body);
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background: var(--glass-2);
+    border-color: var(--glass-border-hover);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+.drawer-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--glass-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.drawer-preferences-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.drawer-pref-btn {
+  padding: 8px 10px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-1);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-body);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--text-primary);
+    background: var(--glass-2);
+    border-color: var(--glass-border-hover);
+  }
+}
+
+.drawer-logout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid rgba(var(--danger-rgb), 0.25);
+  background: rgba(var(--danger-rgb), 0.08);
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background: rgba(var(--danger-rgb), 0.16);
+    border-color: var(--danger);
+  }
 }
 
 /* ================================================================
@@ -558,42 +929,53 @@
   display: none;
   position: fixed;
   bottom: 16px;
-  left: 16px;
-  right: 16px;
+  left: 12px;
+  right: 12px;
   height: 72px;
   border-radius: 24px;
-  /* Fixed: rgba(var()) is invalid CSS — use token directly */
   background: var(--glass-2);
-  backdrop-filter: blur(30px) saturate(200%);
-  -webkit-backdrop-filter: blur(30px) saturate(200%);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
   border: 1px solid var(--glass-border-hover);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 24px 56px rgba(0, 0, 0, 0.6),
+    0 8px 24px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
   z-index: 1000;
-  display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 0 8px;
+  padding: 0 4px;
 }
 
 .dock-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  gap: 3px;
+  flex: 1;
+  max-width: 68px;
+  height: 68px;
   color: var(--text-muted);
   text-decoration: none;
   position: relative;
+  transition: color var(--transition-fast);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+  padding: 0;
 
   .dock-icon-wrapper {
     position: relative;
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 16px;
-    transition: color var(--transition-base);
+    border-radius: 12px;
+    z-index: 1;
   }
 
   .dock-icon {
@@ -601,242 +983,88 @@
     transition: transform var(--transition-spring);
   }
 
+  .dock-label {
+    font-size: 0.60rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    z-index: 2;
+    transition: color var(--transition-fast);
+    white-space: nowrap;
+  }
+
   &.active {
     color: var(--brand-primary);
 
     .dock-icon {
       transform: scale(1.15) translateY(-2px);
-      filter: drop-shadow(0 0 8px var(--brand-glow));
+    }
+
+    .dock-label {
+      color: var(--brand-primary);
+      font-weight: 700;
     }
   }
 
   .dock-active-dot {
     position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb), 0.2), rgba(56, 189, 248, 0.1));
-    border: 1px solid rgba(var(--brand-primary-rgb), 0.3);
-    border-radius: 16px;
+    inset: 2px;
+    background: var(--nav-active-bg);
+    border: 1px solid rgba(var(--brand-primary-rgb), 0.25);
+    border-radius: 12px;
     z-index: 1;
-    box-shadow: 0 8px 16px rgba(var(--brand-primary-rgb), 0.15);
-  }
-}
-
-/* Base override for layout toggle */
-@media (min-width: 1025px) {
-  .mobile-bottom-dock {
-    display: none !important;
-  }
-}
-
-@media (max-width: 1024px) {
-  .app-island-layout {
-    padding: 0;
-    gap: 0;
   }
 
-  .island-content-wrapper {
-    padding-bottom: 110px; /* dock height + breathing room */
-  }
+  &.dock-item-menu {
+    color: var(--text-secondary);
 
-  .island-sidebar {
-    display: none;
-  }
-
-  .island-main {
-    border-radius: 0;
-    border: none;
-    box-shadow: none;
-    background: var(--ambient-base);
-  }
-
-  .mobile-bottom-dock {
-    display: flex !important;
-  }
-
-  .island-header {
-    padding: 14px 20px;
-    min-height: 60px;
-  }
-
-  .island-page {
-    padding: clamp(16px, 4vw, 24px);
-  }
-
-  /* Show lang/theme on tablet but hide currency converter */
-  .ih-btn-group {
-    display: flex !important;
-  }
-  .ih-separator {
-    display: none !important;
-  }
-  .ih-balance {
-    display: none !important;
-  }
-
-  .ih-right {
-    gap: 8px;
-    padding-top: 4px; /* Space between title row and icon row */
-  }
-
-  .ih-btn-group {
-    background: transparent !important;
-    border: none !important;
-    padding: 0 !important;
-    gap: 12px !important;
-  }
-}
-
-/* On smallest phones, hide the balance chip */
-@media (max-width: 640px) {
-  .island-content-wrapper {
-    padding-bottom: 112px;
-  }
-
-  .ih-balance {
-    display: none !important;
-  }
-
-  .ih-titles {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-  }
-
-  .ih-titles h1 {
-    font-size: clamp(1.1rem, 5.5vw, 1.4rem);
-    line-height: 1.2;
-    white-space: normal;
-    overflow: visible;
-  }
-
-  .ih-titles p {
-    font-size: 0.75rem;
-    line-height: 1.3;
-  }
-
-  .ih-right {
-    gap: 4px;
-  }
-
-  .island-header {
-    padding: 12px 16px;
-    min-height: 80px;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-
-    .ih-left {
-      width: 100%;
-      justify-content: flex-start;
+    &:hover {
+      color: var(--text-primary);
     }
 
-    .ih-right {
-      width: 100%;
-      justify-content: flex-end;
-      gap: 12px;
-      flex-wrap: wrap;
+    &:active .dock-icon-wrapper {
+      transform: scale(0.92);
     }
-  }
-
-  .island-page {
-    padding: 14px;
-  }
-
-  .island-dropdown {
-    max-width: 90vw;
-  }
-
-  /* Dock items — fit all in one row */
-  .mobile-bottom-dock {
-    padding: 0 4px;
-    gap: 0;
-  }
-
-  .dock-item {
-    width: auto;
-    flex: 1;
-    max-width: 52px;
-  }
-
-  .dock-icon-wrapper {
-    width: 40px !important;
-    height: 40px !important;
-    border-radius: 12px !important;
-  }
-}
-
-/* Smallest phones (SE, Galaxy A series) */
-@media (max-width: 375px) {
-  .mobile-bottom-dock {
-    bottom: 12px;
-    left: 10px;
-    right: 10px;
-    height: 60px;
-    border-radius: 18px;
-    padding: 0 2px;
-  }
-
-  .dock-item {
-    max-width: 44px;
-  }
-
-  .dock-icon-wrapper {
-    width: 36px !important;
-    height: 36px !important;
-    border-radius: 10px !important;
-  }
-
-  .island-content-wrapper {
-    padding-bottom: 92px;
-  }
-
-  .island-header {
-    padding: 10px 12px;
-    min-height: 72px;
-    gap: 10px;
-  }
-
-  .island-page {
-    padding: 12px;
   }
 }
 
 /* ================================================================
-   DROPDOWN
+   DROPDOWN MENU
    ================================================================ */
 .island-dropdown {
   position: absolute;
   top: calc(100% + 10px);
-  right: -10px; /* Anchor right, but give a little breathing room */
+  right: 0;
   z-index: 500;
-  
-  @media (max-width: 640px) {
-    right: auto;
-    left: 0; /* Expand inward on mobile */
-  }
   background: var(--surface-2);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   border: 1px solid var(--glass-border-hover);
-  border-radius: 18px;
-  padding: 10px;
+  border-radius: 16px;
+  padding: 8px;
   box-shadow: var(--shadow-2xl), 0 0 0 1px var(--glass-border-hover);
+  min-width: 160px;
+
+  @media (max-width: 640px) {
+    right: auto;
+    left: 0;
+    max-width: 88vw;
+  }
 
   .drp-label {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     color: var(--text-muted);
-    font-weight: 800;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 8px;
-    padding: 0 4px;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+    padding: 0 6px;
     font-family: var(--font-head);
   }
 
   .drp-div {
     height: 1px;
     background: var(--glass-border);
-    margin: 8px 0;
+    margin: 6px 0;
   }
 
   .drp-btn,
@@ -844,31 +1072,27 @@
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
-    border-radius: 12px;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 10px;
     border: none;
     background: transparent;
     color: var(--text-primary);
     cursor: pointer;
     text-decoration: none;
     text-align: left;
-    transition: all var(--transition-base);
+    font-size: 0.875rem;
+    transition: background var(--transition-fast);
     font-family: var(--font-body);
 
-    &:hover {
-      background: var(--glass-2);
-    }
-
-    &.active {
-      background: rgba(var(--brand-primary-rgb), 0.15);
-    }
+    &:hover { background: var(--glass-2); }
+    &.active { background: var(--nav-active-bg); color: var(--nav-active-text); }
   }
 
   .drp-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 10px;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -884,15 +1108,15 @@
     flex-direction: column;
 
     span {
-      font-weight: 700;
-      font-size: 0.9rem;
+      font-weight: 600;
+      font-size: 0.875rem;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     small {
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       color: var(--text-secondary);
     }
   }
@@ -906,19 +1130,14 @@
 /* ================================================================
    TEXT UTILITIES
    ================================================================ */
-.text-danger {
-  color: var(--danger) !important;
-}
+.text-danger  { color: var(--danger) !important; }
+.text-success { color: var(--success) !important; }
+.text-muted   { color: var(--text-muted) !important; }
+.text-brand   { color: var(--brand-primary) !important; }
 
-.text-success {
-  color: var(--success) !important;
-}
-
-.text-muted {
-  color: var(--text-muted) !important;
-}
-
-/* Animated background particles */
+/* ================================================================
+   ANIMATED BACKGROUND
+   ================================================================ */
 .animated-bg {
   position: fixed;
   inset: 0;
@@ -933,8 +1152,217 @@
   background: var(--bg-gradient);
 }
 
+.gradients-container {
+  position: absolute;
+  inset: 0;
+}
+
+.gradient {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+}
+
+.gradient-1 {
+  width: 600px;
+  height: 600px;
+  top: -15%;
+  left: -10%;
+  background: radial-gradient(circle, var(--orb-goal-color) 0%, transparent 70%);
+}
+
+.gradient-2 {
+  width: 500px;
+  height: 500px;
+  bottom: -10%;
+  right: -5%;
+  background: radial-gradient(circle, var(--orb-ai-color) 0%, transparent 70%);
+}
+
 .click-away-overlay {
   position: fixed;
   inset: 0;
   z-index: 499;
+}
+
+/* ================================================================
+   RESPONSIVE BREAKPOINTS
+   ================================================================ */
+
+/* ── Desktop ── */
+@media (min-width: 1025px) {
+  .mobile-bottom-dock { display: none; }
+}
+
+/* ── Tablet + Mobile ── */
+@media (max-width: 1024px) {
+  .app-island-layout {
+    padding: 0;
+    gap: 0;
+  }
+
+  .island-content-wrapper {
+    padding-bottom: 104px;
+  }
+
+  .island-sidebar {
+    display: none;
+  }
+
+  .island-main {
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    background: var(--ambient-base);
+  }
+
+  .mobile-bottom-dock {
+    display: flex;
+  }
+
+  .island-header {
+    padding: 14px 18px;
+    min-height: 60px;
+  }
+
+  .island-page {
+    padding: clamp(14px, 4vw, 22px);
+  }
+
+  .ih-btn-group {
+    background: transparent;
+    border: none;
+    padding: 0;
+    gap: 6px;
+  }
+
+  .ih-separator {
+    display: none;
+  }
+
+  .ih-balance {
+    display: none;
+  }
+
+  // On mobile: hide subtitle text in page titles (keep h1 only)
+  .ih-titles p {
+    display: none;
+  }
+
+  // Hide language button + converter button from header (accessible via drawer)
+  .ih-btn-group {
+    .ibtn:nth-child(1),  // language flag
+    .ibtn:nth-child(2) { // currency converter
+      display: none;
+    }
+  }
+
+  // Hide AI button from header on mobile (accessible via drawer)
+  .ai-btn {
+    display: none;
+  }
+
+  .ih-right {
+    gap: 8px;
+  }
+}
+
+/* ── Small phone ── */
+@media (max-width: 640px) {
+  .island-content-wrapper {
+    padding-bottom: 100px;
+  }
+
+  .island-header {
+    padding: 10px 14px;
+    min-height: 56px;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .ih-left {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ih-right {
+    gap: 5px;
+    flex-shrink: 0;
+  }
+
+  .ih-btn-group {
+    gap: 2px;
+  }
+
+  .island-content-wrapper {
+    padding-bottom: 108px;
+  }
+
+  .mobile-bottom-dock {
+    bottom: 12px;
+    left: 10px;
+    right: 10px;
+    height: 66px;
+    border-radius: 22px;
+    padding: 0 2px;
+  }
+
+  .dock-item {
+    max-width: 60px;
+    height: 62px;
+    gap: 2px;
+  }
+
+  .dock-icon-wrapper {
+    width: 36px;
+    height: 32px;
+    border-radius: 10px;
+  }
+
+  .dock-label {
+    font-size: 0.57rem;
+  }
+
+  .island-page {
+    padding: 12px;
+  }
+}
+
+/* ── Tiny phone ── */
+@media (max-width: 375px) {
+  .mobile-bottom-dock {
+    bottom: 10px;
+    left: 8px;
+    right: 8px;
+    height: 62px;
+    border-radius: 20px;
+  }
+
+  .dock-item {
+    max-width: 54px;
+    height: 58px;
+  }
+
+  .dock-icon-wrapper {
+    width: 34px;
+    height: 30px;
+    border-radius: 9px;
+  }
+
+  .dock-label {
+    display: none;
+  }
+
+  .island-content-wrapper {
+    padding-bottom: 88px;
+  }
+
+  .island-header {
+    padding: 9px 12px;
+  }
+
+  .island-page {
+    padding: 10px;
+  }
 }

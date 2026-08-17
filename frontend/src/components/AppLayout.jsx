@@ -1,18 +1,20 @@
-import React, { useState, useContext, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useContext, useMemo, useCallback, useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ArrowLeftRight, BarChart3, Target, Activity, Briefcase,
-  CreditCard, Settings, ChevronRight, Zap, TrendingUp,
-  Plus, Check, Users, Bell, Smartphone, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon
+  CreditCard, Settings, ChevronRight, TrendingUp,
+  Bell, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon,
+  Menu, X, Zap
 } from 'lucide-react';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
 import { LANGUAGES } from '../services/i18n';
 import CurrencyConverter from './CurrencyConverter';
 import AlertsCenter from './AlertsCenter';
 import AIChat from './AIChat';
 import DOMPurify from 'dompurify';
+import QuantumRuntime from '../services/quantumRuntime';
 
 // ==============================
 // 1. CONSTANTS & CONFIGURATION
@@ -21,7 +23,7 @@ import DOMPurify from 'dompurify';
 const NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, labelKey: 'dashboard' },
   { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions' },
-  { to: '/calendar', icon: CalendarIcon, labelKey: 'Calendar' },
+  { to: '/calendar', icon: CalendarIcon, labelKey: 'calendar' },
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics' },
   { to: '/goals', icon: Target, labelKey: 'goals' },
   { to: '/subscriptions', icon: CreditCard, labelKey: 'subscriptions' },
@@ -82,14 +84,18 @@ const sanitizeUserInput = (input) => {
 const formatBalance = (balance, currencySymbol = '₹') => {
   const numBalance = parseFloat(balance || 0);
   if (isNaN(numBalance)) return `${currencySymbol}0.00`;
-
-  return `${currencySymbol}${numBalance.toLocaleString('en-IN', {
+  // Use user's locale preference, fallback to en-IN for Indian Rupee formatting
+  const locale = navigator.language || 'en-IN';
+  return `${currencySymbol}${numBalance.toLocaleString(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })}`;
 };
 
 const getDeviceType = () => {
+  // Safe check for SSR environments
+  if (typeof window === 'undefined') return 'desktop';
+  
   const width = window.innerWidth;
   if (width < BREAKPOINTS.mobile) return 'mobile';
   if (width < BREAKPOINTS.tablet) return 'tablet';
@@ -129,8 +135,11 @@ const useUserDisplay = (user) => {
     const avatarStr = user?.profile_avatar || '😊';
     const isBase64Avatar = typeof avatarStr === 'string' && avatarStr.length > 20 && avatarStr.startsWith('data:image');
 
+    const fullDisplayName = isValidDisplayName ? sanitizedRawName : USER_DISPLAY_RULES.defaultDisplayName;
+    
     return {
-      displayName: isValidDisplayName ? sanitizedRawName : USER_DISPLAY_RULES.defaultDisplayName,
+      displayName: fullDisplayName,
+      firstName: fullDisplayName.split(' ')[0] || fullDisplayName,
       avatar: avatarStr,
       avatarColor: validateColorHex(user?.profile_color),
       rawName: sanitizedRawName,
@@ -140,9 +149,12 @@ const useUserDisplay = (user) => {
 };
 
 // Hook for responsive sidebar
+// Stores separate desktopOpen preference so it's not lost when resizing to mobile
 const useResponsiveSidebar = (initialState = true) => {
   const [sidebarOpen, setSidebarOpen] = useState(initialState);
   const [deviceType, setDeviceType] = useState(getDeviceType());
+  // Track last user-set desktop preference separately
+  const desktopPreferenceRef = React.useRef(initialState);
 
   useEffect(() => {
     let timeoutId;
@@ -150,33 +162,41 @@ const useResponsiveSidebar = (initialState = true) => {
 
     const handleResize = () => {
       if (timeoutId) clearTimeout(timeoutId);
-
       timeoutId = setTimeout(() => {
         if (!isMounted) return;
-
         const newDeviceType = getDeviceType();
         setDeviceType(newDeviceType);
-
         if (newDeviceType === 'mobile') {
+          // Collapse on mobile but remember desktop preference
           setSidebarOpen(false);
-        } else if (newDeviceType === 'desktop' && sidebarOpen === false) {
-          // Optionally auto-open on desktop
-          // setSidebarOpen(true);
+        } else {
+          // Restore desktop preference when returning to tablet/desktop
+          setSidebarOpen(desktopPreferenceRef.current);
         }
       }, 150);
     };
 
     window.addEventListener('resize', handleResize);
-    handleResize(); // Initial call
-
+    handleResize();
     return () => {
       isMounted = false;
       if (timeoutId) clearTimeout(timeoutId);
       window.removeEventListener('resize', handleResize);
     };
-  }, [sidebarOpen]);
+  }, []);
 
-  return { sidebarOpen, setSidebarOpen, deviceType };
+  // Wrap setSidebarOpen to also update desktop preference when on desktop/tablet
+  const setSidebarOpenWithMemory = useCallback((value) => {
+    setSidebarOpen((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      if (getDeviceType() !== 'mobile') {
+        desktopPreferenceRef.current = next;
+      }
+      return next;
+    });
+  }, []);
+
+  return { sidebarOpen, setSidebarOpen: setSidebarOpenWithMemory, deviceType };
 };
 
 // Hook for click outside
@@ -287,8 +307,6 @@ class ErrorBoundary extends React.Component {
 // 5. SUB-COMPONENTS
 // ==============================
 
-
-
 const LanguageDropdown = React.memo(({
   currentLang,
   onLanguageChange,
@@ -296,6 +314,9 @@ const LanguageDropdown = React.memo(({
 }) => {
   return (
     <motion.div
+      id="language-dropdown"
+      role="listbox"
+      aria-label="Language selection"
       className="island-dropdown glass language-dropdown"
       style={{ minWidth: 160 }}
       initial={{ opacity: 0, y: -10, scale: 0.95 }}
@@ -332,22 +353,49 @@ export default function AppLayout({ children }) {
   const [showConverter, setShowConverter] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [isAIOpen, setIsAIOpen] = useState(false);
-  const [error, setError] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const { activeDropdown, toggleDropdown, closeAll } = useDropdownManager();
   const { sidebarOpen, setSidebarOpen, deviceType } = useResponsiveSidebar(true);
 
   // Context
-  const {
-    user, theme, toggleTheme,
-    currencyInfo, alerts, t, lang, setLanguage, transactions, logout
-  } = useContext(AppContext);
+  const contextData = useContext(AppContext) || {};
+  const { user, theme, toggleTheme, currencyInfo, alerts, t, lang, setLanguage, transactions, logout } = contextData;
 
   const location = useLocation();
 
   // Custom hooks
   const userInfo = useUserDisplay(user);
   useClickOutside(activeDropdown, closeAll);
+
+  useEffect(() => {
+    // Fixed: Inject styles strictly on the client side
+    const styleId = 'app-layout-animations';
+    if (!document.getElementById(styleId)) {
+      const styleSheet = document.createElement("style");
+      styleSheet.id = styleId;
+      styleSheet.textContent = `
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `;
+      document.head.appendChild(styleSheet);
+    }
+    
+    const runtime = QuantumRuntime.create(document);
+    
+    return () => {
+      runtime.destroy();
+      // Optional: clean up styles if desired, but usually okay to leave
+    };
+  }, []);
 
   // Memoized values
   const urgentAlertsCount = useMemo(() =>
@@ -360,9 +408,11 @@ export default function AppLayout({ children }) {
     [transactions]
   );
 
+  // Fixed: Added '/calendar' to map correctly
   const pageTitleKey = useMemo(() => ({
     '/': 'dashboard',
     '/transactions': 'transactions',
+    '/calendar': 'calendar',
     '/analytics': 'analytics',
     '/goals': 'goals',
     '/subscriptions': 'subscriptions',
@@ -393,6 +443,27 @@ export default function AppLayout({ children }) {
     closeAll();
   }, [setLanguage, closeAll]);
 
+  // FIX: memoize all modal/drawer toggle handlers so React.memo on
+  // Header, MobileBottomNav, and MobileDrawer actually prevents re-renders
+  const handleOpenConverter  = useCallback(() => setShowConverter(true),  []);
+  const handleOpenAlerts     = useCallback(() => setShowAlerts(true),     []);
+  const handleOpenAI         = useCallback(() => setIsAIOpen(true),       []);
+  const handleOpenDrawer     = useCallback(() => setDrawerOpen(true),      []);
+  const handleCloseDrawer    = useCallback(() => setDrawerOpen(false),     []);
+
+  // Drawer → open modal (closes drawer first)
+  const handleDrawerConverter = useCallback(() => {
+    setDrawerOpen(false); setShowConverter(true);
+  }, []);
+  const handleDrawerAlerts    = useCallback(() => {
+    setDrawerOpen(false); setShowAlerts(true);
+  }, []);
+  const handleDrawerAI        = useCallback(() => {
+    setDrawerOpen(false); setIsAIOpen(true);
+  }, []);
+
+  // (Drawer is closed via NavLink onClick and overlay click — no extra effect needed)
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyboardShortcuts = (event) => {
@@ -401,8 +472,9 @@ export default function AppLayout({ children }) {
         event.preventDefault();
         handleSidebarToggle();
       }
-      // Escape to close modals and dropdowns
+      // Escape to close modals, dropdowns, and drawer
       if (event.key === 'Escape') {
+        if (drawerOpen) { setDrawerOpen(false); return; }
         if (showConverter) setShowConverter(false);
         if (showAlerts) setShowAlerts(false);
         if (isAIOpen) setIsAIOpen(false);
@@ -412,9 +484,7 @@ export default function AppLayout({ children }) {
 
     window.addEventListener('keydown', handleKeyboardShortcuts);
     return () => window.removeEventListener('keydown', handleKeyboardShortcuts);
-  }, [handleSidebarToggle, showConverter, showAlerts, isAIOpen, closeAll]);
-
-
+  }, [handleSidebarToggle, showConverter, showAlerts, isAIOpen, drawerOpen, closeAll]);
 
   return (
     <ErrorBoundary>
@@ -460,9 +530,9 @@ export default function AppLayout({ children }) {
             activeDropdown={activeDropdown}
             onDropdownToggle={toggleDropdown}
             onCloseDropdowns={closeAll}
-            onShowConverter={() => setShowConverter(true)}
-            onShowAlerts={() => setShowAlerts(true)}
-            onShowAI={() => setIsAIOpen(true)}
+            onShowConverter={handleOpenConverter}
+            onShowAlerts={handleOpenAlerts}
+            onShowAI={handleOpenAI}
             urgentAlertsCount={urgentAlertsCount}
             formattedBalance={formattedBalance}
             theme={theme}
@@ -471,6 +541,8 @@ export default function AppLayout({ children }) {
             onLanguageChange={handleLanguageChange}
             t={t}
             logout={logout}
+            onOpenDrawer={handleOpenDrawer}
+            deviceType={deviceType}
           />
 
           <div className="island-content-wrapper">
@@ -478,9 +550,9 @@ export default function AppLayout({ children }) {
               <motion.div
                 key={location.pathname}
                 className="island-page"
-                initial={{ opacity: 0, y: 20, scale: 0.99 }}
+                initial={{ opacity: 0, y: 16, scale: 0.99 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10 }}
+                exit={{ opacity: 0, y: -8 }}
                 transition={{
                   duration: ANIMATION_DURATIONS.normal,
                   ease: [0.16, 1, 0.3, 1]
@@ -492,10 +564,46 @@ export default function AppLayout({ children }) {
           </div>
         </main>
 
-        {/* Mobile Bottom Navigation */}
-        {deviceType === 'mobile' && (
-          <MobileBottomNav t={t} logout={logout} />
+        {/* Mobile Bottom Dock */}
+        {deviceType !== 'desktop' && (
+          <MobileBottomNav
+            t={t}
+            onOpenDrawer={handleOpenDrawer}
+          />
         )}
+
+        {/* Mobile Drawer */}
+        <AnimatePresence>
+          {drawerOpen && (
+            <>
+              <motion.div
+                className="mobile-drawer-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22 }}
+                onClick={handleCloseDrawer}
+                aria-hidden="true"
+              />
+              <MobileDrawer
+                userInfo={userInfo}
+                currencyInfo={currencyInfo}
+                formattedBalance={formattedBalance}
+                theme={theme}
+                onToggleTheme={toggleTheme}
+                lang={lang}
+                onLanguageChange={handleLanguageChange}
+                onShowConverter={handleDrawerConverter}
+                onShowAlerts={handleDrawerAlerts}
+                onShowAI={handleDrawerAI}
+                urgentAlertsCount={urgentAlertsCount}
+                logout={logout}
+                onClose={handleCloseDrawer}
+                t={t}
+              />
+            </>
+          )}
+        </AnimatePresence>
 
         {/* Modals */}
         <AnimatePresence>
@@ -511,49 +619,12 @@ export default function AppLayout({ children }) {
             />
           )}
           {isAIOpen && (
-            <motion.aside
-              className="ai-panel"
-              initial={{ x: '100%', opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: '100%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            >
-              <div className="ai-panel-header">
-                <h2>AI Financial Assistant</h2>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span className="ai-status-badge">Online</span>
-                  <button
-                    onClick={() => setIsAIOpen(false)}
-                    className="ibtn"
-                    style={{ width: '32px', height: '32px', borderRadius: '10px' }}
-                    aria-label="Close AI Assistant"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                Ask questions about your spending, forecasting, or investments.
-              </p>
-              <AIChat />
-            </motion.aside>
+            <AIPanelOverlay
+              onClose={() => setIsAIOpen(false)}
+            />
           )}
         </AnimatePresence>
 
-        {/* Error Toast */}
-        {error && (
-          <div style={styles.errorToast}>
-            <AlertCircle size={20} />
-            <span style={{ marginLeft: '8px' }}>{error}</span>
-            <button
-              onClick={() => setError(null)}
-              style={styles.toastClose}
-              aria-label="Close error message"
-            >
-              ×
-            </button>
-          </div>
-        )}
       </div>
     </ErrorBoundary>
   );
@@ -572,6 +643,7 @@ const DesktopSidebar = React.memo(({
       className={`island-sidebar glass ${sidebarOpen ? 'open' : 'collapsed'}`}
       aria-label="Main navigation sidebar"
       aria-hidden={!sidebarOpen}
+      inert={sidebarOpen ? undefined : ""}
     >
       <div className="island-brand">
         <motion.div className="brand-icon" whileHover={{ rotate: 15, scale: 1.1 }}>
@@ -709,11 +781,21 @@ const Header = React.memo(({
   activeDropdown, onDropdownToggle, onCloseDropdowns,
   onShowConverter, onShowAlerts, onShowAI, urgentAlertsCount,
   formattedBalance, theme, onToggleTheme,
-  lang, onLanguageChange, t, logout
+  lang, onLanguageChange, t, logout, onOpenDrawer, deviceType
 }) => {
   return (
     <header className="island-header glass">
       <div className="ih-left">
+        {/* Hamburger — only on tablet/mobile */}
+        {deviceType !== 'desktop' && (
+          <button
+            className="mobile-hamburger-btn"
+            onClick={onOpenDrawer}
+            aria-label="Open navigation menu"
+          >
+            <Menu size={20} />
+          </button>
+        )}
         {isDashboard ? (
           <motion.div
             className="dashboard-greeting-block"
@@ -724,7 +806,7 @@ const Header = React.memo(({
             <h1 className="greeting-title">
               <span className="greeting-main-msg">{t('welcome_back')} </span>
               <span className="greeting-name">
-                {userInfo.displayName}
+                {userInfo.firstName}
               </span>
               <motion.span
                 className="wave-emoji"
@@ -751,12 +833,15 @@ const Header = React.memo(({
 
       <div className="ih-right">
         <div className="ih-btn-group">
-          {/* Language Dropdown */}
+          {/* Language Dropdown — aria-controls links button to menu for screen readers */}
           <div className="dropdown-container" style={{ position: 'relative' }}>
             <button
               className="ibtn"
+              id="language-btn"
               onClick={() => onDropdownToggle('language')}
               aria-expanded={activeDropdown === 'language'}
+              aria-haspopup="listbox"
+              aria-controls="language-dropdown"
               aria-label="Change language"
             >
               {LANGUAGES[lang]?.flag}
@@ -806,20 +891,22 @@ const Header = React.memo(({
           aria-label={`Alerts${urgentAlertsCount > 0 ? `, ${urgentAlertsCount} urgent` : ''}`}
         >
           <Bell size={20} />
-          {urgentAlertsCount > 0 && (
-            <motion.span
-              className="alert-badge"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0 }}
-            >
-              {urgentAlertsCount}
-            </motion.span>
-          )}
+          <span role="status" aria-live="polite">
+            {urgentAlertsCount > 0 && (
+              <motion.span
+                className="alert-badge"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0 }}
+              >
+                {urgentAlertsCount}
+              </motion.span>
+            )}
+          </span>
         </button>
 
         <button
-          className="ibtn"
+          className="ibtn ai-btn"
           onClick={onShowAI}
           aria-label="AI Assistant"
         >
@@ -860,7 +947,7 @@ const Header = React.memo(({
 
 Header.displayName = 'Header';
 
-const MobileBottomNav = React.memo(({ t }) => {
+const MobileBottomNav = React.memo(({ t, onOpenDrawer }) => {
   return (
     <nav className="mobile-bottom-dock glass" aria-label="Mobile navigation">
       {/* Core 4 nav items */}
@@ -873,51 +960,265 @@ const MobileBottomNav = React.memo(({ t }) => {
           aria-label={t(item.labelKey)}
         >
           {({ isActive }) => (
-            <motion.div
-              className="dock-icon-wrapper"
-              whileTap={{ scale: 0.85 }}
-              whileHover={{ scale: 1.05 }}
-            >
-              <item.icon size={22} className="dock-icon" />
-              {isActive && (
-                <motion.div
-                  className="dock-active-dot"
-                  layoutId="dockActive"
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                />
-              )}
-            </motion.div>
+            <>
+              <motion.div
+                className="dock-icon-wrapper"
+                whileTap={{ scale: 0.88 }}
+              >
+                <item.icon size={20} className="dock-icon" />
+                {isActive && (
+                  <motion.div
+                    className="dock-active-dot"
+                    layoutId="dockActive"
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  />
+                )}
+              </motion.div>
+              <span className="dock-label">{t(item.labelKey)}</span>
+            </>
           )}
         </NavLink>
       ))}
-      {/* Settings — always last */}
-      <NavLink
-        to="/settings"
-        className={({ isActive }) => `dock-item ${isActive ? 'active' : ''}`}
-        aria-label={t('settings')}
+      {/* Menu button — opens full drawer */}
+      <button
+        className="dock-item dock-item-menu"
+        onClick={onOpenDrawer}
+        aria-label="Open navigation menu"
       >
-        {({ isActive }) => (
-          <motion.div
-            className="dock-icon-wrapper"
-            whileTap={{ scale: 0.85 }}
-            whileHover={{ scale: 1.05 }}
-          >
-            <Settings size={22} className="dock-icon" />
-            {isActive && (
-              <motion.div
-                className="dock-active-dot"
-                layoutId="dockActive"
-                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-              />
-            )}
-          </motion.div>
-        )}
-      </NavLink>
+        <motion.div className="dock-icon-wrapper" whileTap={{ scale: 0.88 }}>
+          <Menu size={20} className="dock-icon" />
+        </motion.div>
+        <span className="dock-label">More</span>
+      </button>
     </nav>
   );
 });
 
 MobileBottomNav.displayName = 'MobileBottomNav';
+
+/* ── Mobile Drawer ── */
+const MobileDrawer = React.memo(({
+  userInfo, currencyInfo, formattedBalance, theme, onToggleTheme,
+  lang, onLanguageChange, onShowConverter, onShowAlerts, onShowAI,
+  urgentAlertsCount, logout, onClose, t
+}) => {
+  return (
+    <motion.aside
+      className="mobile-drawer"
+      role="dialog"
+      aria-label="Navigation menu"
+      aria-modal="true"
+      initial={{ x: '-100%' }}
+      animate={{ x: 0 }}
+      exit={{ x: '-100%' }}
+      transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+    >
+      {/* Header */}
+      <div className="mobile-drawer-header">
+        <div className="drawer-brand">
+          <div className="brand-icon">
+            <Zap size={18} />
+          </div>
+          <span className="brand-name">MyCoinwise</span>
+        </div>
+        <button
+          className="drawer-close-btn ibtn"
+          onClick={onClose}
+          aria-label="Close menu"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* User Card */}
+      <div className="drawer-user-card">
+        <div
+          className="user-avatar"
+          style={{ background: userInfo.avatarColor }}
+        >
+          {userInfo.isBase64Avatar ? (
+            <img src={userInfo.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            userInfo.avatar
+          )}
+        </div>
+        <div className="user-info">
+          <p className="u-name">{userInfo.displayName}</p>
+          <p className="u-role">{currencyInfo?.code} · {LANGUAGES[lang]?.name}</p>
+        </div>
+        <span className="drawer-balance-pill">{formattedBalance}</span>
+      </div>
+
+      {/* Main Navigation */}
+      <p className="drawer-section-title">Navigation</p>
+      <div className="drawer-nav-list">
+        {NAV_ITEMS.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/'}
+            className={({ isActive }) => `drawer-nav-item ${isActive ? 'active' : ''}`}
+            onClick={onClose}
+          >
+            {({ isActive }) => (
+              <>
+                <div className="drawer-nav-icon-box">
+                  <item.icon size={16} />
+                </div>
+                <span className="drawer-nav-label">{t(item.labelKey)}</span>
+                {isActive && <div className="drawer-nav-active-indicator" />}
+              </>
+            )}
+          </NavLink>
+        ))}
+        <NavLink
+          to="/settings"
+          className={({ isActive }) => `drawer-nav-item ${isActive ? 'active' : ''}`}
+          onClick={onClose}
+        >
+          {({ isActive }) => (
+            <>
+              <div className="drawer-nav-icon-box">
+                <Settings size={16} />
+              </div>
+              <span className="drawer-nav-label">{t('settings')}</span>
+              {isActive && <div className="drawer-nav-active-indicator" />}
+            </>
+          )}
+        </NavLink>
+      </div>
+
+      {/* Quick Tools */}
+      <p className="drawer-section-title">Tools</p>
+      <div className="drawer-tools-grid">
+        <button className="drawer-tool-chip" onClick={onShowConverter}>💱 Converter</button>
+        <button className="drawer-tool-chip" onClick={onShowAI}>
+          <Sparkles size={14} /> AI Chat
+        </button>
+        <button className="drawer-tool-chip" onClick={onShowAlerts} style={{ position: 'relative' }}>
+          <Bell size={14} />
+          Alerts
+          {urgentAlertsCount > 0 && (
+            <span style={{
+              position: 'absolute', top: 6, right: 8,
+              width: 16, height: 16, borderRadius: '50%',
+              background: 'var(--danger)', color: '#fff',
+              fontSize: '0.62rem', fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>{urgentAlertsCount}</span>
+          )}
+        </button>
+        <button className="drawer-tool-chip" onClick={() => { onToggleTheme(); }}>
+          {theme === 'dark' ? '☀️' : theme === 'light' ? '🌙' : '✨'}
+          {theme === 'dark' ? 'Light' : theme === 'light' ? 'Dark' : 'AMOLED'}
+        </button>
+      </div>
+
+      {/* Language Picker */}
+      <p className="drawer-section-title">Language</p>
+      <div className="drawer-preferences-row">
+        {Object.entries(LANGUAGES).slice(0, 4).map(([code, info]) => (
+          <button
+            key={code}
+            className="drawer-pref-btn"
+            onClick={() => { onLanguageChange(code); }}
+            style={lang === code ? { borderColor: 'var(--brand-primary)', color: 'var(--brand-primary)', background: 'var(--nav-active-bg)' } : {}}
+          >
+            {info.flag} {info.name.split(' ')[0]}
+          </button>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <div className="drawer-footer">
+        <button className="drawer-logout-btn" onClick={() => { logout(); onClose(); }}>
+          <LogOut size={15} />
+          Log Out
+        </button>
+      </div>
+    </motion.aside>
+  );
+});
+
+MobileDrawer.displayName = 'MobileDrawer';
+
+/* ── AI Panel Overlay ── */
+const AIPanelOverlay = React.memo(({ onClose }) => {
+  const panelRef = useRef(null);
+
+  // Focus trap
+  useEffect(() => {
+    const focusable = panelRef.current?.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable && focusable.length) {
+      focusable[0].focus();
+      
+      const handleTab = (e) => {
+        if (e.key !== 'Tab') return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      };
+      
+      document.addEventListener('keydown', handleTab);
+      return () => document.removeEventListener('keydown', handleTab);
+    }
+  }, []);
+
+  return (
+    <>
+      <motion.div
+        className="ac-overlay"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        aria-hidden="true"
+        style={{ zIndex: 'var(--z-modal)' }}
+      />
+      <motion.aside
+        ref={panelRef}
+        className="ai-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="AI Financial Assistant"
+        initial={{ x: '100%', opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '100%', opacity: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        style={{ zIndex: 'calc(var(--z-modal) + 1)' }}
+      >
+        <div className="ai-panel-header">
+          <h2>AI Financial Assistant</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="ai-status-badge">Online</span>
+            <button
+              onClick={onClose}
+              className="ibtn"
+              style={{ width: '32px', height: '32px', borderRadius: '10px' }}
+              aria-label="Close AI Assistant"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+          Ask questions about your spending, forecasting, or investments.
+        </p>
+        <AIChat />
+      </motion.aside>
+    </>
+  );
+});
+
+AIPanelOverlay.displayName = 'AIPanelOverlay';
 
 // ==============================
 // 8. STYLES (Inline for critical components)
@@ -1027,19 +1328,3 @@ const styles = {
     transition: 'transform 0.2s ease'
   }
 };
-
-// Add global animation keyframes
-const styleSheet = document.createElement("style");
-styleSheet.textContent = `
-  @keyframes slideIn {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
-`;
-document.head.appendChild(styleSheet);

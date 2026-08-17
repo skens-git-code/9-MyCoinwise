@@ -2,7 +2,7 @@ import React, { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../services/api';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 import { User, Mail, KeyRound, AlertTriangle, Zap, Eye, EyeOff, ArrowRight, Shield, CheckCircle2 } from 'lucide-react';
 
 export default function Register() {
@@ -36,7 +36,14 @@ export default function Register() {
       await login(token, user);
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create account. Please try again.');
+      const serverMessage = err.response?.data?.error || err.response?.data?.message;
+      if (serverMessage) {
+        setError(serverMessage);
+      } else if (err.code === 'ERR_NETWORK' || !err.response) {
+        setError('Cannot reach the local server. Start the backend on port 5001 and make sure MongoDB is running.');
+      } else {
+        setError('Failed to create account. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -86,6 +93,8 @@ export default function Register() {
           {error && (
             <motion.div
               className="auth-alert"
+              role="alert"
+              aria-live="polite"
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
@@ -174,6 +183,7 @@ export default function Register() {
             type="submit"
             className="btn btn-primary auth-submit"
             disabled={loading}
+            aria-busy={loading}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >

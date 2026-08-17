@@ -55,11 +55,11 @@ const validateAmount = (value) => {
 
 const formatNumber = (num, currencyCode = null) => {
   if (num === null || isNaN(num)) return '0.00';
-  
-  const decimals = currencyCode && DECIMAL_CONFIG[currencyCode] !== undefined 
-    ? DECIMAL_CONFIG[currencyCode] 
+
+  const decimals = currencyCode && DECIMAL_CONFIG[currencyCode] !== undefined
+    ? DECIMAL_CONFIG[currencyCode]
     : DECIMAL_CONFIG.DEFAULT;
-  
+
   return num.toLocaleString('en-IN', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
@@ -94,15 +94,15 @@ const useExchangeRates = (baseCurrency = 'INR') => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    
+
     abortControllerRef.current = new AbortController();
-    
+
     try {
       // Check cache
       const cacheKey = getCacheKey(baseCurrency);
       const cached = localStorage.getItem(cacheKey);
       const cachedTime = localStorage.getItem(`${cacheKey}_timestamp`);
-      
+
       if (cached && cachedTime && (Date.now() - parseInt(cachedTime)) < API_CONFIG.CACHE_DURATION) {
         const cachedData = JSON.parse(cached);
         setRates(cachedData.rates);
@@ -114,12 +114,12 @@ const useExchangeRates = (baseCurrency = 'INR') => {
 
       // Fetch fresh rates
       const data = await fetchWithRetry(`${API_CONFIG.BASE_URL}/${baseCurrency}`);
-      
+
       if (data?.rates) {
         setRates(data.rates);
         const now = new Date();
         setLastUpdated(now);
-        
+
         localStorage.setItem(cacheKey, JSON.stringify({
           rates: data.rates,
           timestamp: now.toISOString(),
@@ -133,7 +133,7 @@ const useExchangeRates = (baseCurrency = 'INR') => {
       }
     } catch (err) {
       console.error('Failed to fetch rates:', err);
-      
+
       // Use fallback rates
       setRates(FALLBACK_RATES);
       setLastUpdated(new Date());
@@ -147,7 +147,7 @@ const useExchangeRates = (baseCurrency = 'INR') => {
   useEffect(() => {
     fetchExchangeRates();
     const interval = setInterval(fetchExchangeRates, API_CONFIG.CACHE_DURATION);
-    
+
     return () => {
       clearInterval(interval);
       if (abortControllerRef.current) {
@@ -176,33 +176,60 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
   const [amount, setAmount] = useState(initialAmount);
   const [from, setFrom] = useState(initialFrom);
   const [to, setTo] = useState(initialTo);
-  
+
   // Custom hooks
   const { rates, loading, error, usingFallback, lastUpdated, refetch } = useExchangeRates();
   const debouncedAmount = useDebounce(amount, API_CONFIG.DEBOUNCE_DELAY);
+  const modalRef = useRef(null);
+
+  // Focus trap
+  useEffect(() => {
+    const focusable = modalRef.current?.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable && focusable.length) {
+      focusable[0].focus();
+
+      const handleTab = (e) => {
+        if (e.key !== 'Tab') return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      };
+
+      document.addEventListener('keydown', handleTab);
+      return () => document.removeEventListener('keydown', handleTab);
+    }
+  }, []); // Re-run only once for focus trap
 
   // ==================== CORE LOGIC ====================
   // ✅ FIXED: Derive result directly during render - no effect needed!
   const convert = useCallback((amountValue, fromCurrency, toCurrency, exchangeRates) => {
     if (!exchangeRates) return 0;
-    
+
     const numAmount = validateAmount(amountValue);
     if (numAmount === 0) return 0;
-    
+
     if (fromCurrency === toCurrency) return numAmount;
-    
+
     const fromRate = exchangeRates[fromCurrency];
     const toRate = exchangeRates[toCurrency];
-    
+
     if (!fromRate || !toRate) {
       console.warn(`Missing rates for: ${fromCurrency} or ${toCurrency}`);
-      return 0;
+      return null;
     }
-    
+
     // Convert through base currency (INR)
     const inBase = numAmount / fromRate;
     const result = inBase * toRate;
-    
+
     return Math.round(result * 10000) / 10000; // Round to 4 decimal places
   }, []);
 
@@ -220,13 +247,13 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
   // ==================== EVENT HANDLERS ====================
   const handleAmountChange = useCallback((e) => {
     let value = e.target.value;
-    
+
     // Allow empty or valid numbers
     if (value === '') {
       setAmount('');
       return;
     }
-    
+
     // Validate format (allow only numbers and single decimal)
     if (/^\d*\.?\d*$/.test(value)) {
       const numValue = parseFloat(value);
@@ -306,6 +333,7 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
       aria-modal="true"
     >
       <motion.div
+        ref={modalRef}
         className="modal-box glass"
         initial={{ scale: 0.88, y: 24 }}
         animate={{ scale: 1, y: 0 }}
@@ -317,7 +345,7 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.1rem' }}>
-            <ArrowLeftRight size={20} color="var(--brand-secondary)" /> 
+            <ArrowLeftRight size={20} color="var(--brand-secondary)" />
             Currency Converter
           </h3>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -332,9 +360,9 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
             >
               <RefreshCw size={16} />
             </motion.button>
-            <motion.button 
-              className="icon-btn" 
-              onClick={onClose} 
+            <motion.button
+              className="icon-btn"
+              onClick={onClose}
               whileHover={{ rotate: 90, scale: 1.1 }}
               aria-label="Close"
             >
@@ -387,9 +415,9 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
           <div className="form-field" style={{ flex: 1, marginBottom: 0 }}>
             <label htmlFor="from-currency">From</label>
-            <select 
+            <select
               id="from-currency"
-              value={from} 
+              value={from}
               onChange={e => setFrom(e.target.value)}
               aria-label="From currency"
             >
@@ -426,9 +454,9 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
 
           <div className="form-field" style={{ flex: 1, marginBottom: 0 }}>
             <label htmlFor="to-currency">To</label>
-            <select 
+            <select
               id="to-currency"
-              value={to} 
+              value={to}
               onChange={e => setTo(e.target.value)}
               aria-label="To currency"
             >
@@ -456,12 +484,14 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
               marginBottom: 20,
               textAlign: 'center'
             }}
+            role="status"
+            aria-live="polite"
           >
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 6 }}>
               {ALL_CURRENCIES[from]?.flag} {formatNumber(validateAmount(amount))} {from} equals
             </p>
             <p style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--brand-secondary)', fontFamily: "'Space Grotesk'" }}>
-              {ALL_CURRENCIES[to]?.symbol}{formatNumber(result, to)}
+              {result === null ? <span style={{ fontSize: '1.2rem', color: 'var(--danger)' }}>Rates unavailable</span> : `${ALL_CURRENCIES[to]?.symbol}${formatNumber(result, to)}`}
             </p>
             {exchangeRate && (
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: 6 }}>
@@ -510,12 +540,12 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
         {/* Footer */}
         <p style={{ textAlign: 'center', fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 14 }}>
           <TrendingUp size={10} style={{ marginRight: 4 }} />
-          {usingFallback ? 'Offline rates' : 'Live rates'} · 
-          Last updated: {lastUpdated ? lastUpdated.toLocaleDateString('en-IN', { 
-            day: 'numeric', 
-            month: 'short', 
-            hour: '2-digit', 
-            minute: '2-digit' 
+          {usingFallback ? 'Offline rates' : 'Live rates'} ·
+          Last updated: {lastUpdated ? lastUpdated.toLocaleDateString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit'
           }) : '...'}
         </p>
       </motion.div>

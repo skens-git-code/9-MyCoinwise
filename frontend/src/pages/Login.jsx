@@ -2,7 +2,7 @@ import React, { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../services/api';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 import { KeyRound, Mail, AlertTriangle, Zap, Eye, EyeOff, ArrowRight, Shield } from 'lucide-react';
 
 export default function Login() {
@@ -66,6 +66,8 @@ export default function Login() {
           {error && (
             <motion.div
               className="auth-alert"
+              role="alert"
+              aria-live="polite"
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
@@ -122,6 +124,7 @@ export default function Login() {
             type="submit"
             className="btn btn-primary auth-submit"
             disabled={loading}
+            aria-busy={loading}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >

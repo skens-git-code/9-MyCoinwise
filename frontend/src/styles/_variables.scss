@@ -1,175 +1,190 @@
-/* --- From index.scss --- */
 /* ================================================================
-   MYCOINWISE — iOS 26 Liquid Glass Design System
-   Inspired by Apple's visionOS / iOS 26 aesthetic
-   Supports: Dark, Light, AMOLED modes
+   MYCOINWISE — DESIGN TOKENS v3.0
+   Premium AMOLED-first dark theme. No blue tint on surfaces.
+   Palette: Neutral blacks + Emerald/Teal primary + Violet secondary
    ================================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Space+Grotesk:wght@600;800&family=JetBrains+Mono:wght@400;600&family=Nunito:wght@400;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* ================================================================
-   DESIGN TOKENS — Default (Dark / iOS 26 Glass)
+   DESIGN TOKENS — Default (Dark, AMOLED-leaning)
    ================================================================ */
 :root {
-  /* ► Brand Palette */
-  --brand-primary-rgb: 16, 185, 129;
-  --brand-secondary-rgb: 99, 102, 241;
-  --danger-rgb: 239, 68, 68;
-  --success-rgb: 16, 185, 129;
+  /* ► Brand Palette RGB for rgba() usage */
+  --brand-primary-rgb:   16, 185, 129;
+  --brand-secondary-rgb: 139, 92, 246;
+  --danger-rgb:          239, 68, 68;
+  --success-rgb:         34, 197, 94;
+  --warning-rgb:         245, 158, 11;
+  --info-rgb:            6, 182, 212;   /* was missing — added */
 
-  /* ► Z-Index System */
+  /* ► Z-Index System (layered stack)
+     100   sticky headers / floating elements
+     200   dropdowns / tooltips within page
+     1000  modals / overlays (currency converter, AI panel)
+     1200  mobile drawer overlay  (.mobile-drawer-overlay)
+     1201  mobile drawer panel    (.mobile-drawer)
+     1300  alerts center overlay  (.ac-overlay)
+     2000  global tooltips        (always on top)
+  */
   --z-negative: -1;
-  --z-base: 1;
-  --z-sticky: 100;
+  --z-base:     1;
+  --z-sticky:   100;
   --z-dropdown: 200;
-  --z-modal: 1000;
-  --z-tooltip: 2000;
+  --z-modal:    1000;
+  --z-drawer:   1200;
+  --z-alerts:   1300;
+  --z-tooltip:  2000;
 
   /* ► Typography Scale (Major Second) */
-  --text-xs: 0.75rem;     /* 12px */
-  --text-sm: 0.875rem;    /* 14px */
-  --text-base: 1rem;      /* 16px */
-  --text-lg: 1.125rem;    /* 18px */
-  --text-xl: 1.25rem;     /* 20px */
-  --text-2xl: 1.5rem;     /* 24px */
-  --text-3xl: 1.875rem;   /* 30px */
-  --text-4xl: 2.25rem;    /* 36px */
-  --text-5xl: 3rem;       /* 48px */
+  --text-xs:   0.75rem;    /* 12px */
+  --text-sm:   0.875rem;   /* 14px */
+  --text-base: 1rem;       /* 16px */
+  --text-lg:   1.125rem;   /* 18px */
+  --text-xl:   1.25rem;    /* 20px */
+  --text-2xl:  1.5rem;     /* 24px */
+  --text-3xl:  1.875rem;   /* 30px */
+  --text-4xl:  2.25rem;    /* 36px */
+  --text-5xl:  3rem;       /* 48px */
 
-  /* ► Spacing Scale (8px based) */
-  --space-1: 0.25rem;     /* 4px */
-  --space-2: 0.5rem;      /* 8px */
-  --space-3: 0.75rem;     /* 12px */
-  --space-4: 1rem;        /* 16px */
-  --space-5: 1.25rem;     /* 20px */
-  --space-6: 1.5rem;      /* 24px */
-  --space-8: 2rem;        /* 32px */
-  --space-10: 2.5rem;     /* 40px */
-  --space-12: 3rem;       /* 48px */
-  --space-16: 4rem;       /* 64px */
-  --brand-primary: #007AFF;
-  --brand-secondary: #0056CC;
-  --brand-accent: #60c7ff;
-  --brand-tertiary: #118AB2;
-  --brand-glow: rgba(0, 122, 255, 0.45);
-  --brand-glow-cyan: rgba(96, 199, 255, 0.3);
-  --mc-color: var(--brand-primary);
-  /* Default for masonry card */
+  /* ► Spacing Scale (8px base) */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
 
-  /* ► Signature Gradient (used for headings, CTAs, accents) */
-  --brand-gradient: linear-gradient(135deg, #007AFF 0%, #60c7ff 50%, #0056CC 100%);
-  --brand-gradient-vibrant: linear-gradient(135deg, #60c7ff 0%, #007AFF 40%, #0056CC 100%);
-  --accent-separator: rgba(0, 122, 255, 0.25);
+  /* ► Primary Brand — Emerald + Teal */
+  --brand-primary:   #10b981;
+  --brand-secondary: #8b5cf6;
+  --brand-accent:    #06b6d4;
+  --brand-tertiary:  #f59e0b;
+  --brand-glow:      rgba(16, 185, 129, 0.35);
+  --brand-glow-cyan: rgba(6, 182, 212, 0.25);
 
-  /* ► Semantic */
-  --success: #10B981;
-  --danger: #EF4444;
-  --warning: #F59E0B;
-  --info: #3B82F6;
+  /* ► Gradients */
+  --brand-gradient:         linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #8b5cf6 100%);
+  --brand-gradient-vibrant: linear-gradient(135deg, #34d399 0%, #10b981 40%, #06b6d4 100%);
+  --brand-gradient-warm:    linear-gradient(135deg, #10b981 0%, #f59e0b 100%);
+  --accent-separator:       rgba(16, 185, 129, 0.2);
 
-  /* ► Deep Surfaces — Premium Dark (Living Glass) */
-  --surface-0: #080A12;
-  --surface-1: #0D111A;
-  --surface-2: #141A26;
-  --surface-3: #1C2436;
+  /* ► Semantic Colors */
+  --success: #10b981;
+  --danger:  #ef4444;
+  --warning: #f59e0b;
+  --info:    #06b6d4;
 
-  /* ► Liquid Glass (Premium Frosted Effect) */
-  --glass-1: rgba(255, 255, 255, 0.03);
-  --glass-2: rgba(255, 255, 255, 0.06);
-  --glass-3: rgba(255, 255, 255, 0.12);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-hover: rgba(255, 255, 255, 0.2);
-  --glass-border-active: rgba(0, 122, 255, 0.6);
-  --glass-blur: 24px;
-  --glass-blur-sm: 12px;
-  --glass-blur-lg: 40px;
-  --glass-saturation: 180%;
-  --glass-brightness: 1.08;
-  --glass-radius: 20px;
+  /* ► Deep Surfaces — Neutral Black (no blue tint) */
+  --surface-0: #080a0a;
+  --surface-1: #0f1010;
+  --surface-2: #161818;
+  --surface-3: #1e2020;
+
+  /* ► Glassmorphism Tokens */
+  --glass-1:            rgba(255, 255, 255, 0.028);
+  --glass-2:            rgba(255, 255, 255, 0.055);
+  --glass-3:            rgba(255, 255, 255, 0.090);
+  --glass-border:       rgba(255, 255, 255, 0.07);
+  --glass-border-hover: rgba(255, 255, 255, 0.18);
+  --glass-border-active:rgba(16, 185, 129, 0.55);
+  --glass-blur:         24px;
+  --glass-blur-sm:      12px;
+  --glass-blur-lg:      40px;
+  --glass-saturation:   160%;
+  --glass-brightness:   1.06;
+  --glass-radius:       20px;
 
   /* ► Text */
-  --text-primary: #FFFFFF;
-  --text-secondary: #A0ABC0;
-  --text-muted: #64748B;
-  --text-dim: #334155;
+  --text-primary:   #ffffff;
+  --text-secondary: #9ca3af;
+  --text-muted:     #6b7280;
+  --text-dim:       #374151;
 
   /* ► Sidebar */
-  --sidebar-bg: rgba(13, 17, 26, 0.85);
+  --sidebar-bg: rgba(10, 11, 11, 0.88);
 
-  /* ► Ambient Magic (Dynamic Mesh gradients) */
-  --ambient-base: rgba(8, 11, 15, 1);
-  --ambient-mid: rgba(12, 17, 26, 0.95);
-  --ambient-accent: rgba(16, 24, 39, 0.9);
-  --orb-ai-color: rgba(56, 189, 248, 0.25); /* Sky blue instead of indigo */
-  --orb-goal-color: rgba(16, 185, 129, 0.25); /* Emerald */
-  --orb-chart-color: rgba(99, 102, 241, 0.10); /* Subtle indigo */
+  /* ► Navigation */
+  --nav-active-bg:   rgba(16, 185, 129, 0.12);
+  --nav-active-text: #34d399;
+  --nav-hover-bg:    rgba(255, 255, 255, 0.04);
 
-  /* ► Gradients - Modern Deep Ocean Mesh */
+  /* ► Ambient Background */
+  --ambient-base:   rgba(8, 10, 10, 1);
+  --ambient-mid:    rgba(12, 14, 14, 0.95);
+  --ambient-accent: rgba(18, 20, 20, 0.9);
+  --orb-ai-color:   rgba(139, 92, 246, 0.18);
+  --orb-goal-color: rgba(16, 185, 129, 0.18);
+  --orb-chart-color:rgba(6, 182, 212, 0.10);
+
+  /* ► Page Background Gradient */
   --bg-gradient:
-    radial-gradient(circle at 15% 10%, rgba(56, 189, 248, 0.12) 0%, transparent 40%),
-    radial-gradient(circle at 85% 20%, rgba(16, 185, 129, 0.12) 0%, transparent 45%),
-    radial-gradient(circle at 50% 90%, rgba(14, 165, 233, 0.1) 0%, transparent 50%),
-    linear-gradient(160deg, #06090F 0%, #0A1017 50%, #04060A 100%);
+    radial-gradient(circle at 15% 10%, rgba(16, 185, 129, 0.10) 0%, transparent 40%),
+    radial-gradient(circle at 85% 20%, rgba(139, 92, 246, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 50% 90%, rgba(6, 182, 212, 0.07) 0%, transparent 50%),
+    linear-gradient(160deg, #080a0a 0%, #0c0e0e 50%, #060808 100%);
 
   /* ► Layout */
-  --sidebar-width: 270px;
-  --header-height: 76px;
-  --border-radius-2xl: 24px;
-  --border-radius-xs: 8px;
-  --border-radius-sm: 12px;
-  --border-radius-md: 16px;
-  --border-radius-lg: 20px;
-  --border-radius-xl: 24px;
-  --border-radius-pill: 999px;
+  --sidebar-width:     270px;
+  --sidebar-collapsed: 80px;
+  --header-height:     70px;
+  --border-radius-xs:  6px;
+  --border-radius-sm:  10px;
+  --border-radius-md:  14px;
+  --border-radius-lg:  18px;
+  --border-radius-xl:  22px;
+  --border-radius-2xl: 26px;
+  --border-radius-pill:999px;
 
-  /* ► Shadows - Soft & Deep */
-  --shadow-xs: 0 2px 4px rgba(0, 0, 0, 0.2);
-  --shadow-sm: 0 4px 8px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 10px 20px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 30px 60px rgba(0, 0, 0, 0.6);
-  --shadow-2xl: 0 50px 100px rgba(0, 0, 0, 0.8);
-  --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.3), 0 0 70px rgba(0, 122, 255, 0.15);
-  --shadow-glow-sm: 0 0 20px rgba(16, 185, 129, 0.25);
-  --shadow-glow-cyan: 0 0 30px rgba(96, 199, 255, 0.3);
-  --shadow-brand: 0 10px 30px rgba(0, 122, 255, 0.35);
-  --shadow-inner: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  /* ► Shadows */
+  --shadow-xs:    0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-sm:    0 4px 8px rgba(0, 0, 0, 0.35);
+  --shadow-md:    0 8px 20px rgba(0, 0, 0, 0.45);
+  --shadow-lg:    0 16px 36px rgba(0, 0, 0, 0.55);
+  --shadow-xl:    0 28px 56px rgba(0, 0, 0, 0.65);
+  --shadow-2xl:   0 48px 96px rgba(0, 0, 0, 0.80);
+  --shadow-glow:  0 0 28px rgba(16, 185, 129, 0.25), 0 0 60px rgba(16, 185, 129, 0.10);
+  --shadow-glow-sm: 0 0 16px rgba(16, 185, 129, 0.20);
+  --shadow-brand: 0 8px 28px rgba(16, 185, 129, 0.30);
+  --shadow-inner: inset 0 1px 1px rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 16px 48px rgba(0, 0, 0, 0.60);
+  --glass-shadow-hover: 0 24px 64px rgba(0, 0, 0, 0.70);
 
-  /* ► Transitions - Fluid */
+  /* ► Transitions */
   --transition-instant: 0.1s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-fast: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-base: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-spring: 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-fast:    0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base:    0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow:    0.55s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring:  0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* ► Typography Families — Aligned with @import */
-  --font-body: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-head: 'Outfit', sans-serif;
+  /* ► Typography */
+  --font-body:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-head:   'Space Grotesk', 'Inter', sans-serif;
   --font-accent: 'Space Grotesk', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-  --font-round: 'Space Grotesk', sans-serif;
+  --font-mono:   'JetBrains Mono', 'Fira Code', monospace;
+  --font-round:  'Space Grotesk', sans-serif;
 
   /* ► Font Weights */
   --weight-regular: 400;
-  --weight-medium: 600;
-  --weight-bold: 700;
-  --weight-black: 800;
+  --weight-medium:  500;
+  --weight-semibold:600;
+  --weight-bold:    700;
+  --weight-black:   800;
 
-  /* ► Animation Durations (Reusing Transition Vars) */
-  --duration-slow: var(--transition-slow);
-  --duration-base: var(--transition-base);
-  --duration-fast: var(--transition-fast);
+  /* ► Animation Durations */
+  --duration-slow:    var(--transition-slow);
+  --duration-base:    var(--transition-base);
+  --duration-fast:    var(--transition-fast);
   --duration-instant: var(--transition-instant);
-  --duration-spring: var(--transition-spring);
+  --duration-spring:  var(--transition-spring);
 
-  /* ► Glass Morphism Semantic Tokens */
-  --glass-radius: 20px;
-  --glass-saturation: 180%;
-  --glass-brightness: 1.08;
-  --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
-  --glass-shadow-hover: 0 20px 56px rgba(0, 0, 0, 0.35);
-  --shadow-soft: 0 10px 25px rgba(0, 0, 0, 0.05);
-  --shadow-elevated: 0 20px 40px rgba(0, 0, 0, 0.08);
+  /* ► Semantic Shadow Tokens */
+  --shadow-soft:     0 4px 20px rgba(0, 0, 0, 0.12);
+  --shadow-elevated: 0 16px 40px rgba(0, 0, 0, 0.20);
 
   /* ► Container Queries */
   --container-sm: 640px;

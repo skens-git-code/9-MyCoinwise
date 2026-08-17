@@ -4,8 +4,10 @@ import {
   Search, Filter, ArrowUpRight, ArrowDownRight, 
   Trash2, Edit3, Plus, Wallet, FileText 
 } from 'lucide-react';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
+import Modal from '../components/Modal';
+import { useToast } from '../components/ToastProvider';
 
 const STAGGER_VARIANTS = {
   hidden: { opacity: 0 },
@@ -19,6 +21,7 @@ const ITEM_VARIANTS = {
 
 export default function Transactions() {
   const { transactions, deleteTransaction, editTransaction, addTransaction, fmt } = useContext(AppContext);
+  const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [sortBy, setSortBy] = useState('date-desc');
@@ -38,9 +41,14 @@ export default function Transactions() {
       return matchType && matchSearch;
     });
 
+    const safeGetTime = (d) => {
+      const t = new Date(d).getTime();
+      return isNaN(t) ? 0 : t;
+    };
+
     result.sort((a, b) => {
-      if (sortBy === 'date-desc') return new Date(b.date) - new Date(a.date);
-      if (sortBy === 'date-asc') return new Date(a.date) - new Date(b.date);
+      if (sortBy === 'date-desc') return safeGetTime(b.date) - safeGetTime(a.date);
+      if (sortBy === 'date-asc') return safeGetTime(a.date) - safeGetTime(b.date);
       if (sortBy === 'amount-desc') return b.amount - a.amount;
       if (sortBy === 'amount-asc') return a.amount - b.amount;
       return 0;
@@ -58,10 +66,16 @@ export default function Transactions() {
   const confirmDelete = async () => {
     if (!deletingTx) return;
     setIsDeleting(true);
-    await deleteTransaction(deletingTx.id);
-    setIsDeleting(false);
-    if (selectedTxId === deletingTx.id) setSelectedTxId(null);
-    setDeletingTx(null);
+    try {
+      await deleteTransaction(deletingTx.id);
+      showToast('success', 'Transaction deleted');
+    } catch {
+      showToast('error', 'Failed to delete transaction');
+    } finally {
+      setIsDeleting(false);
+      if (selectedTxId === deletingTx.id) setSelectedTxId(null);
+      setDeletingTx(null);
+    }
   };
 
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((a, c) => a + Number(c.amount), 0);
@@ -119,6 +133,14 @@ export default function Transactions() {
                   <motion.div key={t.id} variants={ITEM_VARIANTS} initial="hidden" animate="show" exit={{ opacity: 0, height: 0 }} layout
                     className={`il-item ${selectedTxId === t.id ? 'active' : ''}`}
                     onClick={() => setSelectedTxId(t.id)}
+                    role="button"
+                    tabIndex="0"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedTxId(t.id);
+                      }
+                    }}
                   >
                     <div className={`ili-icon ${t.type}`}>
                       {t.type === 'income' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
@@ -213,22 +235,21 @@ export default function Transactions() {
         {editingTx && <TransactionForm initialData={editingTx} onClose={() => setEditingTx(null)} onSubmit={async (tx) => { await editTransaction(tx.id, tx); setEditingTx(null); }} />}
         
         {/* Confirm Delete Modal */}
-        {deletingTx && (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDeletingTx(null)}>
-            <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22 }} onClick={e => e.stopPropagation()}>
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger)' }}><Trash2 size={18} /> Delete Transaction?</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
-                Are you sure you want to delete this <strong>{deletingTx.type}</strong> of <strong>{fmt(deletingTx.amount)}</strong> for <strong>{deletingTx.category}</strong>? This action cannot be undone.
-              </p>
-              <div className="modal-actions">
-                <button className="btn-secondary" onClick={() => setDeletingTx(null)}>Cancel</button>
-                <button className="btn-primary" style={{ background: 'var(--danger)' }} onClick={confirmDelete} disabled={isDeleting}>
-                  {isDeleting ? 'Deleting...' : 'Yes, Delete'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
+        <Modal
+          isOpen={deletingTx !== null}
+          onClose={() => setDeletingTx(null)}
+          title="Delete Transaction?"
+          confirmText="Yes, Delete"
+          onConfirm={confirmDelete}
+          isLoading={isDeleting}
+          danger={true}
+        >
+          {deletingTx && (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
+              Are you sure you want to delete this <strong>{deletingTx.type}</strong> of <strong>{fmt(deletingTx.amount)}</strong> for <strong>{deletingTx.category}</strong>? This action cannot be undone.
+            </p>
+          )}
+        </Modal>
       </AnimatePresence>
     </div>
   );

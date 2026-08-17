@@ -1,15 +1,18 @@
 import React, { useState, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Target, Trash2, Trophy, PlusCircle, Edit3, Clock, Zap } from 'lucide-react';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 import { predictTimeToGoal } from '../services/aiEngine';
 import { api } from '../services/api';
+import Modal from '../components/Modal';
+import { useToast } from '../components/ToastProvider';
 
 const GOAL_COLORS = ['#059669', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
 const GOAL_ICONS = ['🎯', '💻', '✈️', '🎮', '📚', '🏋️', '🎸', '🚗'];
 
 export default function Goals() {
-  const { transactions, fmt, goals, refetch, USER_ID } = useContext(AppContext);
+  const { transactions, fmt, goals, refetch, USER_ID, t } = useContext(AppContext);
+  const { showToast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
   const [contributeGoal, setContributeGoal] = useState(null);
   const [contributeAmount, setContributeAmount] = useState('');
@@ -38,8 +41,9 @@ export default function Goals() {
       });
       await refetch();
       setName(''); setTarget(''); setSaved(''); setShowAdd(false); setSelectedIcon('🎯');
-    } catch (err) {
-      console.error('Failed to create goal', err);
+      showToast('success', 'Goal created successfully!');
+    } catch {
+      showToast('error', 'Failed to create goal');
     } finally {
       setIsSubmitting(false);
     }
@@ -52,8 +56,9 @@ export default function Goals() {
       await api.deleteGoal(goalToDelete);
       await refetch();
       setGoalToDelete(null);
-    } catch (err) {
-      console.error('Failed to delete goal', err);
+      showToast('success', 'Goal deleted');
+    } catch {
+      showToast('error', 'Failed to delete goal');
     } finally {
       setIsSubmitting(false);
     }
@@ -70,8 +75,9 @@ export default function Goals() {
       await refetch();
       setContributeGoal(null);
       setContributeAmount('');
-    } catch (err) {
-      console.error('Failed to update goal', err);
+      showToast('success', 'Goal progress updated');
+    } catch {
+      showToast('error', 'Failed to update goal');
     } finally {
       setIsSubmitting(false);
     }
@@ -84,11 +90,11 @@ export default function Goals() {
     <div className="masonry-layout-page">
       <div className="masonry-header">
         <div className="mh-titles">
-          <h2>Savings Goals</h2>
-          <span className="mh-badge">{goals.length} active</span>
+          <h2>{t('goals')}</h2>
+          <span className="mh-badge">{goals.length} {t("active")}</span>
         </div>
         <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="btn-primary" onClick={() => setShowAdd(true)}>
-          <Plus size={16} /> New Goal
+          <Plus size={16} /> {t("new_goal")}
         </motion.button>
       </div>
 
@@ -96,9 +102,9 @@ export default function Goals() {
       <div className="carousel-wrapper" style={{ minHeight: 110 }}>
         <div className="carousel-track">
           {[
-            { label: 'Net Available', value: fmt(totalSaved), color: totalSaved >= 0 ? 'var(--success)' : 'var(--danger)', icon: '💰' },
-            { label: 'Target Amount', value: fmt(totalGoalTarget), color: 'var(--brand-primary)', icon: '🎯' },
-            { label: 'Contributed', value: fmt(totalGoalSaved), color: 'var(--brand-secondary)', icon: '✅' },
+            { label: t('net_available'), value: fmt(totalSaved), color: totalSaved >= 0 ? 'var(--success)' : 'var(--danger)', icon: '💰' },
+            { label: t('target_amount'), value: fmt(totalGoalTarget), color: 'var(--brand-primary)', icon: '🎯' },
+            { label: t('contributed'), value: fmt(totalGoalSaved), color: 'var(--brand-secondary)', icon: '✅' },
           ].map((s, i) => (
             <motion.div key={i} initial={{ opacity: 0, scale: 0.9, x: 20 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ delay: i * 0.1, type: 'spring' }}
               className="carousel-item glass"
@@ -120,10 +126,10 @@ export default function Goals() {
       {goals.length === 0 ? (
         <motion.div className="glass empty-state" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Target size={52} />
-          <p className="primary-msg">No goals yet.</p>
-          <p className="secondary-msg">Set your first savings target for a trip, a gadget, or an emergency fund.</p>
+          <p className="primary-msg">{t("no_goals_yet")}</p>
+          <p className="secondary-msg">{t("set_first_savings_target")}</p>
           <motion.button whileHover={{ scale: 1.04 }} className="btn-primary" style={{ marginTop: 20 }} onClick={() => setShowAdd(true)}>
-            <Plus size={16} /> Create Goal
+            <Plus size={16} /> {t("create_goal")}
           </motion.button>
         </motion.div>
       ) : (
@@ -145,7 +151,7 @@ export default function Goals() {
                 >
                   {done && (
                     <motion.div className="mc-badge" initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.3 }}>
-                      🎉 Achieved!
+                      🎉 {t("achieved")}
                     </motion.div>
                   )}
 
@@ -216,86 +222,69 @@ export default function Goals() {
       )}
 
       {/* Add Goal Modal */}
-      <AnimatePresence mode="wait">
-        {showAdd && (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAdd(false)}>
-            <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22, stiffness: 300 }} onClick={e => e.stopPropagation()}>
-              <h3>🎯 New Savings Goal</h3>
-              <div className="form-field">
-                <label>Goal Name</label>
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. PS5, Laptop, Summer Trip" autoFocus />
-              </div>
-              <div className="form-field">
-                <label>Choose Icon</label>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {GOAL_ICONS.map(ic => (
-                    <button key={ic} type="button" onClick={() => setSelectedIcon(ic)}
-                      style={{
-                        width: 38, height: 38, borderRadius: 10, fontSize: '1.2rem', cursor: 'pointer',
-                        background: selectedIcon === ic ? 'rgba(5, 150, 105,0.2)' : 'var(--glass-1)',
-                        border: selectedIcon === ic ? '2px solid var(--brand-primary)' : '1px solid var(--glass-border)',
-                        transition: 'all 0.15s'
-                      }}
-                    >{ic}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="form-field"><label>Target Amount</label><input type="number" value={target} onChange={e => setTarget(e.target.value)} placeholder="e.g. 500" /></div>
-              <div className="form-field"><label>Already Saved</label><input type="number" value={saved} onChange={e => setSaved(e.target.value)} placeholder="0" /></div>
-              <div className="modal-actions">
-                <button className="btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
-                <button className="btn-primary" onClick={addGoal} disabled={isSubmitting}>
-                  {isSubmitting ? 'Saving...' : 'Save Goal'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Modal
+        isOpen={showAdd}
+        onClose={() => setShowAdd(false)}
+        title="🎯 New Savings Goal"
+        confirmText="Save Goal"
+        onConfirm={addGoal}
+        isLoading={isSubmitting}
+      >
+        <div className="form-group" style={{ marginBottom: 12 }}>
+          <label>Goal Name</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Dream Vacation" autoFocus />
+        </div>
+        <div className="form-group" style={{ marginBottom: 12 }}>
+          <label>Choose Icon</label>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {GOAL_ICONS.map(ic => (
+              <button key={ic} type="button" onClick={() => setSelectedIcon(ic)}
+                style={{
+                  width: 38, height: 38, borderRadius: 10, fontSize: '1.2rem', cursor: 'pointer',
+                  background: selectedIcon === ic ? 'rgba(5, 150, 105,0.2)' : 'var(--glass-1)',
+                  border: selectedIcon === ic ? '2px solid var(--brand-primary)' : '1px solid var(--glass-border)',
+                  transition: 'all 0.15s'
+                }}
+              >{ic}</button>
+            ))}
+          </div>
+        </div>
+        <div className="form-group" style={{ marginBottom: 12 }}><label>Target Amount</label><input type="number" value={target} onChange={e => setTarget(e.target.value)} placeholder="e.g. 500" /></div>
+        <div className="form-group"><label>Already Saved</label><input type="number" value={saved} onChange={e => setSaved(e.target.value)} placeholder="0" /></div>
+      </Modal>
 
       {/* Contribute Modal */}
-      <AnimatePresence mode="wait">
-        {contributeGoal !== null && (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setContributeGoal(null)}>
-            <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22 }} onClick={e => e.stopPropagation()}>
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><PlusCircle size={18} /> Add / Remove Funds</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                Updating: <strong>{goals.find(g => g.id === contributeGoal)?.name}</strong>
-              </p>
-              <div className="form-field">
-                <label>Amount (Use negative to remove)</label>
-                <input type="number" step="0.01" value={contributeAmount} onChange={e => setContributeAmount(e.target.value)} placeholder="e.g. 25.00 or -10.00" autoFocus />
-              </div>
-              <div className="modal-actions">
-                <button className="btn-secondary" onClick={() => setContributeGoal(null)}>Cancel</button>
-                <button className="btn-primary" onClick={() => contribute(contributeGoal)} disabled={isSubmitting}>
-                  {isSubmitting ? 'Updating...' : 'Add'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Modal
+        isOpen={contributeGoal !== null}
+        onClose={() => setContributeGoal(null)}
+        title="Add / Remove Funds"
+        confirmText={contributeAmount < 0 ? 'Remove Funds' : 'Add Funds'}
+        onConfirm={() => contribute(contributeGoal)}
+        isLoading={isSubmitting}
+      >
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 16 }}>
+          Updating: <strong>{goals.find(g => g.id === contributeGoal)?.name}</strong>
+        </p>
+        <div className="form-group">
+          <label>Amount (Use negative to remove)</label>
+          <input type="number" step="0.01" value={contributeAmount} onChange={e => setContributeAmount(e.target.value)} placeholder="e.g. 25.00 or -10.00" autoFocus />
+        </div>
+      </Modal>
 
       {/* Confirm Delete Modal */}
-      <AnimatePresence mode="wait">
-        {goalToDelete !== null && (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setGoalToDelete(null)}>
-            <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22 }} onClick={e => e.stopPropagation()}>
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger)' }}><Trash2 size={18} /> Delete Goal?</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
-                Are you sure you want to delete the goal <strong>{goals.find(g => g.id === goalToDelete)?.name}</strong>? This action cannot be undone.
-              </p>
-              <div className="modal-actions">
-                <button className="btn-secondary" onClick={() => setGoalToDelete(null)}>Cancel</button>
-                <button className="btn-primary" style={{ background: 'var(--danger)' }} onClick={confirmDelete} disabled={isSubmitting}>
-                  {isSubmitting ? 'Deleting...' : 'Yes, Delete'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Modal
+        isOpen={goalToDelete !== null}
+        onClose={() => setGoalToDelete(null)}
+        title={t("delete_goal")}
+        confirmText={t("delete")}
+        onConfirm={confirmDelete}
+        isLoading={isSubmitting}
+        danger={true}
+      >
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
+          Are you sure you want to delete the goal <strong>{goals.find(g => g.id === goalToDelete)?.name}</strong>? This action cannot be undone.
+        </p>
+      </Modal>
     </div>
   );
 }

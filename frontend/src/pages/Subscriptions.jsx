@@ -1,8 +1,10 @@
 import React, { useState, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, RefreshCw, Calendar, TrendingDown } from 'lucide-react';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 import { api } from '../services/api';
+import Modal from '../components/Modal';
+import { useToast } from '../components/ToastProvider';
 
 const PRESETS = [
   { name: 'Netflix', amount: 15.49, icon: '🎬', color: '#ef4444' },
@@ -23,7 +25,8 @@ function getMonthlyEquivalent(sub) {
 }
 
 export default function Subscriptions() {
-  const { fmt, subscriptions: subs, refetch, USER_ID } = useContext(AppContext);
+  const { fmt, subscriptions: subs, refetch, USER_ID, t } = useContext(AppContext);
+  const { showToast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [subToDelete, setSubToDelete] = useState(null);
@@ -57,8 +60,9 @@ export default function Subscriptions() {
       });
       await refetch();
       setName(''); setAmount(''); setCycle('monthly'); setIcon('💳'); setColor('#059669'); setShowAdd(false);
-    } catch (err) {
-      console.error('Failed to create subscription', err);
+      showToast('success', 'Subscription created successfully!');
+    } catch {
+      showToast('error', 'Failed to create subscription');
     } finally {
       setIsSubmitting(false);
     }
@@ -71,8 +75,9 @@ export default function Subscriptions() {
       await api.deleteSubscription(subToDelete);
       await refetch();
       setSubToDelete(null);
-    } catch (err) {
-      console.error('Failed to delete subscription', err);
+      showToast('success', 'Subscription deleted');
+    } catch {
+      showToast('error', 'Failed to delete subscription');
     } finally {
       setIsSubmitting(false);
     }
@@ -94,7 +99,7 @@ export default function Subscriptions() {
       <div className="masonry-header">
         <div className="mh-titles">
           <h2>Subscriptions</h2>
-          <span className="mh-badge">{subs.length} active</span>
+          <span className="mh-badge">{subs.length} {t("active")}</span>
         </div>
         <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="btn-primary" onClick={() => { setName(''); setAmount(''); setCycle('monthly'); setIcon('💳'); setColor('#059669'); setShowAdd(true); }}>
           <Plus size={16} /> Add Custom
@@ -105,10 +110,10 @@ export default function Subscriptions() {
       <div className="carousel-wrapper" style={{ minHeight: 90 }}>
         <div className="carousel-track">
           {[
-            { label: 'Monthly Cost', value: fmt(monthlyTotal), color: 'var(--danger)', icon: <Calendar size={18} /> },
-            { label: 'Annual Cost', value: fmt(yearlyTotal), color: 'var(--warning)', icon: <TrendingDown size={18} /> },
+            { label: t('monthly_cost'), value: fmt(monthlyTotal), color: 'var(--danger)', icon: <Calendar size={18} /> },
+            { label: t('annual_cost'), value: fmt(yearlyTotal), color: 'var(--warning)', icon: <TrendingDown size={18} /> },
             { label: 'Weekly Cost', value: fmt(weeklyTotal), color: 'var(--brand-primary)', icon: <RefreshCw size={18} /> },
-            { label: 'Active Subs', value: subs.length, color: 'var(--brand-secondary)', icon: '📋' },
+            { label: t('active_subs'), value: subs.length, color: 'var(--brand-secondary)', icon: '📋' },
           ].map((s, i) => (
             <motion.div key={i} className="carousel-item glass" initial={{ opacity: 0, scale: 0.9, x: 20 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ delay: i * 0.1, type: 'spring' }} style={{ border: `1px solid ${s.color}33`, boxShadow: `0 8px 24px ${s.color}15` }}>
               <div className="ci-icon-box" style={{ background: `${s.color}15`, color: s.color, filter: `drop-shadow(0 0 8px ${s.color}55)` }}>
@@ -133,6 +138,7 @@ export default function Subscriptions() {
               return (
                 <motion.button
                   key={i} className="preset-btn"
+                  disabled={added}
                   whileHover={added ? {} : { scale: 1.05, y: -4 }} whileTap={added ? {} : { scale: 0.97 }}
                   onClick={() => !added && handlePresetClick(p)}
                   style={{
@@ -159,10 +165,10 @@ export default function Subscriptions() {
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         <h4 style={{ marginBottom: 16, fontWeight: 800, fontFamily: 'var(--font-head)', fontSize: '1.1rem' }}>Your Subscriptions</h4>
         {subs.length === 0 ? (
-          <motion.div className="glass empty-state" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <RefreshCw size={52} />
-            <p className="primary-msg">No active subscriptions.</p>
-            <p className="secondary-msg">Add custom subscriptions or use the quick presets above.</p>
+          <motion.div className="glass empty-state" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ padding: '48px 24px', textAlign: 'center' }}>
+            <RefreshCw size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 16px', opacity: 0.4 }} />
+            <h3 style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>No Active Subscriptions</h3>
+            <p style={{ color: 'var(--text-muted)', maxWidth: 320, margin: '0 auto' }}>Add custom subscriptions or use the quick presets above.</p>
           </motion.div>
         ) : (
           <div className="masonry-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
@@ -203,51 +209,40 @@ export default function Subscriptions() {
       </motion.div>
 
       {/* Add Modal */}
-      <AnimatePresence mode="wait">
-        {showAdd && (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAdd(false)}>
-            <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22, stiffness: 300 }} onClick={e => e.stopPropagation()}>
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: '1.4rem' }}>{icon}</span> {name ? `Add ${name}` : 'New Subscription'}</h3>
-              <div className="form-field"><label>Service Name</label><input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Netflix, Gym" autoFocus /></div>
-              <div className="form-field"><label>Amount</label><input type="text" inputMode="decimal" value={amount} onChange={e => { let v = e.target.value.replace(/[^0-9.]/g, ''); const p = v.split('.'); if (p.length > 2) v = p[0] + '.' + p.slice(1).join(''); setAmount(v); }} placeholder="9.99" /></div>
-              <div className="form-field">
-                <label>Billing Cycle</label>
-                <select value={cycle} onChange={e => setCycle(e.target.value)}>
-                  <option value="monthly">Monthly</option>
-                  <option value="yearly">Yearly</option>
-                  <option value="weekly">Weekly</option>
-                </select>
-              </div>
-              <div className="modal-actions">
-                <button className="btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
-                <button className="btn-primary" onClick={() => addSub(null)} disabled={isSubmitting}>
-                  {isSubmitting ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Modal
+        isOpen={showAdd}
+        onClose={() => setShowAdd(false)}
+        title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: '1.4rem' }}>{icon}</span> {name ? `Add ${name}` : 'New Subscription'}</span>}
+        confirmText="Save"
+        onConfirm={() => addSub(null)}
+        isLoading={isSubmitting}
+      >
+        <div className="form-group" style={{ marginBottom: 12 }}><label>Service Name</label><input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Netflix, Gym" autoFocus /></div>
+        <div className="form-group" style={{ marginBottom: 12 }}><label>Amount</label><input type="text" inputMode="decimal" value={amount} onChange={e => { let v = e.target.value.replace(/[^0-9.]/g, ''); const p = v.split('.'); if (p.length > 2) v = p[0] + '.' + p.slice(1).join(''); setAmount(v); }} placeholder="9.99" /></div>
+        <div className="form-group" style={{ marginBottom: 12 }}>
+          <label>Billing Cycle</label>
+          <select value={cycle} onChange={e => setCycle(e.target.value)}>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </div>
+      </Modal>
 
       {/* Confirm Delete Modal */}
-      <AnimatePresence mode="wait">
-        {subToDelete !== null && (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSubToDelete(null)}>
-            <motion.div className="modal-box glass" initial={{ scale: 0.88, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.88, y: 24 }} transition={{ type: 'spring', damping: 22 }} onClick={e => e.stopPropagation()}>
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger)' }}><Trash2 size={18} /> Delete Subscription?</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
-                Are you sure you want to delete <strong>{subs.find(s => s.id === subToDelete)?.name}</strong>? This action cannot be undone.
-              </p>
-              <div className="modal-actions">
-                <button className="btn-secondary" onClick={() => setSubToDelete(null)}>Cancel</button>
-                <button className="btn-primary" style={{ background: 'var(--danger)' }} onClick={confirmDelete} disabled={isSubmitting}>
-                  {isSubmitting ? 'Deleting...' : 'Yes, Delete'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Modal
+        isOpen={subToDelete !== null}
+        onClose={() => setSubToDelete(null)}
+        title={t("delete_subscription")}
+        confirmText={t("delete")}
+        onConfirm={confirmDelete}
+        isLoading={isSubmitting}
+        danger={true}
+      >
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
+          Are you sure you want to delete <strong>{subs.find(s => s.id === subToDelete)?.name}</strong>? This action cannot be undone.
+        </p>
+      </Modal>
     </div>
   );
 }

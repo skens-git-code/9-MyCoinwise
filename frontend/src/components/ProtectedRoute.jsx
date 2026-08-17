@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { AppContext } from '../App';
+import { AppContext } from '../contexts/AppContext';
 import Loader from './Loader';
 import ErrorState from './ErrorState';
 import useDelayedLoading from '../hooks/useDelayedLoading';

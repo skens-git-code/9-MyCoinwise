@@ -1,92 +1,108 @@
 /* ================================================================
-   LIGHT THEME — iOS 26 Frosted
+   LIGHT THEME — Clean, Bright, Modern
    ================================================================ */
 
 [data-theme="light"] {
-  --surface-0: #F0F4FF;
-  --surface-1: #FFFFFF;
-  --surface-2: #E4ECFF;
-  --surface-3: #D0DCFF;
-  --glass-1: rgba(255, 255, 255, 0.25);
-  --glass-2: rgba(255, 255, 255, 0.45);
-  --glass-3: rgba(255, 255, 255, 0.65);
-  --glass-border: rgba(0, 122, 255, 0.12);
-  --glass-border-hover: rgba(0, 122, 255, 0.3);
-  --glass-border-active: rgba(0, 122, 255, 0.5);
-  --glass-brightness: 1.02;
-  --glass-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
-  --glass-shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.08);
-  --text-primary: #0A1628;
-  --text-secondary: #3A5080;
-  --text-muted: #7090B0;
-  --text-dim: #A0B8D0;
-  --brand-primary: #0ea5e9;
-  --brand-secondary: #059669;
-  --brand-primary-rgb: 14, 165, 233;
-  --brand-secondary-rgb: 5, 150, 105;
-  --brand-accent: #38bdf8;
-  --brand-gradient: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 50%, #059669 100%);
-  --brand-gradient-vibrant: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 40%, #059669 100%);
-  --brand-glow: rgba(14, 165, 233, 0.2);
-  --brand-glow-cyan: rgba(56, 189, 248, 0.2);
-  --sidebar-bg: rgba(240, 244, 255, 0.92);
-  --shadow-glow: 0 0 40px rgba(14, 165, 233, 0.18), 0 0 80px rgba(14, 165, 233, 0.08);
-  --shadow-brand: 0 8px 32px rgba(14, 165, 233, 0.3);
-  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.06);
-  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.09);
+  --surface-0: #f5f5f5;
+  --surface-1: #ffffff;
+  --surface-2: #ebebeb;
+  --surface-3: #e0e0e0;
+  --glass-1:            rgba(255, 255, 255, 0.50);
+  --glass-2:            rgba(255, 255, 255, 0.72);
+  --glass-3:            rgba(255, 255, 255, 0.88);
+  --glass-border:       rgba(0, 0, 0, 0.08);
+  --glass-border-hover: rgba(16, 185, 129, 0.30);
+  --glass-border-active:rgba(16, 185, 129, 0.55);
+  --glass-brightness:   1.02;
+  --glass-shadow:       0 8px 24px rgba(0, 0, 0, 0.06);
+  --glass-shadow-hover: 0 16px 40px rgba(0, 0, 0, 0.10);
+
+  --text-primary:   #0a0f0a;
+  --text-secondary: #4b5563;
+  --text-muted:     #6b7280;
+  --text-dim:       #9ca3af;
+
+  --brand-primary:          #059669;
+  --brand-secondary:        #7c3aed;
+  --brand-accent:           #0891b2;
+  --brand-primary-rgb:      5, 150, 105;
+  --brand-secondary-rgb:    124, 58, 237;
+  --brand-gradient:         linear-gradient(135deg, #059669 0%, #0891b2 50%, #7c3aed 100%);
+  --brand-gradient-vibrant: linear-gradient(135deg, #34d399 0%, #059669 40%, #0891b2 100%);
+  --brand-glow:             rgba(5, 150, 105, 0.20);
+
+  --sidebar-bg:   rgba(255, 255, 255, 0.92);
+  --nav-active-bg:   rgba(5, 150, 105, 0.10);
+  --nav-active-text: #059669;
+  --nav-hover-bg:    rgba(0, 0, 0, 0.04);
+
+  --shadow-glow:  0 0 40px rgba(5, 150, 105, 0.15), 0 0 80px rgba(5, 150, 105, 0.06);
+  --shadow-brand: 0 8px 28px rgba(5, 150, 105, 0.25);
+  --shadow-lg:    0 10px 24px rgba(0, 0, 0, 0.08);
+  --shadow-xl:    0 20px 40px rgba(0, 0, 0, 0.10);
   --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
-  /* ► Ambient Magic (Light) */
-  --ambient-base: rgba(240, 244, 255, 1);
-  --ambient-mid: rgba(228, 236, 255, 0.95);
-  --ambient-accent: rgba(208, 220, 255, 0.85);
-  --orb-ai-color: rgba(14, 165, 233, 0.12);
-  --orb-goal-color: rgba(5, 150, 105, 0.12);
-  --orb-chart-color: rgba(56, 189, 248, 0.2);
+  --ambient-base:    rgba(245, 245, 245, 1);
+  --ambient-mid:     rgba(235, 235, 235, 0.95);
+  --ambient-accent:  rgba(224, 224, 224, 0.90);
+  --orb-ai-color:    rgba(124, 58, 237, 0.10);
+  --orb-goal-color:  rgba(5, 150, 105, 0.10);
+  --orb-chart-color: rgba(8, 145, 178, 0.12);
 
   --bg-gradient:
-    radial-gradient(ellipse at 0% 0%, rgba(0, 122, 255, 0.10) 0%, transparent 60%),
-    radial-gradient(ellipse at 100% 0%, rgba(96, 199, 255, 0.08) 0%, transparent 60%),
-    linear-gradient(160deg, #f0f4ff 0%, #e8eeff 100%);
+    radial-gradient(ellipse at 0% 0%, rgba(5, 150, 105, 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 0%, rgba(8, 145, 178, 0.06) 0%, transparent 55%),
+    linear-gradient(160deg, #f5f5f5 0%, #efefef 100%);
 }
 
 /* ================================================================
-   AMOLED THEME — Pure Black + Neon
+   AMOLED THEME — Pure Black + Emerald Neon
    ================================================================ */
 [data-theme="amoled"] {
   --surface-0: #000000;
-  --surface-1: #050508;
-  --surface-2: #0a0a0f;
-  --surface-3: #0f0f18;
-  --glass-1: rgba(255, 255, 255, 0.015);
-  --glass-2: rgba(255, 255, 255, 0.035);
-  --glass-3: rgba(255, 255, 255, 0.06);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-hover: rgba(255, 255, 255, 0.25);
-  --glass-border-active: rgba(255, 255, 255, 0.40);
-  --glass-brightness: 1.1;
-  --brand-primary: #34d399;
-  --brand-secondary: #22d3ee;
-  --brand-secondary-rgb: 34, 211, 238;
-  --brand-accent: #fb923c;
-  --brand-glow: rgba(52, 211, 153, 0.6);
-  --success: #22c55e;
-  --danger: #ef4444;
-  --sidebar-bg: rgba(0, 0, 0, 0.95);
-  --shadow-glow: 0 0 60px rgba(52, 211, 153, 0.5), 0 0 120px rgba(52, 211, 153, 0.2);
-  --shadow-brand: 0 8px 32px rgba(52, 211, 153, 0.5);
+  --surface-1: #030303;
+  --surface-2: #080808;
+  --surface-3: #0e0e0e;
+  --glass-1:            rgba(255, 255, 255, 0.018);
+  --glass-2:            rgba(255, 255, 255, 0.032);
+  --glass-3:            rgba(255, 255, 255, 0.052);
+  --glass-border:       rgba(255, 255, 255, 0.07);
+  --glass-border-hover: rgba(255, 255, 255, 0.22);
+  --glass-border-active:rgba(52, 211, 153, 0.60);
+  --glass-brightness:   1.12;
+  --glass-shadow:       0 16px 48px rgba(0, 0, 0, 0.90);
+  --glass-shadow-hover: 0 24px 64px rgba(0, 0, 0, 0.95);
 
-  /* ► Ambient Magic (AMOLED) */
-  --ambient-base: rgba(0, 0, 0, 1);
-  --ambient-mid: rgba(5, 5, 8, 0.95);
-  --ambient-accent: rgba(20, 10, 0, 0.9);
-  --orb-ai-color: rgba(var(--warning-rgb), 0.3);
-  --orb-goal-color: rgba(52, 211, 153, 0.2);
-  --orb-chart-color: rgba(10, 10, 15, 0.8);
+  --brand-primary:          #34d399;
+  --brand-secondary:        #a78bfa;
+  --brand-accent:           #22d3ee;
+  --brand-primary-rgb:      52, 211, 153;
+  --brand-secondary-rgb:    167, 139, 250;
+  --brand-glow:             rgba(52, 211, 153, 0.45);
+  --brand-gradient:         linear-gradient(135deg, #34d399 0%, #22d3ee 50%, #a78bfa 100%);
+  --brand-gradient-vibrant: linear-gradient(135deg, #6ee7b7 0%, #34d399 40%, #22d3ee 100%);
+
+  --nav-active-bg:   rgba(52, 211, 153, 0.12);
+  --nav-active-text: #34d399;
+  --nav-hover-bg:    rgba(255, 255, 255, 0.035);
+
+  --success: #22c55e;
+  --danger:  #ef4444;
+  --sidebar-bg: rgba(0, 0, 0, 0.96);
+
+  --shadow-glow:  0 0 60px rgba(52, 211, 153, 0.40), 0 0 120px rgba(52, 211, 153, 0.15);
+  --shadow-brand: 0 8px 32px rgba(52, 211, 153, 0.40);
+  --shadow-lg:    0 16px 40px rgba(0, 0, 0, 0.92);
+
+  --ambient-base:    rgba(0, 0, 0, 1);
+  --ambient-mid:     rgba(3, 3, 3, 0.98);
+  --ambient-accent:  rgba(8, 8, 8, 0.95);
+  --orb-ai-color:    rgba(167, 139, 250, 0.20);
+  --orb-goal-color:  rgba(52, 211, 153, 0.18);
+  --orb-chart-color: rgba(34, 211, 238, 0.08);
 
   --bg-gradient:
-    radial-gradient(ellipse at 20% 20%, rgba(52, 211, 153, 0.12) 0%, transparent 55%),
-    radial-gradient(ellipse at 80% 80%, rgba(34, 211, 238, 0.07) 0%, transparent 55%),
-    linear-gradient(160deg, #000000 0%, #050508 100%);
+    radial-gradient(ellipse at 20% 15%, rgba(52, 211, 153, 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(167, 139, 250, 0.08) 0%, transparent 50%),
+    linear-gradient(160deg, #000000 0%, #030303 100%);
 }
-

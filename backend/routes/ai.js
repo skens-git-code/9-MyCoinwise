@@ -1,8 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const rateLimit = require('express-rate-limit');
 const Transaction = require('../models/Transaction');
 const Goal = require('../models/Goal');
+
+const aiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 requests per windowMs
+  message: { error: 'Too many AI requests, please try again later.' }
+});
 
 // Helper — builds financial context string for the AI
 async function getFinancialContext(userId) {
@@ -34,7 +41,7 @@ ${goalData || 'No active goals.'}`;
 
 // POST /api/ai/chat
 // Auth is already applied at the app.use('/api/ai', auth, aiRoutes) level in server.js
-router.post('/chat', async (req, res) => {
+router.post('/chat', aiLimiter, async (req, res) => {
   const { message, history } = req.body;
 
   if (!message || typeof message !== 'string' || !message.trim()) {

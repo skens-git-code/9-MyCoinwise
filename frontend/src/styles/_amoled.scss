@@ -1,0 +1,302 @@
+/* ================================================================
+   MYCOINWISE — AMOLED THEME LAYER
+   All styles scoped under [data-theme="amoled"].
+   No !important overrides. Clean cascade.
+   ================================================================ */
+
+/* ── Background ── */
+[data-theme="amoled"] {
+  html,
+  body {
+    background: #000;
+  }
+
+  .gradient-bg,
+  .gradients-container {
+    background: #000;
+  }
+
+  .gradient-1 {
+    background: radial-gradient(circle, rgba(52, 211, 153, 0.12) 0%, transparent 70%);
+  }
+
+  .gradient-2 {
+    background: radial-gradient(circle, rgba(167, 139, 250, 0.08) 0%, transparent 70%);
+  }
+
+  .gradient-3,
+  .particles {
+    display: none;
+  }
+
+  /* ── App Shell ── */
+  .app-island-layout {
+    background: #000;
+  }
+
+  .island-sidebar {
+    background: rgba(5, 5, 5, 0.92);
+    border-color: rgba(255, 255, 255, 0.07);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(32px) saturate(140%);
+    -webkit-backdrop-filter: blur(32px) saturate(140%);
+  }
+
+  .island-main {
+    background: #030303;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .island-header {
+    background: rgba(3, 3, 3, 0.92);
+    border-color: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  /* ── Brand ── */
+  .brand-icon {
+    background: linear-gradient(135deg, #34d399 0%, #a78bfa 100%);
+    box-shadow: 0 0 20px rgba(52, 211, 153, 0.20);
+  }
+
+  /* ── Navigation ── */
+  .inav-item.active {
+    color: var(--nav-active-text);
+    background: var(--nav-active-bg);
+  }
+
+  .inav-active-pill {
+    border-left-color: var(--brand-primary);
+    box-shadow: none;
+    background: transparent;
+  }
+
+  .inav-item:hover:not(.active) {
+    background: var(--nav-hover-bg);
+    color: #fff;
+  }
+
+  /* ── Glass Cards ── */
+  .glass,
+  .glass-card,
+  .bento-tile,
+  .card,
+  .stat-card,
+  .chart-card {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.012));
+    backdrop-filter: blur(28px) saturate(130%);
+    -webkit-backdrop-filter: blur(28px) saturate(130%);
+    border-color: rgba(255, 255, 255, 0.07);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.88);
+  }
+
+  .glass:hover,
+  .glass-card:hover,
+  .bento-tile:hover,
+  .card:hover,
+  .stat-card:hover,
+  .chart-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.92), 0 0 32px rgba(52, 211, 153, 0.04);
+  }
+
+  /* ── Dashboard ── */
+  .bento-dashboard::before,
+  .bento-dashboard::after {
+    display: none;
+  }
+
+  .bento-hero .bh-mid h2,
+  .stat-value,
+  .hero-balance,
+  .balance-value {
+    font-family: var(--font-head);
+    text-shadow: none;
+  }
+
+  .bento-hero .bh-mid h2 {
+    color: #fff;
+  }
+
+  .bento-insight-pill,
+  .ai-status-badge {
+    color: var(--brand-primary);
+    background: rgba(52, 211, 153, 0.08);
+    border-color: rgba(52, 211, 153, 0.28);
+  }
+
+  .progress-fill,
+  .goal-progress-fill,
+  .mc-progress-fill {
+    background: linear-gradient(90deg, #34d399, #22d3ee);
+    box-shadow: none;
+  }
+
+  .progress-track,
+  .mc-progress-track {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  /* ── Buttons ── */
+  .bbtn-pri,
+  .hero-btn,
+  .cta-button {
+    min-height: 44px;
+    border-radius: var(--border-radius-pill);
+    background: #fff;
+    color: #000;
+    border: none;
+    box-shadow: none;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.88);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 28px rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  .bbtn-sec,
+  .bbtn-icon,
+  .ibtn {
+    background: transparent;
+    border-color: rgba(255, 255, 255, 0.10);
+    color: var(--text-secondary);
+
+    &:hover {
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.04);
+    }
+  }
+
+  /* ── Form Controls ── */
+  input,
+  textarea,
+  select {
+    background: rgba(0, 0, 0, 0.40);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.10);
+    border-radius: var(--border-radius-sm);
+
+    &:focus {
+      border-color: var(--brand-primary);
+      box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.14);
+    }
+  }
+
+  /* ── Typography ── */
+  .text-gradient,
+  .gradient-text {
+    background: linear-gradient(135deg, #34d399, #22d3ee, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── Mobile Bottom Dock ── */
+  .mobile-bottom-dock {
+    background: rgba(0, 0, 0, 0.95);
+    border-color: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+  }
+
+  .dock-item.active {
+    color: var(--brand-primary);
+  }
+
+  .dock-active-dot {
+    background: rgba(52, 211, 153, 0.12);
+    border-color: rgba(52, 211, 153, 0.28);
+    box-shadow: none;
+  }
+
+  /* Disable breathing animations in AMOLED mode */
+  .pulse-encouragement,
+  .numberGlow {
+    animation: none;
+  }
+
+  /* ── Auth Pages ── */
+  .auth-page {
+    background: #000;
+  }
+
+  .auth-bg {
+    background:
+      radial-gradient(circle at 12% 8%, rgba(52, 211, 153, 0.12), transparent 30%),
+      radial-gradient(circle at 88% 90%, rgba(167, 139, 250, 0.08), transparent 34%);
+  }
+
+  .auth-orb {
+    display: none;
+  }
+
+  .auth-card {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.010));
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.92);
+    backdrop-filter: blur(32px) saturate(140%);
+    -webkit-backdrop-filter: blur(32px) saturate(140%);
+  }
+
+  .auth-logo-icon {
+    background: linear-gradient(135deg, #34d399, #a78bfa);
+    box-shadow: none;
+  }
+
+  .auth-submit {
+    background: #fff;
+    color: #000;
+    box-shadow: none;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 8px 28px rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  .auth-alt-btn {
+    background: rgba(255, 255, 255, 0.025);
+    border-color: rgba(255, 255, 255, 0.09);
+    color: var(--brand-primary);
+
+    &:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+  }
+
+  /* ── Reduced Motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms;
+      transition-duration: 0.01ms;
+    }
+  }
+}
+
+/* ── Mobile AMOLED overrides ── */
+@media (max-width: 768px) {
+  [data-theme="amoled"] {
+    .app-island-layout {
+      padding: 0;
+    }
+
+    .island-main {
+      border-radius: 0;
+      border-left: 0;
+      border-right: 0;
+    }
+
+    .island-content-wrapper {
+      padding: 20px 16px 100px;
+    }
+  }
+}

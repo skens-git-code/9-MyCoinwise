@@ -8,6 +8,7 @@ import { api, CURRENCIES } from './services/api';
 import { generateAlerts, getSpendingInsights } from './services/aiEngine';
 import { getT, LANGUAGES } from './services/i18n';
 import ErrorBoundary from './components/ErrorBoundary';
+import { ToastProvider } from './components/ToastProvider';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Transactions = lazy(() => import('./pages/Transactions'));
@@ -21,7 +22,7 @@ const Calendar = lazy(() => import('./pages/Calendar'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 
-export const AppContext = React.createContext(null);
+import { AppContext } from './contexts/AppContext';
 
 export function formatCurrency(amount, currency = 'USD') {
   const info = CURRENCIES[currency] || CURRENCIES.USD;
@@ -160,9 +161,34 @@ export default function App() {
 
   useEffect(() => { fetchData(); }, [token]);
 
-  const addTransaction = async (tx) => { await api.addTransaction({ ...tx, user_id: user?.id || user?._id }); await fetchData(); };
-  const deleteTransaction = async (id) => { await api.deleteTransaction(id); await fetchData(); };
-  const editTransaction = async (id, data) => { await api.editTransaction(id, data); await fetchData(); };
+  const applyBalance = (balance) => {
+    if (balance === undefined || balance === null) return;
+    setUser(prev => prev ? { ...prev, balance: Number(balance) } : prev);
+  };
+
+  const addTransaction = async (tx) => {
+    const result = await api.addTransaction({ ...tx, user_id: user?.id || user?._id });
+    if (result.transaction) setTransactions(prev => [result.transaction, ...prev]);
+    applyBalance(result.balance);
+    await fetchData();
+    return result;
+  };
+  const deleteTransaction = async (id) => {
+    const result = await api.deleteTransaction(id);
+    setTransactions(prev => prev.filter(tx => tx.id !== id && tx._id !== id));
+    applyBalance(result.balance);
+    await fetchData();
+    return result;
+  };
+  const editTransaction = async (id, data) => {
+    const result = await api.editTransaction(id, data);
+    if (result.transaction) {
+      setTransactions(prev => prev.map(tx => (tx.id === id || tx._id === id) ? result.transaction : tx));
+    }
+    applyBalance(result.balance);
+    await fetchData();
+    return result;
+  };
   const resetAccount = async () => { await api.resetAccount(user?.id || user?._id); await fetchData(); };
 
   const createUser = async (data) => {
@@ -203,12 +229,14 @@ export default function App() {
         addTransaction, deleteTransaction, editTransaction,
         resetAccount, createUser, switchUser, login, logout, 
         isInitialAuthLoad, isBackgroundSyncing, globalError,
+        fetchTransactions: fetchData,
         refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
         lang, setLanguage, t, token,
         alerts, insights, deferredPrompt, installPWA, goals, subscriptions, events,
       }}>
-        <Router>
-          <Suspense fallback={<Loader />}>
+        <ToastProvider>
+          <Router>
+            <Suspense fallback={<Loader />}>
             <Routes>
               <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
               <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
@@ -235,6 +263,7 @@ export default function App() {
             </Routes>
           </Suspense>
         </Router>
+        </ToastProvider>
       </AppContext.Provider>
     </ErrorBoundary>
   );

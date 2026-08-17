@@ -16,7 +16,7 @@ const auth = async (req, res, next) => {
     }
 
     // Verify token
-    const verified = jwt.verify(token, process.env.JWT_SECRET || 'jwt_secret_redacted');
+    const verified = jwt.verify(token, process.env.JWT_SECRET);
 
     // Validate session_version to catch revoked tokens
     const user = await User.findById(verified.id || verified._id);
