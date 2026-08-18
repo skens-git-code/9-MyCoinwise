@@ -1012,6 +1012,51 @@ app.get('/api/export/:userId', checkOwnership('userId'), async (req, res) => {
   }
 });
 
+// JSON backup/restore for the authenticated user's own data.
+// Restore is deliberately allow-listed and never accepts or overwrites a user document.
+app.get('/api/users/:userId/export', checkOwnership('userId'), async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const [transactions, goals, subscriptions, events, wealthItems, netWorthHistory] = await Promise.all([
+      Transaction.find({ user_id: userId }).lean(),
+      Goal.find({ user_id: userId }).lean(),
+      Subscription.find({ user_id: userId }).lean(),
+      Event.find({ user_id: userId }).lean(),
+      WealthItem.find({ user_id: userId }).lean(),
+      NetWorthHistory.find({ user_id: userId }).lean(),
+    ]);
+    res.json({ version: 1, exportedAt: new Date().toISOString(), transactions, goals, subscriptions, events, wealthItems, netWorthHistory });
+  } catch (error) {
+    console.error('[Backup] export error:', error);
+    res.status(500).json({ message: 'Failed to export backup.' });
+  }
+});
+
+app.post('/api/users/:userId/import', checkOwnership('userId'), async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const backup = req.body;
+    if (!backup || backup.version !== 1) return res.status(400).json({ message: 'Unsupported backup format.' });
+
+    const collections = [
+      ['transactions', Transaction], ['goals', Goal], ['subscriptions', Subscription],
+      ['events', Event], ['wealthItems', WealthItem], ['netWorthHistory', NetWorthHistory],
+    ];
+    const operations = collections.map(async ([key, Model]) => {
+      if (!Array.isArray(backup[key])) return;
+      const documents = backup[key].map(({ _id, user_id, ...document }) => ({ ...document, user_id: userId }));
+      await Model.deleteMany({ user_id: userId });
+      if (documents.length) await Model.insertMany(documents, { ordered: true });
+    });
+    await Promise.all(operations);
+    await syncUserBalance(userId);
+    res.json({ success: true, message: 'Backup restored successfully.' });
+  } catch (error) {
+    console.error('[Backup] import error:', error);
+    res.status(400).json({ message: 'Backup could not be restored.' });
+  }
+});
+
 // ─── ERROR HANDLER MIDDLEWARE ────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   logger.error(err.stack);

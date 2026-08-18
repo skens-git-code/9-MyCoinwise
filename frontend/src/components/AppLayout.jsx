@@ -371,6 +371,13 @@ export default function AppLayout({ children }) {
     setDrawerOpen(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (!drawerOpen || typeof document === 'undefined') return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [drawerOpen]);
+
   // Custom hooks
   const userInfo = useUserDisplay(user);
   useClickOutside(activeDropdown, closeAll);
@@ -655,6 +662,7 @@ const DesktopSidebar = React.memo(({
       className={`island-sidebar glass ${sidebarOpen ? 'open' : 'collapsed'}`}
       aria-label="Main navigation sidebar"
       aria-expanded={sidebarOpen}
+      id="desktop-navigation"
     >
       <div className="island-brand">
         <motion.div className="brand-icon" whileHover={{ rotate: 15, scale: 1.1 }}>
@@ -676,6 +684,8 @@ const DesktopSidebar = React.memo(({
           className="collapse-toggle"
           onClick={onToggle}
           aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-expanded={sidebarOpen}
+          aria-controls="desktop-navigation"
         >
           <motion.span animate={{ rotate: sidebarOpen ? 180 : 0 }}>
             <ChevronRight size={16} />
@@ -708,7 +718,7 @@ const DesktopSidebar = React.memo(({
       </div>
 
       {/* Navigation */}
-      <nav className="island-nav">
+      <nav className="island-nav" aria-label="Primary navigation">
         {NAV_ITEMS.map((item) => (
           <NavLink
             key={item.to}

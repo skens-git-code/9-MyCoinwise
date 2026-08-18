@@ -3,13 +3,13 @@ import { motion } from 'framer-motion';
 import { Zap } from 'lucide-react';
 
 export default function Loader({ fullScreen = false, mode = 'inline', text }) {
-  const prefersReducedMotion =
-    typeof window !== 'undefined' &&
+  const prefersReducedMotion = typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   if (mode === 'button') {
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span className="loader loader--button" role="status" aria-label={text || 'Loading'} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
         <motion.span
           animate={prefersReducedMotion ? {} : { rotate: 360 }}
           transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
@@ -30,6 +30,7 @@ export default function Loader({ fullScreen = false, mode = 'inline', text }) {
 
   return (
     <div
+      className={`loader ${isFull ? 'loader--fullscreen' : 'loader--inline'} loader--${mode}`}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -37,7 +38,7 @@ export default function Loader({ fullScreen = false, mode = 'inline', text }) {
         justifyContent: 'center',
         gap: '16px',
         width: '100%',
-        minHeight: isFull ? '100vh' : '220px',
+        minHeight: isFull ? '100dvh' : '220px',
         position: isFull ? 'fixed' : 'relative',
         inset: isFull ? 0 : 'auto',
         zIndex: isFull ? 9999 : 1,
@@ -47,7 +48,8 @@ export default function Loader({ fullScreen = false, mode = 'inline', text }) {
         boxSizing: 'border-box',
         padding: '24px'
       }}
-      aria-label="Loading..."
+      aria-label={text || 'Loading'}
+      aria-busy="true"
       aria-live="polite"
       role="status"
     >

@@ -1,8 +1,8 @@
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useState, useContext, useMemo, useDeferredValue } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, Filter, ArrowUpRight, ArrowDownRight, 
-  Trash2, Edit3, Plus, Wallet, FileText 
+  Trash2, Edit3, Plus, Wallet, FileText, X
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
@@ -23,6 +23,7 @@ export default function Transactions() {
   const { transactions, deleteTransaction, editTransaction, addTransaction, fmt } = useContext(AppContext);
   const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [filterType, setFilterType] = useState('all');
   const [sortBy, setSortBy] = useState('date-desc');
   const [deletingTx, setDeletingTx] = useState(null);
@@ -37,7 +38,7 @@ export default function Transactions() {
     let result = transactions.filter(t => {
       const matchType = filterType === 'all' || t.type === filterType;
       const searchStr = `${t.category} ${t.note || ''} ${t.amount}`.toLowerCase();
-      const matchSearch = searchStr.includes(searchTerm.toLowerCase());
+      const matchSearch = searchStr.includes(deferredSearchTerm.trim().toLowerCase());
       return matchType && matchSearch;
     });
 
@@ -55,7 +56,14 @@ export default function Transactions() {
     });
 
     return result;
-  }, [transactions, searchTerm, filterType, sortBy]);
+  }, [transactions, deferredSearchTerm, filterType, sortBy]);
+
+  const hasActiveFilters = Boolean(searchTerm || filterType !== 'all' || sortBy !== 'date-desc');
+  const clearFilters = () => {
+    setSearchTerm('');
+    setFilterType('all');
+    setSortBy('date-desc');
+  };
 
   const [selectedTxId, setSelectedTxId] = useState(null);
 
@@ -91,7 +99,7 @@ export default function Transactions() {
           <h2>Transactions</h2>
           <span className="ih-badge">{transactions.length} total</span>
         </div>
-        <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="btn-primary" onClick={() => setIsAdding(true)}>
+        <motion.button aria-label="Add transaction" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="btn-primary" onClick={() => setIsAdding(true)}>
           <Plus size={16} /> Add New
         </motion.button>
       </div>
@@ -102,21 +110,26 @@ export default function Transactions() {
         <div className="inbox-list-pane glass">
           <div className="il-filters">
             <div className="il-search">
-              <Search size={16} />
-              <input placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+              <Search size={16} aria-hidden="true" />
+              <input aria-label="Search transactions" placeholder="Search by category, note, or amount" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
             <div className="il-controls">
-              <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+              <select aria-label="Filter transactions by type" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
                 <option value="all">All</option>
                 <option value="income">Income</option>
                 <option value="expense">Expense</option>
               </select>
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              <select aria-label="Sort transactions" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                 <option value="date-desc">Newest</option>
-                <option value="amount-desc">Highest</option>
+                <option value="date-asc">Oldest</option>
+                <option value="amount-desc">Highest amount</option>
+                <option value="amount-asc">Lowest amount</option>
               </select>
+              {hasActiveFilters && <button type="button" className="icon-btn" onClick={clearFilters} aria-label="Clear transaction filters" title="Clear filters"><X size={16} /></button>}
             </div>
           </div>
+
+          <div className="sr-only" aria-live="polite">Showing {filtered.length} of {transactions.length} transactions</div>
 
           <div className="il-scrollable">
             {transactions.length === 0 ? (
@@ -138,7 +151,8 @@ export default function Transactions() {
                     className={`il-item ${String(selectedTxId) === transactionId ? 'active' : ''}`}
                     onClick={() => setSelectedTxId(transactionId)}
                     role="button"
-                    tabIndex="0"
+                    tabIndex={0}
+                    aria-label={`${t.category}, ${t.type}, ${fmt(t.amount)}`}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();

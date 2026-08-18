@@ -225,7 +225,7 @@ export const api = {
 
   // ── Data Backup / Restore ─────────────────────────────────────────────────
   exportAllData: async (userId) => {
-    const res = await axios.get(`${API_URL}/users/${userId}/export`);
+    const res = await axios.get(`${API_URL}/export/${userId}`);
     return res.data;
   },
   importAllData: async (userId, data) => {
