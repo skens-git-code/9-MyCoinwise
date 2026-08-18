@@ -4390,6 +4390,18 @@ textarea:focus-visible {
 @media (max-width: 640px) {
   .calendar-page-content {
     padding: 12px !important;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .calendar-page-content .masonry-header {
+    padding: 14px !important;
+    border-radius: 18px !important;
+  }
+
+  .calendar-page-content .masonry-header h1 {
+    font-size: clamp(1.35rem, 7vw, 1.8rem) !important;
+    line-height: 1.05;
   }
 
   .calendar-page-content .masonry-header {
@@ -4423,6 +4435,7 @@ textarea:focus-visible {
 
   .calendar-stats-row {
     gap: 8px;
+    margin-bottom: 12px;
   }
 
   .calendar-stats-row .stat-card {
@@ -4444,6 +4457,10 @@ textarea:focus-visible {
 
   .calendar-container {
     padding: 0.75rem;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    border-radius: 18px;
   }
 
   .cal-header {
@@ -4457,6 +4474,8 @@ textarea:focus-visible {
 
   .cal-grid {
     gap: 3px;
+    width: 100%;
+    max-width: 100%;
   }
 
   .cal-weekday {
@@ -4468,6 +4487,7 @@ textarea:focus-visible {
     min-height: 68px;
     padding: 0.3rem;
     border-radius: 7px;
+    aspect-ratio: auto;
   }
 
   .cal-date-num {
@@ -4482,6 +4502,8 @@ textarea:focus-visible {
   .cal-sum-badge {
     font-size: 0.58rem;
     padding: 2px 3px;
+    display: block;
+    line-height: 1.15;
   }
 }
 

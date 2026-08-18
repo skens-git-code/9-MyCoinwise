@@ -1269,6 +1269,13 @@
 
 /* ── Small phone ── */
 @media (max-width: 640px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   .island-content-wrapper {
     padding-bottom: 100px;
   }
@@ -1325,6 +1332,14 @@
 
   .island-page {
     padding: 12px;
+  }
+
+  .island-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--ambient-base) 88%, transparent);
+    backdrop-filter: blur(18px);
   }
 }
 
