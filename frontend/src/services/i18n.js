@@ -153,6 +153,12 @@ export const TRANSLATIONS = {
     delete_subscription: 'Delete Subscription?',
     are_you_sure_delete_sub: 'Are you sure you want to remove',
 
+    // Goals modal additional keys
+    choose_icon: 'Choose Icon',
+    optional: 'optional',
+    add_funds: 'Add Funds',
+    remove_funds: 'Remove Funds',
+
   },
   hi: {
     app_name: 'ज़ेनिथ स्पेंड',
@@ -296,6 +302,11 @@ export const TRANSLATIONS = {
     add_subscription: 'सदस्यता जोड़ें',
     delete_subscription: 'सदस्यता हटाएं?',
     are_you_sure_delete_sub: 'क्या आप वाकई हटाना चाहते हैं',
+
+    choose_icon: 'आइकन चुनें',
+    optional: 'वैकल्पिक',
+    add_funds: 'पैसे जोड़ें',
+    remove_funds: 'पैसे हटाएं',
 
   },
   mr: {
@@ -441,6 +452,11 @@ export const TRANSLATIONS = {
     delete_subscription: 'सदस्यता हटवायची?',
     are_you_sure_delete_sub: 'तुम्हाला खात्री आहे की तुम्हाला काढायचे आहे',
 
+    choose_icon: 'चिन्ह निवडा',
+    optional: 'पर्यायी',
+    add_funds: 'पैसे जोडा',
+    remove_funds: 'पैसे काढा',
+
   },
   bgc: {
     app_name: 'ज़ेनिथ स्पेंड',
@@ -584,6 +600,11 @@ export const TRANSLATIONS = {
     add_subscription: 'सब्सक्रिप्शन जोड़ें',
     delete_subscription: 'सब्सक्रिप्शन काटना सै?',
     are_you_sure_delete_sub: 'के तनै पक्का यो काटना सै',
+
+    choose_icon: 'निशान चुन लें',
+    optional: 'चाहे तो लिखो',
+    add_funds: 'पीसे घालें',
+    remove_funds: 'पीसे काटें',
 
   }
 };

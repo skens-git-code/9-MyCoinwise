@@ -95,7 +95,7 @@ const formatBalance = (balance, currencySymbol = '₹') => {
 const getDeviceType = () => {
   // Safe check for SSR environments
   if (typeof window === 'undefined') return 'desktop';
-  
+
   const width = window.innerWidth;
   if (width < BREAKPOINTS.mobile) return 'mobile';
   if (width < BREAKPOINTS.tablet) return 'tablet';
@@ -136,7 +136,7 @@ const useUserDisplay = (user) => {
     const isBase64Avatar = typeof avatarStr === 'string' && avatarStr.length > 20 && avatarStr.startsWith('data:image');
 
     const fullDisplayName = isValidDisplayName ? sanitizedRawName : USER_DISPLAY_RULES.defaultDisplayName;
-    
+
     return {
       displayName: fullDisplayName,
       firstName: fullDisplayName.split(' ')[0] || fullDisplayName,
@@ -366,10 +366,12 @@ export default function AppLayout({ children }) {
   const navigate = useNavigate();
 
   // Keep the mobile drawer in sync with navigation, including redirects
-  // triggered by profile actions or programmatic route changes.
-  useEffect(() => {
+  // triggered by profile actions or programmatic route changes without effect cascading renders.
+  const [prevPathname, setPrevPathname] = useState(location.pathname);
+  if (prevPathname !== location.pathname) {
+    setPrevPathname(location.pathname);
     setDrawerOpen(false);
-  }, [location.pathname]);
+  }
 
   useEffect(() => {
     if (!drawerOpen || typeof document === 'undefined') return undefined;
@@ -402,9 +404,9 @@ export default function AppLayout({ children }) {
       `;
       document.head.appendChild(styleSheet);
     }
-    
+
     const runtime = QuantumRuntime.create(document);
-    
+
     return () => {
       runtime.destroy();
       // Optional: clean up styles if desired, but usually okay to leave
@@ -465,12 +467,12 @@ export default function AppLayout({ children }) {
 
   // FIX: memoize all modal/drawer toggle handlers so React.memo on
   // Header, MobileBottomNav, and MobileDrawer actually prevents re-renders
-  const handleOpenConverter  = useCallback(() => setShowConverter(true),  []);
-  const handleOpenAlerts     = useCallback(() => setShowAlerts(true),     []);
-  const handleOpenAI         = useCallback(() => setIsAIOpen(true),       []);
-  const handleOpenDrawer     = useCallback(() => setDrawerOpen(true),      []);
-  const handleCloseDrawer    = useCallback(() => setDrawerOpen(false),     []);
-  const handleOpenProfile    = useCallback(() => {
+  const handleOpenConverter = useCallback(() => setShowConverter(true), []);
+  const handleOpenAlerts = useCallback(() => setShowAlerts(true), []);
+  const handleOpenAI = useCallback(() => setIsAIOpen(true), []);
+  const handleOpenDrawer = useCallback(() => setDrawerOpen(true), []);
+  const handleCloseDrawer = useCallback(() => setDrawerOpen(false), []);
+  const handleOpenProfile = useCallback(() => {
     closeAll();
     navigate('/settings');
   }, [closeAll, navigate]);
@@ -479,10 +481,10 @@ export default function AppLayout({ children }) {
   const handleDrawerConverter = useCallback(() => {
     setDrawerOpen(false); setShowConverter(true);
   }, []);
-  const handleDrawerAlerts    = useCallback(() => {
+  const handleDrawerAlerts = useCallback(() => {
     setDrawerOpen(false); setShowAlerts(true);
   }, []);
-  const handleDrawerAI        = useCallback(() => {
+  const handleDrawerAI = useCallback(() => {
     setDrawerOpen(false); setIsAIOpen(true);
   }, []);
 
@@ -1135,7 +1137,7 @@ const AIPanelOverlay = React.memo(({ onClose }) => {
     );
     if (focusable && focusable.length) {
       focusable[0].focus();
-      
+
       const handleTab = (e) => {
         if (e.key !== 'Tab') return;
         const first = focusable[0];
@@ -1148,7 +1150,7 @@ const AIPanelOverlay = React.memo(({ onClose }) => {
           first.focus();
         }
       };
-      
+
       document.addEventListener('keydown', handleTab);
       return () => document.removeEventListener('keydown', handleTab);
     }

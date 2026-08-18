@@ -923,6 +923,17 @@
       color: var(--text-secondary);
       font-weight: var(--weight-medium);
     }
+
+    .bt-note {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 140px;
+      display: block;
+    }
   }
 
   .bt-amt {
@@ -4792,4 +4803,445 @@ select {
 }
 .spinning {
   animation: spin 1s linear infinite;
+}
+
+/* ================================================================
+   GOALS PAGE — MASONRY LAYOUT & CARD SYSTEM
+   ================================================================ */
+
+// .form-group is an alias for .form-field used in Goals modals
+.form-group {
+  @extend .form-field;
+}
+
+.form-label-hint {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.form-char-count {
+  display: block;
+  text-align: right;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+// Page wrapper
+.masonry-layout-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-bottom: 32px;
+}
+
+// Header row: title + new-goal button
+.masonry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+
+  .mh-titles {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    h2 {
+      margin: 0;
+      font-size: 1.6rem;
+      font-family: var(--font-head);
+      font-weight: 800;
+    }
+  }
+
+  .mh-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    background: var(--glass-2);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+  }
+}
+
+// Horizontal carousel summary strip
+.carousel-wrapper {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-bottom: 4px;
+
+  &::-webkit-scrollbar { display: none; }
+}
+
+.carousel-track {
+  display: flex;
+  gap: 14px;
+  min-width: max-content;
+}
+
+.carousel-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  border-radius: 16px;
+  min-width: 200px;
+  flex-shrink: 0;
+  cursor: default;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+  }
+
+  .ci-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+  }
+
+  .ci-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .ci-val {
+    font-size: 1.15rem;
+    font-weight: 700;
+    font-family: var(--font-head);
+    margin: 0;
+    line-height: 1.2;
+  }
+
+  .ci-lbl {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0;
+  }
+}
+
+// Masonry responsive grid
+.masonry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// Individual goal card
+.masonry-card {
+  position: relative;
+  border-radius: 20px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--glass-border);
+  transition: transform 0.2s ease, box-shadow 0.25s ease, border-color 0.2s;
+  overflow: hidden;
+
+  // Accent left bar using the card's --mc-color CSS variable
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 16px;
+    bottom: 16px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--mc-color, var(--brand-primary));
+    opacity: 0.75;
+  }
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+    border-color: var(--mc-color, var(--glass-border));
+  }
+
+  &.masonry-card-done {
+    border-color: var(--success);
+    background: rgba(16, 185, 129, 0.04);
+  }
+
+  // Achieved badge ribbon
+  .mc-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: var(--success);
+    color: white;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  // Header row: icon + delete button
+  .mc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .mc-icon {
+    font-size: 2rem;
+    line-height: 1;
+  }
+
+  // Goal title
+  .mc-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    font-family: var(--font-head);
+    margin: 0;
+    line-height: 1.3;
+    color: var(--text-primary);
+  }
+
+  // Description / notes line
+  .mc-notes {
+    display: flex;
+    align-items: flex-start;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: -4px 0 0;
+    word-break: break-word;
+  }
+
+  // Saved / Target amounts
+  .mc-amounts {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+
+    .mc-saved {
+      font-size: 1.4rem;
+      font-weight: 800;
+      font-family: var(--font-head);
+      color: var(--mc-color, var(--brand-primary));
+    }
+
+    .mc-target {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+  }
+
+  // Progress bar container
+  .mc-progress-box {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mc-progress-track {
+    height: 8px;
+    background: var(--glass-2);
+    border-radius: 99px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .mc-progress-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: var(--mc-color, var(--brand-primary));
+    min-width: 4px;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%);
+      border-radius: inherit;
+    }
+  }
+
+  .mc-progress-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+
+  // "Behind schedule" nudge text
+  .bg-nudge {
+    font-size: 0.75rem;
+    color: var(--warning);
+    margin: 0;
+    padding: 6px 10px;
+    background: rgba(245, 158, 11, 0.08);
+    border-radius: 8px;
+    border-left: 3px solid var(--warning);
+  }
+
+  // Footer row
+  .mc-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: auto;
+  }
+
+  .mc-contribute-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--mc-color, var(--glass-border));
+    background: rgba(var(--brand-primary-rgb, 5,150,105), 0.07);
+    color: var(--mc-color, var(--brand-primary));
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--font-body);
+    transition: all 0.15s ease;
+    width: 100%;
+    justify-content: center;
+
+    &:hover {
+      background: rgba(var(--brand-primary-rgb, 5,150,105), 0.15);
+    }
+  }
+
+  .mc-ai-pred {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    padding: 5px 10px;
+    background: var(--glass-1);
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+
+    span {
+      font-weight: 600;
+      color: var(--brand-secondary);
+    }
+
+    &.mc-ai-empty {
+      color: var(--text-muted);
+      opacity: 0.7;
+    }
+  }
+
+  // Delete button
+  .del-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-1);
+    border-radius: 8px;
+    color: var(--danger);
+    cursor: pointer;
+    transition: all 0.15s;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.12);
+    }
+  }
+
+  &:hover .del-btn {
+    opacity: 1;
+  }
+}
+
+// Icon picker grid in the modal
+.goal-icon-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  .goal-icon-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    font-size: 1.25rem;
+    cursor: pointer;
+    background: var(--glass-1);
+    border: 1px solid var(--glass-border);
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+      transform: scale(1.1);
+      border-color: var(--brand-primary);
+    }
+
+    &.selected {
+      background: rgba(5, 150, 105, 0.15);
+      border: 2px solid var(--brand-primary);
+    }
+  }
+}
+
+// Empty state
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 24px;
+  border-radius: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  border: 1px dashed var(--glass-border);
+  min-height: 280px;
+
+  .primary-msg {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .secondary-msg {
+    font-size: 0.9rem;
+    margin: 0;
+  }
+}
+
+// Pulsing encouragement on stuck progress bars
+@keyframes pulse-encouragement {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.pulse-encouragement {
+  animation: pulse-encouragement 2s ease-in-out infinite;
 }

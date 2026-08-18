@@ -234,7 +234,7 @@ export default function App() {
   const currencyInfo = CURRENCIES[currency] || CURRENCIES.USD;
   const fmt = (amount) => formatCurrency(amount, currency);
 
-  const alerts = useMemo(() => generateAlerts(transactions, user), [transactions, user]);
+  const alerts = useMemo(() => generateAlerts(transactions, user, goals), [transactions, user, goals]);
   const insights = useMemo(() => getSpendingInsights(transactions, fmt), [transactions, currency]);
   const t = useMemo(() => getT(lang), [lang]);
 

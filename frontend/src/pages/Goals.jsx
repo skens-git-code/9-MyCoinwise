@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Target, Trash2, Trophy, PlusCircle, Edit3, Clock, Zap } from 'lucide-react';
+import { Plus, Target, Trash2, PlusCircle, Clock, Zap, FileText } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { predictTimeToGoal } from '../services/aiEngine';
 import { api } from '../services/api';
@@ -19,31 +19,60 @@ export default function Goals() {
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
   const [saved, setSaved] = useState('');
+  const [notes, setNotes] = useState('');
   const [selectedIcon, setSelectedIcon] = useState('🎯');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [goalToDelete, setGoalToDelete] = useState(null);
 
+  // Net available balance from all transactions (unfiltered)
   const totalSaved = transactions.reduce(
     (a, c) => c.type === 'income' ? a + Number(c.amount) : a - Number(c.amount), 0
   );
 
+  const resetForm = () => {
+    setName(''); setTarget(''); setSaved(''); setNotes(''); setSelectedIcon('🎯');
+  };
+
   const addGoal = async () => {
-    if (!name.trim() || !target || parseFloat(target) <= 0) return;
+    const trimmedName = name.trim();
+    const targetNum = parseFloat(target);
+    const savedNum = parseFloat(saved) || 0;
+
+    if (!trimmedName) {
+      showToast('error', 'Please enter a goal name.');
+      return;
+    }
+    if (!target || isNaN(targetNum) || targetNum <= 0) {
+      showToast('error', 'Target amount must be a positive number.');
+      return;
+    }
+    if (savedNum < 0) {
+      showToast('error', 'Already saved amount cannot be negative.');
+      return;
+    }
+    if (savedNum > targetNum) {
+      showToast('error', 'Already saved amount cannot exceed the target.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await api.createGoal({
         user_id: USER_ID,
-        name: name.trim(),
-        target: parseFloat(target),
-        saved: parseFloat(saved) || 0,
+        name: trimmedName,
+        target: Math.round(targetNum * 100) / 100,
+        saved: Math.round(savedNum * 100) / 100,
         color: GOAL_COLORS[goals.length % GOAL_COLORS.length],
-        icon: selectedIcon
+        icon: selectedIcon,
+        notes: notes.trim() || undefined,
       });
       await refetch();
-      setName(''); setTarget(''); setSaved(''); setShowAdd(false); setSelectedIcon('🎯');
+      resetForm();
+      setShowAdd(false);
       showToast('success', 'Goal created successfully!');
-    } catch {
-      showToast('error', 'Failed to create goal');
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.message || 'Failed to create goal';
+      showToast('error', msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -66,7 +95,10 @@ export default function Goals() {
 
   const contribute = async (id) => {
     const amt = parseFloat(contributeAmount);
-    if (!amt || isNaN(amt)) return; // Allow negative amounts to remove funds
+    if (!amt || isNaN(amt)) {
+      showToast('error', 'Please enter a valid amount.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const goal = goals.find(g => g.id === id);
@@ -75,9 +107,10 @@ export default function Goals() {
       await refetch();
       setContributeGoal(null);
       setContributeAmount('');
-      showToast('success', 'Goal progress updated');
-    } catch {
-      showToast('error', 'Failed to update goal');
+      showToast('success', amt > 0 ? 'Funds added to goal!' : 'Funds removed from goal!');
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'Failed to update goal';
+      showToast('error', msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -122,7 +155,7 @@ export default function Goals() {
         </div>
       </div>
 
-      {/* Goals Grid - Masonry */}
+      {/* Goals Grid */}
       {goals.length === 0 ? (
         <motion.div className="glass empty-state" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Target size={52} />
@@ -161,6 +194,14 @@ export default function Goals() {
                   </div>
 
                   <h3 className="mc-title">{g.name}</h3>
+
+                  {/* Description / Notes — visible on every card */}
+                  {g.notes && (
+                    <p className="mc-notes">
+                      <FileText size={12} style={{ marginRight: 5, opacity: 0.55, flexShrink: 0, verticalAlign: 'middle' }} />
+                      {g.notes}
+                    </p>
+                  )}
 
                   <div className="mc-amounts">
                     <span className="mc-saved">{fmt(g.saved)}</span>
@@ -224,41 +265,58 @@ export default function Goals() {
       {/* Add Goal Modal */}
       <Modal
         isOpen={showAdd}
-        onClose={() => setShowAdd(false)}
-        title="🎯 New Savings Goal"
-        confirmText="Save Goal"
+        onClose={() => { setShowAdd(false); resetForm(); }}
+        title={`🎯 ${t('new_goal') || 'New Savings Goal'}`}
+        confirmText={t('save_goal') || 'Save Goal'}
         onConfirm={addGoal}
         isLoading={isSubmitting}
       >
-        <div className="form-group" style={{ marginBottom: 12 }}>
-          <label>Goal Name</label>
+        <div className="form-group">
+          <label>{t('goal_name') || 'Goal Name'}</label>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Dream Vacation" autoFocus />
         </div>
-        <div className="form-group" style={{ marginBottom: 12 }}>
-          <label>Choose Icon</label>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div className="form-group">
+          <label>{t('choose_icon') || 'Choose Icon'}</label>
+          <div className="goal-icon-picker">
             {GOAL_ICONS.map(ic => (
               <button key={ic} type="button" onClick={() => setSelectedIcon(ic)}
-                style={{
-                  width: 38, height: 38, borderRadius: 10, fontSize: '1.2rem', cursor: 'pointer',
-                  background: selectedIcon === ic ? 'rgba(5, 150, 105,0.2)' : 'var(--glass-1)',
-                  border: selectedIcon === ic ? '2px solid var(--brand-primary)' : '1px solid var(--glass-border)',
-                  transition: 'all 0.15s'
-                }}
+                className={`goal-icon-btn${selectedIcon === ic ? ' selected' : ''}`}
               >{ic}</button>
             ))}
           </div>
         </div>
-        <div className="form-group" style={{ marginBottom: 12 }}><label>Target Amount</label><input type="number" value={target} onChange={e => setTarget(e.target.value)} placeholder="e.g. 500" /></div>
-        <div className="form-group"><label>Already Saved</label><input type="number" value={saved} onChange={e => setSaved(e.target.value)} placeholder="0" /></div>
+        <div className="form-group">
+          <label>{t('target_amount') || 'Target Amount'}</label>
+          <input type="number" min="0.01" step="0.01" value={target} onChange={e => setTarget(e.target.value)} placeholder="e.g. 500" />
+        </div>
+        <div className="form-group">
+          <label>{t('already_saved') || 'Already Saved'}</label>
+          <input type="number" min="0" step="0.01" value={saved} onChange={e => setSaved(e.target.value)} placeholder="0" />
+        </div>
+        <div className="form-group">
+          <label>
+            {t('description') || 'Description'}
+            <span className="form-label-hint">({t('optional') || 'optional'})</span>
+          </label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="e.g. Saving for a trip to Japan in 2026..."
+            maxLength={1000}
+            rows={3}
+          />
+          {notes.length > 0 && (
+            <span className="form-char-count">{notes.length}/1000</span>
+          )}
+        </div>
       </Modal>
 
       {/* Contribute Modal */}
       <Modal
         isOpen={contributeGoal !== null}
         onClose={() => setContributeGoal(null)}
-        title="Add / Remove Funds"
-        confirmText={contributeAmount < 0 ? 'Remove Funds' : 'Add Funds'}
+        title={t('contribute') || 'Add / Remove Funds'}
+        confirmText={parseFloat(contributeAmount) < 0 ? (t('remove_funds') || 'Remove Funds') : (t('add_funds') || 'Add Funds')}
         onConfirm={() => contribute(contributeGoal)}
         isLoading={isSubmitting}
       >

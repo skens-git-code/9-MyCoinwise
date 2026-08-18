@@ -28,13 +28,10 @@ const goalSchema = new mongoose.Schema({
   saved: { 
     type: Number, 
     default: 0, 
-    min: 0,
-    validate: {
-      validator: function(v) {
-        return v <= (this.target || 0);
-      },
-      message: 'Saved amount cannot exceed target amount'
-    }
+    min: 0
+    // NOTE: saved <= target validation is enforced in the pre-save middleware,
+    // not here, because this.target is not reliably set during schema validation
+    // on the initial create() call (causing valid goals to be rejected).
   },
   color: { 
     type: String, 
@@ -49,12 +46,17 @@ const goalSchema = new mongoose.Schema({
   },
 
   // ── Goal Intelligence ──────────────────────────────────────────────────────
-  deadline: { 
-    type: Date, 
+  deadline: {
+    type: Date,
     default: null,
     validate: {
+      // Only enforce future-date constraint when creating a new goal.
+      // Existing goals whose deadlines have passed must still be editable
+      // (e.g. updating `saved`) without triggering a validation error.
       validator: function(v) {
-        return v === null || v > new Date();
+        if (v === null) return true;
+        if (!this.isNew) return true;   // skip on updates — deadline was set in the past legally
+        return v > new Date();
       },
       message: 'Deadline must be in the future'
     }
@@ -151,21 +153,33 @@ goalSchema.index({ user_id: 1, status: 1 }); // Virtual field - for querying
 // Compound index for dashboard queries
 goalSchema.index({ user_id: 1, is_completed: 1, priority: 1, deadline: 1 });
 
-// TTL index for auto-archiving completed goals after 30 days
-goalSchema.index({ completed_at: 1 }, { 
-  expireAfterSeconds: 2592000, 
-  partialFilterExpression: { is_completed: true } 
+// Index on completed_at for efficient sorting and filtering of completed goals.
+// ⚠️  NO expireAfterSeconds — we intentionally do NOT auto-delete completed goals.
+//     Completed goals are part of the user's financial history and must be preserved.
+goalSchema.index({ completed_at: 1 }, {
+  partialFilterExpression: { is_completed: true }
 });
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 // Pre-save validation and auto-completion
 goalSchema.pre('save', function(next) {
-  // Ensure saved doesn't exceed target
-  const savedAmount = parseFloat(this.saved);
+  // Ensure saved doesn't exceed target (checked here rather than in schema
+  // validator because this.target is reliably populated by the time pre-save runs)
+  const savedAmount = parseFloat(this.saved || 0);
   const targetAmount = parseFloat(this.target);
-  
+
+  if (isNaN(targetAmount) || targetAmount <= 0) {
+    return next(new Error('Target amount must be a positive number.'));
+  }
+
+  if (savedAmount > targetAmount) {
+    // Cap saved at target rather than throwing — the route layer validates this
+    // but we keep this as a safety net
+    this.saved = targetAmount;
+  }
+
   if (savedAmount >= targetAmount) {
-    this.saved = this.target;
+    this.saved = targetAmount;
     if (!this.is_completed) {
       this.is_completed = true;
       this.completed_at = this.completed_at || new Date();

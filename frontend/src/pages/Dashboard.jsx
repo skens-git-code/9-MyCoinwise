@@ -301,6 +301,22 @@ export default function Dashboard() {
     return processed;
   }, [rawTransactions, categoryFilter, dateFilter]);
 
+  // UNFILTERED metrics: used for hero balance, income/expense stat cards, and savings goal
+  // These must NEVER be affected by date/category filters — they always reflect the true
+  // all-time position so the balance card is always accurate.
+  const unfilteredMetrics = useMemo(() => {
+    if (!Array.isArray(rawTransactions)) return { income: 0, expense: 0, netSavings: 0, savingsRate: 0 };
+    const validTxns = rawTransactions
+      .filter(tx => tx && typeof tx === 'object')
+      .map(tx => ({
+        ...tx,
+        parsedDate: safeParseDate(tx.date),
+        parsedAmount: parseFloat(tx.amount) || 0
+      }))
+      .filter(tx => tx.parsedDate !== null);
+    return calculateFinancialMetrics(validTxns);
+  }, [rawTransactions]);
+
   // 2. SORTED DATA: Single source of truth for sorted lists to prevent lag
   const sortedDescTransactions = useMemo(() => {
     return [...parsedTransactions].sort((a, b) => b.parsedDate.getTime() - a.parsedDate.getTime());
@@ -310,11 +326,15 @@ export default function Dashboard() {
     return [...sortedDescTransactions].reverse();
   }, [sortedDescTransactions]);
 
-  // 3. METRICS: Calculated from the safe parsed list
+  // Filtered metrics used only for chart % summary note at bottom of chart tile
   const financialMetrics = useMemo(() => calculateFinancialMetrics(parsedTransactions), [parsedTransactions]);
-  const { income: rawIncome, expense: rawExpense, netSavings, savingsRate, expenseOfIncome } = financialMetrics;
+  const { savingsRate, expenseOfIncome } = financialMetrics;
 
-  const rawBalance = useMemo(() => isNaN(Number(netSavings)) ? 0 : Number(netSavings), [netSavings]);
+  // Hero stats use unfiltered all-time figures
+  const rawBalance = useMemo(() => isNaN(Number(unfilteredMetrics.netSavings)) ? 0 : Number(unfilteredMetrics.netSavings), [unfilteredMetrics.netSavings]);
+  const rawIncome = unfilteredMetrics.income;
+  const rawExpense = unfilteredMetrics.expense;
+  const netSavings = unfilteredMetrics.netSavings;
   const monthlyGoal = useMemo(() => isNaN(Number(user?.monthly_goal)) ? 0 : Number(user?.monthly_goal), [user?.monthly_goal]);
 
   const { value: animatedBalance, isFinished: balanceDone } = useCountUp(rawBalance, 900);
@@ -587,7 +607,11 @@ export default function Dashboard() {
                 return (
                   <div key={tx.id || `tx-${idx}`} className="bt-item" role="listitem">
                     <div className={`bt-icn ${tx.type}`}><span className="bt-cat-emoji" aria-hidden="true">{getCatIcon(tx.category)}</span></div>
-                    <div className="bt-info"><span className="bt-cat">{tx.category || 'Uncategorized'}</span><span className="bt-date">{tx.description || getDateLabel(tx.date)}</span></div>
+                    <div className="bt-info">
+                      <span className="bt-cat">{tx.category || 'Uncategorized'}</span>
+                      <span className="bt-date">{getDateLabel(tx.date)}</span>
+                      {tx.note && <span className="bt-note">{tx.note}</span>}
+                    </div>
                     <div className={`bt-amt ${tx.type}`}>{tx.type === 'income' ? '+' : '-'}{safeFormatCurrency(tx.amount, safeFmt, currencySymbol)}</div>
                   </div>
                 );
@@ -597,7 +621,15 @@ export default function Dashboard() {
         </motion.div>
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-chart glass">
-          <div className="bt-header"><h3 className="heading-accent">{getLocalizedText('spending_vs_income', 'Spending vs Income')}</h3><span className="bt-badge">{getLocalizedText('daily_trend', 'Daily Trend')}</span></div>
+          <div className="bt-header">
+            <h3 className="heading-accent">{getLocalizedText('spending_vs_income', 'Spending vs Income')}</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {(dateFilter !== 'all' || categoryFilter !== 'all') && (
+                <span className="bt-badge" style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--warning)', border: '1px solid rgba(245,158,11,0.3)' }}>filtered view</span>
+              )}
+              <span className="bt-badge">{getLocalizedText('daily_trend', 'Daily Trend')}</span>
+            </div>
+          </div>
           <div className="bt-chart-wrap">
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">

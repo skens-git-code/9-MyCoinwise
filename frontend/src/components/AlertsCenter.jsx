@@ -1,18 +1,3 @@
-/**
- * AlertsCenter.jsx — Production-ready Smart Alerts panel
- *
- * Fixes from previous version:
- *  1. Keys use alert.id / stable hash — never array index
- *  2. Dismissed Set stores IDs, not indices — survives array mutations
- *  3. Iterates `visible` directly — no null children for AnimatePresence
- *  4. role="dialog", aria-modal, aria-labelledby — fully accessible
- *  5. Focus trap via useEffect (Tab / Shift-Tab cycling)
- *  6. Escape key closes the panel without bubbling
- *  7. Removed unused Zap import
- *  8. All inline styles replaced with ac-* CSS classes
- *  9. useCallback on dismiss handlers prevents child re-renders
- * 10. Severity-grouped badge with correct urgent count
- */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {

@@ -90,8 +90,9 @@ const parseMoney = (value, { allowZero = true } = {}) => {
   if (value === '' || value === null || value === undefined) return null;
   const amount = typeof value === 'string' ? Number(value.trim()) : value;
   if (!Number.isFinite(amount) || amount < (allowZero ? 0 : Number.EPSILON) || amount > 999999999.99) return null;
-  if (Math.round(amount * 100) !== amount * 100) return null;
-  return Number(amount.toFixed(2));
+  // Round to 2 decimal places before the strict decimal check to handle floating-point imprecision
+  const rounded = Math.round(amount * 100) / 100;
+  return Number(rounded.toFixed(2));
 };
 
 const buildSettingsUpdate = (payload = {}) => {
@@ -729,16 +730,30 @@ app.delete('/api/transactions/:id', async (req, res) => {
 app.post('/api/users/:id/reset', checkOwnership('id'), async (req, res) => {
   try {
     const userId = req.params.id;
-    await Transaction.deleteMany({ user_id: userId });
-    await Goal.deleteMany({ user_id: userId });
-    await Subscription.deleteMany({ user_id: userId });
-    await Event.deleteMany({ user_id: userId });
-    await WealthItem.deleteMany({ user_id: userId });
-    await NetWorthHistory.deleteMany({ user_id: userId });
-    await User.findByIdAndUpdate(userId, { balance: 0 });
-    
+    // Cast to ObjectId — Mongoose does NOT auto-cast in deleteMany with a plain string,
+    // causing queries to match nothing and leaving data intact after reset.
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+      await Transaction.deleteMany({ user_id: userObjectId }, { session });
+      await Goal.deleteMany({ user_id: userObjectId }, { session });
+      await Subscription.deleteMany({ user_id: userObjectId }, { session });
+      await Event.deleteMany({ user_id: userObjectId }, { session });
+      await WealthItem.deleteMany({ user_id: userObjectId }, { session });
+      await NetWorthHistory.deleteMany({ user_id: userObjectId }, { session });
+      await User.findByIdAndUpdate(userId, { $set: { balance: 0 } }, { session });
+      await session.commitTransaction();
+    } catch (txError) {
+      await session.abortTransaction().catch(() => {});
+      throw txError;
+    } finally {
+      await session.endSession();
+    }
+
     auditLogger.info('User reset account', { userId: req.user.id, targetId: userId, ip: req.ip });
-    
+
     res.json({ message: 'Account reset successfully' });
   } catch (error) {
     console.error(error);
@@ -764,12 +779,20 @@ app.post('/api/goals', async (req, res) => {
   const { name, target, saved, color, icon, deadline, priority, category, notes, auto_save_amount, auto_save_interval } = req.body;
   const user_id = req.user.id;
   try {
-    const goalData = { user_id, name, target, saved: saved || 0, color, icon };
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Goal name is required.' });
+    const targetNum = parseMoney(target, { allowZero: false });
+    if (targetNum === null) return res.status(400).json({ error: 'Target must be a positive number with at most 2 decimal places.' });
+    // saved is optional — default 0; round to 2 decimals, allow 0
+    const savedNum = saved !== undefined && saved !== '' ? parseMoney(saved, { allowZero: true }) : 0;
+    if (savedNum === null) return res.status(400).json({ error: 'Already saved amount must be a non-negative number.' });
+    if (savedNum > targetNum) return res.status(400).json({ error: 'Already saved amount cannot exceed target.' });
+
+    const goalData = { user_id, name: String(name).trim(), target: targetNum, saved: savedNum, color, icon };
 
     if (deadline) goalData.deadline = new Date(deadline);
     if (priority) goalData.priority = priority;
     if (category) goalData.category = category;
-    if (notes) goalData.notes = notes;
+    if (notes) goalData.notes = String(notes).trim().substring(0, 1000);
     if (auto_save_amount !== undefined) goalData.auto_save_amount = auto_save_amount;
     if (auto_save_interval) goalData.auto_save_interval = auto_save_interval;
 

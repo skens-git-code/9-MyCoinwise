@@ -97,7 +97,7 @@ export function predictTimeToGoal(goal, transactions) {
 }
 
 // ── Budget Alert Generation ───────────────────────────────────────────────────
-export function generateAlerts(transactions, user) {
+export function generateAlerts(transactions, user, goals = []) {
   const alerts = [];
   const monthlyGoal = Number(user?.monthly_goal || 0);
   const now = new Date();
@@ -116,7 +116,18 @@ export function generateAlerts(transactions, user) {
   const totalIncome = thisMonthIncome.reduce((a, c) => a + Number(c.amount), 0);
   const currentSavings = totalIncome - totalExpense;
 
-  // 1. Budget limit warning
+  // 1. Prompt to set a monthly goal if none is set (always visible, encourages engagement)
+  if (monthlyGoal === 0) {
+    alerts.push({
+      type: 'info',
+      icon: '🎯',
+      title: 'Set a Monthly Savings Goal',
+      message: 'Head to Settings to set a monthly savings goal — it unlocks smart budget alerts and progress tracking.',
+      priority: 4,
+    });
+  }
+
+  // 2. Budget limit warning
   if (monthlyGoal > 0 && currentSavings < monthlyGoal * 0.2 && currentSavings >= 0) {
     alerts.push({
       type: 'warning',
@@ -127,7 +138,7 @@ export function generateAlerts(transactions, user) {
     });
   }
 
-  // 2. Negative savings
+  // 3. Negative savings
   if (currentSavings < 0) {
     alerts.push({
       type: 'danger',
@@ -138,7 +149,7 @@ export function generateAlerts(transactions, user) {
     });
   }
 
-  // 3. Top category this month
+  // 4. Top category this month
   const catMap = {};
   thisMonthExpenses.forEach(t => {
     catMap[t.category] = (catMap[t.category] || 0) + Number(t.amount);
@@ -154,7 +165,7 @@ export function generateAlerts(transactions, user) {
     });
   }
 
-  // 4. Anomalies
+  // 5. Anomalies
   const anomalies = detectAnomalies(transactions);
   if (anomalies.length > 0) {
     alerts.push({
@@ -166,7 +177,27 @@ export function generateAlerts(transactions, user) {
     });
   }
 
-  // 5. Daily tip
+  // 6. Stuck goal nudge — mirrors the isStuck logic on the Goals page
+  if (Array.isArray(goals) && goals.length > 0) {
+    const stuckGoals = goals.filter(g => {
+      const pct = g.target > 0 ? (Number(g.saved) / Number(g.target)) * 100 : 0;
+      const ageInDays = g.created_at ? (new Date() - new Date(g.created_at)) / (1000 * 60 * 60 * 24) : 0;
+      return pct < 15 && ageInDays > 14 && pct < 100;
+    });
+    if (stuckGoals.length > 0) {
+      const g = stuckGoals[0];
+      const pct = g.target > 0 ? ((Number(g.saved) / Number(g.target)) * 100).toFixed(0) : 0;
+      alerts.push({
+        type: 'warning',
+        icon: '🐌',
+        title: 'Goal Behind Schedule',
+        message: `"${g.name}" is only ${pct}% funded after 2+ weeks. Consider adding a small contribution to keep momentum!`,
+        priority: 2,
+      });
+    }
+  }
+
+  // 7. Daily tip (always shown — ensures at least 1 alert is always visible)
   const tips = [
     "💡 Try the 50/30/20 rule: 50% needs, 30% wants, 20% savings.",
     "💡 Tracking every expense can save up to 20% more each month!",
