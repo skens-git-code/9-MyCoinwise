@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../services/api';
 import { AppContext } from '../contexts/AppContext';
@@ -13,6 +13,7 @@ export default function Login() {
   const [loading, setLoading]   = useState(false);
   const { login } = useContext(AppContext);
   const navigate  = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,7 +22,8 @@ export default function Login() {
     try {
       const { token, user } = await api.login({ email: email.trim().toLowerCase(), password });
       await login(token, user);
-      navigate('/');
+      const destination = location.state?.from?.pathname || '/';
+      navigate(destination, { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Invalid credentials. Please try again.');
     } finally {

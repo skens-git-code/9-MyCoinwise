@@ -365,6 +365,12 @@ export default function AppLayout({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Keep the mobile drawer in sync with navigation, including redirects
+  // triggered by profile actions or programmatic route changes.
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [location.pathname]);
+
   // Custom hooks
   const userInfo = useUserDisplay(user);
   useClickOutside(activeDropdown, closeAll);

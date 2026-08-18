@@ -1590,6 +1590,55 @@
   font-weight: 600;
 }
 
+// Settings categories become a compact horizontal tab strip on phones.
+// This prevents the navigation pane from consuming the whole viewport and
+// keeps every setting reachable without interfering with page scrolling.
+@media (max-width: 640px) {
+  .settings-page .inbox-split-pane {
+    gap: 12px;
+  }
+
+  .settings-page .inbox-list-pane {
+    height: auto;
+    max-height: none;
+    margin-bottom: 0;
+    overflow: visible;
+  }
+
+  .settings-page .inbox-list-pane .il-filters {
+    padding: 14px 16px 8px !important;
+  }
+
+  .settings-page .inbox-list-pane .il-scrollable {
+    flex: none;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px !important;
+    gap: 6px !important;
+    scrollbar-width: none;
+  }
+
+  .settings-page .inbox-list-pane .il-scrollable::-webkit-scrollbar {
+    display: none;
+  }
+
+  .settings-page .inbox-list-pane .il-scrollable > button {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-height: 42px;
+    padding: 10px 12px !important;
+    white-space: nowrap;
+    font-size: 0.78rem !important;
+    gap: 7px !important;
+  }
+
+  .settings-page .inbox-list-pane .il-scrollable > button svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
 .il-item {
   display: flex;
   align-items: center;
