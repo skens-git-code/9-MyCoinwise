@@ -3034,9 +3034,9 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(8px) saturate(115%);
+  -webkit-backdrop-filter: blur(8px) saturate(115%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3045,8 +3045,9 @@
 
 .modal-box {
   width: 100%;
-  max-width: 460px;
-  padding: 30px;
+  max-width: 520px;
+  max-height: min(720px, calc(100dvh - 40px));
+  padding: 28px;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -3057,7 +3058,8 @@
   border-radius: var(--border-radius-xl);
   box-shadow: var(--shadow-xl), var(--shadow-inner), 0 0 0 1px rgba(255, 255, 255, 0.06);
   position: relative;
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
 
   /* Grain texture */
   &::after {
