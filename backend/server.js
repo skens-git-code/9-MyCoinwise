@@ -97,6 +97,11 @@ const parseMoney = (value, { allowZero = true } = {}) => {
 const buildSettingsUpdate = (payload = {}) => {
   const updates = {};
   if (payload.username !== undefined) updates.username = String(payload.username).trim();
+  if (payload.email !== undefined) {
+    const email = normalizeEmail(payload.email);
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) return { error: 'A valid email is required.' };
+    updates.email = email;
+  }
   if (payload.theme !== undefined) {
     if (!THEME_VALUES.has(payload.theme)) return { error: 'Theme must be light or amoled.' };
     updates.theme = payload.theme;
@@ -191,6 +196,15 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth', authLimiter);
 
+const writeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  skip: (req) => ['GET', 'HEAD', 'OPTIONS'].includes(req.method),
+  message: { error: 'Too many write requests. Please try again later.' }
+});
+
 app.post('/api/auth/register', [
   body('username').notEmpty().trim().isLength({ min: 2, max: 80 }),
   body('email').isEmail().normalizeEmail(),
@@ -201,8 +215,8 @@ app.post('/api/auth/register', [
 
   const { username, password, profile_avatar, profile_color } = req.body;
   const email = normalizeEmail(req.body.email);
-  const currency = req.body.currency === undefined ? undefined : String(req.body.currency).trim().toUpperCase();
-  if (currency !== undefined && !CURRENCY_CODES.has(currency)) {
+  const currency = req.body.currency === undefined ? 'USD' : String(req.body.currency).trim().toUpperCase();
+  if (!CURRENCY_CODES.has(currency)) {
     return res.status(400).json({ error: 'Unsupported currency.' });
   }
   const ipAddr = req.ip || req.headers['x-forwarded-for'] || null;
@@ -213,7 +227,7 @@ app.post('/api/auth/register', [
     if (mongoose.connection.readyState !== 1) {
       return res.status(503).json({ error: 'Database unavailable. Start MongoDB or configure a reachable MONGO_URI.' });
     }
-    const user = await User.create({ username, email, password, currency, profile_avatar, profile_color });
+    const user = await User.create({ username: username.trim(), email, password, currency, profile_avatar, profile_color });
     const token = jwt.sign({ id: user._id, session_version: user.session_version }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     await LoginLog.create({
@@ -324,6 +338,37 @@ app.get('/api/auth/me', auth, async (req, res) => {
   }
 });
 
+app.post('/api/auth/logout', auth, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user.id, { $inc: { session_version: 1 } });
+    auditLogger.info('User logged out', { userId: req.user.id, ip: req.ip });
+    res.json({ message: 'Logged out successfully.' });
+  } catch (error) {
+    logger.error('Logout error:', error);
+    res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+app.post('/api/auth/change-password', auth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || newPassword.length < 6) {
+    return res.status(400).json({ error: 'Current password and a new password of at least 6 characters are required.' });
+  }
+  try {
+    const user = await User.findById(req.user.id).select('+password');
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    if (!(await user.comparePassword(currentPassword))) return res.status(401).json({ error: 'Current password is incorrect.' });
+    user.password = newPassword;
+    user.session_version += 1;
+    await user.save();
+    auditLogger.info('Password changed', { userId: req.user.id, ip: req.ip });
+    res.json({ message: 'Password updated. Please log in again.' });
+  } catch (error) {
+    logger.error('Change password error:', error);
+    res.status(500).json({ error: 'Server error.' });
+  }
+});
+
 // View login logs for current user (auth protected)
 app.get('/api/auth/login-logs', auth, async (req, res) => {
   try {
@@ -367,6 +412,7 @@ const CURRENCIES = {
 // ─── ROUTES ──────────────────────────────────────────────────────────────────
 
 // ─── PROTECT ALL SUBSEQUENT ROUTES ───────────────────────────────────────────
+app.use('/api', writeLimiter);
 app.use('/api/users', auth);
 app.use('/api/transactions', auth);
 app.use('/api/goals', auth);
@@ -435,25 +481,38 @@ app.post('/api/users', [
   }
 });
 
-// 3.5 Delete user
+const USER_DATA_MODELS = [Transaction, Goal, Subscription, Event, WealthItem, NetWorthHistory, LoginLog];
+
+const deleteUserAndData = async (userId) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    for (const Model of USER_DATA_MODELS) {
+      await Model.deleteMany({ user_id: userId }, { session });
+    }
+    const deleted = await User.findByIdAndDelete(userId, { session });
+    if (!deleted) throw Object.assign(new Error('User not found.'), { status: 404 });
+    await session.commitTransaction();
+  } catch (error) {
+    await session.abortTransaction().catch(() => {});
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+};
+
+// 3.5 Delete user and all owned data atomically
 app.delete('/api/users/:id', checkOwnership('id'), async (req, res) => {
   try {
     const userId = req.params.id;
-    await Transaction.deleteMany({ user_id: userId });
-    await Goal.deleteMany({ user_id: userId });
-    await Subscription.deleteMany({ user_id: userId });
-    await Event.deleteMany({ user_id: userId });
-    await WealthItem.deleteMany({ user_id: userId });
-    await NetWorthHistory.deleteMany({ user_id: userId });
-    await LoginLog.deleteMany({ user_id: userId });
-    await User.findByIdAndDelete(userId);
+    await deleteUserAndData(userId);
     
     auditLogger.info('User deleted account', { userId: req.user.id, targetId: userId, ip: req.ip });
     
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    logger.error('Delete user error:', error);
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Internal Server Error' });
   }
 });
 
@@ -649,7 +708,8 @@ app.delete('/api/transactions/:id', async (req, res) => {
     if (t.user_id.toString() !== req.user.id) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    await Transaction.findByIdAndDelete(req.params.id);
+    t.is_deleted = true;
+    await t.save();
     const balance = await syncUserBalance(t.user_id);
 
     res.json({ balance, message: 'Transaction deleted' });
@@ -722,9 +782,37 @@ app.put('/api/goals/:id', async (req, res) => {
     if (!goal) return res.status(404).json({ error: 'Goal not found' });
     if (goal.user_id.toString() !== req.user.id) return res.status(403).json({ error: 'Access denied' });
 
-    goal.saved = req.body.saved;
+    const { saved, name, target, color, icon, deadline, priority, category, notes, auto_save_amount, auto_save_interval } = req.body;
+    if (saved !== undefined) {
+      const savedNum = parseMoney(saved);
+      if (savedNum === null) return res.status(400).json({ error: 'Saved amount must be a non-negative number.' });
+      goal.saved = savedNum;
+    }
+    if (name !== undefined) goal.name = String(name).trim();
+    if (target !== undefined) {
+      const targetNum = parseMoney(target, { allowZero: false });
+      if (targetNum === null) return res.status(400).json({ error: 'Target must be a positive number.' });
+      goal.target = targetNum;
+    }
+    if (goal.saved > goal.target) return res.status(400).json({ error: 'Saved amount cannot exceed target.' });
+    if (color !== undefined) goal.color = color;
+    if (icon !== undefined) goal.icon = icon;
+    if (deadline !== undefined) {
+      const parsedDeadline = new Date(deadline);
+      if (Number.isNaN(parsedDeadline.getTime())) return res.status(400).json({ error: 'Invalid deadline.' });
+      goal.deadline = parsedDeadline;
+    }
+    if (priority !== undefined) goal.priority = priority;
+    if (category !== undefined) goal.category = category;
+    if (notes !== undefined) goal.notes = notes;
+    if (auto_save_amount !== undefined) {
+      const autoAmount = parseMoney(auto_save_amount);
+      if (autoAmount === null) return res.status(400).json({ error: 'Auto-save amount must be non-negative.' });
+      goal.auto_save_amount = autoAmount;
+    }
+    if (auto_save_interval !== undefined) goal.auto_save_interval = auto_save_interval;
     await goal.save();
-    res.json({ message: 'Goal updated' });
+    res.json({ message: 'Goal updated', goal });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -874,7 +962,7 @@ app.get('/api/export/:userId', checkOwnership('userId'), async (req, res) => {
     const currency = user.currency || 'USD';
     const currencySymbol = (CURRENCIES[currency] || CURRENCIES.USD).symbol;
 
-    const transactions = await Transaction.find({ user_id: req.params.userId }).sort({ date: -1 });
+    const transactions = await Transaction.find({ user_id: req.params.userId, is_deleted: { $ne: true } }).sort({ date: -1 });
 
     const workbook = new excel.Workbook();
     workbook.creator = 'MyCoinwise';
