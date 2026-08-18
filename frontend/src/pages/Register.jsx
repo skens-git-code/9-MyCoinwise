@@ -32,7 +32,11 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      const { token, user } = await api.register({ username, email, password });
+      const { token, user } = await api.register({
+        username: username.trim(),
+        email: email.trim().toLowerCase(),
+        password
+      });
       await login(token, user);
       navigate('/');
     } catch (err) {

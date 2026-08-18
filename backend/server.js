@@ -232,10 +232,15 @@ app.post('/api/auth/register', [
 
 
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', [
+  body('email').isEmail().normalizeEmail(),
+  body('password').isString().notEmpty()
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ error: 'Enter a valid email and password.' });
+
   const email = normalizeEmail(req.body.email);
-  const { password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+  const password = req.body.password;
 
   const ipAddr = req.ip || req.headers['x-forwarded-for'] || null;
   const ua = req.headers['user-agent'] || null;

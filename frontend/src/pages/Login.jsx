@@ -19,7 +19,7 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const { token, user } = await api.login({ email, password });
+      const { token, user } = await api.login({ email: email.trim().toLowerCase(), password });
       await login(token, user);
       navigate('/');
     } catch (err) {
