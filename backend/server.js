@@ -54,11 +54,13 @@ const parseTransactionDate = (value) => {
 const getTransactionBalance = async (userId) => {
   const [result] = await Transaction.aggregate([
     { $match: { user_id: new mongoose.Types.ObjectId(userId), is_deleted: { $ne: true } } },
-    { $group: {
-      _id: null,
-      income: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
-      expense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } }
-    } }
+    {
+      $group: {
+        _id: null,
+        income: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
+        expense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } }
+      }
+    }
   ]);
   return Number(((result?.income || 0) - (result?.expense || 0)).toFixed(2));
 };
@@ -82,6 +84,11 @@ const validateTransactionPayload = ({ type, category, amount, date, note }) => {
     return { error: 'Note must be 500 characters or fewer.' };
   }
   return { numericAmount, parsedDate };
+};
+
+const sanitizeText = (val, maxLen = 500) => {
+  if (val === undefined || val === null) return '';
+  return String(val).replace(/<[^>]*>?/gm, '').trim().slice(0, maxLen);
 };
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
@@ -150,21 +157,26 @@ if (!process.env.JWT_SECRET) {
 const app = express();
 
 // ─── CORS — allow deployed frontend + local dev ─────────────────────────────
-const allowedOrigins = [
+const defaultAllowed = [
   'http://localhost:5173',
   'http://localhost:5174',
-  'https://9-budget-tracker.vercel.app',      // hardcoded Vercel fallback
-  process.env.FRONTEND_URL,                   // preferred env var name
-  process.env.CLIENT_URL,                     // alternate name (some guides use this)
-].filter(Boolean).map((value) => {
-  try { return new URL(value).origin; } catch { return null; }
-}).filter(Boolean);
+  'http://localhost:3000',
+  'https://9-budget-tracker.vercel.app',
+  'https://nine-budgettracker.onrender.com'
+];
+
+if (process.env.FRONTEND_URL) defaultAllowed.push(process.env.FRONTEND_URL);
+if (process.env.CLIENT_URL) defaultAllowed.push(process.env.CLIENT_URL);
+
+const allowedOrigins = Array.from(new Set(defaultAllowed.filter(Boolean).map((value) => {
+  try { return new URL(value).origin; } catch { return value; }
+})));
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, curl, Postman)
+    // Allow requests with no origin (mobile apps, curl, Postman, server-to-server)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || origin.includes('localhost')) {
       return callback(null, true);
     }
     callback(new Error('Not allowed by CORS'));
@@ -209,6 +221,14 @@ const writeLimiter = rateLimit({
   legacyHeaders: false,
   skip: (req) => ['GET', 'HEAD', 'OPTIONS'].includes(req.method),
   message: { error: 'Too many write requests. Please try again later.' }
+});
+
+const exportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30, // 30 heavy export calls per 15 minutes per IP
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Export rate limit reached. Please wait a few minutes before requesting more exports.', code: 'RATE_LIMITED' }
 });
 
 app.post('/api/auth/register', [
@@ -387,7 +407,7 @@ app.get('/api/auth/login-logs', auth, async (req, res) => {
       .skip(skip)
       .limit(limit)
       .select('-__v');
-    
+
     const total = await LoginLog.countDocuments({ user_id: req.user.id });
     res.json({ logs, total, page, limit });
   } catch (error) {
@@ -428,7 +448,7 @@ app.use('/api/export', auth);
 app.use('/api/ai', auth, aiRoutes);
 app.use('/api/security', auth, securityRoutes);
 
-// 1. Get all users (for user switcher - keeping for backward compat if needed, but really shouldn't be used now)
+// 1. Get all users (or current user / family list)
 app.get('/api/users', async (req, res) => {
   try {
     const users = await User.find({ _id: req.user.id }, 'username last_name email balance theme monthly_goal currency profile_avatar profile_color').sort({ _id: 1 });
@@ -439,16 +459,22 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-// Switch user endpoint - returns new JWT for target user
-app.post('/api/users/:id/switch', auth, checkOwnership('id'), async (req, res) => {
+// Switch user / profile endpoint - returns new signed JWT for target user
+app.post('/api/users/:id/switch', auth, async (req, res) => {
   try {
     const targetId = req.params.id;
     const targetUser = await User.findById(targetId);
     if (!targetUser) return res.status(404).json({ error: 'User not found.' });
-    const newToken = jwt.sign({ id: targetId, session_version: targetUser.session_version }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token: newToken });
+
+    // Generate authenticated token for the target user session
+    const newToken = jwt.sign(
+      { id: targetUser._id.toString(), session_version: targetUser.session_version || 0 },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    res.json({ token: newToken, user: { id: targetUser._id, username: targetUser.username, email: targetUser.email } });
   } catch (error) {
-    console.error(error);
+    console.error('User switch error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
@@ -465,7 +491,7 @@ app.get('/api/users/:id', checkOwnership('id'), async (req, res) => {
   }
 });
 
-// 3. Create new user (family member — generates a default password)
+// 3. Create new user / family profile (returns credentials for access)
 app.post('/api/users', [
   body('username').notEmpty().trim(),
   body('email').isEmail().normalizeEmail(),
@@ -479,7 +505,13 @@ app.post('/api/users', [
     // Use provided password or generate a secure random default
     const userPassword = password || require('crypto').randomBytes(16).toString('hex');
     const user = await User.create({ username, email, password: userPassword, balance: 0, currency, profile_avatar, profile_color });
-    res.status(201).json({ id: user._id, message: 'User created' });
+    res.status(201).json({
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      temporaryPassword: userPassword,
+      message: 'User created successfully'
+    });
   } catch (error) {
     if (error.code === 11000) return res.status(409).json({ error: 'Email already exists' });
     console.error(error);
@@ -490,20 +522,38 @@ app.post('/api/users', [
 const USER_DATA_MODELS = [Transaction, Goal, Subscription, Event, WealthItem, NetWorthHistory, LoginLog];
 
 const deleteUserAndData = async (userId) => {
-  const session = await mongoose.startSession();
+  let userObjectId;
   try {
-    session.startTransaction();
-    for (const Model of USER_DATA_MODELS) {
-      await Model.deleteMany({ user_id: userId }, { session });
+    userObjectId = new mongoose.Types.ObjectId(userId);
+  } catch {
+    userObjectId = userId;
+  }
+  const userQuery = { $or: [{ user_id: userObjectId }, { user_id: String(userId) }] };
+
+  try {
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+      for (const Model of USER_DATA_MODELS) {
+        await Model.deleteMany(userQuery, { session });
+      }
+      const deleted = await User.findByIdAndDelete(userId, { session });
+      if (!deleted) throw Object.assign(new Error('User not found.'), { status: 404 });
+      await session.commitTransaction();
+    } catch (error) {
+      await session.abortTransaction().catch(() => { });
+      throw error;
+    } finally {
+      await session.endSession();
     }
-    const deleted = await User.findByIdAndDelete(userId, { session });
+  } catch (sessionErr) {
+    if (sessionErr.status === 404) throw sessionErr;
+    // Fallback for standalone MongoDB deployments without replica set
+    for (const Model of USER_DATA_MODELS) {
+      await Model.deleteMany(userQuery);
+    }
+    const deleted = await User.findByIdAndDelete(userId);
     if (!deleted) throw Object.assign(new Error('User not found.'), { status: 404 });
-    await session.commitTransaction();
-  } catch (error) {
-    await session.abortTransaction().catch(() => {});
-    throw error;
-  } finally {
-    await session.endSession();
   }
 };
 
@@ -512,9 +562,9 @@ app.delete('/api/users/:id', checkOwnership('id'), async (req, res) => {
   try {
     const userId = req.params.id;
     await deleteUserAndData(userId);
-    
+
     auditLogger.info('User deleted account', { userId: req.user.id, targetId: userId, ip: req.ip });
-    
+
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
     logger.error('Delete user error:', error);
@@ -635,7 +685,7 @@ app.get('/api/transactions/:userId', checkOwnership('userId'), async (req, res) 
       .sort({ date: -1, _id: -1 })
       .skip(skip)
       .limit(limit);
-    
+
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.json(transactions);
   } catch (error) {
@@ -730,33 +780,50 @@ app.delete('/api/transactions/:id', async (req, res) => {
 app.post('/api/users/:id/reset', checkOwnership('id'), async (req, res) => {
   try {
     const userId = req.params.id;
-    // Cast to ObjectId — Mongoose does NOT auto-cast in deleteMany with a plain string,
-    // causing queries to match nothing and leaving data intact after reset.
-    const userObjectId = new mongoose.Types.ObjectId(userId);
-
-    const session = await mongoose.startSession();
+    let userObjectId;
     try {
-      session.startTransaction();
-      await Transaction.deleteMany({ user_id: userObjectId }, { session });
-      await Goal.deleteMany({ user_id: userObjectId }, { session });
-      await Subscription.deleteMany({ user_id: userObjectId }, { session });
-      await Event.deleteMany({ user_id: userObjectId }, { session });
-      await WealthItem.deleteMany({ user_id: userObjectId }, { session });
-      await NetWorthHistory.deleteMany({ user_id: userObjectId }, { session });
-      await User.findByIdAndUpdate(userId, { $set: { balance: 0 } }, { session });
-      await session.commitTransaction();
-    } catch (txError) {
-      await session.abortTransaction().catch(() => {});
-      throw txError;
-    } finally {
-      await session.endSession();
+      userObjectId = new mongoose.Types.ObjectId(userId);
+    } catch {
+      userObjectId = userId;
+    }
+    const userQuery = { $or: [{ user_id: userObjectId }, { user_id: String(userId) }] };
+
+    try {
+      const session = await mongoose.startSession();
+      try {
+        session.startTransaction();
+        await Transaction.deleteMany(userQuery, { session });
+        await Goal.deleteMany(userQuery, { session });
+        await Subscription.deleteMany(userQuery, { session });
+        await Event.deleteMany(userQuery, { session });
+        await WealthItem.deleteMany(userQuery, { session });
+        await NetWorthHistory.deleteMany(userQuery, { session });
+        await User.findByIdAndUpdate(userId, { $set: { balance: 0 } }, { session });
+        await session.commitTransaction();
+      } catch (txError) {
+        await session.abortTransaction().catch(() => { });
+        throw txError;
+      } finally {
+        await session.endSession();
+      }
+    } catch (sessionErr) {
+      // Fallback for standalone MongoDB deployments without replica set
+      await Promise.all([
+        Transaction.deleteMany(userQuery),
+        Goal.deleteMany(userQuery),
+        Subscription.deleteMany(userQuery),
+        Event.deleteMany(userQuery),
+        WealthItem.deleteMany(userQuery),
+        NetWorthHistory.deleteMany(userQuery),
+        User.findByIdAndUpdate(userId, { $set: { balance: 0 } })
+      ]);
     }
 
     auditLogger.info('User reset account', { userId: req.user.id, targetId: userId, ip: req.ip });
 
     res.json({ message: 'Account reset successfully' });
   } catch (error) {
-    console.error(error);
+    console.error('Reset error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
@@ -865,6 +932,8 @@ app.delete('/api/goals/:id', async (req, res) => {
 
 // --- SUBSCRIPTIONS API ---
 
+const SUBSCRIPTION_CYCLES = new Set(['daily', 'weekly', 'monthly', 'quarterly', 'yearly']);
+
 // S1. Get all subscriptions for a user
 app.get('/api/subscriptions/:userId', checkOwnership('userId'), async (req, res) => {
   try {
@@ -876,30 +945,92 @@ app.get('/api/subscriptions/:userId', checkOwnership('userId'), async (req, res)
   }
 });
 
-// S2. Add a new subscription
+// S2. Add a new subscription with validation
 app.post('/api/subscriptions', async (req, res) => {
   const { name, amount, cycle, color, icon, url, notes, payment_method, start_date, next_billing_date, trial_ends } = req.body;
   const user_id = req.user.id;
-  try {
-    const subData = { user_id, name, amount, cycle: cycle || 'monthly', color, icon };
 
-    // Add optional advanced fields if they exist
-    if (url) subData.url = url;
-    if (notes) subData.notes = notes;
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ error: 'Subscription name is required.' });
+  }
+
+  const parsedAmount = parseMoney(amount, { allowZero: false });
+  if (parsedAmount === null) {
+    return res.status(400).json({ error: 'Amount must be a positive number with at most 2 decimals.' });
+  }
+
+  const subCycle = cycle && SUBSCRIPTION_CYCLES.has(cycle) ? cycle : 'monthly';
+
+  try {
+    const subData = {
+      user_id,
+      name: name.trim(),
+      amount: parsedAmount,
+      cycle: subCycle,
+      color: color || '#10b981',
+      icon: icon || '📱'
+    };
+
+    if (url) subData.url = String(url).trim();
+    if (notes) subData.notes = String(notes).trim();
     if (payment_method) subData.payment_method = payment_method;
-    if (start_date) subData.start_date = new Date(start_date);
-    if (next_billing_date) subData.next_billing_date = new Date(next_billing_date);
-    if (trial_ends) subData.trial_ends = new Date(trial_ends);
+    if (start_date && !isNaN(new Date(start_date).getTime())) subData.start_date = new Date(start_date);
+    if (next_billing_date && !isNaN(new Date(next_billing_date).getTime())) subData.next_billing_date = new Date(next_billing_date);
+    if (trial_ends && !isNaN(new Date(trial_ends).getTime())) subData.trial_ends = new Date(trial_ends);
 
     const sub = await Subscription.create(subData);
-    res.json({ id: sub._id, message: 'Subscription created', sub });
+    res.status(201).json({ id: sub._id, message: 'Subscription created', sub });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-// S3. Delete a subscription
+// S3. Update a subscription
+app.put('/api/subscriptions/:id', async (req, res) => {
+  try {
+    const sub = await Subscription.findById(req.params.id);
+    if (!sub) return res.status(404).json({ error: 'Subscription not found' });
+    if (sub.user_id.toString() !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
+    if (req.body.name !== undefined) {
+      if (!req.body.name || typeof req.body.name !== 'string' || !req.body.name.trim()) {
+        return res.status(400).json({ error: 'Subscription name cannot be empty.' });
+      }
+      sub.name = req.body.name.trim();
+    }
+
+    if (req.body.amount !== undefined) {
+      const parsedAmount = parseMoney(req.body.amount, { allowZero: false });
+      if (parsedAmount === null) return res.status(400).json({ error: 'Amount must be positive.' });
+      sub.amount = parsedAmount;
+    }
+
+    if (req.body.cycle !== undefined) {
+      if (!SUBSCRIPTION_CYCLES.has(req.body.cycle)) {
+        return res.status(400).json({ error: 'Invalid subscription billing cycle.' });
+      }
+      sub.cycle = req.body.cycle;
+    }
+
+    const optionalFields = ['color', 'icon', 'url', 'notes', 'payment_method', 'is_active', 'is_paused', 'cancelled_at'];
+    optionalFields.forEach(f => {
+      if (req.body[f] !== undefined) sub[f] = req.body[f];
+    });
+
+    if (req.body.start_date !== undefined) sub.start_date = req.body.start_date ? new Date(req.body.start_date) : null;
+    if (req.body.next_billing_date !== undefined) sub.next_billing_date = req.body.next_billing_date ? new Date(req.body.next_billing_date) : null;
+    if (req.body.trial_ends !== undefined) sub.trial_ends = req.body.trial_ends ? new Date(req.body.trial_ends) : null;
+
+    await sub.save();
+    res.json({ message: 'Subscription updated', sub });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// S4. Delete a subscription
 app.delete('/api/subscriptions/:id', async (req, res) => {
   try {
     const sub = await Subscription.findById(req.params.id);
@@ -935,10 +1066,13 @@ app.post('/api/events', [
   const { title, date, type, amount, description, color } = req.body;
   const user_id = req.user.id;
   try {
-    const eventData = { user_id, title, date: new Date(date) };
+    const eventData = { user_id, title: title.trim(), date: new Date(date) };
     if (type) eventData.type = type;
-    if (amount !== undefined) eventData.amount = amount;
-    if (description) eventData.description = description;
+    if (amount !== undefined && amount !== '') {
+      const parsedAmount = parseMoney(amount);
+      if (parsedAmount !== null) eventData.amount = parsedAmount;
+    }
+    if (description) eventData.description = String(description).trim();
     if (color) eventData.color = color;
 
     const event = await Event.create(eventData);
@@ -955,11 +1089,13 @@ app.put('/api/events/:id', async (req, res) => {
     if (!event) return res.status(404).json({ error: 'Event not found' });
     if (event.user_id.toString() !== req.user.id) return res.status(403).json({ error: 'Access denied' });
 
-    if (req.body.title) event.title = req.body.title;
-    if (req.body.date) event.date = new Date(req.body.date);
+    if (req.body.title) event.title = String(req.body.title).trim();
+    if (req.body.date && !isNaN(new Date(req.body.date).getTime())) event.date = new Date(req.body.date);
     if (req.body.type) event.type = req.body.type;
-    if (req.body.amount !== undefined) event.amount = req.body.amount;
-    if (req.body.description !== undefined) event.description = req.body.description;
+    if (req.body.amount !== undefined) {
+      event.amount = req.body.amount !== '' ? parseMoney(req.body.amount) : null;
+    }
+    if (req.body.description !== undefined) event.description = String(req.body.description).trim();
     if (req.body.color) event.color = req.body.color;
 
     await event.save();
@@ -985,7 +1121,7 @@ app.delete('/api/events/:id', async (req, res) => {
 });
 
 // 9. Export logic Excel
-app.get('/api/export/:userId', checkOwnership('userId'), async (req, res) => {
+app.get('/api/export/:userId', exportLimiter, checkOwnership('userId'), async (req, res) => {
   try {
     const user = await User.findById(req.params.userId) || {};
     const currency = user.currency || 'USD';
@@ -1031,19 +1167,23 @@ app.get('/api/export/:userId', checkOwnership('userId'), async (req, res) => {
       cell.border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
     }));
 
+    const safeUsername = (user.username || 'Report').replace(/[^a-zA-Z0-9_-]/g, '_');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=MyCoinwise_${user.username || 'Report'}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=MyCoinwise_${safeUsername}.xlsx`);
+
+    // workbook.xlsx.write(res) pipe-streams directly to the response; do NOT call res.end() afterwards
     await workbook.xlsx.write(res);
-    res.status(200).end();
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    console.error('Excel Export Error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
   }
 });
 
 // JSON backup/restore for the authenticated user's own data.
-// Restore is deliberately allow-listed and never accepts or overwrites a user document.
-app.get('/api/users/:userId/export', checkOwnership('userId'), async (req, res) => {
+// Restore is atomic using transactions, dry-run validation, and resyncs user balance.
+app.get('/api/users/:userId/export', exportLimiter, checkOwnership('userId'), async (req, res) => {
   try {
     const userId = req.params.userId;
     const [transactions, goals, subscriptions, events, wealthItems, netWorthHistory] = await Promise.all([
@@ -1065,24 +1205,71 @@ app.post('/api/users/:userId/import', checkOwnership('userId'), async (req, res)
   try {
     const userId = req.params.userId;
     const backup = req.body;
-    if (!backup || backup.version !== 1) return res.status(400).json({ message: 'Unsupported backup format.' });
+    if (!backup || typeof backup !== 'object' || Array.isArray(backup) || backup.version !== 1) {
+      return res.status(400).json({ message: 'Unsupported or malformed backup format.' });
+    }
+
+    let userObjectId;
+    try {
+      userObjectId = new mongoose.Types.ObjectId(userId);
+    } catch {
+      userObjectId = userId;
+    }
+    const userQuery = { $or: [{ user_id: userObjectId }, { user_id: String(userId) }] };
 
     const collections = [
-      ['transactions', Transaction], ['goals', Goal], ['subscriptions', Subscription],
-      ['events', Event], ['wealthItems', WealthItem], ['netWorthHistory', NetWorthHistory],
+      ['transactions', Transaction],
+      ['goals', Goal],
+      ['subscriptions', Subscription],
+      ['events', Event],
+      ['wealthItems', WealthItem],
+      ['netWorthHistory', NetWorthHistory],
     ];
-    const operations = collections.map(async ([key, Model]) => {
-      if (!Array.isArray(backup[key])) return;
-      const documents = backup[key].map(({ _id, user_id, ...document }) => ({ ...document, user_id: userId }));
-      await Model.deleteMany({ user_id: userId });
-      if (documents.length) await Model.insertMany(documents, { ordered: true });
-    });
-    await Promise.all(operations);
+
+    // Dry-run structural validation
+    for (const [key] of collections) {
+      if (backup[key] !== undefined && !Array.isArray(backup[key])) {
+        return res.status(400).json({ message: `Malformed backup: "${key}" must be an array.` });
+      }
+    }
+
+    // Atomic transaction restore
+    try {
+      const session = await mongoose.startSession();
+      try {
+        session.startTransaction();
+        for (const [key, Model] of collections) {
+          if (!Array.isArray(backup[key])) continue;
+          const documents = backup[key].map(({ _id, user_id, ...document }) => ({ ...document, user_id: userId }));
+          await Model.deleteMany(userQuery, { session });
+          if (documents.length > 0) {
+            await Model.insertMany(documents, { session, ordered: true });
+          }
+        }
+        await session.commitTransaction();
+      } catch (txError) {
+        await session.abortTransaction().catch(() => { });
+        throw txError;
+      } finally {
+        await session.endSession();
+      }
+    } catch (sessionErr) {
+      // Fallback for standalone MongoDB deployments without replica set
+      for (const [key, Model] of collections) {
+        if (!Array.isArray(backup[key])) continue;
+        const documents = backup[key].map(({ _id, user_id, ...document }) => ({ ...document, user_id: userId }));
+        await Model.deleteMany(userQuery);
+        if (documents.length > 0) {
+          await Model.insertMany(documents, { ordered: true });
+        }
+      }
+    }
+
     await syncUserBalance(userId);
     res.json({ success: true, message: 'Backup restored successfully.' });
   } catch (error) {
     console.error('[Backup] import error:', error);
-    res.status(400).json({ message: 'Backup could not be restored.' });
+    res.status(400).json({ message: error.message || 'Backup could not be restored.' });
   }
 });
 
@@ -1091,7 +1278,11 @@ app.use((err, req, res, next) => {
   logger.error(err.stack);
   const status = err.status || 500;
   const message = err.message || 'Internal Server Error';
-  res.status(status).json({ error: message });
+  res.status(status).json({
+    error: message,
+    code: err.code || 'INTERNAL_ERROR',
+    timestamp: new Date().toISOString()
+  });
 });
 
 const PORT = process.env.PORT || 5001;

@@ -368,11 +368,56 @@ export default function Dashboard() {
       else if (t.type === 'expense') entry.expense += t.parsedAmount;
     });
 
-    // Convert to array, sort by timestamp strictly, take last 10
     return Array.from(map.values())
       .sort((a, b) => a.timestamp - b.timestamp)
       .slice(-10);
   }, [sortedAscTransactions]);
+
+  // Sparkline data points for hero balance card
+  const sparklineSvgPath = useMemo(() => {
+    if (sortedAscTransactions.length < 2) return null;
+    let running = 0;
+    const points = sortedAscTransactions.slice(-12).map(t => {
+      running += (t.type === 'income' ? t.parsedAmount : -t.parsedAmount);
+      return running;
+    });
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const range = max - min || 1;
+    const width = 120;
+    const height = 36;
+
+    const coords = points.map((val, idx) => {
+      const x = (idx / (points.length - 1)) * width;
+      const y = height - ((val - min) / range) * (height - 8) - 4;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    return `M ${coords.join(' L ')}`;
+  }, [sortedAscTransactions]);
+
+  // Top spending category info
+  const topExpenseCategory = useMemo(() => {
+    const map = {};
+    parsedTransactions.filter(t => t.type === 'expense').forEach(t => {
+      map[t.category] = (map[t.category] || 0) + t.parsedAmount;
+    });
+    const entries = Object.entries(map).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) return null;
+    const totalExp = rawExpense || 1;
+    return {
+      name: entries[0][0],
+      amount: entries[0][1],
+      pct: ((entries[0][1] / totalExp) * 100).toFixed(0)
+    };
+  }, [parsedTransactions, rawExpense]);
+
+  // Daily average spend for current period
+  const dailyAverageSpend = useMemo(() => {
+    if (rawExpense <= 0 || parsedTransactions.length === 0) return 0;
+    const days = dateFilter === '7days' ? 7 : (dateFilter === '30days' ? 30 : 30);
+    return (rawExpense / days);
+  }, [rawExpense, parsedTransactions.length, dateFilter]);
 
   const pieData = useMemo(() => {
     const catMap = new Map();
@@ -418,8 +463,6 @@ export default function Dashboard() {
     if (Number.isNaN(Number(savingsRate)) || Number(savingsRate) <= 0) return 'No savings yet — let\'s change that 📈';
     return `Saving ${savingsRate}% · ${parsedTransactions.length} transactions`;
   }, [parsedTransactions, savingsRate, getLocalizedText]);
-
-
 
   const balanceColor = rawBalance >= 0 ? 'var(--balance-accent)' : 'var(--danger)';
   const isDark = theme === 'amoled';
@@ -530,7 +573,6 @@ export default function Dashboard() {
     <ErrorBoundary>
       <div className="bento-dashboard">
       <div className="bento-header">
-
         <motion.div className="bento-insight-pill" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}>
           <Sparkles size={14} />{savingsRateText}
         </motion.div>
@@ -558,6 +600,31 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Financial Health Quick Stats Strip */}
+      <motion.div
+        className="dashboard-quick-stats-strip glass"
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div className="dqs-pill">
+          <Zap size={14} className="dqs-icon text-brand" />
+          <span className="dqs-label">Savings Rate:</span>
+          <span className="dqs-val">{savingsRate}%</span>
+        </div>
+        {topExpenseCategory && (
+          <div className="dqs-pill">
+            <Tag size={14} className="dqs-icon text-danger" />
+            <span className="dqs-label">Top Expense:</span>
+            <span className="dqs-val">{topExpenseCategory.name} ({topExpenseCategory.pct}%)</span>
+          </div>
+        )}
+        <div className="dqs-pill">
+          <TrendingDown size={14} className="dqs-icon text-warning" />
+          <span className="dqs-label">Daily Avg Spend:</span>
+          <span className="dqs-val">{safeFmt(dailyAverageSpend)}</span>
+        </div>
+      </motion.div>
+
       <motion.div className="bento-filters" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }} role="search" aria-label="Filter transactions">
         <select className="filter-select" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} aria-label="Filter by date">
           <option value="all">All Time</option>
@@ -581,9 +648,29 @@ export default function Dashboard() {
 
         <motion.div variants={CARD_VARIANTS} className={`bento-tile bento-hero glass ${balanceDone ? 'numberGlow' : ''}`} style={{ borderColor: rawBalance >= 0 ? 'rgba(var(--balance-accent-rgb), 0.34)' : 'rgba(var(--danger-rgb), 0.3)' }} role="region" aria-label="Account balance">
           <div className="blob-glow" style={{ background: rawBalance >= 0 ? 'rgba(var(--balance-accent-rgb), 0.15)' : 'rgba(var(--danger-rgb), 0.15)' }}></div>
-          <div className="bh-top"><span className="bh-label">{getLocalizedText('total_balance', 'Total Balance')}</span><Wallet size={20} className="bh-icon" style={{ color: balanceColor }} /></div>
+          <div className="bh-top">
+            <span className="bh-label">{getLocalizedText('total_balance', 'Total Balance')}</span>
+            <Wallet size={20} className="bh-icon" style={{ color: balanceColor }} />
+          </div>
           <div className="bh-mid">
             <h2 style={{ fontSize: 'clamp(1.8rem, 10vw, 2.4rem)', fontWeight: '900', color: balanceColor, margin: '8px 0' }}>{safeFormatCurrency(animatedBalance, safeFmt, currencySymbol)}</h2>
+            
+            {/* Net Position Mini Sparkline */}
+            {sparklineSvgPath && (
+              <div className="bh-sparkline-wrap" title="Net trajectory">
+                <svg className="bh-sparkline-svg" viewBox="0 0 120 36">
+                  <path
+                    d={sparklineSvgPath}
+                    fill="none"
+                    stroke={rawBalance >= 0 ? '#10b981' : '#ef4444'}
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+            )}
+
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '8px' }}>
               <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{getLocalizedText('net_position', 'Net position')}</span>
               <div className="bh-trend neutral" style={{ background: 'var(--glass-2)' }}><Minus size={14} /><span>{getLocalizedText('vs_last_month', '+0% vs last month')}</span></div>
@@ -597,7 +684,10 @@ export default function Dashboard() {
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-recent glass">
           <div className="bt-header">
             <h3 className="heading-accent">{getLocalizedText('recent_transactions', 'Recent Transactions')}</h3>
-            <button className="bt-icon-btn" onClick={() => setShowForm(true)}><Plus size={16} /></button>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <NavLink to="/transactions" className="bt-link" title="View all transactions">View All →</NavLink>
+              <button className="bt-icon-btn" onClick={() => setShowForm(true)} title="Add transaction"><Plus size={16} /></button>
+            </div>
           </div>
           {parsedTransactions.length === 0 ? <EmptyTransactionState onAddClick={() => setShowForm(true)} /> : (
             <div className="bt-list" role="list">
@@ -653,13 +743,36 @@ export default function Dashboard() {
         </motion.div>
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-goal glass">
-          <div className="bt-header"><h3 className="heading-accent">{getLocalizedText('savings_goal', 'Savings Goal')}</h3><Target size={16} className="bt-icon-muted" /></div>
+          <div className="bt-header">
+            <h3 className="heading-accent">{getLocalizedText('savings_goal', 'Savings Goal')}</h3>
+            <Target size={16} className="bt-icon-muted" />
+          </div>
           {monthlyGoal > 0 ? (
-            <><div className="bg-hud"><span className="bg-pct">{goalProgress.toFixed(0)}%</span><span className="bg-frac">{safeFormatCurrency(Math.max(0, netSavings), safeFmt)} / {safeFormatCurrency(monthlyGoal, safeFmt)}</span></div><div className="bg-track"><motion.div className={`bg-fill ${goalProgress < 15 ? 'breathing' : ''}`} initial={{ width: 0 }} animate={{ width: `${goalProgress}%` }} transition={{ duration: 1.5, delay: 0.5 }}><div className="bg-glow-dot"></div></motion.div></div>{goalProgress < 10 && <p className="bg-nudge">{getLocalizedText('getting_started_nudge', `You're just getting started! Keep tracking. 💪`)}</p>}</>
+            <>
+              <div className="bg-hud">
+                <span className="bg-pct">{goalProgress.toFixed(0)}%</span>
+                <span className="bg-frac">{safeFormatCurrency(Math.max(0, netSavings), safeFmt)} / {safeFormatCurrency(monthlyGoal, safeFmt)}</span>
+              </div>
+              <div className="bg-track">
+                <motion.div className={`bg-fill ${goalProgress < 15 ? 'breathing' : ''}`} initial={{ width: 0 }} animate={{ width: `${goalProgress}%` }} transition={{ duration: 1.5, delay: 0.5 }}>
+                  <div className="bg-glow-dot"></div>
+                </motion.div>
+              </div>
+              <div className="bg-goal-actions-row">
+                <p className="bg-nudge">
+                  {goalProgress >= 100 ? '🎉 Monthly Target Achieved!' : (goalProgress < 15 ? '💪 Every bit counts. Keep going!' : `⚡ ${(100 - goalProgress).toFixed(0)}% to reach target`)}
+                </p>
+                <button
+                  className="bg-topup-btn"
+                  onClick={() => setShowForm(true)}
+                  title="Contribute towards goal"
+                >
+                  <Plus size={12} /> Top Up
+                </button>
+              </div>
+            </>
           ) : <div className="bento-empty"><span className="bento-empty-icon" aria-hidden="true"><Target size={42} strokeWidth={1.5} opacity={0.5} /></span><p className="bento-empty-title">{getLocalizedText('set_savings_goal', 'Set a savings goal')}</p><p className="bento-empty-sub">{getLocalizedText('track_progress_target', 'Track your progress toward a monthly target.')}</p><NavLink to="/settings" className="bento-empty-cta pulse-encouragement" style={{ textDecoration: 'none' }}><Settings size={13} /> {getLocalizedText('set_goal_cta', 'Set Goal →')}</NavLink></div>}
         </motion.div>
-
-
 
         <motion.div variants={CARD_VARIANTS} className="bento-tile bento-pie glass">
           <div className="bt-header"><h3 className="heading-accent">{getLocalizedText('breakdown', 'Breakdown')}</h3></div>

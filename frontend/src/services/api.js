@@ -132,6 +132,10 @@ export const api = {
     const res = await axios.post(`${API_URL}/subscriptions`, data);
     return res.data;
   },
+  updateSubscription: async (id, data) => {
+    const res = await axios.put(`${API_URL}/subscriptions/${id}`, data);
+    return res.data;
+  },
   deleteSubscription: async (id) => {
     const res = await axios.delete(`${API_URL}/subscriptions/${id}`);
     return res.data;

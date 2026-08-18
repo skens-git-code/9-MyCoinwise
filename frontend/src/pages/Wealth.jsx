@@ -2,48 +2,61 @@ import React, { useState, useEffect, useCallback, useContext, useMemo, useRef } 
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
-  PieChart, Pie, Cell
+  PieChart, Pie, Cell, Legend, CartesianGrid
 } from 'recharts';
 import {
   Briefcase, TrendingUp, AlertOctagon, Sparkles,
-  RefreshCw, Plus, X, Trash2, Camera, ShieldAlert
+  RefreshCw, Plus, X, Trash2, Edit3, ShieldAlert,
+  Calculator, CheckCircle2, DollarSign, Clock, ArrowUpRight
 } from 'lucide-react';
 import axios from 'axios';
 import { AppContext } from '../contexts/AppContext';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://nine-budgettracker.onrender.com/api';
 
-// Palette for dynamic asset class pie slices
 const CLASS_COLORS = {
   liquid_asset: '#3b82f6',
   illiquid_asset: '#8b5cf6',
+  business_equity: '#10b981',
+  retirement: '#f59e0b',
   liability: '#ef4444',
 };
 
-const getClassLabels = (t = (k, def) => def) => ({
-  liquid_asset: t('liquid_assets'),
-  illiquid_asset: t('physical_assets'),
-  liability: t('liabilities'),
-});
+const CLASS_LABELS = {
+  liquid_asset: '💧 Stocks, Cash & Crypto',
+  illiquid_asset: '🏠 Real Estate, Gold & Physical',
+  business_equity: '💼 Business Equity',
+  retirement: '🛡️ Retirement & Pension',
+  liability: '💳 Liability / Debt',
+};
 
 export default function Wealth() {
-  const { fmt, token, t } = useContext(AppContext);
+  const { fmt, token, t, theme } = useContext(AppContext);
   const { showToast } = useToast();
 
   const [wealthItems, setWealthItems] = useState([]);
+  const [historyData, setHistoryData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [aiInsight, setAiInsight] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
+  
+  // Modals & CRUD
   const [isAddingItem, setIsAddingItem] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [itemToDelete, setItemToDelete] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fetchError, setFetchError] = useState(null);
-  const [itemToDelete, setItemToDelete] = useState(null);
 
-  // Stable refs to prevent AI refetching
+  // Debt Payoff Simulator state
+  const [selectedDebtId, setSelectedDebtId] = useState('');
+  const [extraPayment, setExtraPayment] = useState(2000);
+  const [monthlyBasePayment, setMonthlyBasePayment] = useState(5000);
+
   const aiTriggerKey = useRef('');
   const aiCooldown = useRef(0);
+  const isDark = theme === 'amoled';
 
   const [formData, setFormData] = useState({
     name: '',
@@ -55,21 +68,25 @@ export default function Wealth() {
     acquisition_date: new Date().toISOString().split('T')[0],
   });
 
-  // ─── 1. Fetch from Backend ────────────────────────────────────────────────
+  // Fetch Wealth Data & History
   const fetchWealthData = useCallback(async () => {
     if (!token) return;
     setIsLoading(true);
     setFetchError(null);
     try {
       const cfg = { headers: { Authorization: `Bearer ${token}` } };
-      const itemsRes = await axios.get(`${API_BASE}/wealth/items`, cfg);
+      const [itemsRes, histRes] = await Promise.all([
+        axios.get(`${API_BASE}/wealth/items`, cfg),
+        axios.get(`${API_BASE}/wealth/history`, cfg).catch(() => ({ data: [] }))
+      ]);
       setWealthItems(Array.isArray(itemsRes.data) ? itemsRes.data : []);
-      } catch (err) {
+      setHistoryData(Array.isArray(histRes.data) ? histRes.data : []);
+    } catch (err) {
       if (err.response?.status === 401) {
         setFetchError('Session expired. Please log out and log back in.');
-        showToast('error', 'Session expired. Please log out and log back in.');
+        showToast('error', 'Session expired.');
       } else {
-        setFetchError('Cannot reach the MyCoinwise server. Is the backend running?');
+        setFetchError('Cannot reach server.');
         showToast('error', 'Failed to fetch wealth data.');
       }
     } finally {
@@ -81,7 +98,7 @@ export default function Wealth() {
     if (token) fetchWealthData();
   }, [token, fetchWealthData]);
 
-  // ─── 2. Core Financial Maths (frontend display only — values from backend) ─
+  // Core Financial Maths
   const {
     totalAssets,
     totalLiabilities,
@@ -89,6 +106,7 @@ export default function Wealth() {
     liquidAssets,
     physicalAssets,
     assetAllocationData,
+    liabilitiesList,
     toxicDebts,
     hasHighInterestDebts,
   } = useMemo(() => {
@@ -97,15 +115,17 @@ export default function Wealth() {
     let liquid = 0;
     let physical = 0;
     const tDebts = [];
+    const liabList = [];
     const classTotals = {};
 
     wealthItems.forEach(item => {
-      // Backend has already computed the canonical current_value (with depreciation / live price)
       const val = item.current_value ?? item.base_value ?? 0;
 
       if (item.asset_class === 'liability') {
         liabilities += Math.abs(val);
-        tDebts.push({ ...item, computedValue: Math.abs(val) });
+        const debtObj = { ...item, computedValue: Math.abs(val) };
+        liabList.push(debtObj);
+        if ((item.interest_rate || 0) > 12) tDebts.push(debtObj);
       } else {
         assets += val;
         classTotals[item.asset_class] = (classTotals[item.asset_class] || 0) + val;
@@ -114,31 +134,13 @@ export default function Wealth() {
       }
     });
 
-    // Dynamic allocation data — one slice per unique non-liability asset class
     const allocation = Object.entries(classTotals)
       .filter(([, v]) => v > 0)
       .map(([cls, v]) => ({
-        name: getClassLabels(t)[cls] || cls,
+        name: CLASS_LABELS[cls]?.split(' ')[1] || cls,
         value: v,
         color: CLASS_COLORS[cls] || '#64748b',
       }));
-
-    // High interest debts: show warning for ANY >15% interest debt,
-    // severity level determined by liquid asset ratio
-    const highDebts = tDebts.filter(d => (d.interest_rate || 0) > 15);
-    const highDebtTotal = highDebts.reduce((s, d) => s + d.computedValue, 0);
-
-    let debtSeverity = 'info';
-    let debtMsg = 'Consider paying off high-interest debt soon.';
-    if (highDebts.length > 0) {
-      if (liquid === 0 || highDebtTotal > liquid * 0.5) {
-        debtSeverity = 'critical';
-        debtMsg = 'CRITICAL RISK: High-interest debt exceeds 50% of your liquid assets.';
-      } else if (highDebtTotal > liquid * 0.3) {
-        debtSeverity = 'warning';
-        debtMsg = 'WARNING: High-interest debt is consuming a large portion of your liquidity.';
-      }
-    }
 
     return {
       totalAssets: assets,
@@ -147,16 +149,15 @@ export default function Wealth() {
       liquidAssets: liquid,
       physicalAssets: physical,
       assetAllocationData: allocation,
-      toxicDebts: highDebts,
-      debtSeverity,
-      debtMsg,
-      hasHighInterestDebts: highDebts.length > 0,
+      liabilitiesList: liabList,
+      toxicDebts: tDebts,
+      hasHighInterestDebts: tDebts.length > 0,
     };
-  }, [wealthItems, t]);
+  }, [wealthItems]);
 
   const nwColor = netWorth >= 0 ? 'var(--brand-primary)' : 'var(--danger)';
 
-  // ─── 3. AI Insights — Stable Dependencies, No Infinite Loop ──────────────
+  // AI Strategy Insights
   useEffect(() => {
     if (wealthItems.length === 0 || !token) {
       setAiInsight('Add assets and liabilities to unlock your AI wealth strategy.');
@@ -166,12 +167,10 @@ export default function Wealth() {
     const payload = { totalAssets, liquidAssets, physicalAssets, liabilities: totalLiabilities };
     const newKey = JSON.stringify(payload);
 
-    // Prevent refetch if data hasn't changed or cooldown applies
     const now = Date.now();
     if (newKey === aiTriggerKey.current && now - aiCooldown.current < 30000) return;
 
     let cancelled = false;
-
     const fetchDebounced = setTimeout(async () => {
       aiTriggerKey.current = newKey;
       aiCooldown.current = Date.now();
@@ -182,9 +181,9 @@ export default function Wealth() {
           payload,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        if (!cancelled) setAiInsight(res.data.insight || 'Neural network offline.');
+        if (!cancelled) setAiInsight(res.data.insight || 'Portfolio strategy active.');
       } catch {
-        if (!cancelled) setAiInsight('AI Coach is temporarily offline. Your wealth data is secure.');
+        if (!cancelled) setAiInsight('Maintain balanced asset allocation and pay down high-interest liabilities first.');
       } finally {
         if (!cancelled) setIsAiLoading(false);
       }
@@ -196,34 +195,98 @@ export default function Wealth() {
     };
   }, [totalAssets, totalLiabilities, liquidAssets, physicalAssets, token, wealthItems.length]);
 
-  // ─── 4. CRUD Actions ──────────────────────────────────────────────────────
-  const handleAddItem = async () => {
+  // Debt Payoff Simulator Math
+  const debtPayoffCalculation = useMemo(() => {
+    const debt = liabilitiesList.find(d => (d._id === selectedDebtId || d.id === selectedDebtId)) || liabilitiesList[0];
+    if (!debt) return null;
 
-    if (formData.asset_class === 'liquid_asset') {
-      const hasSymbol = formData.symbol && formData.symbol.trim() !== '';
-      const hasQuantity = formData.quantity && Number(formData.quantity) > 0;
+    const principal = debt.computedValue || debt.base_value || 0;
+    if (principal <= 0) return null;
+    const annualRate = Math.max(0.1, debt.interest_rate || 10) / 100;
+    const monthlyRate = annualRate / 12;
 
-      if (hasSymbol && !hasQuantity) {
-        showToast('error', 'A valid Quantity (> 0) is required when a Ticker is provided.');
-        return;
-      }
+    const minRequiredPay = (principal * monthlyRate) + 50;
+    const basePay = Math.max(monthlyBasePayment, minRequiredPay);
+    const acceleratedPay = basePay + Math.max(0, Number(extraPayment));
+
+    // Standard payoff months
+    let balanceBase = principal;
+    let monthsBase = 0;
+    let totalInterestBase = 0;
+    while (balanceBase > 0 && monthsBase < 360) {
+      const interest = balanceBase * monthlyRate;
+      totalInterestBase += interest;
+      balanceBase = balanceBase + interest - basePay;
+      monthsBase++;
+      if (balanceBase <= 0) break;
+    }
+
+    // Accelerated payoff months
+    let balanceAcc = principal;
+    let monthsAcc = 0;
+    let totalInterestAcc = 0;
+    while (balanceAcc > 0 && monthsAcc < 360) {
+      const interest = balanceAcc * monthlyRate;
+      totalInterestAcc += interest;
+      balanceAcc = balanceAcc + interest - acceleratedPay;
+      monthsAcc++;
+      if (balanceAcc <= 0) break;
+    }
+
+    return {
+      debtName: debt.name,
+      principal,
+      monthsBase,
+      monthsAcc,
+      savedMonths: Math.max(0, monthsBase - monthsAcc),
+      savedInterest: Math.max(0, totalInterestBase - totalInterestAcc)
+    };
+  }, [liabilitiesList, selectedDebtId, extraPayment, monthlyBasePayment]);
+
+  // Form Handlers
+  const openEdit = (item) => {
+    setEditingItem(item);
+    setFormData({
+      name: item.name || '',
+      asset_class: item.asset_class || 'liquid_asset',
+      base_value: String(item.base_value || ''),
+      symbol: item.symbol || '',
+      quantity: String(item.quantity || ''),
+      interest_rate: String(item.interest_rate || ''),
+      acquisition_date: item.acquisition_date ? new Date(item.acquisition_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+    });
+  };
+
+  const handleSaveItem = async () => {
+    if (!formData.name.trim() || formData.base_value === '') {
+      showToast('error', 'Please enter a name and base value.');
+      return;
     }
 
     setIsSubmitting(true);
     try {
-      await axios.post(`${API_BASE}/wealth/items`, formData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (editingItem) {
+        await axios.put(`${API_BASE}/wealth/items/${editingItem._id || editingItem.id}`, formData, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        showToast('success', 'Entry updated successfully');
+      } else {
+        await axios.post(`${API_BASE}/wealth/items`, formData, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        showToast('success', 'Entry added successfully');
+      }
+
       setIsAddingItem(false);
+      setEditingItem(null);
       setFormData({
         name: '', asset_class: 'liquid_asset', base_value: '',
         symbol: '', quantity: '', interest_rate: '',
         acquisition_date: new Date().toISOString().split('T')[0],
       });
       fetchWealthData();
-      showToast('success', 'Entry added successfully');
     } catch (err) {
-      showToast('error', err.response?.data?.error || 'Failed to save entry. Please try again.');
+      showToast('error', err.response?.data?.error || 'Failed to save entry.');
     } finally {
       setIsSubmitting(false);
     }
@@ -232,357 +295,332 @@ export default function Wealth() {
   const confirmDelete = async () => {
     if (!itemToDelete) return;
     const id = itemToDelete;
-
-    // Optimistic UI deletion
-    const backupItems = [...wealthItems];
-    setWealthItems(prev => prev.filter(item => item._id !== id));
-    setItemToDelete(null);
-
+    setIsSubmitting(true);
     try {
-      setIsSubmitting(true);
       await axios.delete(`${API_BASE}/wealth/items/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      // Silent refresh to update backend historical snaps quietly
+      setItemToDelete(null);
       fetchWealthData();
       showToast('success', 'Item deleted');
     } catch {
-      setWealthItems(backupItems); // Revert
-      showToast('error', 'Failed to delete item from cloud. Local state reverted.');
+      showToast('error', 'Failed to delete item.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-  if (isLoading) {
-    return (
-      <div className="masonry-layout-page" style={{ opacity: 0.7 }}>
-        <div className="masonry-header shimmer" style={{ height: 60, borderRadius: 16, marginBottom: 24 }}></div>
-        <div className="masonry-grid" style={{ gridTemplateColumns: 'minmax(300px, 1fr)', gap: 24 }}>
-          <div className="glass bento-tile shimmer" style={{ height: 240, borderRadius: 24 }}></div>
-          <div className="glass bento-tile shimmer" style={{ height: 180, borderRadius: 24 }}></div>
-          <div className="glass bento-tile shimmer" style={{ height: 320, borderRadius: 24 }}></div>
-          <div className="glass bento-tile shimmer" style={{ height: 300, borderRadius: 24 }}></div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="masonry-layout-page">
-
-      {/* ── Header ── */}
+    <div className="masonry-layout-page wealth-page-wrap">
       <div className="masonry-header">
         <div className="mh-titles">
           <h2>{t('wealth')}</h2>
           <span className="mh-badge">Live Market Connected</span>
         </div>
-        <div className="mh-actions">
-          <button className="btn-primary" onClick={() => setIsAddingItem(true)}>
-            <Plus size={18} /> Add Entry
+        <div className="mh-actions" style={{ display: 'flex', gap: 10 }}>
+          <button className="btn-secondary" onClick={fetchWealthData} title="Refresh valuations and live market prices">
+            <RefreshCw size={15} className={isLoading ? 'spin' : ''} /> Refresh
+          </button>
+          <button className="btn-primary" onClick={() => { setEditingItem(null); setIsAddingItem(true); }}>
+            <Plus size={16} /> Add Entry
           </button>
         </div>
       </div>
 
-      {/* ── Error Banner ── */}
       {fetchError && (
-        <div className="glass" role="alert" aria-live="assertive" style={{
-          margin: '0 0 24px', padding: '12px 20px',
-          borderLeft: '4px solid var(--danger)',
-          background: 'rgba(239,68,68,0.05)',
-          color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 12,
-        }}>
-          <AlertOctagon size={20} />
+        <div className="glass error-banner" style={{ margin: '0 0 20px', padding: '12px 18px', borderLeft: '4px solid var(--danger)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <AlertOctagon size={18} className="text-danger" />
           <span>{fetchError}</span>
-          <button onClick={fetchWealthData} className="btn-glass" style={{ marginLeft: 'auto', padding: '4px 12px', fontSize: '0.8rem' }}>
-            Retry
-          </button>
         </div>
       )}
 
-      <div className="masonry-grid" style={{ gridTemplateColumns: 'minmax(300px, 1fr)' }}>
-
-        {/* ── Hero: Net Worth ── */}
-        <motion.div
-          className="glass bento-tile"
-          style={{
-            padding: 40, textAlign: 'center',
-            borderColor: nwColor,
-            boxShadow: `0 8px 40px 0 ${netWorth >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.2)'}`,
-          }}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          whileHover={{ y: -4 }}
-        >
-          <h3 style={{
-            color: 'var(--text-secondary)', textTransform: 'uppercase',
-            letterSpacing: 3, fontSize: '0.8rem', marginBottom: 12,
-          }}>
-            Total Net Worth
-          </h3>
-          <div style={{
-            fontSize: 'clamp(2.5rem, 5vw, 3.5rem)',
-            fontWeight: 900, fontFamily: 'var(--font-mono)',
-            color: nwColor, textShadow: `0 0 40px ${nwColor}`,
-          }}>
-            {fmt(netWorth)}
+      {/* Hero Net Worth Card */}
+      <motion.div
+        className="glass bento-tile hero-networth-card"
+        style={{
+          padding: '36px 24px', textAlign: 'center', borderColor: nwColor,
+          boxShadow: `0 8px 40px 0 ${netWorth >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.2)'}`,
+          marginBottom: 20
+        }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <h3 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 2, fontSize: '0.8rem', marginBottom: 8 }}>
+          Total Net Worth
+        </h3>
+        <div style={{ fontSize: 'clamp(2.4rem, 5vw, 3.4rem)', fontWeight: 900, fontFamily: 'var(--font-mono)', color: nwColor }}>
+          {fmt(netWorth)}
+        </div>
+        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 32 }}>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>Assets</div>
+            <div style={{ fontWeight: 700, color: 'var(--brand-primary)' }}>{fmt(totalAssets)}</div>
           </div>
-          <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center', gap: 32 }}>
-            <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 4 }}>Assets</div>
-              <div style={{ fontWeight: 700, color: 'var(--brand-primary)' }}>{fmt(totalAssets)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 4 }}>Liabilities</div>
-              <div style={{ fontWeight: 700, color: 'var(--danger)' }}>-{fmt(totalLiabilities)}</div>
-            </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>Liabilities</div>
+            <div style={{ fontWeight: 700, color: 'var(--danger)' }}>-{fmt(totalLiabilities)}</div>
           </div>
-        </motion.div>
+        </div>
+      </motion.div>
 
-        {/* ── Warning: High Interest Debt ── */}
-        {hasHighInterestDebts && (
-          <motion.div
-            className="glass"
-            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-            style={{ padding: 20, borderLeft: '4px solid var(--danger)', background: 'rgba(239,68,68,0.05)' }}
-          >
-            <h3 style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <ShieldAlert size={20} />
-              {toxicDebts.some(d => d.computedValue > liquidAssets * 0.3 && liquidAssets > 0)
-                ? 'Critical Debt Risk'
-                : 'High-Interest Debt Detected'}
-            </h3>
-            <p style={{ marginTop: 8, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-              You have {toxicDebts.length} debt(s) above 15% interest
-              ({toxicDebts.map(d => `${d.name} @ ${d.interest_rate}%`).join(', ')}).
-              Prioritize payoff to reclaim wealth trajectory.
-            </p>
-          </motion.div>
-        )}
-
-        {/* ── AI Coach ── */}
-        <motion.div
-          className="glass bento-tile"
-          style={{
-            padding: 24, marginTop: 12,
-            background: 'linear-gradient(135deg, rgba(139,92,246,0.06) 0%, transparent 100%)',
-            border: '1px solid rgba(139,92,246,0.25)',
-          }}
-          whileHover={{ scale: 1.01 }}
-        >
-          <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#a78bfa' }}>
-            <Sparkles size={18} /> MyCoinwise AI Coach
+      {/* Warning: High Interest Debt */}
+      {hasHighInterestDebts && (
+        <motion.div className="glass" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ padding: 16, borderLeft: '4px solid var(--danger)', background: 'rgba(239,68,68,0.06)', borderRadius: 12, marginBottom: 20 }}>
+          <h3 style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.95rem', margin: '0 0 4px 0' }}>
+            <ShieldAlert size={18} /> High-Interest Debt Warning
           </h3>
-          <p style={{ color: 'var(--text-secondary)', marginTop: 12, fontSize: '0.95rem', lineHeight: 1.6 }}>
-            {isAiLoading
-              ? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Synthesizing portfolio vectors…</span>
-              : aiInsight}
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.84rem' }}>
+            You have {toxicDebts.length} high-interest debt(s) exceeding 12% interest ({toxicDebts.map(d => `${d.name} @ ${d.interest_rate}%`).join(', ')}). Use the Debt Payoff Simulator below to cut repayment interest.
           </p>
         </motion.div>
+      )}
 
-        {/* ── Charts Row ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24, marginTop: 12 }}>
+      {/* AI Strategy Coach */}
+      <motion.div className="glass bento-tile" style={{ padding: 20, marginBottom: 20, background: 'linear-gradient(135deg, rgba(139,92,246,0.06) 0%, transparent 100%)', border: '1px solid rgba(139,92,246,0.2)' }}>
+        <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#a78bfa', fontSize: '0.95rem' }}>
+          <Sparkles size={16} /> MyCoinwise AI Wealth Advisor
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: '0.88rem', lineHeight: 1.5, margin: '8px 0 0 0' }}>
+          {isAiLoading ? 'Analyzing portfolio asset allocation and debt-to-asset metrics…' : aiInsight}
+        </p>
+      </motion.div>
 
-
-
-          {/* Asset Allocation Donut */}
-          <motion.div className="glass bento-tile" style={{ padding: 24, minHeight: 320 }} whileHover={{ y: -3 }}>
-            <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Briefcase size={18} /> Asset Allocation
-            </h3>
-            <div style={{ height: 200, marginTop: 16, position: 'relative' }}>
-              {totalAssets <= 0 || assetAllocationData.length === 0 ? (
-                <div className="flex-center" style={{ height: '100%', color: 'var(--text-muted)' }}>
-                  No assets logged.
-                </div>
-              ) : (
-                <>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Tooltip
-                        contentStyle={{ background: 'var(--surface-1)', border: '1px solid var(--glass-border)', borderRadius: 10 }}
-                        formatter={v => fmt(v)}
-                      />
-                      <Pie
-                        data={assetAllocationData}
-                        cx="50%" cy="50%"
-                        innerRadius={60} outerRadius={85}
-                        paddingAngle={4}
-                        dataKey="value" stroke="none"
-                      >
-                        {assetAllocationData.map((entry, idx) => (
-                          <Cell key={idx} fill={entry.color} />
-                        ))}
-                      </Pie>
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Total</div>
-                    <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--brand-primary)' }}>{fmt(totalAssets)}</div>
-                  </div>
-                </>
-              )}
-            </div>
-            {/* Legend */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', marginTop: 12 }}>
-              {assetAllocationData.map((d, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: d.color, flexShrink: 0 }} />
-                  {d.name}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-
-        {/* ── Portfolio Details List ── */}
-        <motion.div className="glass bento-tile" style={{ padding: 24, marginTop: 12 }} whileHover={{ y: -2 }}>
-          <h3 className="heading-accent" style={{ marginBottom: 16 }}>Portfolio Details</h3>
-          {wealthItems.length === 0 ? (
-            <motion.div className="glass empty-state" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ padding: '48px 24px', textAlign: 'center' }}>
-              <Briefcase size={48} style={{ color: 'var(--text-muted)', marginBottom: 16, opacity: 0.4 }} />
-              <h3 style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>No Wealth Assets Logged</h3>
-              <p style={{ color: 'var(--text-muted)', maxWidth: 320, margin: '0 auto' }}>Your portfolio is empty. Add an asset or liability to get started.</p>
-            </motion.div>
-          ) : (
-            wealthItems.map((item, idx) => (
-              <div key={item._id || idx} style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '14px 0', borderBottom: '1px solid var(--glass-border)',
-              }}>
-                <div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.name}</div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                    {getClassLabels(t)[item.asset_class] || item.asset_class}
-                    {item.symbol && (
-                      <span style={{ marginLeft: 8, color: '#3b82f6', fontWeight: 600 }}>
-                        {item.symbol}
-                        {item.quantity && ` × ${item.quantity}`}
-                        {item.live_price && ` @ ${fmt(item.live_price)}`}
-                      </span>
-                    )}
-                    {item.interest_rate && (
-                      <span style={{ marginLeft: 8, color: 'var(--danger)' }}>
-                        {item.interest_rate}% interest
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, textAlign: 'right' }}>
-                  <div style={{
-                    fontWeight: 800, fontSize: '1.05rem',
-                    color: item.asset_class === 'liability' ? 'var(--danger)' : 'var(--brand-primary)',
-                  }}>
-                    {item.asset_class === 'liability' ? '-' : ''}{fmt(item.current_value ?? item.base_value)}
-                  </div>
-                  <button
-                    onClick={() => setItemToDelete(item._id)}
-                    style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
-                    title="Remove from portfolio"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
+      {/* Charts Grid: Historical Net Worth Growth + Asset Allocation */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20, marginBottom: 20 }}>
+        {/* Historical Net Worth Area Chart */}
+        <motion.div className="glass bento-tile" style={{ padding: 20 }}>
+          <h3 className="heading-accent" style={{ fontSize: '0.95rem', marginBottom: 12 }}>Net Worth Trajectory</h3>
+          <div style={{ height: 220 }}>
+            {historyData.length > 1 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={historyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="nwGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.7} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
+                  <XAxis dataKey="month" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
+                  <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} tickFormatter={v => fmt(v)} />
+                  <Tooltip contentStyle={{ background: 'var(--surface-1)', borderRadius: 10 }} formatter={v => fmt(v)} />
+                  <Area type="monotone" dataKey="netWorth" stroke="#10b981" fill="url(#nwGrad)" strokeWidth={2} name="Net Worth" />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex-center" style={{ height: '100%', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                Historical snapshots will appear here as your wealth updates over time.
               </div>
-            ))
-          )}
+            )}
+          </div>
         </motion.div>
 
+        {/* Asset Allocation Pie */}
+        <motion.div className="glass bento-tile" style={{ padding: 20 }}>
+          <h3 className="heading-accent" style={{ fontSize: '0.95rem', marginBottom: 12 }}>Asset Allocation</h3>
+          <div style={{ height: 220, position: 'relative' }}>
+            {assetAllocationData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={assetAllocationData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
+                    {assetAllocationData.map((e, idx) => (
+                      <Cell key={idx} fill={e.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: 'var(--surface-1)', borderRadius: 10 }} formatter={v => fmt(v)} />
+                  <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex-center" style={{ height: '100%', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No assets logged yet.
+              </div>
+            )}
+          </div>
+        </motion.div>
       </div>
 
-      <Modal
-        isOpen={isAddingItem}
-        onClose={() => setIsAddingItem(false)}
-        title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Plus size={20} /> Add Wealth Entry</span>}
-        confirmText="Save Entry"
-        onConfirm={handleAddItem}
-        isLoading={isSubmitting}
-      >
-        <form onSubmit={(e) => { e.preventDefault(); handleAddItem(); }} className="auth-form" style={{ marginBottom: 0 }}>
-          <div className="form-group" style={{ marginBottom: 20 }}>
-            <label>Name</label>
-            <input
-              value={formData.name}
-              onChange={e => setFormData({ ...formData, name: e.target.value })}
-              required placeholder="e.g. HDFC Savings, Honda City, SBI Home Loan"
-            />
+      {/* Debt Payoff / Loan Amortization Simulator */}
+      {liabilitiesList.length > 0 && debtPayoffCalculation && (
+        <motion.div className="glass bento-tile" style={{ padding: 22, marginBottom: 20 }}>
+          <div className="bt-header" style={{ marginBottom: 14 }}>
+            <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.95rem' }}>
+              <Calculator size={18} className="text-brand" /> Debt Payoff & Interest Savings Simulator
+            </h3>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-            <div className="form-group">
-              <label>Type</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 16 }}>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Target Liability</label>
               <select
-                value={formData.asset_class}
-                onChange={e => setFormData({ ...formData, asset_class: e.target.value })}
+                value={selectedDebtId || liabilitiesList[0]?._id}
+                onChange={e => setSelectedDebtId(e.target.value)}
+                className="filter-select"
+                style={{ width: '100%', marginTop: 4 }}
               >
-                <option value="liquid_asset">💧 Liquid Asset</option>
-                <option value="illiquid_asset">🏠 Physical Asset</option>
-                <option value="liability">💳 Liability / Debt</option>
+                {liabilitiesList.map(l => (
+                  <option key={l._id || l.id} value={l._id || l.id}>
+                    {l.name} ({fmt(l.computedValue)} @ {l.interest_rate || 10}%)
+                  </option>
+                ))}
               </select>
             </div>
-            <div className="form-group">
-              <label>
-                {formData.asset_class === 'liability' ? 'Principal Owed' : 'Base Value (₹)'}
-              </label>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Standard Monthly Pay</label>
               <input
                 type="number"
-                value={formData.base_value}
-                onChange={e => setFormData({ ...formData, base_value: e.target.value })}
-                required min="0" step="any" placeholder="0.00"
+                value={monthlyBasePayment}
+                onChange={e => setMonthlyBasePayment(Number(e.target.value))}
+                style={{ width: '100%', padding: '6px 10px', marginTop: 4, borderRadius: 8 }}
+                placeholder="e.g. 5000"
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Extra Monthly Payment</label>
+              <input
+                type="number"
+                value={extraPayment}
+                onChange={e => setExtraPayment(Number(e.target.value))}
+                style={{ width: '100%', padding: '6px 10px', marginTop: 4, borderRadius: 8 }}
+                placeholder="e.g. 2000"
               />
             </div>
           </div>
 
-          {formData.asset_class === 'liquid_asset' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-              <div className="form-group">
-                <label>Ticker (optional)</label>
-                <input
-                  value={formData.symbol}
-                  onChange={e => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
-                  placeholder="AAPL / BTC-USD"
-                />
+          <div className="debt-savings-banner glass" style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Interest Saved</div>
+              <strong className="text-success" style={{ fontSize: '1.2rem' }}>+{fmt(debtPayoffCalculation.savedInterest)}</strong>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Time Cut Off</div>
+              <strong className="text-brand" style={{ fontSize: '1.2rem' }}>{debtPayoffCalculation.savedMonths} Months Sooner</strong>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Accelerated Payoff</div>
+              <strong>~{debtPayoffCalculation.monthsAcc} Months total</strong>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Portfolio Items Table */}
+      <motion.div className="glass bento-tile" style={{ padding: 22 }}>
+        <h3 className="heading-accent" style={{ marginBottom: 16 }}>Portfolio Assets & Liabilities</h3>
+        {wealthItems.length === 0 ? (
+          <div style={{ padding: '36px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <Briefcase size={40} style={{ margin: '0 auto 10px', opacity: 0.3 }} />
+            <p>Your portfolio is empty. Add your first asset or debt above.</p>
+          </div>
+        ) : (
+          wealthItems.map((item, idx) => (
+            <div key={item._id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--glass-border)', flexWrap: 'wrap', gap: 8 }}>
+              <div>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.92rem' }}>{item.name}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                  <span className="badge" style={{ background: 'var(--glass-2)', marginRight: 6 }}>{CLASS_LABELS[item.asset_class] || item.asset_class}</span>
+                  {item.symbol && <span style={{ color: '#3b82f6', fontWeight: 600 }}>{item.symbol} {item.quantity ? `× ${item.quantity}` : ''}</span>}
+                  {item.interest_rate ? <span style={{ color: 'var(--danger)', marginLeft: 6 }}>{item.interest_rate}% interest</span> : null}
+                </div>
               </div>
-              <div className="form-group">
-                <label>Quantity / Units</label>
-                <input
-                  type="number"
-                  value={formData.quantity}
-                  onChange={e => setFormData({ ...formData, quantity: e.target.value })}
-                  min="0" step="any" placeholder="0"
-                />
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ fontWeight: 800, fontSize: '1.05rem', color: item.asset_class === 'liability' ? 'var(--danger)' : 'var(--brand-primary)' }}>
+                  {item.asset_class === 'liability' ? '-' : ''}{fmt(item.current_value ?? item.base_value)}
+                </div>
+                <button className="del-btn" onClick={() => openEdit(item)} title="Edit entry"><Edit3 size={15} /></button>
+                <button className="del-btn" onClick={() => setItemToDelete(item._id || item.id)} title="Delete entry"><Trash2 size={15} /></button>
               </div>
             </div>
-          )}
+          ))
+        )}
+      </motion.div>
 
-          {formData.asset_class === 'liability' && (
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>Annual Interest Rate (%)</label>
+      {/* Add / Edit Wealth Modal */}
+      <Modal
+        isOpen={isAddingItem || editingItem !== null}
+        onClose={() => { setIsAddingItem(false); setEditingItem(null); }}
+        title={editingItem ? `✏️ Edit ${editingItem.name}` : `💎 Add Wealth Portfolio Entry`}
+        confirmText={editingItem ? 'Update Entry' : 'Save Entry'}
+        onConfirm={handleSaveItem}
+        isLoading={isSubmitting}
+      >
+        <div className="form-group" style={{ marginBottom: 14 }}>
+          <label>Name</label>
+          <input
+            value={formData.name}
+            onChange={e => setFormData({ ...formData, name: e.target.value })}
+            placeholder="e.g. HDFC Fixed Deposit, S&P 500 ETF, Home Mortgage"
+            autoFocus
+          />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div className="form-group">
+            <label>Asset Category</label>
+            <select
+              value={formData.asset_class}
+              onChange={e => setFormData({ ...formData, asset_class: e.target.value })}
+              className="filter-select"
+              style={{ width: '100%' }}
+            >
+              <option value="liquid_asset">💧 Stocks, Cash & Crypto</option>
+              <option value="illiquid_asset">🏠 Real Estate, Gold & Physical</option>
+              <option value="business_equity">💼 Business Equity</option>
+              <option value="retirement">🛡️ Retirement & Pension</option>
+              <option value="liability">💳 Liability / Debt</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>{formData.asset_class === 'liability' ? 'Principal Owed' : 'Base Valuation'}</label>
+            <input
+              type="number"
+              value={formData.base_value}
+              onChange={e => setFormData({ ...formData, base_value: e.target.value })}
+              placeholder="0.00"
+            />
+          </div>
+        </div>
+
+        {formData.asset_class === 'liquid_asset' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+            <div className="form-group">
+              <label>Ticker Symbol (optional)</label>
+              <input
+                value={formData.symbol}
+                onChange={e => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
+                placeholder="AAPL, BTC, INFY"
+              />
+            </div>
+            <div className="form-group">
+              <label>Quantity / Units</label>
               <input
                 type="number"
-                value={formData.interest_rate}
-                onChange={e => setFormData({ ...formData, interest_rate: e.target.value })}
-                min="0" max="100" step="0.1" placeholder="e.g. 18"
+                value={formData.quantity}
+                onChange={e => setFormData({ ...formData, quantity: e.target.value })}
+                placeholder="e.g. 10"
               />
             </div>
-          )}
+          </div>
+        )}
 
-          {formData.asset_class === 'illiquid_asset' && (
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>Acquisition Date</label>
-              <input
-                type="date"
-                value={formData.acquisition_date}
-                onChange={e => setFormData({ ...formData, acquisition_date: e.target.value })}
-              />
-            </div>
-          )}
-          {/* Hide the actual submit button, Modal handles the submittal via onConfirm */}
-          <button type="submit" style={{ display: 'none' }}></button>
-        </form>
+        {formData.asset_class === 'liability' && (
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label>Annual Interest Rate (%)</label>
+            <input
+              type="number"
+              value={formData.interest_rate}
+              onChange={e => setFormData({ ...formData, interest_rate: e.target.value })}
+              placeholder="e.g. 8.5"
+            />
+          </div>
+        )}
       </Modal>
 
+      {/* Delete Modal */}
       <Modal
         isOpen={itemToDelete !== null}
         onClose={() => setItemToDelete(null)}
@@ -592,16 +630,10 @@ export default function Wealth() {
         isLoading={isSubmitting}
         danger={true}
       >
-        <div style={{ textAlign: 'center', padding: '16px 0' }}>
-          <Trash2 size={48} color="var(--danger)" style={{ marginBottom: 16, opacity: 0.8 }} />
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Are you sure you want to completely remove this from your portfolio? This action cannot be undone.
-          </p>
-        </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
+          Are you sure you want to completely remove this entry from your wealth portfolio?
+        </p>
       </Modal>
     </div>
   );
 }
-
-
-

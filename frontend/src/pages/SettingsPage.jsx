@@ -108,28 +108,42 @@ const BackupRestore = ({ userId, showMessage }) => {
   };
 
   const [confirmRestoreFile, setConfirmRestoreFile] = useState(null);
+  const [restorePreview, setRestorePreview] = useState(null);
 
-  const handleImportBackup = (event) => {
+  const handleImportBackup = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    setConfirmRestoreFile(file);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      setRestorePreview({
+        transactions: Array.isArray(data.transactions) ? data.transactions.length : 0,
+        goals: Array.isArray(data.goals) ? data.goals.length : 0,
+        subscriptions: Array.isArray(data.subscriptions) ? data.subscriptions.length : 0,
+        exportDate: data.exportDate || data.created_at || 'Unknown',
+        parsedData: data
+      });
+      setConfirmRestoreFile(file);
+    } catch {
+      showMessage('error', 'Invalid JSON backup file format.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const executeRestore = async () => {
-    if (!confirmRestoreFile) return;
+    if (!restorePreview?.parsedData) return;
     setRestoreLoading(true);
     setConfirmRestoreFile(null);
     try {
-      const text = await confirmRestoreFile.text();
-      const data = JSON.parse(text);
-      await api.importAllData(userId, data);
-      showMessage('success', 'Backup restored successfully! Page will reload in 3 seconds.');
-      setTimeout(() => window.location.reload(), 3000);
+      await api.importAllData(userId, restorePreview.parsedData);
+      showMessage('success', 'Backup restored successfully! Page will reload in 2 seconds.');
+      setTimeout(() => window.location.reload(), 2000);
     } catch (error) {
       console.error('Restore error:', error);
       showMessage('error', 'Failed to restore backup: Invalid file format or corrupted data');
     } finally {
       setRestoreLoading(false);
+      setRestorePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -149,7 +163,6 @@ const BackupRestore = ({ userId, showMessage }) => {
         }
       };
       scheduleBackup();
-      // ✅ Fix: clear any existing interval before creating a new one
       if (autoBackupIntervalRef.current) clearInterval(autoBackupIntervalRef.current);
       autoBackupIntervalRef.current = setInterval(scheduleBackup, 7 * 24 * 60 * 60 * 1000);
     } else {
@@ -163,7 +176,7 @@ const BackupRestore = ({ userId, showMessage }) => {
   return (
     <div className="idp-section" style={{ padding: 20, borderRadius: 16, background: 'var(--glass-2)', marginBottom: 20 }}>
       <h4 style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <Cloud size={20} /> Backup & Restore
+        <Cloud size={20} /> Universal Backup & Data Restore
       </h4>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <button
@@ -174,7 +187,7 @@ const BackupRestore = ({ userId, showMessage }) => {
           style={{ display: 'flex', alignItems: 'center', gap: 8 }}
         >
           <Download size={16} />
-          {backupLoading ? 'Exporting...' : 'Export Backup'}
+          {backupLoading ? 'Exporting...' : 'Export Full Archive'}
         </button>
         <button
           type="button"
@@ -184,7 +197,7 @@ const BackupRestore = ({ userId, showMessage }) => {
           style={{ display: 'flex', alignItems: 'center', gap: 8 }}
         >
           <Upload size={16} />
-          {restoreLoading ? 'Restoring...' : 'Restore Backup'}
+          {restoreLoading ? 'Restoring...' : 'Restore from Backup'}
         </button>
         <input
           ref={fileInputRef}
@@ -205,26 +218,42 @@ const BackupRestore = ({ userId, showMessage }) => {
         </label>
       </div>
       <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 12 }}>
-        📦 Backup includes all transactions, goals, subscriptions, settings, and user preferences.
+        📦 Universal backup archive contains all your transactions, goals, subscriptions, and security settings.
       </p>
 
       <Modal
         isOpen={!!confirmRestoreFile}
         onClose={() => {
           setConfirmRestoreFile(null);
+          setRestorePreview(null);
           if (fileInputRef.current) fileInputRef.current.value = '';
         }}
         title="Confirm Backup Restoration"
-        confirmText="Yes, Replace All Data"
+        confirmText="Yes, Restore All Data"
         onConfirm={executeRestore}
         isLoading={restoreLoading}
         danger
       >
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: 16, lineHeight: 1.6 }}>
-          ⚠️ WARNING: Importing this backup will replace <strong>ALL</strong> current data including transactions, goals, and subscriptions.
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 14, lineHeight: 1.5 }}>
+          You are about to restore the following records into your account:
         </p>
-        <p style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '0.9rem' }}>
-          This action CANNOT be undone!
+
+        {restorePreview && (
+          <div style={{ padding: '12px 16px', borderRadius: 10, background: 'var(--glass-2)', marginBottom: 16, fontSize: '0.85rem', border: '1px solid var(--glass-border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span>Transactions:</span> <strong>{restorePreview.transactions} items</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span>Savings Goals:</span> <strong>{restorePreview.goals} items</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Subscriptions:</span> <strong>{restorePreview.subscriptions} items</strong>
+            </div>
+          </div>
+        )}
+
+        <p style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '0.85rem' }}>
+          ⚠️ This will replace your current data with the backup contents.
         </p>
       </Modal>
     </div>

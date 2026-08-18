@@ -126,6 +126,40 @@ router.post('/items', auth, async (req, res) => {
 });
 
 /**
+ * @route  PUT /api/wealth/items/:id
+ * @desc   Update an existing asset or liability
+ */
+router.put('/items/:id', auth, async (req, res) => {
+  try {
+    const item = await WealthItem.findOne({ _id: req.params.id, user_id: req.user.id });
+    if (!item) return res.status(404).json({ error: 'Item not found or access denied.' });
+
+    const { name, asset_class, base_value, symbol, quantity, interest_rate, acquisition_date } = req.body;
+
+    if (name !== undefined) item.name = String(name).trim();
+    if (asset_class !== undefined) item.asset_class = asset_class;
+    if (base_value !== undefined && base_value !== '') item.base_value = parseFloat(base_value);
+    if (symbol !== undefined) item.symbol = symbol ? String(symbol).trim().toUpperCase() : null;
+    if (quantity !== undefined) item.quantity = quantity !== '' && quantity != null ? parseFloat(quantity) : null;
+    if (interest_rate !== undefined) item.interest_rate = interest_rate !== '' && interest_rate != null ? parseFloat(interest_rate) : null;
+    if (acquisition_date !== undefined) item.acquisition_date = acquisition_date ? new Date(acquisition_date) : item.acquisition_date;
+
+    const updated = await item.save();
+
+    setImmediate(() => {
+      takeSnapshot(req.user.id).catch(e =>
+        console.warn(`Post-update snapshot skipped for user ${req.user.id}:`, e.message)
+      );
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Wealth PUT Error:', error.message);
+    res.status(400).json({ error: error.message || 'Could not update entry.' });
+  }
+});
+
+/**
  * @route  DELETE /api/wealth/items/:id
  * @desc   Remove an item and trigger background snapshot
  */

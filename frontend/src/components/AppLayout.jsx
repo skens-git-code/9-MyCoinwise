@@ -3,9 +3,10 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ArrowLeftRight, BarChart3, Target, Activity, Briefcase,
-  CreditCard, Settings, ChevronRight, TrendingUp,
+  CreditCard, Settings, ChevronRight, TrendingUp, TrendingDown,
   Bell, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon,
-  Menu, X, Zap
+  Menu, X, Zap, Search, Keyboard, User, Sun, Moon, Check, CheckCircle2,
+  HelpCircle, Shield, ExternalLink
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
@@ -13,6 +14,13 @@ import { LANGUAGES } from '../services/i18n';
 import CurrencyConverter from './CurrencyConverter';
 import AlertsCenter from './AlertsCenter';
 import AIChat from './AIChat';
+import Breadcrumbs from './Breadcrumbs';
+import CommandPalette from './CommandPalette';
+import KeyboardShortcutsModal from './KeyboardShortcutsModal';
+import HelpModal from './HelpModal';
+import OnboardingTour from './OnboardingTour';
+import QuickActionFAB from './QuickActionFAB';
+import TransactionForm from './TransactionForm';
 import DOMPurify from 'dompurify';
 import QuantumRuntime from '../services/quantumRuntime';
 
@@ -354,19 +362,33 @@ export default function AppLayout({ children }) {
   const [showAlerts, setShowAlerts] = useState(false);
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showCmdPalette, setShowCmdPalette] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showOnboardingTour, setShowOnboardingTour] = useState(false);
+  const [showAddTx, setShowAddTx] = useState(false);
+  const [dismissedAlertIds, setDismissedAlertIds] = useState(() => new Set());
 
   const { activeDropdown, toggleDropdown, closeAll } = useDropdownManager();
   const { sidebarOpen, setSidebarOpen, deviceType } = useResponsiveSidebar(true);
 
+  // Auto-trigger onboarding tour for first-time visitors
+  useEffect(() => {
+    const isCompleted = localStorage.getItem('mcw-onboarding-completed');
+    if (!isCompleted) {
+      const timer = setTimeout(() => setShowOnboardingTour(true), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
   // Context
   const contextData = useContext(AppContext) || {};
-  const { user, theme, toggleTheme, currencyInfo, alerts, t, lang, setLanguage, logout } = contextData;
+  const { user, theme, toggleTheme, currencyInfo, alerts = [], transactions = [], addTransaction, t, lang, setLanguage, logout, fmt } = contextData;
 
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Keep the mobile drawer in sync with navigation, including redirects
-  // triggered by profile actions or programmatic route changes without effect cascading renders.
+  // Keep the mobile drawer in sync with navigation without effect cascading renders.
   const [prevPathname, setPrevPathname] = useState(location.pathname);
   if (prevPathname !== location.pathname) {
     setPrevPathname(location.pathname);
@@ -385,7 +407,6 @@ export default function AppLayout({ children }) {
   useClickOutside(activeDropdown, closeAll);
 
   useEffect(() => {
-    // Fixed: Inject styles strictly on the client side
     const styleId = 'app-layout-animations';
     if (!document.getElementById(styleId)) {
       const styleSheet = document.createElement("style");
@@ -406,20 +427,25 @@ export default function AppLayout({ children }) {
     }
 
     const runtime = QuantumRuntime.create(document);
-
     return () => {
       runtime.destroy();
-      // Optional: clean up styles if desired, but usually okay to leave
     };
   }, []);
 
-  // Memoized values
+  // Filter out dismissed alerts for the header counter
+  const activeAlerts = useMemo(() => {
+    return alerts.filter(a => !dismissedAlertIds.has(a.id || a.title));
+  }, [alerts, dismissedAlertIds]);
+
   const urgentAlertsCount = useMemo(() =>
-    alerts?.filter(a => a.type === 'danger' || a.type === 'warning').length || 0,
-    [alerts]
+    activeAlerts.filter(a => a.type === 'danger' || a.type === 'warning').length,
+    [activeAlerts]
   );
 
-  // Fixed: Added '/calendar' to map correctly
+  const handleDismissAllAlerts = useCallback(() => {
+    setDismissedAlertIds(new Set(alerts.map(a => a.id || a.title)));
+  }, [alerts]);
+
   const pageTitleKey = useMemo(() => ({
     '/': 'dashboard',
     '/transactions': 'transactions',
@@ -455,6 +481,15 @@ export default function AppLayout({ children }) {
     [user?.balance, currencyInfo?.symbol]
   );
 
+  // Financial summary metrics for quick-stats dropdown
+  const financialSummary = useMemo(() => {
+    const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    const net = income - expense;
+    const rate = income > 0 ? ((net / income) * 100).toFixed(0) : '0';
+    return { income, expense, net, rate };
+  }, [transactions]);
+
   // Handlers
   const handleSidebarToggle = useCallback(() => {
     setSidebarOpen(prev => !prev);
@@ -465,19 +500,26 @@ export default function AppLayout({ children }) {
     closeAll();
   }, [setLanguage, closeAll]);
 
-  // FIX: memoize all modal/drawer toggle handlers so React.memo on
-  // Header, MobileBottomNav, and MobileDrawer actually prevents re-renders
   const handleOpenConverter = useCallback(() => setShowConverter(true), []);
-  const handleOpenAlerts = useCallback(() => setShowAlerts(true), []);
+  const handleOpenAlerts = useCallback(() => {
+    closeAll();
+    setShowAlerts(true);
+  }, [closeAll]);
   const handleOpenAI = useCallback(() => setIsAIOpen(true), []);
   const handleOpenDrawer = useCallback(() => setDrawerOpen(true), []);
   const handleCloseDrawer = useCallback(() => setDrawerOpen(false), []);
-  const handleOpenProfile = useCallback(() => {
+  const handleOpenCmdPalette = useCallback(() => setShowCmdPalette(true), []);
+  const handleOpenShortcuts = useCallback(() => {
     closeAll();
-    navigate('/settings');
-  }, [closeAll, navigate]);
+    setShowShortcuts(true);
+  }, [closeAll]);
+  const handleOpenAddTx = useCallback(() => setShowAddTx(true), []);
 
-  // Drawer → open modal (closes drawer first)
+  const handleOpenProfile = useCallback(() => {
+    toggleDropdown('profile');
+  }, [toggleDropdown]);
+
+  // Drawer modal handlers
   const handleDrawerConverter = useCallback(() => {
     setDrawerOpen(false); setShowConverter(true);
   }, []);
@@ -488,18 +530,31 @@ export default function AppLayout({ children }) {
     setDrawerOpen(false); setIsAIOpen(true);
   }, []);
 
-  // (Drawer is closed via NavLink onClick and overlay click — no extra effect needed)
-
-  // Keyboard shortcuts
+  // Global Keyboard shortcuts
   useEffect(() => {
     const handleKeyboardShortcuts = (event) => {
+      const isInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+
+      // Cmd/Ctrl + K to open Search
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setShowCmdPalette(prev => !prev);
+      }
+      // ? (Shift + /) for shortcuts modal when not in input
+      if (event.key === '?' && !isInput && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        setShowShortcuts(prev => !prev);
+      }
       // Ctrl/Cmd + B to toggle sidebar
-      if ((event.ctrlKey || event.metaKey) && event.key === 'b') {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
         event.preventDefault();
         handleSidebarToggle();
       }
       // Escape to close modals, dropdowns, and drawer
       if (event.key === 'Escape') {
+        if (showCmdPalette) { setShowCmdPalette(false); return; }
+        if (showShortcuts) { setShowShortcuts(false); return; }
+        if (showAddTx) { setShowAddTx(false); return; }
         if (drawerOpen) { setDrawerOpen(false); return; }
         if (showConverter) setShowConverter(false);
         if (showAlerts) setShowAlerts(false);
@@ -510,7 +565,14 @@ export default function AppLayout({ children }) {
 
     window.addEventListener('keydown', handleKeyboardShortcuts);
     return () => window.removeEventListener('keydown', handleKeyboardShortcuts);
-  }, [handleSidebarToggle, showConverter, showAlerts, isAIOpen, drawerOpen, closeAll]);
+  }, [handleSidebarToggle, showConverter, showAlerts, isAIOpen, drawerOpen, closeAll, showCmdPalette, showShortcuts, showAddTx]);
+
+  const handleAddTransactionSubmit = useCallback(async (txData) => {
+    if (addTransaction) {
+      await addTransaction(txData);
+      setShowAddTx(false);
+    }
+  }, [addTransaction]);
 
   return (
     <ErrorBoundary>
@@ -564,14 +626,27 @@ export default function AppLayout({ children }) {
             lang={lang}
             onLanguageChange={handleLanguageChange}
             onOpenProfile={handleOpenProfile}
+            onOpenCmdPalette={handleOpenCmdPalette}
+            onOpenShortcuts={handleOpenShortcuts}
+            onOpenHelp={() => setShowHelpModal(true)}
+            onOpenTour={() => setShowOnboardingTour(true)}
+            activeAlerts={activeAlerts}
+            onDismissAllAlerts={handleDismissAllAlerts}
+            financialSummary={financialSummary}
+            currencySymbol={currencyInfo?.symbol || '$'}
+            logout={logout}
+            user={user}
+            fmt={fmt}
+            navigate={navigate}
           />
 
           <div className="island-content-wrapper">
+            <Breadcrumbs />
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}
                 className="island-page"
-                initial={{ opacity: 0, y: 16, scale: 0.99 }}
+                initial={{ opacity: 0, y: 14, scale: 0.99 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{
@@ -584,6 +659,9 @@ export default function AppLayout({ children }) {
             </AnimatePresence>
           </div>
         </main>
+
+        {/* Floating Quick Action Button */}
+        <QuickActionFAB onAddTransaction={handleOpenAddTx} />
 
         {/* Mobile Bottom Dock */}
         {deviceType !== 'desktop' && (
@@ -626,8 +704,34 @@ export default function AppLayout({ children }) {
           )}
         </AnimatePresence>
 
-        {/* Modals */}
+        {/* Modals & Command Palette */}
+        <CommandPalette
+          isOpen={showCmdPalette}
+          onClose={() => setShowCmdPalette(false)}
+        />
+
+        <KeyboardShortcutsModal
+          isOpen={showShortcuts}
+          onClose={() => setShowShortcuts(false)}
+        />
+
+        <HelpModal
+          isOpen={showHelpModal}
+          onClose={() => setShowHelpModal(false)}
+        />
+
+        <OnboardingTour
+          isOpen={showOnboardingTour}
+          onClose={() => setShowOnboardingTour(false)}
+        />
+
         <AnimatePresence>
+          {showAddTx && (
+            <TransactionForm
+              onClose={() => setShowAddTx(false)}
+              onSubmit={handleAddTransactionSubmit}
+            />
+          )}
           {showConverter && (
             <CurrencyConverter
               onClose={() => setShowConverter(false)}
@@ -650,6 +754,7 @@ export default function AppLayout({ children }) {
     </ErrorBoundary>
   );
 }
+
 
 // ==============================
 // 7. SUB-COMPONENTS (Separated for maintainability)
@@ -804,7 +909,12 @@ const Header = React.memo(({
   activeDropdown, onDropdownToggle, onCloseDropdowns,
   onShowConverter, onShowAlerts, onShowAI, urgentAlertsCount,
   formattedBalance, theme, onToggleTheme,
-  lang, onLanguageChange, onOpenProfile
+  lang, onLanguageChange, onOpenProfile,
+  onOpenCmdPalette, onOpenShortcuts,
+  onOpenHelp, onOpenTour,
+  activeAlerts, onDismissAllAlerts,
+  financialSummary, currencySymbol,
+  logout, user, fmt, navigate
 }) => {
   return (
     <header className="island-header glass">
@@ -814,9 +924,42 @@ const Header = React.memo(({
         </div>
       </div>
 
+      <div className="ih-center">
+        {/* Global Search trigger bar */}
+        <button
+          className="header-search-bar glass"
+          onClick={onOpenCmdPalette}
+          aria-label="Search transactions, goals, pages (Ctrl+K)"
+        >
+          <Search size={15} className="hsb-icon" />
+          <span className="hsb-placeholder">Search anything...</span>
+          <kbd className="hsb-kbd">⌘K</kbd>
+        </button>
+      </div>
+
       <div className="ih-right">
         <div className="ih-btn-group">
-          {/* Language Dropdown — aria-controls links button to menu for screen readers */}
+          {/* Search icon button for mobile/compact screens */}
+          <button
+            className="ibtn header-search-mobile-btn"
+            onClick={onOpenCmdPalette}
+            title="Search (Cmd+K)"
+            aria-label="Search"
+          >
+            <Search size={18} />
+          </button>
+
+          {/* Keyboard Shortcuts Button */}
+          <button
+            className="ibtn"
+            onClick={onOpenShortcuts}
+            title="Keyboard Shortcuts (?)"
+            aria-label="Keyboard Shortcuts"
+          >
+            <Keyboard size={18} />
+          </button>
+
+          {/* Language Dropdown */}
           <div className="dropdown-container" style={{ position: 'relative' }}>
             <button
               className="ibtn"
@@ -843,6 +986,7 @@ const Header = React.memo(({
           <button
             className="ibtn"
             onClick={onShowConverter}
+            title="Currency Converter"
             aria-label="Currency converter"
           >
             💱
@@ -851,6 +995,7 @@ const Header = React.memo(({
           <button
             className="ibtn"
             onClick={onToggleTheme}
+            title={`Switch to ${theme === 'amoled' ? 'Light' : 'AMOLED'} theme`}
             aria-label={`Switch to ${theme === 'amoled' ? 'Light' : 'AMOLED'} theme`}
           >
             <AnimatePresence mode="wait">
@@ -868,46 +1013,156 @@ const Header = React.memo(({
 
         <div className="ih-separator" />
 
-        <button
-          className="ibtn alert-btn"
-          onClick={onShowAlerts}
-          aria-label={`Alerts${urgentAlertsCount > 0 ? `, ${urgentAlertsCount} urgent` : ''}`}
-        >
-          <Bell size={20} />
-          <span role="status" aria-live="polite">
-            {urgentAlertsCount > 0 && (
-              <motion.span
-                className="alert-badge"
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0 }}
-              >
-                {urgentAlertsCount}
-              </motion.span>
-            )}
-          </span>
-        </button>
+        {/* Notification Bell with Preview Dropdown */}
+        <div className="dropdown-container" style={{ position: 'relative' }}>
+          <button
+            className="ibtn alert-btn"
+            onClick={() => onDropdownToggle('notifications')}
+            aria-expanded={activeDropdown === 'notifications'}
+            aria-haspopup="true"
+            aria-label={`Alerts${urgentAlertsCount > 0 ? `, ${urgentAlertsCount} urgent` : ''}`}
+          >
+            <Bell size={20} />
+            <span role="status" aria-live="polite">
+              {urgentAlertsCount > 0 && (
+                <motion.span
+                  className="alert-badge"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0 }}
+                >
+                  {urgentAlertsCount}
+                </motion.span>
+              )}
+            </span>
+          </button>
 
+          <AnimatePresence>
+            {activeDropdown === 'notifications' && (
+              <motion.div
+                className="header-alerts-dropdown glass"
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="had-header">
+                  <span className="had-title">Smart Alerts</span>
+                  {activeAlerts.length > 0 && (
+                    <button className="had-mark-read" onClick={onDismissAllAlerts}>
+                      <Check size={13} /> Clear
+                    </button>
+                  )}
+                </div>
+
+                <div className="had-list">
+                  {activeAlerts.length > 0 ? (
+                    activeAlerts.slice(0, 3).map((a, idx) => (
+                      <div key={idx} className={`had-item ${a.type || 'info'}`}>
+                        <span className="had-item-icon">{a.icon || '🔔'}</span>
+                        <div className="had-item-body">
+                          <p className="had-item-title">{a.title}</p>
+                          <p className="had-item-msg">{a.message}</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="had-empty">
+                      <CheckCircle2 size={24} className="text-success" />
+                      <p>All caught up!</p>
+                      <span>No urgent alerts right now.</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="had-footer">
+                  <button className="had-view-all-btn" onClick={onShowAlerts}>
+                    Open Alerts Center <ExternalLink size={13} />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* AI Assistant Button */}
         <button
           className="ibtn ai-btn"
           onClick={onShowAI}
+          title="AI Financial Assistant"
           aria-label="AI Assistant"
         >
           <Sparkles size={20} />
         </button>
 
-        <div className="ih-balance">
-          <TrendingUp size={16} />
-          <span>{formattedBalance}</span>
+        {/* Interactive Balance with Quick-Stats Popover */}
+        <div className="dropdown-container" style={{ position: 'relative' }}>
+          <button
+            className="ih-balance-btn ih-balance"
+            onClick={() => onDropdownToggle('balanceStats')}
+            aria-expanded={activeDropdown === 'balanceStats'}
+            title="Click for financial summary"
+            aria-label={`Balance: ${formattedBalance}. Click for quick stats.`}
+          >
+            <TrendingUp size={16} />
+            <span>{formattedBalance}</span>
+          </button>
+
+          <AnimatePresence>
+            {activeDropdown === 'balanceStats' && (
+              <motion.div
+                className="header-stats-dropdown glass"
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                onClick={e => e.stopPropagation()}
+              >
+                <p className="hsd-title">Financial Position</p>
+                <div className="hsd-grid">
+                  <div className="hsd-stat">
+                    <span className="hsd-label">Net Balance</span>
+                    <span className={`hsd-val ${financialSummary.net >= 0 ? 'text-success' : 'text-danger'}`}>
+                      {fmt ? fmt(financialSummary.net) : `${currencySymbol}${financialSummary.net.toFixed(2)}`}
+                    </span>
+                  </div>
+                  <div className="hsd-stat">
+                    <span className="hsd-label">Total Inflow</span>
+                    <span className="hsd-val text-success">
+                      +{fmt ? fmt(financialSummary.income) : `${currencySymbol}${financialSummary.income.toFixed(2)}`}
+                    </span>
+                  </div>
+                  <div className="hsd-stat">
+                    <span className="hsd-label">Total Outflow</span>
+                    <span className="hsd-val text-danger">
+                      -{fmt ? fmt(financialSummary.expense) : `${currencySymbol}${financialSummary.expense.toFixed(2)}`}
+                    </span>
+                  </div>
+                  <div className="hsd-stat">
+                    <span className="hsd-label">Savings Rate</span>
+                    <span className="hsd-val text-brand">
+                      {financialSummary.rate}%
+                    </span>
+                  </div>
+                </div>
+                <div className="hsd-footer">
+                  <button className="hsd-link" onClick={() => { onCloseDropdowns(); navigate('/analytics'); }}>
+                    View Full Analytics →
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* User Status Block */}
+        {/* User Profile Dropdown */}
         <div className="dropdown-container" style={{ position: 'relative' }}>
           <button
             className="ih-avatar-btn"
             onClick={onOpenProfile}
-            title="Open profile settings"
-            aria-label="Open profile settings"
+            title="Open user profile menu"
+            aria-expanded={activeDropdown === 'profile'}
+            aria-haspopup="true"
+            aria-label="Open profile menu"
             style={{
               ...styles.avatarButton,
               background: userInfo.avatarColor,
@@ -923,6 +1178,68 @@ const Header = React.memo(({
               userInfo.avatar
             )}
           </button>
+
+          <AnimatePresence>
+            {activeDropdown === 'profile' && (
+              <motion.div
+                className="header-profile-dropdown glass"
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="hpd-user-card">
+                  <div className="hpd-avatar" style={{ background: userInfo.avatarColor }}>
+                    {userInfo.isBase64Avatar ? (
+                      <img src={userInfo.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                    ) : (
+                      userInfo.avatar
+                    )}
+                  </div>
+                  <div className="hpd-info">
+                    <p className="hpd-name">{userInfo.displayName}</p>
+                    <p className="hpd-email">{user?.email || 'Logged in user'}</p>
+                  </div>
+                </div>
+
+                <div className="hpd-actions">
+                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); navigate('/settings'); }}>
+                    <Settings size={16} />
+                    <span>Settings & Preferences</span>
+                  </button>
+                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenShortcuts(); }}>
+                    <Keyboard size={16} />
+                    <span>Keyboard Shortcuts</span>
+                    <kbd className="hpd-kbd">?</kbd>
+                  </button>
+                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenCmdPalette(); }}>
+                    <Search size={16} />
+                    <span>Global Search</span>
+                    <kbd className="hpd-kbd">⌘K</kbd>
+                  </button>
+                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenHelp(); }}>
+                    <HelpCircle size={16} />
+                    <span>Help & Knowledge Base</span>
+                  </button>
+                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenTour(); }}>
+                    <Sparkles size={16} />
+                    <span>Platform Onboarding Tour</span>
+                  </button>
+                  <button className="hpd-action-btn" onClick={() => { onToggleTheme(); }}>
+                    {theme === 'amoled' ? <Sun size={16} /> : <Moon size={16} />}
+                    <span>Theme: {theme === 'amoled' ? 'AMOLED' : 'Light'}</span>
+                  </button>
+                </div>
+
+                <div className="hpd-footer">
+                  <button className="hpd-logout-btn text-danger" onClick={() => { onCloseDropdowns(); logout(); }}>
+                    <LogOut size={16} />
+                    <span>Log Out</span>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </header>

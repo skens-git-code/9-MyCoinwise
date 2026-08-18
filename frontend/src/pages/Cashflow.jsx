@@ -2,12 +2,16 @@ import React, { useState, useContext, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ResponsiveContainer, AreaChart, Area, CartesianGrid,
-  XAxis, YAxis, Tooltip, ReferenceLine
+  XAxis, YAxis, Tooltip, ReferenceLine, Line
 } from 'recharts';
-import { AlertTriangle, Target, Zap, Activity, BrainCircuit, TrendingDown, CheckCircle } from 'lucide-react';
+import {
+  AlertTriangle, Target, Zap, Activity, BrainCircuit,
+  TrendingDown, CheckCircle, Sliders, Download, Layers,
+  Calendar, RotateCcw, ShieldAlert, Sparkles
+} from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
+import { useToast } from '../components/ToastProvider';
 
-// ─── Custom danger dot for the area chart ─────────────────────────────────────
 const CustomizedDot = ({ cx, cy, payload }) => {
   if (payload?.isDanger) {
     return (
@@ -21,31 +25,55 @@ const CustomizedDot = ({ cx, cy, payload }) => {
   return null;
 };
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://nine-budgettracker.onrender.com/api';
 
 export default function Cashflow() {
-  const { transactions, subscriptions, fmt, t, currencyInfo, token } = useContext(AppContext);
-  const [whatIfAmount, setWhatIfAmount] = useState('');
+  const { transactions = [], subscriptions = [], fmt, t, token, theme } = useContext(AppContext);
+  const { showToast } = useToast();
+
+  const [forecastHorizon, setForecastHorizon] = useState(90); // 30, 60, 90, 180, 365
+  const [showScenarioComparison, setShowScenarioComparison] = useState(false);
+
+  // What-if simulator state with localStorage persistence
+  const [scenarioType, setScenarioType] = useState(() => localStorage.getItem('mcw-cf-type') || 'oneTime');
+  const [whatIfAmount, setWhatIfAmount] = useState(() => localStorage.getItem('mcw-cf-amt') || '');
+  const [scenarioFrequency, setScenarioFrequency] = useState(() => localStorage.getItem('mcw-cf-freq') || 'monthly');
+  const [scenarioMonths, setScenarioMonths] = useState(() => Number(localStorage.getItem('mcw-cf-months')) || 6);
+
   const [safetyThreshold, setSafetyThreshold] = useState(5000);
+  const [criticalThreshold, setCriticalThreshold] = useState(2000);
   const [aiSummary, setAiSummary] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const aiTriggerRef = useRef('');
+  const chartContainerRef = useRef(null);
 
-  // ─── 1. Current balance from all transactions ──────────────────────────────
+  const isDark = theme === 'amoled';
+
+  // Persist scenarios
+  useEffect(() => {
+    localStorage.setItem('mcw-cf-type', scenarioType);
+    localStorage.setItem('mcw-cf-amt', whatIfAmount);
+    localStorage.setItem('mcw-cf-freq', scenarioFrequency);
+    localStorage.setItem('mcw-cf-months', String(scenarioMonths));
+  }, [scenarioType, whatIfAmount, scenarioFrequency, scenarioMonths]);
+
+  // Current balance from all transactions
   const currentBalance = useMemo(() => {
     return transactions.reduce((acc, tx) =>
       tx.type === 'income' ? acc + Number(tx.amount) : acc - Number(tx.amount), 0
     );
   }, [transactions]);
 
-  // ─── 2. 90-Day Forecasting Engine ─────────────────────────────────────────
-  const { projectionData, dangerZone, dailyIncome, dailyVariableBurn } = useMemo(() => {
+  // Forecasting Calculation Engine
+  const { projectionData, baselineData, dangerZone, dailyIncome, dailyVariableBurn } = useMemo(() => {
     const data = [];
+    const baseData = [];
     const now = new Date();
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(now.getDate() - 90);
+    const lookbackDays = Math.min(90, forecastHorizon);
+    const lookbackDate = new Date();
+    lookbackDate.setDate(now.getDate() - lookbackDays);
 
-    const recentTx = transactions.filter(tx => new Date(tx.date) >= ninetyDaysAgo);
+    const recentTx = transactions.filter(tx => new Date(tx.date) >= lookbackDate);
     const subNames = new Set(subscriptions.map(s => (s.name || '').toLowerCase()));
 
     let recentIncome = 0;
@@ -59,12 +87,9 @@ export default function Cashflow() {
       }
     });
 
-    const dailyIncome = recentIncome / 90 || 0;
-    const simulatedSpend = parseFloat(whatIfAmount) || 0;
-    
-    // Median base for outlier filtering
-    const avgEventsPerDay = variableExpenses.length / 90;
-    variableExpenses.sort((a,b) => a-b);
+    const dailyIncome = recentIncome / (lookbackDays || 1) || 0;
+    const avgEventsPerDay = variableExpenses.length / (lookbackDays || 1);
+    variableExpenses.sort((a, b) => a - b);
     let medianExpense = 1;
     if (variableExpenses.length > 0) {
       const mid = Math.floor(variableExpenses.length / 2);
@@ -73,92 +98,110 @@ export default function Cashflow() {
     }
     const dailyVariableBurn = Math.max(medianExpense, 1);
 
-    let balance = currentBalance - simulatedSpend;
+    const parsedWhatIf = parseFloat(whatIfAmount) || 0;
+
+    let balance = currentBalance;
+    let baselineBalance = currentBalance;
     let dangerHit = null;
 
-    for (let i = 1; i <= 90; i++) {
+    for (let i = 1; i <= forecastHorizon; i++) {
       const d = new Date(now);
       d.setDate(now.getDate() + i);
 
       let dailyOutflow = dailyVariableBurn;
 
+      // Deduct upcoming active subscriptions
       subscriptions.forEach(sub => {
+        if (sub.is_paused || sub.cancelled_at) return;
         const amt = Number(sub.amount);
         const fallback = new Date();
         const t1 = sub.next_billing_date ? new Date(sub.next_billing_date) : null;
         const t2 = sub.start_date ? new Date(sub.start_date) : null;
-        
-        const validT1 = t1 && !isNaN(t1.getTime());
-        const validT2 = t2 && !isNaN(t2.getTime());
-        
-        const parsedDate = validT1 ? t1 : (validT2 ? t2 : fallback);
-        const extractedDay = parsedDate.getDate();
-        const extractedMonth = parsedDate.getMonth();
-        const extractedWeekday = parsedDate.getDay();
-        
-        if (sub.cycle === 'monthly' && d.getDate() === extractedDay) {
+        const parsedDate = (t1 && !isNaN(t1.getTime())) ? t1 : ((t2 && !isNaN(t2.getTime())) ? t2 : fallback);
+
+        if (sub.cycle === 'daily') {
           dailyOutflow += amt;
-        } else if (sub.cycle === 'yearly' && d.getDate() === extractedDay && d.getMonth() === extractedMonth) {
+        } else if (sub.cycle === 'weekly' && d.getDay() === parsedDate.getDay()) {
           dailyOutflow += amt;
-        } else if (sub.cycle === 'weekly' && d.getDay() === extractedWeekday) {
+        } else if (sub.cycle === 'monthly' && d.getDate() === parsedDate.getDate()) {
+          dailyOutflow += amt;
+        } else if (sub.cycle === 'quarterly' && d.getDate() === parsedDate.getDate() && (d.getMonth() % 3 === parsedDate.getMonth() % 3)) {
+          dailyOutflow += amt;
+        } else if (sub.cycle === 'yearly' && d.getDate() === parsedDate.getDate() && d.getMonth() === parsedDate.getMonth()) {
           dailyOutflow += amt;
         }
       });
 
-      balance = balance + dailyIncome - dailyOutflow;
+      // Update baseline
+      baselineBalance = baselineBalance + dailyIncome - dailyOutflow;
+
+      // Apply What-If Scenario adjustments
+      let scenarioAdj = 0;
+      if (parsedWhatIf !== 0) {
+        if (scenarioType === 'oneTime' && i === 1) {
+          scenarioAdj = -parsedWhatIf;
+        } else if (scenarioType === 'recurring' && i <= scenarioMonths * 30) {
+          if (scenarioFrequency === 'daily') scenarioAdj = -parsedWhatIf;
+          else if (scenarioFrequency === 'weekly' && d.getDay() === 1) scenarioAdj = -parsedWhatIf;
+          else if (scenarioFrequency === 'monthly' && d.getDate() === 1) scenarioAdj = -parsedWhatIf;
+        }
+      }
+
+      balance = balance + dailyIncome - dailyOutflow + scenarioAdj;
 
       if (balance < safetyThreshold && !dangerHit) {
         dangerHit = { day: i, date: new Date(d), balance };
       }
 
+      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       data.push({
         dayIndex: i,
-        dateStr: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        dateStr,
         balance: parseFloat(balance.toFixed(2)),
+        baseline: parseFloat(baselineBalance.toFixed(2)),
         isDanger: balance < safetyThreshold,
+        isCritical: balance < criticalThreshold
       });
+      baseData.push({ dayIndex: i, dateStr, balance: parseFloat(baselineBalance.toFixed(2)) });
     }
 
-    return { projectionData: data, dangerZone: dangerHit, dailyIncome, dailyVariableBurn };
-  }, [transactions, subscriptions, currentBalance, whatIfAmount, safetyThreshold]);
+    return { projectionData: data, baselineData: baseData, dangerZone: dangerHit, dailyIncome, dailyVariableBurn };
+  }, [transactions, subscriptions, currentBalance, forecastHorizon, whatIfAmount, scenarioType, scenarioFrequency, scenarioMonths, safetyThreshold, criticalThreshold]);
 
-  // ─── 3. Derived stats for the summary row ─────────────────────────────────
   const projectedFinal = projectionData[projectionData.length - 1]?.balance ?? currentBalance;
+  const baselineFinal = baselineData[baselineData.length - 1]?.balance ?? currentBalance;
   const projectedChange = projectedFinal - currentBalance;
-  
-  // Predict a generic 20% variance band for Sensitivity Analysis
+
   const volatility = Math.abs(projectedChange) * 0.20;
   const bestCaseFinal = projectedFinal + volatility;
   const worstCaseFinal = projectedFinal - volatility;
-
   const isSafe = !dangerZone;
 
-  // ─── 4. AI Forecasting Summary ─────────────────────────────────────────────
-  // Only triggers when the financial picture materially changes
+  // AI Insights Generation
   useEffect(() => {
     if (transactions.length === 0) {
       setAiSummary('Add some transactions to enable AI forecasting analysis.');
       return;
     }
 
-    const triggerKey = `${Math.round(currentBalance)}_${dangerZone?.day ?? 'none'}_${Math.round(projectedFinal)}`;
+    const triggerKey = `${Math.round(currentBalance)}_${forecastHorizon}_${dangerZone?.day ?? 'none'}_${Math.round(projectedFinal)}`;
     if (triggerKey === aiTriggerRef.current) return;
     aiTriggerRef.current = triggerKey;
 
     if (!token) return;
-
     let cancelled = false;
     setIsAiLoading(true);
 
     const analyzeWithAI = async () => {
       try {
         const payload = {
-            averageDailyIncome: Math.round(dailyIncome),
-            medianDailyExpense: Math.round(dailyVariableBurn),
-            subscriptionsCount: subscriptions.length,
-            subscriptionsCost: subscriptions.reduce((s, sub) => s + Number(sub.amount), 0),
-            whatIfAmount: parseFloat(whatIfAmount) || 0,
-            dangerDay: dangerZone?.day || null
+          averageDailyIncome: Math.round(dailyIncome),
+          medianDailyExpense: Math.round(dailyVariableBurn),
+          subscriptionsCount: subscriptions.length,
+          subscriptionsCost: subscriptions.reduce((s, sub) => s + Number(sub.amount), 0),
+          whatIfAmount: parseFloat(whatIfAmount) || 0,
+          dangerDay: dangerZone?.day || null,
+          horizon: forecastHorizon
         };
         const res = await fetch(`${API_BASE}/cashflow/ai-insights`, {
           method: 'POST',
@@ -168,9 +211,11 @@ export default function Cashflow() {
 
         if (!res.ok) throw new Error(`Status ${res.status}`);
         const data = await res.json();
-        if (!cancelled) setAiSummary(data.insight || 'Analysis complete.');
+        if (!cancelled) setAiSummary(data.insight || 'Trajectory analysis complete.');
       } catch {
-        if (!cancelled) setAiSummary(`90-day trajectory${dangerZone ? ` hits danger on day ${dangerZone.day}` : ' remains safe'}. ${dangerZone ? 'Reduce recurring costs to stabilize.' : 'Continue current spending discipline.'}`);
+        if (!cancelled) {
+          setAiSummary(`${forecastHorizon}-day projection${dangerZone ? ` approaches minimum floor around day ${dangerZone.day}` : ' remains positive'}. ${dangerZone ? 'Consider deferring discretionary purchases.' : 'Keep maintaining consistent cash reserves.'}`);
+        }
       } finally {
         if (!cancelled) setIsAiLoading(false);
       }
@@ -178,30 +223,45 @@ export default function Cashflow() {
 
     analyzeWithAI();
     return () => { cancelled = true; };
-  }, [currentBalance, dangerZone, projectedFinal, transactions.length, token, dailyIncome, dailyVariableBurn, subscriptions, whatIfAmount]);
+  }, [currentBalance, forecastHorizon, dangerZone, projectedFinal, transactions.length, token, dailyIncome, dailyVariableBurn, subscriptions, whatIfAmount]);
+
+  // Export Forecast CSV
+  const handleExportCSV = () => {
+    if (projectionData.length === 0) return;
+    const headers = ['Day', 'Date', 'Projected Balance', 'Baseline Balance', 'Below Safety Floor'];
+    const rows = projectionData.map(r => [r.dayIndex, r.dateStr, r.balance, r.baseline, r.isDanger ? 'YES' : 'NO']);
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `forecast_${forecastHorizon}d_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast('success', 'Forecast projection CSV downloaded!');
+  };
 
   const gradientColor = isSafe ? '#10b981' : '#ef4444';
-  // FIX: Correctly check if what-if has a valid parsed number
-  const hasWhatIf = parseFloat(whatIfAmount) > 0;
+  const hasWhatIf = parseFloat(whatIfAmount) !== 0 && !isNaN(parseFloat(whatIfAmount));
 
   return (
-    <div className="masonry-layout-page">
-
-      {/* ── Header ── */}
+    <div className="masonry-layout-page cashflow-page-wrap">
       <div className="masonry-header">
         <div className="mh-titles">
-          <h2>{t('cashflow') || 'Forecasting'}</h2>
-          <span className="mh-badge">90-Day Engine</span>
+          <h2>{t('cashflow') || 'Forecasting & Cashflow'}</h2>
+          <span className="mh-badge">{forecastHorizon}-Day Predictive Engine</span>
         </div>
-        <div className="mh-actions">
-          {/* Summary stats row */}
-          <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+        <div className="mh-actions" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn-secondary" onClick={handleExportCSV} title="Download projection as CSV">
+            <Download size={15} /> Export CSV
+          </button>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Current</div>
               <div style={{ fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{fmt(currentBalance)}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>90-Day Projection</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>{forecastHorizon}d Forecast</div>
               <div style={{ fontWeight: 800, fontFamily: 'var(--font-mono)', color: projectedChange >= 0 ? 'var(--brand-primary)' : 'var(--danger)' }}>
                 {fmt(projectedFinal)}
               </div>
@@ -210,79 +270,85 @@ export default function Cashflow() {
         </div>
       </div>
 
-      <div className="masonry-grid" style={{ gridTemplateColumns: '1fr' }}>
+      {/* Horizon Slider & Scenario Toggle Bar */}
+      <div className="forecast-controls-bar glass">
+        <div className="fcb-left">
+          <span className="fcb-label"><Sliders size={15} /> Projection Horizon:</span>
+          <div className="fcb-pills">
+            {[30, 60, 90, 180, 365].map(days => (
+              <button
+                key={days}
+                className={`fcb-pill ${forecastHorizon === days ? 'active' : ''}`}
+                onClick={() => setForecastHorizon(days)}
+              >
+                {days} Days
+              </button>
+            ))}
+          </div>
+        </div>
 
-        {/* ── Danger Zone Alert ── */}
+        <div className="fcb-right">
+          <button
+            className={`btn-secondary ${showScenarioComparison ? 'active' : ''}`}
+            onClick={() => setShowScenarioComparison(prev => !prev)}
+            style={{ fontSize: '0.82rem', padding: '6px 12px' }}
+          >
+            <Layers size={15} /> {showScenarioComparison ? 'Hide Baseline Overlay' : 'Compare Baseline'}
+          </button>
+        </div>
+      </div>
+
+      <div className="masonry-grid" style={{ gridTemplateColumns: '1fr' }}>
+        {/* Danger Zone Alert */}
         <AnimatePresence>
           {dangerZone && (
             <motion.div
               className="glass"
               initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-              style={{ padding: 20, borderLeft: '4px solid var(--danger)', background: 'rgba(239,68,68,0.05)' }}
+              style={{ padding: 18, borderRadius: 14, borderLeft: '4px solid var(--danger)', background: 'rgba(239,68,68,0.06)' }}
             >
-              <h3 style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <AlertTriangle size={20} /> Danger Zone Activated
+              <h3 style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', margin: '0 0 6px 0' }}>
+                <AlertTriangle size={18} /> Safety Floor Warning
               </h3>
-              <p style={{ marginTop: 8, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                Your balance is projected to fall below the <strong>{fmt(safetyThreshold)}</strong> safety threshold,
-                reaching <strong style={{ color: 'var(--danger)' }}>{fmt(dangerZone.balance)}</strong> on{' '}
-                <strong>{dangerZone.date.toLocaleDateString()}</strong> (in {dangerZone.day} day{dangerZone.day !== 1 ? 's' : ''}).
-                Consider deferring major expenses or increasing income sources.
+              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                Your balance is projected to dip below the <strong>{fmt(safetyThreshold)}</strong> safety buffer to <strong className="text-danger">{fmt(dangerZone.balance)}</strong> on <strong>{dangerZone.date.toLocaleDateString()}</strong> (in {dangerZone.day} days).
               </p>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ── No Data State ── */}
-        {transactions.length === 0 && (
-          <motion.div
-            className="glass bento-tile"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            style={{ padding: 48, textAlign: 'center' }}
-          >
-            <TrendingDown size={48} style={{ color: 'var(--text-muted)', marginBottom: 16, opacity: 0.4 }} />
-            <h3 style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>No Transactions Yet</h3>
-            <p style={{ color: 'var(--text-muted)', maxWidth: 320, margin: '0 auto', lineHeight: 1.6 }}>
-              Add your income and expense transactions to see a 90-day financial projection here.
-            </p>
-          </motion.div>
-        )}
-
-        {/* ── Main Area Chart ── */}
+        {/* Main Area Chart */}
         {transactions.length > 0 && (
           <motion.div
+            ref={chartContainerRef}
             className="glass bento-tile"
             style={{ padding: 24, minHeight: 400 }}
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
           >
             <div className="bt-header">
-              <h3 className="heading-accent">{t('projected_balance') || 'Projected Balance'}</h3>
-              <span className="bt-badge">{t('forecast_90_days') || '90-Day Forecast'}</span>
+              <h3 className="heading-accent">Projected Liquidity Curve</h3>
+              <span className="bt-badge">{forecastHorizon}-Day Trajectory</span>
             </div>
 
-            <div style={{ height: 340, width: '100%', marginTop: 24 }}>
+            <div style={{ height: 340, width: '100%', marginTop: 20 }}>
               <ResponsiveContainer>
                 <AreaChart data={projectionData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="cashflowGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={gradientColor} stopOpacity={0.8} />
-                      <stop offset="95%" stopColor={gradientColor} stopOpacity={0} />
+                      <stop offset="5%" stopColor={gradientColor} stopOpacity={0.7} />
+                      <stop offset="95%" stopColor={gradientColor} stopOpacity={0.05} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.04)" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                   <XAxis
                     dataKey="dateStr"
                     tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
-                    axisLine={false} tickLine={false} minTickGap={30}
+                    axisLine={false} tickLine={false} minTickGap={35}
                   />
                   <YAxis
                     tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
-                    axisLine={false} tickLine={false} width={62}
-                    tickFormatter={val =>
-                      val >= 1000 || val <= -1000
-                        ? `${currencyInfo?.symbol || '₹'}${(val / 1000).toFixed(0)}k`
-                        : `${currencyInfo?.symbol || '₹'}${val}`
-                    }
+                    axisLine={false} tickLine={false} width={65}
+                    tickFormatter={val => fmt(val)}
                   />
                   <Tooltip
                     contentStyle={{
@@ -290,23 +356,35 @@ export default function Cashflow() {
                       border: '1px solid var(--glass-border)',
                       borderRadius: 12,
                     }}
-                    formatter={val => [fmt(val), 'Balance']}
+                    formatter={(val, name) => [fmt(val), name === 'baseline' ? 'Baseline' : 'Scenario / Forecast']}
                     labelStyle={{ color: 'var(--text-secondary)' }}
                   />
                   <ReferenceLine
                     y={safetyThreshold}
                     stroke="var(--warning)"
                     strokeDasharray="5 3"
-                    label={{ position: 'insideTopLeft', value: 'Safety Floor', fill: 'var(--warning)', fontSize: 11, fontWeight: 700 }}
+                    label={{ position: 'insideTopLeft', value: 'Safety Floor', fill: 'var(--warning)', fontSize: 10, fontWeight: 700 }}
                   />
-                  {hasWhatIf && (
-                    <ReferenceLine
-                      x={projectionData[0]?.dateStr}
-                      stroke="var(--danger)"
-                      strokeDasharray="3 3"
-                      label={{ position: 'top', value: `-${fmt(parseFloat(whatIfAmount))}`, fill: 'var(--danger)', fontSize: 10 }}
+                  <ReferenceLine
+                    y={criticalThreshold}
+                    stroke="var(--danger)"
+                    strokeDasharray="3 3"
+                    label={{ position: 'insideTopLeft', value: 'Critical Floor', fill: 'var(--danger)', fontSize: 10, fontWeight: 700 }}
+                  />
+                  
+                  {/* Baseline Overlay Line */}
+                  {showScenarioComparison && (
+                    <Area
+                      type="monotone"
+                      dataKey="baseline"
+                      stroke="#8b5cf6"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      fill="none"
+                      name="baseline"
                     />
                   )}
+
                   <Area
                     type="monotone"
                     dataKey="balance"
@@ -316,6 +394,7 @@ export default function Cashflow() {
                     fill="url(#cashflowGradient)"
                     activeDot={{ r: 6, fill: gradientColor, strokeWidth: 0 }}
                     dot={<CustomizedDot />}
+                    name="balance"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -323,12 +402,12 @@ export default function Cashflow() {
           </motion.div>
         )}
 
-        {/* ── AI Summary ── */}
+        {/* AI Summary Card */}
         {transactions.length > 0 && (
           <motion.div
             className="glass bento-tile"
             style={{
-              padding: 24,
+              padding: 22,
               background: 'linear-gradient(135deg, rgba(139,92,246,0.06) 0%, transparent 100%)',
               border: '1px solid rgba(139,92,246,0.2)',
             }}
@@ -336,129 +415,135 @@ export default function Cashflow() {
           >
             <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <BrainCircuit size={18} style={{ color: '#a78bfa' }} />
-              AI Forecast Summary
+              AI Trajectory Analysis
               {isSafe
-                ? <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--brand-primary)', display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle size={14} /> On Track</span>
-                : <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={14} /> Warning</span>
+                ? <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--brand-primary)', display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle size={14} /> Healthy</span>
+                : <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={14} /> Attention Needed</span>
               }
             </h3>
-            <div style={{ color: 'var(--text-secondary)', marginTop: 12, fontSize: '0.92rem', lineHeight: 1.65 }}>
+            <div style={{ color: 'var(--text-secondary)', marginTop: 10, fontSize: '0.9rem', lineHeight: 1.6 }}>
               {isAiLoading
-                ? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Analyzing 90-day trajectory…</span>
+                ? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Analyzing financial trajectory…</span>
                 : <p>{aiSummary}</p>
               }
-              
-              {/* Sensitivity Bounds */}
-              <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-                 <div style={{ background: 'var(--glass-1)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '8px 12px', flex: 1 }}>
-                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Best Case (+20%)</div>
-                     <div style={{ color: 'var(--brand-primary)', fontWeight: 700 }}>{fmt(bestCaseFinal)}</div>
-                 </div>
-                 <div style={{ background: 'var(--glass-1)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '8px 12px', flex: 1 }}>
-                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Worst Case (-20%)</div>
-                     <div style={{ color: 'var(--danger)', fontWeight: 700 }}>{fmt(worstCaseFinal)}</div>
-                 </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
+                <div style={{ background: 'var(--glass-1)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 140 }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Optimistic (+20%)</div>
+                  <div style={{ color: 'var(--brand-primary)', fontWeight: 700 }}>{fmt(bestCaseFinal)}</div>
+                </div>
+                <div style={{ background: 'var(--glass-1)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '8px 12px', flex: 1, minWidth: 140 }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Conservative (-20%)</div>
+                  <div style={{ color: 'var(--danger)', fontWeight: 700 }}>{fmt(worstCaseFinal)}</div>
+                </div>
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* ── Action Console ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
-
-          {/* Safety Threshold */}
-          <motion.div className="glass bento-tile" style={{ padding: 24 }} whileHover={{ y: -2 }}>
-            <div className="bt-header" style={{ marginBottom: 16 }}>
+        {/* Action Console: Dual Thresholds + Advanced What-If Simulator */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+          {/* Thresholds Console */}
+          <motion.div className="glass bento-tile" style={{ padding: 22 }} whileHover={{ y: -2 }}>
+            <div className="bt-header" style={{ marginBottom: 14 }}>
               <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Target size={18} /> {t('safety_buffer') || 'Safety Threshold'}
+                <Target size={18} /> Safety & Critical Floors
               </h3>
             </div>
-            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.6 }}>
-              Your absolute minimum cash floor. The engine warns you whenever projections breach this level over 90 days.
-            </p>
-            <div>
+            
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+                Safety Buffer: <strong>{fmt(safetyThreshold)}</strong>
+              </label>
               <input
                 type="range"
                 min="0" max="50000" step="500"
                 value={safetyThreshold}
                 onChange={e => setSafetyThreshold(Number(e.target.value))}
-                style={{ width: '100%', accentColor: 'var(--brand-primary)', cursor: 'pointer' }}
+                style={{ width: '100%', accentColor: 'var(--warning)', cursor: 'pointer' }}
               />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>{fmt(0)}</span>
-                <span style={{
-                  color: 'var(--brand-primary)', fontWeight: 800, fontFamily: 'var(--font-mono)',
-                  background: 'var(--glass-1)', padding: '5px 14px', borderRadius: 100,
-                  border: '1px solid var(--glass-border)',
-                }}>
-                  {fmt(safetyThreshold)}
-                </span>
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>{fmt(50000)}</span>
-              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+                Critical Warning Floor: <strong>{fmt(criticalThreshold)}</strong>
+              </label>
+              <input
+                type="range"
+                min="0" max="25000" step="250"
+                value={criticalThreshold}
+                onChange={e => setCriticalThreshold(Number(e.target.value))}
+                style={{ width: '100%', accentColor: 'var(--danger)', cursor: 'pointer' }}
+              />
             </div>
           </motion.div>
 
-          {/* What-If Simulator */}
-          <motion.div className="glass bento-tile" style={{ padding: 24 }} whileHover={{ y: -2 }}>
-            <div className="bt-header" style={{ marginBottom: 16 }}>
+          {/* What-If Simulator with Recurring Support */}
+          <motion.div className="glass bento-tile" style={{ padding: 22 }} whileHover={{ y: -2 }}>
+            <div className="bt-header" style={{ marginBottom: 12 }}>
               <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Zap size={18} /> {t('what_if_simulator') || 'What-If Simulator'}
+                <Zap size={18} /> What-If Scenario Modeler
               </h3>
             </div>
-            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.6 }}>
-              Pre-flight a major purchase. Enter an amount below to instantly see how it warps your 90-day trajectory.
-            </p>
-            <div>
-              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 8 }}>
-                {t('what_if_amount') || 'Hypothetical Purchase Amount'}
-              </label>
-              <div style={{ position: 'relative' }}>
-                <span style={{
-                  position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
-                  color: 'var(--danger)', fontWeight: 900, fontSize: '1.1rem',
-                }}>-</span>
-                <input
-                  type="number"
-                  aria-label="What if amount"
-                  value={whatIfAmount}
-                  onChange={e => setWhatIfAmount(e.target.value)}
-                  placeholder="e.g. 15000"
-                  min="0"
-                  style={{
-                    paddingLeft: 32, width: '100%',
-                    fontSize: '1.1rem', fontFamily: 'var(--font-mono)', fontWeight: 700,
-                    background: 'var(--surface-1)',
-                  }}
-                />
-              </div>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <button
+                className={`fcb-pill ${scenarioType === 'oneTime' ? 'active' : ''}`}
+                onClick={() => setScenarioType('oneTime')}
+              >
+                One-Time
+              </button>
+              <button
+                className={`fcb-pill ${scenarioType === 'recurring' ? 'active' : ''}`}
+                onClick={() => setScenarioType('recurring')}
+              >
+                Recurring
+              </button>
             </div>
 
-            {/* FIX: Only show when there's actually a valid positive number */}
-            <AnimatePresence>
-              {hasWhatIf && (
-                <motion.div
-                  initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
-                  style={{
-                    marginTop: 16, padding: '10px 14px',
-                    background: 'rgba(239,68,68,0.06)',
-                    border: '1px solid rgba(239,68,68,0.25)',
-                    borderRadius: 10, fontSize: '0.86rem',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger)', fontWeight: 600 }}>
-                    <Activity size={15} /> Simulating -{fmt(parseFloat(whatIfAmount))} outflow
-                  </div>
-                  <div style={{ marginTop: 6, color: 'var(--text-secondary)' }}>
-                    Adjusted 90-day end: <strong style={{ color: projectedFinal >= safetyThreshold ? 'var(--brand-primary)' : 'var(--danger)' }}>
-                      {fmt(projectedFinal)}
-                    </strong>
-                    {dangerZone && (
-                      <span style={{ color: 'var(--danger)' }}> · hits floor in {dangerZone.day}d</span>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: '0.76rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+                {scenarioType === 'oneTime' ? 'One-off Expense / Inflow' : 'Recurring Amount'}
+              </label>
+              <input
+                type="number"
+                value={whatIfAmount}
+                onChange={e => setWhatIfAmount(e.target.value)}
+                placeholder="e.g. 5000 (positive to spend, negative to gain)"
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8 }}
+              />
+            </div>
+
+            {scenarioType === 'recurring' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                <div>
+                  <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Frequency</label>
+                  <select value={scenarioFrequency} onChange={e => setScenarioFrequency(e.target.value)} className="filter-select" style={{ width: '100%' }}>
+                    <option value="monthly">Monthly</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="daily">Daily</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Duration (Months)</label>
+                  <input
+                    type="number"
+                    min="1" max="12"
+                    value={scenarioMonths}
+                    onChange={e => setScenarioMonths(Number(e.target.value))}
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 8 }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {hasWhatIf && (
+              <div style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--glass-2)', fontSize: '0.82rem', border: '1px solid var(--glass-border)' }}>
+                <span>Impact vs Baseline: </span>
+                <strong className={projectedFinal >= baselineFinal ? 'text-success' : 'text-danger'}>
+                  {projectedFinal >= baselineFinal ? '+' : ''}{fmt(projectedFinal - baselineFinal)}
+                </strong>
+              </div>
+            )}
           </motion.div>
         </div>
       </div>
