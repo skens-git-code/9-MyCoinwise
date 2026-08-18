@@ -44,11 +44,19 @@ export default function App() {
   const [goals, setGoals] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [events, setEvents] = useState([]);
+  const [isAppStarting, setIsAppStarting] = useState(true);
   const [isInitialAuthLoad, setIsInitialAuthLoad] = useState(true);
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
   const [globalError, setGlobalError] = useState(null);
   const [token, setToken] = useState(() => localStorage.getItem('mcw-token') || null);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+  // Keep the branded startup screen visible long enough to feel intentional,
+  // including on fast local loads where auth would otherwise resolve instantly.
+  useEffect(() => {
+    const startupTimer = window.setTimeout(() => setIsAppStarting(false), 900);
+    return () => window.clearTimeout(startupTimer);
+  }, []);
 
   useEffect(() => {
     const handler = (e) => { e.preventDefault(); setDeferredPrompt(e); };
@@ -232,7 +240,7 @@ export default function App() {
 
   // While the initial token validation is in flight, show a spinner so neither
   // the login page nor the protected app content flashes before auth is known.
-  if (isInitialAuthLoad) {
+  if (isAppStarting || isInitialAuthLoad) {
     return (
       <ErrorBoundary>
         <AppContext.Provider value={{
@@ -246,7 +254,7 @@ export default function App() {
           alerts, insights, deferredPrompt, installPWA, goals, subscriptions, events,
         }}>
           <ToastProvider>
-            <Loader />
+            <Loader fullScreen mode={token ? "auth" : "inline"} />
           </ToastProvider>
         </AppContext.Provider>
       </ErrorBoundary>
