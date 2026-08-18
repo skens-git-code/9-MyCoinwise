@@ -1910,6 +1910,7 @@ function SettingsInner({ context }) {
       <AnimatePresence>
         {(formState.isDirty || undoSnapshot) && (
           <motion.div
+            className="settings-save-bar"
             initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
@@ -1930,7 +1931,7 @@ function SettingsInner({ context }) {
               gap: '20px',
               boxShadow: '0 12px 48px rgba(0,0,0,0.25)',
               zIndex: 200,
-              minWidth: 340
+              minWidth: 0
             }}
           >
             <div>

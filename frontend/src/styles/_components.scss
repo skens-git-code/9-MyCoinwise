@@ -1594,6 +1594,39 @@
 // This prevents the navigation pane from consuming the whole viewport and
 // keeps every setting reachable without interfering with page scrolling.
 @media (max-width: 640px) {
+  .settings-save-bar {
+    left: 12px !important;
+    right: 12px !important;
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: none !important;
+    padding: 12px 14px !important;
+    gap: 10px !important;
+    border-radius: 16px !important;
+  }
+
+  .settings-save-bar > div:first-child {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .settings-save-bar > div:first-child p {
+    overflow-wrap: anywhere;
+  }
+
+  .settings-save-bar > div:last-child {
+    flex: 0 0 auto;
+    gap: 6px !important;
+  }
+
+  .settings-save-bar .btn-secondary,
+  .settings-save-bar .btn-primary {
+    min-width: 0;
+    padding: 8px 10px !important;
+    white-space: nowrap;
+  }
+
   .settings-page .inbox-split-pane {
     gap: 12px;
   }

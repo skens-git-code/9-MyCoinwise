@@ -524,7 +524,7 @@ export default function AppLayout({ children }) {
         </div>
 
         {/* Desktop Sidebar */}
-        {deviceType !== 'mobile' && (
+        {deviceType === 'desktop' && (
           <DesktopSidebar
             sidebarOpen={sidebarOpen}
             onToggle={handleSidebarToggle}
