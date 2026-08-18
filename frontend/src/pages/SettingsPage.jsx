@@ -1793,7 +1793,12 @@ function SettingsInner({ context }) {
       case 'appearance':
         return <AppearanceTab {...commonProps} />;
       case 'notifications':
-        return <NotificationPreferences userId={USER_ID} showMessage={showMessage} />;
+        return (
+          <NotificationPreferences
+            preferences={formState.notificationPrefs}
+            onChange={(preferences) => handleFieldChange('notificationPrefs', preferences)}
+          />
+        );
       case 'security':
         return (
           <>
@@ -1828,7 +1833,12 @@ function SettingsInner({ context }) {
           </>
         );
       case 'advanced':
-        return <AdvancedPreferences userId={USER_ID} showMessage={showMessage} />;
+        return (
+          <AdvancedPreferences
+            prefs={formState.advancedPrefs}
+            onChange={(preferences) => handleFieldChange('advancedPrefs', preferences)}
+          />
+        );
       default:
         return null;
     }
