@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const rateLimit = require('express-rate-limit');
 const Transaction = require('../models/Transaction');
 const Goal = require('../models/Goal');
@@ -56,36 +55,62 @@ router.post('/chat', aiLimiter, async (req, res) => {
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey.trim());
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-8b' });
-
     const userId = req.user?.id || req.user?._id;
     const systemPrompt = await getFinancialContext(userId);
 
-    // Sanitise history
-    const chatHistory = [];
-    if (Array.isArray(history)) {
-      for (const msg of history) {
-        if (msg?.text && msg?.role) {
-          chatHistory.push({
-            role: msg.role === 'ai' ? 'model' : 'user',
-            parts: [{ text: String(msg.text) }],
-          });
-        }
+    const rawHistory = Array.isArray(history)
+      ? history.slice(-20).flatMap((msg) => {
+        if (!msg?.text || !['user', 'ai', 'model'].includes(msg.role)) return [];
+        return [{
+          role: msg.role === 'user' ? 'user' : 'model',
+          parts: [{ text: String(msg.text).slice(0, 4000) }],
+        }];
+      })
+      : [];
+    if (rawHistory[0]?.role === 'model') rawHistory.shift();
+    const chatHistory = rawHistory.reduce((messages, current) => {
+      const previous = messages[messages.length - 1];
+      if (previous?.role === current.role) {
+        previous.parts[0].text += `\n${current.parts[0].text}`;
+      } else {
+        messages.push(current);
       }
+      return messages;
+    }, []);
+
+    const response = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-goog-api-key': apiKey.trim() },
+        body: JSON.stringify({
+          contents: [
+            { role: 'user', parts: [{ text: `[SYSTEM CONTEXT]\n${systemPrompt}` }] },
+            { role: 'model', parts: [{ text: 'Understood. I am the MyCoinwise financial assistant, ready to help.' }] },
+            ...chatHistory,
+            { role: 'user', parts: [{ text: message.trim().slice(0, 4000) }] },
+          ],
+          generationConfig: { maxOutputTokens: 600, temperature: 0.75 },
+        }),
+        signal: AbortSignal.timeout(20000),
+      }
+    );
+    const result = await response.json();
+
+    if (!response.ok) {
+      const providerError = result?.error?.message || '';
+      if (response.status === 429 || /quota|rate limit|too many/i.test(providerError)) {
+        return res.status(429).json({ error: 'The AI is busy right now. Please try again shortly.' });
+      }
+      console.error('[AI] Gemini REST error:', response.status, providerError);
+      return res.status(502).json({ error: 'The AI service is temporarily unavailable.' });
     }
 
-    const chat = model.startChat({
-      history: [
-        { role: 'user', parts: [{ text: `[SYSTEM CONTEXT]\n${systemPrompt}` }] },
-        { role: 'model', parts: [{ text: 'Understood. I am the MyCoinwise financial assistant, ready to help.' }] },
-        ...chatHistory,
-      ],
-      generationConfig: { maxOutputTokens: 600, temperature: 0.75 },
-    });
-
-    const result = await chat.sendMessage(message.trim());
-    const text = result.response.text();
+    const text = result?.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text || '')
+      .join('')
+      .trim();
+    if (!text) return res.status(502).json({ error: 'The AI returned an empty response.' });
 
     return res.json({ text });
 

@@ -149,11 +149,11 @@ export const api = {
     link.remove();
   },
 
-  // // AI Chat
-  // chatWithAI: async (message, history) => {
-  //   const res = await axios.post(`${API_URL}/ai/chat`, { message, history });
-  //   return res.data;
-  // },
+  // AI Chat (the API key remains server-side)
+  chatWithAI: async (message, history) => {
+    const res = await axios.post(`${API_URL}/ai/chat`, { message, history });
+    return res.data;
+  },
 
   // ── Calendar Events ────────────────────────────────────────────────────────
   getEvents: async (userId) => {
