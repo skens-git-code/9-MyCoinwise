@@ -1885,13 +1885,13 @@ function SettingsInner({ context }) {
 
       <div className="inbox-split-pane">
         {/* Sidebar */}
-        <div className="inbox-list-pane glass" style={{ flex: '0 0 280px' }} role="tablist" aria-orientation="vertical">
-          <div className="il-filters" style={{ padding: '24px 20px 12px' }}>
-            <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 800 }}>
+        <div className="inbox-list-pane glass" role="tablist" aria-orientation="vertical">
+          <div className="il-filters">
+            <h3 className="il-title">
               Categories
             </h3>
           </div>
-          <div className="il-scrollable" style={{ padding: '12px', gap: '4px' }}>
+          <div className="il-scrollable">
             {TABS.map(tab => (
               <motion.button
                 key={tab.id}
@@ -1902,25 +1902,10 @@ function SettingsInner({ context }) {
                 onClick={() => handleTabChange(tab.id)}
                 whileHover={{ x: 4 }}
                 whileTap={{ scale: 0.98 }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 14,
-                  padding: '14px 18px',
-                  borderRadius: '14px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  width: '100%',
-                  background: activeTab === tab.id ? 'linear-gradient(135deg, rgba(var(--brand-primary-rgb), 0.15), rgba(var(--brand-secondary-rgb), 0.05))' : 'transparent',
-                  color: activeTab === tab.id ? 'var(--brand-primary)' : 'var(--text-secondary)',
-                  fontWeight: activeTab === tab.id ? 800 : 600,
-                  fontSize: '0.95rem',
-                  transition: 'all 0.2s',
-                  boxShadow: activeTab === tab.id ? 'inset 2px 0 0 var(--brand-primary)' : 'none'
-                }}
+                className={`settings-nav-tab ${activeTab === tab.id ? 'active' : ''}`}
               >
                 <tab.icon size={18} aria-hidden />
-                {tab.label}
+                <span>{tab.label}</span>
               </motion.button>
             ))}
           </div>

@@ -1221,18 +1221,19 @@
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
+  flex-wrap: wrap;
 
   h1,
   h2 {
-    font-size: var(--text-2xl);
+    font-size: clamp(1.3rem, 4vw, var(--text-2xl));
     font-weight: var(--weight-black);
     font-family: var(--font-head);
     letter-spacing: -0.03em;
     color: var(--text-primary);
     margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.2;
+    white-space: normal;
+    word-break: break-word;
   }
 }
 
@@ -1601,10 +1602,37 @@
   font-weight: 600;
 }
 
+.settings-nav-tab {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.92rem;
+  transition: all 0.2s ease;
+  text-align: left;
+
+  &:hover {
+    background: var(--glass-2);
+    color: var(--text-primary);
+  }
+
+  &.active {
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb), 0.18), rgba(var(--brand-secondary-rgb), 0.08));
+    color: var(--brand-primary);
+    font-weight: 700;
+    box-shadow: inset 3px 0 0 var(--brand-primary);
+  }
+}
+
 // Settings categories become a compact horizontal tab strip on phones.
-// This prevents the navigation pane from consuming the whole viewport and
-// keeps every setting reachable without interfering with page scrolling.
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .settings-save-bar {
     left: 12px !important;
     right: 12px !important;
@@ -1639,47 +1667,61 @@
   }
 
   .settings-page .inbox-split-pane {
-    gap: 12px;
-  }
-
-  .settings-page .inbox-list-pane {
+    flex-direction: column;
+    gap: 14px;
     height: auto;
-    max-height: none;
-    margin-bottom: 0;
     overflow: visible;
   }
 
+  .settings-page .inbox-list-pane {
+    flex: none !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    border-radius: 16px;
+    padding: 10px 12px !important;
+  }
+
   .settings-page .inbox-list-pane .il-filters {
-    padding: 14px 16px 8px !important;
+    display: none; // Hide CATEGORIES title on mobile to save vertical space
   }
 
   .settings-page .inbox-list-pane .il-scrollable {
-    flex: none;
     flex-direction: row;
     overflow-x: auto;
-    overflow-y: hidden;
-    padding: 8px !important;
-    gap: 6px !important;
+    -webkit-overflow-scrolling: touch;
+    padding: 2px !important;
+    gap: 8px !important;
     scrollbar-width: none;
+    &::-webkit-scrollbar { display: none; }
   }
 
-  .settings-page .inbox-list-pane .il-scrollable::-webkit-scrollbar {
-    display: none;
-  }
-
-  .settings-page .inbox-list-pane .il-scrollable > button {
+  .settings-page .settings-nav-tab {
     flex: 0 0 auto !important;
     width: auto !important;
-    min-height: 42px;
-    padding: 10px 12px !important;
-    white-space: nowrap;
-    font-size: 0.78rem !important;
-    gap: 7px !important;
+    padding: 8px 14px !important;
+    border-radius: 9999px;
+    font-size: 0.8rem !important;
+    background: var(--glass-2);
+    border: 1px solid var(--glass-border);
+
+    &.active {
+      background: var(--brand-primary) !important;
+      color: #fff !important;
+      box-shadow: none !important;
+      border-color: var(--brand-primary) !important;
+    }
   }
 
-  .settings-page .inbox-list-pane .il-scrollable > button svg {
-    width: 15px;
-    height: 15px;
+  .settings-page .inbox-detail-pane {
+    flex: 1 1 auto;
+    height: auto;
+    overflow: visible;
+    border-radius: 16px;
+  }
+
+  .settings-page .idp-content {
+    padding: 16px 12px 100px !important;
   }
 }
 
@@ -4480,6 +4522,46 @@ textarea:focus-visible {
   text-overflow: ellipsis;
 }
 
+// Calendar View Toggles Segmented Control
+.view-toggles {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--glass-card, rgba(13, 21, 39, 0.6));
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(14px);
+
+  .vt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 9px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.18s ease;
+
+    &:hover {
+      color: var(--text-primary);
+      background: var(--glass-2);
+    }
+
+    &.active {
+      background: var(--brand-primary);
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 2px 10px rgba(var(--brand-primary-rgb), 0.35);
+    }
+  }
+}
+
 @media (max-width: 640px) {
   .calendar-page-content {
     padding: 12px !important;
@@ -4490,17 +4572,13 @@ textarea:focus-visible {
   .calendar-page-content .masonry-header {
     padding: 14px !important;
     border-radius: 18px !important;
+    align-items: flex-start;
+    gap: 12px;
   }
 
   .calendar-page-content .masonry-header h1 {
     font-size: clamp(1.35rem, 7vw, 1.8rem) !important;
     line-height: 1.05;
-  }
-
-  .calendar-page-content .masonry-header {
-    align-items: flex-start;
-    gap: 12px;
-    flex-wrap: wrap;
   }
 
   .calendar-page-content .masonry-header > div:last-child {
@@ -5429,12 +5507,13 @@ select {
   right: 0;
   width: 320px;
   padding: 14px;
-  border-radius: 16px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-dropdown-bg);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(20px);
-  z-index: 100;
+  border-radius: 18px;
+  border: 1px solid var(--glass-border-hover);
+  background: var(--surface-1);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  z-index: 9999;
 
   .had-header {
     display: flex;
@@ -5567,14 +5646,15 @@ select {
   position: absolute;
   top: calc(100% + 12px);
   right: 0;
-  width: 260px;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-dropdown-bg);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(20px);
-  z-index: 100;
+  width: 270px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--glass-border-hover);
+  background: var(--surface-1);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  z-index: 9999;
 
   .hpd-user-card {
     display: flex;
@@ -5726,15 +5806,18 @@ select {
 
     .cmd-input {
       flex: 1;
+      min-width: 0;
       border: none;
       background: none;
       color: var(--text-primary);
-      font-size: 1rem;
+      font-size: 0.95rem;
       outline: none;
       font-family: inherit;
+      padding: 0 4px;
 
       &::placeholder {
         color: var(--text-muted);
+        font-size: 0.88rem;
       }
     }
 
@@ -5745,6 +5828,7 @@ select {
       cursor: pointer;
       padding: 4px;
       border-radius: 6px;
+      flex-shrink: 0;
       &:hover {
         color: var(--text-primary);
         background: var(--glass-2);
@@ -5752,13 +5836,15 @@ select {
     }
 
     .cmd-kbd-badge {
-      padding: 2px 7px;
+      flex-shrink: 0;
+      padding: 3px 8px;
       border-radius: 6px;
       background: var(--glass-2);
       border: 1px solid var(--glass-border);
-      font-size: 0.72rem;
+      font-size: 0.7rem;
       font-weight: 700;
       color: var(--text-muted);
+      letter-spacing: 0.05em;
     }
   }
 
@@ -6990,29 +7076,45 @@ select {
   gap: 8px;
   margin-bottom: 20px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 2px 10px;
+  scrollbar-width: none;
+  width: 100%;
+  max-width: 100%;
+  flex-wrap: nowrap;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 
   .gcf-pill {
-    padding: 6px 14px;
-    border-radius: 20px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 16px;
+    border-radius: 9999px;
     border: 1px solid var(--glass-border);
     background: var(--glass-card);
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.15s ease;
+    transition: all 0.18s ease;
 
     &:hover {
       border-color: var(--brand-primary);
       color: var(--text-primary);
+      background: var(--glass-2);
     }
 
     &.active {
       background: var(--brand-primary);
       color: #fff;
       border-color: var(--brand-primary);
+      box-shadow: 0 2px 10px rgba(var(--brand-primary-rgb), 0.35);
     }
   }
 }
@@ -7244,7 +7346,7 @@ select {
 /* ── Wide Desktop & Ultra-Wide (>= 1440px) ── */
 @media (min-width: 1440px) {
   .island-content-wrapper {
-    max-width: 1400px;
+    max-width: 1800px;
     margin: 0 auto;
     width: 100%;
   }
@@ -7388,10 +7490,15 @@ select {
   }
 
   .header-profile-dropdown,
-  .header-stats-dropdown {
-    width: calc(100vw - 20px) !important;
-    max-width: calc(100vw - 20px) !important;
-    right: -60px !important;
+  .header-stats-dropdown,
+  .header-alerts-dropdown {
+    position: fixed !important;
+    top: 68px !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: calc(100vw - 24px) !important;
+    z-index: 99999 !important;
   }
 
   .cal-day-top-row {

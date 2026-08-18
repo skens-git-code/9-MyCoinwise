@@ -8,8 +8,6 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(16, 185, 129, 0.4) transparent;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
@@ -19,6 +17,8 @@ html {
   scroll-padding-top: 80px;
   font-size: 16px;
   overflow: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--brand-primary-rgb), 0.35) transparent;
 }
 
 body {
@@ -32,9 +32,21 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background var(--transition-slow), color var(--transition-slow);
   overflow: hidden;
   overscroll-behavior: none;
+}
+
+/* ── Screen Reader Accessible Only ── */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
 
 /* ================================================================
@@ -168,9 +180,34 @@ body::after {
 /* ================================================================
    SCROLLBAR
    ================================================================ */
-::-webkit-scrollbar { width: 3px; height: 3px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
+.custom-scroll::-webkit-scrollbar,
+.island-content-wrapper::-webkit-scrollbar,
+.inbox-split-pane::-webkit-scrollbar,
+.modal-content::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar,
+.drawer-content::-webkit-scrollbar,
+.il-scrollable::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scroll::-webkit-scrollbar-track,
+.island-content-wrapper::-webkit-scrollbar-track,
+.inbox-split-pane::-webkit-scrollbar-track,
+.modal-content::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track,
+.drawer-content::-webkit-scrollbar-track,
+.il-scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scroll::-webkit-scrollbar-thumb,
+.island-content-wrapper::-webkit-scrollbar-thumb,
+.inbox-split-pane::-webkit-scrollbar-thumb,
+.modal-content::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb,
+.drawer-content::-webkit-scrollbar-thumb,
+.il-scrollable::-webkit-scrollbar-thumb {
   background: rgba(var(--brand-primary-rgb), 0.35);
   border-radius: 999px;
   &:hover { background: rgba(var(--brand-primary-rgb), 0.6); }

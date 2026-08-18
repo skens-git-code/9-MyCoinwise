@@ -582,6 +582,15 @@ select:focus,
   background: linear-gradient(100deg, rgba(var(--nav-primary-rgb), 0.06), transparent 78%);
 }
 
+.island-sidebar.collapsed .inav-active-pill {
+  width: 44px !important;
+  height: 44px !important;
+  inset: 0 !important;
+  border-radius: 12px !important;
+  border-left: 0 !important;
+  box-shadow: inset 0 0 0 1px rgba(var(--nav-primary-rgb), 0.4) !important;
+}
+
 .collapse-toggle:hover,
 .island-sidebar .collapse-toggle:focus-visible {
   color: var(--nav-primary);

@@ -641,7 +641,6 @@ export default function AppLayout({ children }) {
           />
 
           <div className="island-content-wrapper">
-            <Breadcrumbs />
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}
@@ -654,6 +653,7 @@ export default function AppLayout({ children }) {
                   ease: [0.16, 1, 0.3, 1]
                 }}
               >
+                <Breadcrumbs />
                 {children}
               </motion.div>
             </AnimatePresence>

@@ -376,10 +376,10 @@ export default function Analytics() {
     <div className="shared-page analytics-page-wrap">
       <div className="spage-header">
         <div className="spage-title">
-          <h2>Analytics & Intelligence Hub</h2>
-          <span className="badge">AI Insights & Trends</span>
+          <h2>Analytics & Intelligence</h2>
+          <span className="badge">AI Insights</span>
         </div>
-        <div className="analytics-actions" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div className="analytics-actions">
           <button onClick={exportChartAsImage} className="btn-secondary" title="Download PNG of analytics charts">
             <Download size={15} /> Export PNG
           </button>

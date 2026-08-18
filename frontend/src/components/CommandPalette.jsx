@@ -179,7 +179,7 @@ export default function CommandPalette({ isOpen, onClose }) {
               ref={inputRef}
               type="text"
               className="cmd-input"
-              placeholder="Search transactions, goals, subscriptions, routes... (↑↓ Navigate, Enter Select)"
+              placeholder="Search transactions, goals, subscriptions, pages..."
               value={query}
               onChange={e => { setQuery(e.target.value); setSelectedIndex(0); }}
               aria-autocomplete="list"

@@ -271,14 +271,25 @@
   /* Collapsed: center icon */
   .island-sidebar.collapsed & {
     justify-content: center;
-    padding: 12px 0;
+    padding: 10px 0;
+    width: 44px;
+    height: 44px;
+    margin: 2px auto;
+    border-radius: 12px;
 
     .inav-label { display: none; }
 
     .inav-active-pill {
-      width: 44px;
-      left: 50%;
-      transform: translateX(-50%);
+      width: 44px !important;
+      height: 44px !important;
+      inset: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      transform: none !important;
+      border-radius: 12px !important;
+      border-left: 2px solid var(--brand-primary) !important;
     }
   }
 }
@@ -1006,11 +1017,12 @@
 
   .dock-active-dot {
     position: absolute;
-    inset: 2px;
+    inset: 0;
     background: var(--nav-active-bg);
-    border: 1px solid rgba(var(--brand-primary-rgb), 0.25);
+    border: 1px solid rgba(var(--brand-primary-rgb), 0.35);
     border-radius: 12px;
-    z-index: 1;
+    z-index: 0;
+    pointer-events: none;
   }
 
   &.dock-item-menu {
