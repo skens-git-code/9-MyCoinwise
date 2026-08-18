@@ -319,17 +319,17 @@
   .modal-box,
   .modal-content,
   .drawer-content {
-    background: #090e17 !important;
-    background: color-mix(in srgb, var(--surface-1) 98%, #000 2%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.16) !important;
-    box-shadow: 0 25px 70px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+    background: #050505 !important;
+    background: color-mix(in srgb, var(--surface-1) 98%, #000000 2%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    box-shadow: 0 25px 70px rgba(0, 0, 0, 0.98), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
     backdrop-filter: blur(32px) saturate(180%) !important;
     -webkit-backdrop-filter: blur(32px) saturate(180%) !important;
     opacity: 1 !important;
   }
 
   .hpd-user-card {
-    background: rgba(255, 255, 255, 0.05) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
   }
 

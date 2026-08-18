@@ -260,17 +260,17 @@ export default function Calendar() {
 
       {/* Month Metrics Header Cards */}
       <div className="dashboard-row calendar-stats-row">
-        <div className="glass stat-card" style={{ padding: '1.25rem', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <p className="stat-lbl" style={{ color: 'var(--text-secondary, #666)', fontSize: '0.85rem', fontWeight: 600, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Monthly Inflow</p>
-          <h3 className="stat-val" style={{ color: 'var(--color-success, #10B981)', margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>+{fmt(monthlyIncome)}</h3>
+        <div className="glass stat-card cal-metric-card">
+          <p className="stat-lbl">Monthly Inflow</p>
+          <h3 className="stat-val text-success">+{fmt(monthlyIncome)}</h3>
         </div>
-        <div className="glass stat-card" style={{ padding: '1.25rem', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <p className="stat-lbl" style={{ color: 'var(--text-secondary, #666)', fontSize: '0.85rem', fontWeight: 600, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Monthly Outflow</p>
-          <h3 className="stat-val" style={{ color: 'var(--color-danger, #EF4444)', margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>-{fmt(monthlyExpense)}</h3>
+        <div className="glass stat-card cal-metric-card">
+          <p className="stat-lbl">Monthly Outflow</p>
+          <h3 className="stat-val text-danger">-{fmt(monthlyExpense)}</h3>
         </div>
-        <div className="glass stat-card" style={{ padding: '1.25rem', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <p className="stat-lbl" style={{ color: 'var(--text-secondary, #666)', fontSize: '0.85rem', fontWeight: 600, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Net Position</p>
-          <h3 className="stat-val" style={{ color: monthlyNet >= 0 ? 'var(--color-success, #10B981)' : 'var(--color-danger, #EF4444)', margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>
+        <div className="glass stat-card cal-metric-card">
+          <p className="stat-lbl">Net Position</p>
+          <h3 className={`stat-val ${monthlyNet >= 0 ? 'text-success' : 'text-danger'}`}>
             {monthlyNet >= 0 ? '+' : ''}{fmt(monthlyNet)}
           </h3>
         </div>

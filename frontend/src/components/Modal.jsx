@@ -69,8 +69,8 @@ const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoa
                 {title}
               </h3>
               {!isLoading && (
-                <button onClick={onClose} aria-label="Close modal" className="icon-btn" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                  <X size={20} />
+                <button onClick={onClose} aria-label="Close modal" className="icon-btn">
+                  <X size={18} />
                 </button>
               )}
             </div>
