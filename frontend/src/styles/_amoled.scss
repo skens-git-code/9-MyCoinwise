@@ -271,6 +271,35 @@
     }
   }
 
+  /* ── Dropdowns, Popups, Modals & Floating Menus (Solid Opaque AMOLED) ── */
+  .header-profile-dropdown,
+  .header-stats-dropdown,
+  .header-alerts-dropdown,
+  .island-dropdown,
+  .shortcuts-modal,
+  .cmd-palette-modal,
+  .modal-box,
+  .modal-content,
+  .drawer-content {
+    background: #090e17 !important;
+    background: color-mix(in srgb, var(--surface-1) 98%, #000 2%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    box-shadow: 0 25px 70px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+    backdrop-filter: blur(32px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(32px) saturate(180%) !important;
+    opacity: 1 !important;
+  }
+
+  .hpd-user-card {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .hpd-action-btn:hover {
+    background: rgba(255, 255, 255, 0.07) !important;
+    color: #fff !important;
+  }
+
   /* ── Reduced Motion ── */
   @media (prefers-reduced-motion: reduce) {
     *,

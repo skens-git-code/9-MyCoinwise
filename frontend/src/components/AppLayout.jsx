@@ -1040,7 +1040,7 @@ const Header = React.memo(({
           <AnimatePresence>
             {activeDropdown === 'notifications' && (
               <motion.div
-                className="header-alerts-dropdown glass"
+                className="header-alerts-dropdown"
                 initial={{ opacity: 0, y: -10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}
@@ -1111,7 +1111,7 @@ const Header = React.memo(({
           <AnimatePresence>
             {activeDropdown === 'balanceStats' && (
               <motion.div
-                className="header-stats-dropdown glass"
+                className="header-stats-dropdown"
                 initial={{ opacity: 0, y: -10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}
@@ -1182,7 +1182,7 @@ const Header = React.memo(({
           <AnimatePresence>
             {activeDropdown === 'profile' && (
               <motion.div
-                className="header-profile-dropdown glass"
+                className="header-profile-dropdown"
                 initial={{ opacity: 0, y: -10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}

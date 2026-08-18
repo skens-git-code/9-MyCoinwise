@@ -4769,15 +4769,23 @@ select {
 /* ── Modal — Full Mobile Constraints ───────────────────────────── */
 @media (max-width: 640px) {
 
+  .modal-overlay {
+    padding: 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
   .modal-box,
-  .modal-content,
-  [class*="modal"]>div {
-    width: calc(100vw - 32px) !important;
-    max-width: 100% !important;
-    max-height: 88dvh !important;
+  .modal-content {
+    width: 100% !important;
+    max-width: calc(100vw - 32px) !important;
+    max-height: 90dvh !important;
     overflow-y: auto;
-    margin: 16px;
+    margin: 0 auto !important;
+    padding: 20px 16px !important;
     border-radius: 20px !important;
+    box-sizing: border-box !important;
   }
 
   /* Toast — full width on small screens */
@@ -4846,9 +4854,11 @@ select {
 @media (max-width: 375px) {
 
   .modal-box,
-  [class*="modal"]>div {
-    width: calc(100vw - 24px) !important;
-    margin: 12px;
+  .modal-content {
+    width: 100% !important;
+    max-width: calc(100vw - 20px) !important;
+    margin: 0 auto !important;
+    padding: 16px 12px !important;
     border-radius: 16px !important;
   }
 

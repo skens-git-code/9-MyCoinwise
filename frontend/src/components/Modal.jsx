@@ -74,9 +74,9 @@ const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoa
                 </button>
               )}
             </div>
-            
+
             {children}
-            
+
             {confirmText && onConfirm && (
               <div className="modal-actions" style={{ marginTop: 24, display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                 <button

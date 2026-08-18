@@ -167,11 +167,10 @@ body::after {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  opacity: 0.42;
+  opacity: 0.6;
   background:
-    radial-gradient(ellipse at 18% 22%, rgba(var(--brand-primary-rgb), 0.13), transparent 28%),
-    radial-gradient(ellipse at 84% 76%, rgba(var(--brand-secondary-rgb), 0.09), transparent 31%),
-    repeating-linear-gradient(120deg, transparent 0 88px, rgba(var(--brand-primary-rgb), 0.018) 89px 90px);
+    radial-gradient(ellipse at 18% 22%, rgba(var(--brand-primary-rgb), 0.14), transparent 35%),
+    radial-gradient(ellipse at 84% 76%, rgba(var(--brand-secondary-rgb), 0.10), transparent 38%);
 }
 
 .island-sidebar {
@@ -228,15 +227,13 @@ body::after {
 
 /* Grass blades: thin decorative accent on hero and primary sections. */
 .bento-hero,
-.auth-card,
-.inbox-list-pane {
+.auth-card {
   position: relative;
   overflow: hidden;
 }
 
 .bento-hero::after,
-.auth-card::before,
-.inbox-list-pane::after {
+.auth-card::before {
   content: '';
   position: absolute;
   pointer-events: none;
@@ -263,15 +260,6 @@ body::after {
   right: -46px;
   top: -36px;
   transform: rotate(18deg);
-  mask-image: linear-gradient(to bottom, #000, transparent);
-}
-
-.inbox-list-pane::after {
-  width: 150px;
-  height: 74px;
-  right: -26px;
-  top: 52px;
-  transform: rotate(12deg);
   mask-image: linear-gradient(to bottom, #000, transparent);
 }
 
