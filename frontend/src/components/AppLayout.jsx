@@ -648,8 +648,7 @@ const DesktopSidebar = React.memo(({
     <aside
       className={`island-sidebar glass ${sidebarOpen ? 'open' : 'collapsed'}`}
       aria-label="Main navigation sidebar"
-      aria-hidden={!sidebarOpen}
-      inert={sidebarOpen ? undefined : true}
+      aria-expanded={sidebarOpen}
     >
       <div className="island-brand">
         <motion.div className="brand-icon" whileHover={{ rotate: 15, scale: 1.1 }}>
