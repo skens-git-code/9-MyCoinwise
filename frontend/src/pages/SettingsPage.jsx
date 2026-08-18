@@ -967,11 +967,9 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, theme, showMessage 
             <input
               id="last_name"
               value={formState.lastName}
+              onChange={(e) => handleFieldChange('lastName', e.target.value)}
               placeholder="Surname"
               autoCapitalize="words"
-              disabled
-              title="Surname cannot be edited"
-              style={{ cursor: 'not-allowed', opacity: 0.7 }}
             />
           </div>
         </div>
@@ -1427,7 +1425,7 @@ function SettingsInner({ context }) {
 
   const [formState, dispatch] = useReducer(settingsReducer, {
     firstName: (user?.username || '').split(' ')[0] || '',
-    lastName: (user?.username || '').split(' ').slice(1).join(' ') || '',
+    lastName: user?.last_name ?? ((user?.username || '').split(' ').slice(1).join(' ') || ''),
     monthlyGoal: user?.monthly_goal?.toString() || '',
     currency: user?.currency || 'INR',
     avatar: user?.profile_avatar || '😊',
@@ -1471,7 +1469,7 @@ function SettingsInner({ context }) {
         type: 'RESET_FORM',
         payload: {
           firstName: (user.username || '').split(' ')[0] || '',
-          lastName: (user.username || '').split(' ').slice(1).join(' ') || '',
+          lastName: user.last_name ?? ((user.username || '').split(' ').slice(1).join(' ') || ''),
           monthlyGoal: user.monthly_goal?.toString() || '',
           currency: user.currency || 'INR',
           avatar: user.profile_avatar || '😊',
@@ -1538,6 +1536,7 @@ function SettingsInner({ context }) {
       // Snapshot old state for undo
       const previousState = {
         username: user?.username,
+        last_name: user?.last_name,
         theme: user?.theme,
         monthly_goal: user?.monthly_goal,
         currency: user?.currency,
@@ -1549,6 +1548,7 @@ function SettingsInner({ context }) {
 
       await api.updateSettings(USER_ID, {
         username: sanitizedUsername,
+        last_name: sanitizedLastName,
         theme,
         monthly_goal: goalValue,
         currency: formState.currency,
@@ -1685,6 +1685,7 @@ function SettingsInner({ context }) {
         showMessage('success', 'Auto-saving changes before switching...', 2000);
         await api.updateSettings(USER_ID, {
           username: `${formState.firstName || ''} ${formState.lastName || ''}`.trim(),
+          last_name: sanitizeInput(formState.lastName || ''),
           theme,
           monthly_goal: formState.monthlyGoal,
           currency: formState.currency,
@@ -1975,7 +1976,7 @@ function SettingsInner({ context }) {
                     onClick={() => dispatch({
                       type: 'RESET_FORM', payload: {
                         firstName: (user?.username || '').split(' ')[0] || '',
-                        lastName: (user?.username || '').split(' ').slice(1).join(' ') || '',
+                        lastName: user?.last_name ?? ((user?.username || '').split(' ').slice(1).join(' ') || ''),
                         monthlyGoal: user?.monthly_goal?.toString() || '',
                         currency: user?.currency || 'INR',
                         avatar: user?.profile_avatar || '😊',

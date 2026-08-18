@@ -8,6 +8,7 @@ const LOCK_DURATION_MINUTES = 30;
 const userSchema = new mongoose.Schema({
   // ── Core Identity ──────────────────────────────────────────────────────────
   username:  { type: String, required: true, trim: true, maxlength: 80 },
+  last_name: { type: String, default: '', trim: true, maxlength: 80 },
   email:     { type: String, required: true, unique: true, lowercase: true, trim: true },
   password:  { type: String, required: true, select: false },
   phone:     { type: String, default: null, trim: true },

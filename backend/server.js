@@ -97,6 +97,11 @@ const parseMoney = (value, { allowZero = true } = {}) => {
 const buildSettingsUpdate = (payload = {}) => {
   const updates = {};
   if (payload.username !== undefined) updates.username = String(payload.username).trim();
+  if (payload.last_name !== undefined) {
+    const lastName = String(payload.last_name).trim();
+    if (lastName.length > 80) return { error: 'Last name must be 80 characters or fewer.' };
+    updates.last_name = lastName;
+  }
   if (payload.email !== undefined) {
     const email = normalizeEmail(payload.email);
     if (!email || !/^\S+@\S+\.\S+$/.test(email)) return { error: 'A valid email is required.' };
@@ -425,7 +430,7 @@ app.use('/api/security', auth, securityRoutes);
 // 1. Get all users (for user switcher - keeping for backward compat if needed, but really shouldn't be used now)
 app.get('/api/users', async (req, res) => {
   try {
-    const users = await User.find({ _id: req.user.id }, 'username email balance theme monthly_goal currency profile_avatar profile_color').sort({ _id: 1 });
+    const users = await User.find({ _id: req.user.id }, 'username last_name email balance theme monthly_goal currency profile_avatar profile_color').sort({ _id: 1 });
     res.json(users);
   } catch (error) {
     console.error(error);
@@ -519,6 +524,7 @@ app.delete('/api/users/:id', checkOwnership('id'), async (req, res) => {
 // 4. Update user settings (Atomic PATCH)
 app.patch('/api/users/:id/settings', checkOwnership('id'), [
   body('username').optional().notEmpty().trim(),
+  body('last_name').optional().isString().trim().isLength({ max: 80 }),
   body('email').optional().isEmail().normalizeEmail()
 ], async (req, res) => {
   const errors = validationResult(req);
