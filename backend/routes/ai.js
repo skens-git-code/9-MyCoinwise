@@ -99,9 +99,7 @@ router.post('/chat', aiLimiter, async (req, res) => {
       });
     }
 
-    return res.status(500).json({
-      error: err?.message || 'AI service error. Please try again.',
-    });
+    return res.status(500).json({ error: 'AI service error. Please try again.' });
   }
 });
 

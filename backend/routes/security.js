@@ -1,7 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
+
+router.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many security requests. Please try again later.' },
+}));
 
 // ─── POST /api/security/change-password ──────────────────────────────────────
 // Body: { current: string, new: string }
@@ -32,6 +41,7 @@ router.post('/change-password', async (req, res) => {
 
     // The Mongoose pre-save hook will automatically hash the password
     user.password = newPassword;
+    user.session_version = (user.session_version || 0) + 1;
     // We optionally increment session_version to force relogin on other devices, or let the user do it
     await user.save();
 
@@ -73,6 +83,7 @@ router.post('/change-email', async (req, res) => {
     }
 
     user.email = newEmail.toLowerCase();
+    user.session_version = (user.session_version || 0) + 1;
     await user.save();
 
     res.json({ success: true, message: 'Email address updated successfully.' });

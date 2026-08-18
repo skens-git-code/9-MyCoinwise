@@ -128,7 +128,8 @@ const buildSettingsUpdate = (payload = {}) => {
 
 // ─── Environment Validation ─────────────────────────────────────────────────
 if (!process.env.MONGO_URI) {
-  console.warn('⚠️  MONGO_URI not set in .env — defaulting to mongodb://localhost:27017/MyCoinwise');
+  console.error('FATAL ERROR: MONGO_URI is not defined in the environment variables.');
+  process.exit(1);
 }
 if (!process.env.JWT_SECRET) {
   console.error('FATAL ERROR: JWT_SECRET is not defined in the environment variables.');
