@@ -440,52 +440,57 @@
   flex-shrink: 0;
 }
 
-/* Pill container for secondary buttons */
+/* Floating button group */
 .ih-btn-group {
   display: flex;
   align-items: center;
-  gap: 2px;
-  background: var(--glass-1);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  padding: 3px;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 
 /* Separator */
 .ih-separator {
   width: 1px;
-  height: 20px;
+  height: 22px;
   background: var(--glass-border);
   flex-shrink: 0;
+  margin: 0 2px;
 
   @media (max-width: 640px) { display: none; }
 }
 
-/* Icon button */
+/* Icon button — Modern Floating Button */
 .ibtn {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background: transparent;
-  border: 1px solid transparent;
-  display: flex;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-1) 85%, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--glass-border);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-base);
-  font-size: 1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(255, 255, 255, 0.08) inset;
+  transition: all 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-size: 1.05rem;
   font-family: var(--font-body);
+  position: relative;
 
-  &:hover {
-    background: var(--glass-2);
+  &:hover,
+  &[aria-expanded="true"] {
+    background: color-mix(in srgb, var(--surface-1) 94%, rgba(255, 255, 255, 0.14));
     color: var(--text-primary);
-    border-color: var(--glass-border);
-    transform: translateY(-1px);
+    border-color: rgba(var(--brand-primary-rgb), 0.45);
+    transform: translateY(-3px) scale(1.04);
+    box-shadow: 0 10px 24px -2px rgba(0, 0, 0, 0.22), 0 0 16px rgba(var(--brand-primary-rgb), 0.25);
   }
 
   &:active {
-    transform: scale(0.95);
+    transform: translateY(0px) scale(0.95);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
   }
 }
 
@@ -495,8 +500,8 @@
 
   .alert-badge {
     position: absolute;
-    top: -4px;
-    right: -4px;
+    top: -3px;
+    right: -3px;
     background: var(--danger);
     color: white;
     font-size: 0.62rem;
@@ -507,43 +512,68 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 8px rgba(var(--danger-rgb), 0.5);
+    box-shadow: 0 0 10px rgba(var(--danger-rgb), 0.6);
     border: 2px solid var(--surface-1);
   }
 }
 
 /* Balance chip */
 .ih-balance {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 7px;
   padding: 0 16px;
   height: 40px;
-  border-radius: 12px;
-  background: rgba(var(--success-rgb), 0.10);
-  border: 1px solid rgba(var(--success-rgb), 0.22);
+  border-radius: 50px;
+  background: color-mix(in srgb, var(--surface-1) 85%, rgba(16, 185, 129, 0.08));
+  border: 1px solid rgba(16, 185, 129, 0.28);
   color: var(--success);
   font-weight: 700;
   font-family: var(--font-head);
-  font-size: 0.95rem;
+  font-size: 0.92rem;
+  letter-spacing: -0.01em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(255, 255, 255, 0.06) inset;
+  transition: all 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+  cursor: pointer;
   white-space: nowrap;
+
+  &:hover,
+  &[aria-expanded="true"] {
+    transform: translateY(-3px);
+    background: color-mix(in srgb, var(--surface-1) 92%, rgba(16, 185, 129, 0.15));
+    border-color: var(--success);
+    box-shadow: 0 10px 24px -2px rgba(0, 0, 0, 0.20), 0 0 20px rgba(16, 185, 129, 0.28);
+  }
+
+  &:active {
+    transform: translateY(0px) scale(0.97);
+  }
 }
 
 /* Avatar button */
 .ih-avatar-btn {
   border: none;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   font-size: 1.15rem;
-  transition: transform var(--transition-spring), box-shadow var(--transition-base);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  transition: all 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  &:hover {
-    transform: scale(1.08);
+  &:hover,
+  &[aria-expanded="true"] {
+    transform: translateY(-3px) scale(1.08);
+    border-color: var(--brand-primary);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25), 0 0 0 3px rgba(var(--brand-primary-rgb), 0.35);
+  }
+
+  &:active {
+    transform: translateY(0px) scale(0.95);
   }
 }
 

@@ -5380,41 +5380,54 @@ select {
 .header-search-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 12px;
-  border-radius: 12px;
+  gap: 10px;
+  width: 280px;
+  padding: 8px 14px;
+  border-radius: 14px;
   border: 1px solid var(--glass-border);
-  background: var(--glass-card);
-  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface-1) 82%, rgba(255, 255, 255, 0.05));
+  color: var(--text-secondary);
   font-size: 0.85rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(255, 255, 255, 0.06) inset;
+  transition: all 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 
   &:hover {
-    border-color: rgba(5, 150, 105, 0.4);
-    background: var(--glass-card-hover);
+    transform: translateY(-2px);
+    border-color: rgba(var(--brand-primary-rgb), 0.45);
+    background: color-mix(in srgb, var(--surface-1) 92%, rgba(255, 255, 255, 0.12));
     color: var(--text-primary);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 0 16px rgba(var(--brand-primary-rgb), 0.20);
   }
 
   .hsb-icon {
-    color: var(--text-muted);
+    color: var(--text-secondary);
+    transition: color 0.2s ease;
+  }
+
+  &:hover .hsb-icon {
+    color: var(--brand-primary);
   }
 
   .hsb-placeholder {
     flex: 1;
     text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .hsb-kbd {
-    padding: 2px 6px;
+    padding: 2px 7px;
     border-radius: 6px;
-    background: var(--glass-2);
+    background: color-mix(in srgb, var(--surface-1) 90%, rgba(255, 255, 255, 0.08));
     border: 1px solid var(--glass-border);
     font-size: 0.7rem;
     font-family: inherit;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-secondary);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   }
 }
 
@@ -5430,13 +5443,9 @@ select {
 .ih-balance-btn {
   cursor: pointer;
   border: none;
-  background: var(--glass-2);
+  background: transparent;
+  padding: 0;
   transition: all 0.2s ease;
-
-  &:hover {
-    transform: translateY(-1px);
-    border-color: var(--brand-primary);
-  }
 }
 
 // Header Quick-Stats Dropdown

@@ -766,28 +766,33 @@ select:focus,
 
 .island-header {
   position: sticky;
-  top: 16px;
+  top: 14px;
   width: calc(100% - 32px);
-  margin: 0 16px 12px;
-  min-height: 72px;
-  padding: 10px 14px 10px 22px;
+  margin: 0 16px 14px;
+  min-height: 68px;
+  padding: 10px 18px;
   border: 1px solid var(--nav-border);
-  border-radius: 50px;
+  border-radius: 20px;
   background: color-mix(in srgb, var(--glass-2) 88%, transparent);
-  backdrop-filter: var(--grass-blur);
-  -webkit-backdrop-filter: var(--grass-blur);
-  box-shadow: var(--glass-shadow), 0 0 24px var(--nav-glow);
-  transition: padding var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.14), 0 1px 1px rgba(255, 255, 255, 0.08) inset;
+  transition: all var(--transition-base);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
 }
 
 .island-header.scrolled {
-  padding-top: 7px;
-  padding-bottom: 7px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.22), 0 1px 1px rgba(255, 255, 255, 0.08) inset;
 }
 
 .island-header:hover {
-  border-color: color-mix(in srgb, var(--nav-primary) 58%, var(--glass-border) 42%);
-  box-shadow: var(--glass-shadow-hover), 0 0 40px var(--nav-glow);
+  border-color: color-mix(in srgb, var(--nav-primary) 45%, var(--glass-border) 55%);
 }
 
 .island-header .ih-left,
@@ -802,78 +807,150 @@ select:focus,
 .island-header .ih-titles h1,
 .island-header .greeting-title {
   font-family: var(--font-head);
-  letter-spacing: -0.045em;
+  font-weight: 800;
+  font-size: clamp(1.2rem, 2.2vw, 1.45rem);
+  letter-spacing: -0.04em;
+  line-height: 1.2;
 }
 
 .island-header .ih-titles p {
   color: var(--nav-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-top: 2px;
 }
 
 .island-header .greeting-name {
   background-image: linear-gradient(to right, rgba(var(--nav-primary-rgb), 0.34), rgba(var(--nav-secondary-rgb), 0.34));
 }
 
-/* Pill-style control container from the supplied header reference. */
-.island-header .ih-btn-group {
-  position: relative;
+/* ── Modern Floating Navigation Buttons ── */
+.island-header .ih-right {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
-  border-radius: 50px;
-  background: color-mix(in srgb, var(--glass-1) 82%, transparent);
-  border: 1px solid var(--nav-border);
-  box-shadow: var(--glass-shadow), 0 0 20px rgba(var(--nav-primary-rgb), 0.08);
-  transition: border-color var(--transition-base), box-shadow var(--transition-base), background var(--transition-base);
+  gap: 10px;
 }
 
-.island-header .ih-btn-group:hover {
-  background: color-mix(in srgb, var(--glass-2) 88%, transparent);
-  border-color: var(--nav-primary);
-  box-shadow: var(--glass-shadow), 0 0 34px var(--nav-glow);
+.island-header .ih-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
 }
 
 .island-header .ibtn {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: rgba(var(--nav-primary-rgb), 0.045);
-  border: 1px solid rgba(var(--nav-primary-rgb), 0.12);
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--surface-1) 85%, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--glass-border);
   color: var(--text-secondary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(255, 255, 255, 0.08) inset;
+  cursor: pointer;
+  transition: all 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  font-size: 1.05rem;
 }
 
 .island-header .ibtn:hover,
 .island-header .ibtn[aria-expanded="true"] {
-  background: var(--nav-primary);
+  transform: translateY(-3px) scale(1.04);
+  background: color-mix(in srgb, var(--surface-1) 94%, rgba(255, 255, 255, 0.14));
+  color: var(--text-primary);
+  border-color: rgba(var(--brand-primary-rgb), 0.45);
+  box-shadow: 0 10px 24px -2px rgba(0, 0, 0, 0.22), 0 0 16px rgba(var(--brand-primary-rgb), 0.25);
+}
+
+.island-header .ibtn:active {
+  transform: translateY(0px) scale(0.95);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
+}
+
+/* AI Assistant Floating Button */
+.island-header .ai-btn {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(139, 92, 246, 0.22));
+  border: 1px solid rgba(139, 92, 246, 0.38);
+  color: #c084fc;
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.22), 0 1px 1px rgba(255, 255, 255, 0.12) inset;
+}
+
+.island-header .ai-btn:hover {
+  transform: translateY(-3px) scale(1.06);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(139, 92, 246, 0.36));
+  border-color: rgba(139, 92, 246, 0.65);
   color: #fff;
-  border-color: var(--nav-primary);
-  box-shadow: 0 0 16px var(--nav-glow);
-  transform: scale(1.06) rotate(3deg);
+  box-shadow: 0 12px 28px rgba(139, 92, 246, 0.38), 0 0 20px rgba(16, 185, 129, 0.30);
 }
 
 .island-header .ih-separator {
-  background: var(--nav-border);
+  width: 1px;
+  height: 22px;
+  background: var(--glass-border);
+  margin: 0 2px;
 }
 
+/* Floating Balance Chip */
 .island-header .ih-balance {
-  height: 42px;
-  padding-inline: 15px;
+  height: 40px;
+  padding: 0 16px;
   border-radius: 50px;
-  background: rgba(var(--nav-primary-rgb), 0.09);
-  border-color: var(--nav-border);
-  color: var(--nav-primary);
-  box-shadow: 0 0 16px rgba(var(--nav-primary-rgb), 0.08);
+  background: color-mix(in srgb, var(--surface-1) 85%, rgba(16, 185, 129, 0.08));
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  color: var(--success);
+  font-weight: 700;
+  font-family: var(--font-head);
+  font-size: 0.92rem;
+  letter-spacing: -0.01em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(255, 255, 255, 0.06) inset;
+  transition: all 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
+.island-header .ih-balance:hover,
+.island-header .ih-balance[aria-expanded="true"] {
+  transform: translateY(-3px);
+  background: color-mix(in srgb, var(--surface-1) 92%, rgba(16, 185, 129, 0.15));
+  border-color: var(--success);
+  box-shadow: 0 10px 24px -2px rgba(0, 0, 0, 0.20), 0 0 20px rgba(16, 185, 129, 0.28);
+}
+
+.island-header .ih-balance:active {
+  transform: translateY(0px) scale(0.97);
+}
+
+/* Floating Avatar Button */
 .island-header .ih-avatar-btn {
-  width: 42px;
-  height: 42px;
-  border: 2px solid rgba(var(--nav-primary-rgb), 0.24);
-  box-shadow: 0 6px 18px rgba(var(--nav-primary-rgb), 0.15);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  transition: all 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.island-header .ih-avatar-btn:hover {
-  box-shadow: 0 0 0 4px rgba(var(--nav-primary-rgb), 0.14), 0 8px 22px var(--nav-glow);
+.island-header .ih-avatar-btn:hover,
+.island-header .ih-avatar-btn[aria-expanded="true"] {
+  transform: translateY(-3px) scale(1.08);
+  border-color: var(--brand-primary);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25), 0 0 0 3px rgba(var(--brand-primary-rgb), 0.35);
+}
+
+.island-header .ih-avatar-btn:active {
+  transform: translateY(0px) scale(0.95);
 }
 
 @media (max-width: 640px) {

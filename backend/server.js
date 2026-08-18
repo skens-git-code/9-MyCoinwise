@@ -264,7 +264,12 @@ app.post('/api/auth/register', [
 
     res.status(201).json({ token, user: { id: user._id, username, email } });
   } catch (error) {
-    if (error.code === 11000) return res.status(409).json({ error: 'Email already registered' });
+    if (error.code === 11000) {
+      if (error.keyPattern && error.keyPattern.username) {
+        return res.status(409).json({ error: 'Username already taken' });
+      }
+      return res.status(409).json({ error: 'Email already registered' });
+    }
     console.error(error);
     res.status(500).json({ error: 'Server error' });
   }
@@ -513,7 +518,12 @@ app.post('/api/users', [
       message: 'User created successfully'
     });
   } catch (error) {
-    if (error.code === 11000) return res.status(409).json({ error: 'Email already exists' });
+    if (error.code === 11000) {
+      if (error.keyPattern && error.keyPattern.username) {
+        return res.status(409).json({ error: 'Username already exists' });
+      }
+      return res.status(409).json({ error: 'Email already exists' });
+    }
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
@@ -720,6 +730,9 @@ app.post('/api/transactions', async (req, res) => {
 // 7. Edit transaction (amount, category, note, date, type)
 app.put('/api/transactions/:id', async (req, res) => {
   const { amount, category, note, date, type } = req.body;
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid transaction ID' });
+  }
   try {
     const t = await Transaction.findOne({ _id: req.params.id, is_deleted: { $ne: true } });
     if (!t) {
@@ -757,6 +770,9 @@ app.put('/api/transactions/:id', async (req, res) => {
 
 // 8. Delete transaction
 app.delete('/api/transactions/:id', async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid transaction ID' });
+  }
   try {
     const t = await Transaction.findById(req.params.id);
     if (!t) {
@@ -857,8 +873,8 @@ app.post('/api/goals', async (req, res) => {
     const goalData = { user_id, name: String(name).trim(), target: targetNum, saved: savedNum, color, icon };
 
     if (deadline) goalData.deadline = new Date(deadline);
-    if (priority) goalData.priority = priority;
-    if (category) goalData.category = category;
+    if (priority) goalData.priority = String(priority).toLowerCase().trim();
+    if (category) goalData.category = String(category).toLowerCase().trim();
     if (notes) goalData.notes = String(notes).trim().substring(0, 1000);
     if (auto_save_amount !== undefined) goalData.auto_save_amount = auto_save_amount;
     if (auto_save_interval) goalData.auto_save_interval = auto_save_interval;

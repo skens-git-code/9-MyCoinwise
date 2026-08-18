@@ -49,10 +49,48 @@
   }
 
   .island-header {
-    background: rgba(3, 3, 3, 0.92);
-    border-color: rgba(255, 255, 255, 0.07);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: rgba(10, 10, 10, 0.88);
+    border-color: rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.90), 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  }
+
+  .island-header .ibtn {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+
+    &:hover,
+    &[aria-expanded="true"] {
+      background: rgba(255, 255, 255, 0.10);
+      border-color: rgba(52, 211, 153, 0.45);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.85), 0 0 16px rgba(52, 211, 153, 0.25);
+    }
+  }
+
+  .island-header .header-search-bar {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(52, 211, 153, 0.4);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), 0 0 16px rgba(52, 211, 153, 0.18);
+    }
+  }
+
+  .island-header .ih-balance {
+    background: rgba(52, 211, 153, 0.08);
+    border-color: rgba(52, 211, 153, 0.24);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+
+    &:hover {
+      background: rgba(52, 211, 153, 0.14);
+      border-color: rgba(52, 211, 153, 0.5);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.85), 0 0 18px rgba(52, 211, 153, 0.28);
+    }
   }
 
   /* ── Brand ── */
