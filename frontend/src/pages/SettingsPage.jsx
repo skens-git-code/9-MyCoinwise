@@ -1180,11 +1180,11 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
             }} aria-hidden>
               {u.profile_avatar || '😊'}
             </span>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: '1 1 180px', minWidth: 0, maxWidth: '100%' }}>
               <p style={{ fontWeight: 800, fontSize: '1.05rem', margin: '0 0 4px', color: 'var(--text-primary)' }}>
                 {u.username}
               </p>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontFamily: 'var(--font-mono)' }}>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={u.email}>
                 {u.email}
               </p>
             </div>

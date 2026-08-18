@@ -119,7 +119,7 @@ export default function Calendar() {
   };
 
   return (
-    <div className="calendar-page-content" style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="calendar-page-content">
       <style>{`
         .view-toggles {
           display: flex;
@@ -185,7 +185,7 @@ export default function Calendar() {
         </div>
       </div>
 
-      <div className="dashboard-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+      <div className="dashboard-row calendar-stats-row">
         <div className="glass stat-card" style={{ padding: '1.25rem', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <p className="stat-lbl" style={{ color: 'var(--text-secondary, #666)', fontSize: '0.85rem', fontWeight: 600, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Monthly Income</p>
           <h3 className="stat-val" style={{ color: 'var(--color-success, #10B981)', margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>+{fmt(monthlyIncome)}</h3>

@@ -4280,6 +4280,19 @@ textarea:focus-visible {
 /* Calendar Styles */
 .calendar-page-content {
   animation: fadeIn 0.4s ease-out;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.calendar-stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  min-width: 0;
 }
 
 
@@ -4294,6 +4307,8 @@ textarea:focus-visible {
 .calendar-container {
   padding: 1.5rem;
   border-radius: 16px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .cal-header {
@@ -4312,8 +4327,9 @@ textarea:focus-visible {
 
 .cal-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .cal-weekday {
@@ -4333,6 +4349,8 @@ textarea:focus-visible {
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .cal-day:hover {
@@ -4355,6 +4373,144 @@ textarea:focus-visible {
   margin-bottom: 0.5rem;
   align-self: flex-end;
   color: var(--text-primary);
+}
+
+.cal-day-summaries,
+.cal-sum-badge {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.cal-sum-badge {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 640px) {
+  .calendar-page-content {
+    padding: 12px !important;
+  }
+
+  .calendar-page-content .masonry-header {
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .calendar-page-content .masonry-header > div:last-child {
+    width: 100%;
+    gap: 8px !important;
+  }
+
+  .calendar-page-content .view-toggles {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .calendar-page-content .vt-btn {
+    flex: 1 1 0;
+    justify-content: center;
+    min-width: 0;
+    padding: 8px 6px;
+    font-size: 0.76rem;
+  }
+
+  .calendar-page-content .btn-primary {
+    white-space: nowrap;
+    padding-inline: 12px;
+  }
+
+  .calendar-stats-row {
+    gap: 8px;
+  }
+
+  .calendar-stats-row .stat-card {
+    min-width: 0;
+    padding: 0.8rem !important;
+  }
+
+  .calendar-stats-row .stat-lbl {
+    font-size: 0.62rem !important;
+    line-height: 1.2;
+  }
+
+  .calendar-stats-row .stat-val {
+    font-size: clamp(0.9rem, 4.5vw, 1.25rem) !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .calendar-container {
+    padding: 0.75rem;
+  }
+
+  .cal-header {
+    margin-bottom: 0.8rem;
+  }
+
+  .cal-month-title {
+    font-size: clamp(1rem, 5vw, 1.3rem);
+    text-align: center;
+  }
+
+  .cal-grid {
+    gap: 3px;
+  }
+
+  .cal-weekday {
+    padding-bottom: 0.35rem;
+    font-size: 0.68rem;
+  }
+
+  .cal-day {
+    min-height: 68px;
+    padding: 0.3rem;
+    border-radius: 7px;
+  }
+
+  .cal-date-num {
+    font-size: 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .cal-day-summaries {
+    gap: 2px;
+  }
+
+  .cal-sum-badge {
+    font-size: 0.58rem;
+    padding: 2px 3px;
+  }
+}
+
+@media (max-width: 375px) {
+  .calendar-page-content {
+    padding: 10px !important;
+  }
+
+  .calendar-stats-row {
+    gap: 5px;
+  }
+
+  .calendar-stats-row .stat-card {
+    padding: 0.6rem !important;
+  }
+
+  .cal-day {
+    min-height: 58px;
+    padding: 0.2rem;
+  }
+
+  .cal-weekday {
+    font-size: 0.6rem;
+  }
+
+  .cal-sum-badge {
+    font-size: 0.5rem;
+    padding-inline: 2px;
+  }
 }
 
 .cal-events {

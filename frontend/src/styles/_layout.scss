@@ -1202,7 +1202,7 @@
   }
 
   .island-content-wrapper {
-    padding-bottom: 104px;
+    padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
   }
 
   .island-sidebar {
@@ -1295,7 +1295,7 @@
   }
 
   .island-content-wrapper {
-    padding-bottom: 108px;
+    padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
   }
 
   .mobile-bottom-dock {
@@ -1354,7 +1354,7 @@
   }
 
   .island-content-wrapper {
-    padding-bottom: 88px;
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
   }
 
   .island-header {
