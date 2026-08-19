@@ -30,24 +30,24 @@ axios.interceptors.response.use(
 );
 
 export const CURRENCIES = {
-  INR: { symbol: '₹', name: 'Indian Rupee', flag: '🇮🇳' },
-  USD: { symbol: '$', name: 'US Dollar', flag: '🇺🇸' },
-  EUR: { symbol: '€', name: 'Euro', flag: '🇪🇺' },
-  GBP: { symbol: '£', name: 'British Pound', flag: '🇬🇧' },
-  JPY: { symbol: '¥', name: 'Japanese Yen', flag: '🇯🇵' },
-  CAD: { symbol: 'CA$', name: 'Canadian Dollar', flag: '🇨🇦' },
-  AUD: { symbol: 'A$', name: 'Australian Dollar', flag: '🇦🇺' },
-  SGD: { symbol: 'S$', name: 'Singapore Dollar', flag: '🇸🇬' },
-  AED: { symbol: 'د.إ', name: 'UAE Dirham', flag: '🇦🇪' },
-  CHF: { symbol: 'Fr', name: 'Swiss Franc', flag: '🇨🇭' },
-  CNY: { symbol: '¥', name: 'Chinese Yuan', flag: '🇨🇳' },
-  MXN: { symbol: '$', name: 'Mexican Peso', flag: '🇲🇽' },
-  BRL: { symbol: 'R$', name: 'Brazilian Real', flag: '🇧🇷' },
-  KRW: { symbol: '₩', name: 'South Korean Won', flag: '🇰🇷' },
-  THB: { symbol: '฿', name: 'Thai Baht', flag: '🇹🇭' },
+  INR: { symbol: '₹', name: 'Indian Rupee' },
+  USD: { symbol: '$', name: 'US Dollar' },
+  EUR: { symbol: '€', name: 'Euro' },
+  GBP: { symbol: '£', name: 'British Pound' },
+  JPY: { symbol: '¥', name: 'Japanese Yen' },
+  CAD: { symbol: 'CA$', name: 'Canadian Dollar' },
+  AUD: { symbol: 'A$', name: 'Australian Dollar' },
+  SGD: { symbol: 'S$', name: 'Singapore Dollar' },
+  AED: { symbol: 'د.إ', name: 'UAE Dirham' },
+  CHF: { symbol: 'Fr', name: 'Swiss Franc' },
+  CNY: { symbol: '¥', name: 'Chinese Yuan' },
+  MXN: { symbol: '$', name: 'Mexican Peso' },
+  BRL: { symbol: 'R$', name: 'Brazilian Real' },
+  KRW: { symbol: '₩', name: 'South Korean Won' },
+  THB: { symbol: '฿', name: 'Thai Baht' },
 };
 
-export const AVATARS = ['😊', '😎', '🦁', '🐯', '🦊', '🐺', '🦄', '🐉', '🦋', '🌟', '🔥', '💎', '🚀', '🎯', '💼', '✈️'];
+export const AVATARS = ['user1', 'user2', 'user3', 'user4', 'user5'];
 export const AVATAR_COLORS = ['#059669', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#f97316', '#64748b'];
 
 export const api = {

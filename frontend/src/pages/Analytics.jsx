@@ -617,9 +617,10 @@ export default function Analytics() {
                   outerRadius={90}
                   paddingAngle={3}
                   dataKey="value"
+                  nameKey="name"
                 >
                   {expenseCategories.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    <Cell key={`cell-${entry.name.replace(/\s+/g, '-')}-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />

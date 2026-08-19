@@ -19,7 +19,7 @@ const STEPS = [
     actionText: 'Next: Quick Actions'
   },
   {
-    title: '1-Tap Quick Action Speed-Dial ⚡',
+    title: '1-Tap Quick Action Speed-Dial',
     description: 'Use the floating action button at the bottom-right of your screen anytime to record new expenses, fund savings goals, or add subscriptions in 1 tap.',
     icon: <PlusCircle size={32} className="text-success" />,
     actionText: 'Next: Goals & Cashflow'

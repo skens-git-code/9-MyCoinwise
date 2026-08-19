@@ -1,5 +1,6 @@
 import React, { useEffect, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoading, danger, confirmDisabled }) => {
@@ -38,7 +39,7 @@ const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoa
     return () => document.removeEventListener('keydown', handleTab);
   }, [isOpen, modalId]);
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -101,7 +102,8 @@ const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoa
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
 

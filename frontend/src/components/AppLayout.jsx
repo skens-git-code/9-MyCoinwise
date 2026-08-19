@@ -6,7 +6,7 @@ import {
   CreditCard, Settings, ChevronRight, TrendingUp, TrendingDown,
   Bell, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon,
   Menu, X, Zap, Search, Keyboard, User, Sun, Moon, Check, CheckCircle2,
-  HelpCircle, Shield, ExternalLink
+  HelpCircle, Shield, ExternalLink, Languages, Coins, Info
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
@@ -37,6 +37,7 @@ const NAV_ITEMS = [
   { to: '/subscriptions', icon: CreditCard, labelKey: 'subscriptions' },
   { to: '/cashflow', icon: Activity, labelKey: 'cashflow' },
   { to: '/wealth', icon: Briefcase, labelKey: 'wealth' },
+  { to: '/about', icon: Info, labelKey: 'about' },
 ];
 
 // Mobile dock shows only core 4 + Settings (Apple HIG: max 5)
@@ -61,9 +62,9 @@ const BREAKPOINTS = {
 };
 
 const ANIMATION_DURATIONS = {
-  fast: 0.2,
-  normal: 0.35,
-  slow: 0.5
+  fast: 0.1,
+  normal: 0.2,
+  slow: 0.35
 };
 
 // ==============================
@@ -140,10 +141,15 @@ const useUserDisplay = (user) => {
       !USER_DISPLAY_RULES.randomIdPattern.test(sanitizedRawName) &&
       !USER_DISPLAY_RULES.excludedIds.has(sanitizedRawName);
 
-    const avatarStr = user?.profile_avatar || '😊';
+    const fullDisplayName = isValidDisplayName ? sanitizedRawName : USER_DISPLAY_RULES.defaultDisplayName;
+    const avatarStr = user?.profile_avatar || fullDisplayName.charAt(0).toUpperCase();
     const isBase64Avatar = typeof avatarStr === 'string' && avatarStr.length > 20 && avatarStr.startsWith('data:image');
 
-    const fullDisplayName = isValidDisplayName ? sanitizedRawName : USER_DISPLAY_RULES.defaultDisplayName;
+
+    let role = user?.role || user?.profession || 'Trader';
+    if (role.toLowerCase().includes('english') || role.toLowerCase().includes('indian')) {
+      role = 'Gamer';
+    }
 
     return {
       displayName: fullDisplayName,
@@ -151,7 +157,8 @@ const useUserDisplay = (user) => {
       avatar: avatarStr,
       avatarColor: validateColorHex(user?.profile_color),
       rawName: sanitizedRawName,
-      isBase64Avatar
+      isBase64Avatar,
+      role
     };
   }, [user]);
 };
@@ -343,7 +350,7 @@ const LanguageDropdown = React.memo(({
           }}
           aria-label={`Switch to ${info.name}`}
         >
-          {info.flag} {info.name}
+          <Languages size={15} aria-hidden="true" /> {info.name}
         </button>
       ))}
     </motion.div>
@@ -725,26 +732,30 @@ export default function AppLayout({ children }) {
           onClose={() => setShowOnboardingTour(false)}
         />
 
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
           {showAddTx && (
             <TransactionForm
+              key="tx-form"
               onClose={() => setShowAddTx(false)}
               onSubmit={handleAddTransactionSubmit}
             />
           )}
           {showConverter && (
             <CurrencyConverter
+              key="currency-converter"
               onClose={() => setShowConverter(false)}
             />
           )}
           {showAlerts && (
             <AlertsCenter
+              key="alerts-center"
               alerts={alerts}
               onClose={() => setShowAlerts(false)}
             />
           )}
           {isAIOpen && (
             <AIPanelOverlay
+              key="ai-panel"
               onClose={() => setIsAIOpen(false)}
             />
           )}
@@ -762,21 +773,26 @@ export default function AppLayout({ children }) {
 
 const DesktopSidebar = React.memo(({
   sidebarOpen, onToggle,
-  userInfo, user, currencyInfo, lang, t, logout
+  userInfo, user, t, logout
 }) => {
+  const [isHovered, setIsHovered] = React.useState(false);
+  const isOpen = sidebarOpen || isHovered;
+
   return (
     <aside
-      className={`island-sidebar glass ${sidebarOpen ? 'open' : 'collapsed'}`}
+      className={`island-sidebar glass ${isOpen ? 'open' : 'collapsed'}`}
       aria-label="Main navigation sidebar"
-      aria-expanded={sidebarOpen}
+      aria-expanded={isOpen}
       id="desktop-navigation"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <div className="island-brand">
         <motion.div className="brand-icon" whileHover={{ rotate: 15, scale: 1.1 }}>
           <Zap size={22} />
         </motion.div>
         <AnimatePresence>
-          {sidebarOpen && (
+          {isOpen && (
             <motion.span
               className="brand-name"
               initial={{ opacity: 0, width: 0 }}
@@ -794,7 +810,7 @@ const DesktopSidebar = React.memo(({
           aria-expanded={sidebarOpen}
           aria-controls="desktop-navigation"
         >
-          <motion.span animate={{ rotate: sidebarOpen ? 180 : 0 }}>
+          <motion.span animate={{ rotate: isOpen ? 180 : 0 }}>
             <ChevronRight size={16} />
           </motion.span>
         </button>
@@ -814,10 +830,10 @@ const DesktopSidebar = React.memo(({
             )}
           </div>
           <AnimatePresence>
-            {sidebarOpen && (
+            {isOpen && (
               <motion.div className="user-info" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <p className="u-name">{sanitizeUserInput(user?.username) || 'User'}</p>
-                <p className="u-role">{currencyInfo?.code} · {LANGUAGES[lang]?.name}</p>
+                <p className="u-role">{userInfo.role}</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -837,7 +853,7 @@ const DesktopSidebar = React.memo(({
               <>
                 <item.icon size={20} className="inav-icon" />
                 <AnimatePresence>
-                  {sidebarOpen && (
+                  {isOpen && (
                     <motion.span
                       className="inav-label"
                       initial={{ opacity: 0 }}
@@ -870,7 +886,7 @@ const DesktopSidebar = React.memo(({
         <NavLink to="/settings" className={({ isActive }) => `inav-item ${isActive ? 'active' : ''}`}>
           <Settings size={20} className="inav-icon" />
           <AnimatePresence>
-            {sidebarOpen && (
+            {isOpen && (
               <motion.span
                 className="inav-label"
                 initial={{ opacity: 0 }}
@@ -885,7 +901,7 @@ const DesktopSidebar = React.memo(({
         <button onClick={logout} className="inav-item text-danger" style={{ marginTop: '5px' }}>
           <LogOut size={20} className="inav-icon" />
           <AnimatePresence>
-            {sidebarOpen && (
+            {isOpen && (
               <motion.span
                 className="inav-label"
                 initial={{ opacity: 0 }}
@@ -970,7 +986,7 @@ const Header = React.memo(({
               aria-controls="language-dropdown"
               aria-label="Change language"
             >
-              {LANGUAGES[lang]?.flag}
+              <Languages size={18} aria-hidden="true" />
             </button>
             <AnimatePresence>
               {activeDropdown === 'language' && (
@@ -989,7 +1005,7 @@ const Header = React.memo(({
             title="Currency Converter"
             aria-label="Currency converter"
           >
-            💱
+            <Coins size={18} aria-hidden="true" />
           </button>
 
           <button
@@ -1005,7 +1021,7 @@ const Header = React.memo(({
                 animate={{ rotate: 0, opacity: 1 }}
                 exit={{ rotate: 90, opacity: 0 }}
               >
-                {theme === 'amoled' ? '☀️' : '⚡'}
+                {theme === 'amoled' ? <Sun size={18} /> : <Moon size={18} />}
               </motion.span>
             </AnimatePresence>
           </button>
@@ -1299,7 +1315,7 @@ MobileBottomNav.displayName = 'MobileBottomNav';
 
 /* ── Mobile Drawer ── */
 const MobileDrawer = React.memo(({
-  userInfo, currencyInfo, formattedBalance, theme, onToggleTheme,
+  userInfo, formattedBalance, theme, onToggleTheme,
   lang, onLanguageChange, onShowConverter, onShowAlerts, onShowAI,
   urgentAlertsCount, logout, onClose, t
 }) => {
@@ -1345,7 +1361,7 @@ const MobileDrawer = React.memo(({
         </div>
         <div className="user-info">
           <p className="u-name">{userInfo.displayName}</p>
-          <p className="u-role">{currencyInfo?.code} · {LANGUAGES[lang]?.name}</p>
+          <p className="u-role">{userInfo.role || 'Trader'}</p>
         </div>
         <span className="drawer-balance-pill">{formattedBalance}</span>
       </div>
@@ -1392,7 +1408,7 @@ const MobileDrawer = React.memo(({
       {/* Quick Tools */}
       <p className="drawer-section-title">Tools</p>
       <div className="drawer-tools-grid">
-        <button className="drawer-tool-chip" onClick={onShowConverter}>💱 Converter</button>
+        <button className="drawer-tool-chip" onClick={onShowConverter}><Coins size={14} /> Converter</button>
         <button className="drawer-tool-chip" onClick={onShowAI}>
           <Sparkles size={14} /> AI Chat
         </button>
@@ -1410,7 +1426,7 @@ const MobileDrawer = React.memo(({
           )}
         </button>
         <button className="drawer-tool-chip" onClick={() => { onToggleTheme(); }}>
-          {theme === 'amoled' ? '☀️' : '⚡'}
+          {theme === 'amoled' ? <Sun size={14} /> : <Moon size={14} />}
           {theme === 'amoled' ? 'Light' : 'AMOLED'}
         </button>
       </div>

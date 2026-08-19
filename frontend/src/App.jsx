@@ -21,6 +21,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
+const About = lazy(() => import('./pages/About'));
 
 import { AppContext } from './contexts/AppContext';
 
@@ -54,7 +55,7 @@ export default function App() {
   // Keep the branded startup screen visible long enough to feel intentional,
   // including on fast local loads where auth would otherwise resolve instantly.
   useEffect(() => {
-    const startupTimer = window.setTimeout(() => setIsAppStarting(false), 900);
+    const startupTimer = window.setTimeout(() => setIsAppStarting(false), 250);
     return () => window.clearTimeout(startupTimer);
   }, []);
 
@@ -148,19 +149,23 @@ export default function App() {
         api.getEvents(activeId),
         api.getAllUsers().catch(() => [])
       ]);
-      const normalizedTheme = normalizeTheme(me?.theme);
-      setUser({ ...me, theme: normalizedTheme });
+      const localTheme = localStorage.getItem('mcw-theme');
+      const backendTheme = normalizeTheme(me?.theme);
+      const resolvedTheme = (localTheme && ['light', 'amoled'].includes(localTheme)) ? localTheme : backendTheme;
+
+      setUser({ ...me, theme: resolvedTheme });
       setAllUsers(usersData);
       setTransactions(txData);
       setGoals(goalsData);
       setSubscriptions(subsData);
       setEvents(eventsData);
-      if (me?.theme !== normalizedTheme) {
-        api.updateSettings(activeId, { theme: normalizedTheme }).catch(() => { });
+
+      if (me?.theme !== resolvedTheme) {
+        api.updateSettings(activeId, { theme: resolvedTheme }).catch(() => { });
       }
-      setTheme(normalizedTheme);
-      document.documentElement.setAttribute('data-theme', normalizedTheme);
-      localStorage.setItem('mcw-theme', normalizedTheme);
+      setTheme(resolvedTheme);
+      document.documentElement.setAttribute('data-theme', resolvedTheme);
+      localStorage.setItem('mcw-theme', resolvedTheme);
     } catch (err) {
       console.error('Error loading data:', err);
       if (err.response?.status === 401 || err.code === 'ECONNABORTED') {
@@ -293,6 +298,7 @@ export default function App() {
                         <Route path="/wealth" element={<Wealth />} />
                         <Route path="/calendar" element={<Calendar />} />
                         <Route path="/settings" element={<SettingsPage />} />
+                        <Route path="/about" element={<About />} />
                         <Route path="*" element={<Navigate to="/" />} />
                       </Routes>
                     </Suspense>

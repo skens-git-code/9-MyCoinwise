@@ -5,15 +5,16 @@ import {
   Save, User, Users, Target, Moon, Sun, Download, CheckCircle, AlertCircle,
   Palette, Database, Plus, Settings, ShieldAlert, Globe, Bell, Zap, Smartphone,
   FileText, Trash2, X, Loader, Key, Shield, Bell as BellIcon, Eye,
+  Lock, LogOut, ChevronRight, HelpCircle, Edit3, Home, Book, MessageCircle, ChevronDown,
   Link, Calendar, Clock, Users as UsersIcon, Activity, Cloud, Upload,
-  Mail, Lock, Smartphone as Phone, Fingerprint, History, TrendingUp,
-  LogOut, RefreshCw, Copy, Check, AlertTriangle, EyeOff
+  Mail, Smartphone as Phone, Fingerprint, History, TrendingUp,
+  RefreshCw, Copy, Check, AlertTriangle, EyeOff
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { CURRENCIES, AVATARS, AVATAR_COLORS, api } from '../services/api';
 import { LANGUAGES } from '../services/i18n';
 import { exportToPDF } from '../services/pdfExport';
-import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
+
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
 // ============= HELPER FUNCTIONS =============
@@ -843,9 +844,8 @@ const EmailChangeSection = ({ user, showMessage }) => {
   );
 };
 
-// ============= PROFILE TAB =============
-const ProfileTab = ({ formState, handleFieldChange, t, user, theme, showMessage }) => {
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
+
   const fileInputRef = useRef(null);
 
   const handleImageUpload = (e) => {
@@ -907,18 +907,10 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, theme, showMessage 
           <div style={{ flex: 1, minWidth: '240px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
-                Profile Picture & Emoji
+                Profile Picture
               </label>
 
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  style={{ flex: 1, minWidth: 140, justifyContent: 'center' }}
-                >
-                  😀 Pick Emoji
-                </button>
                 <button
                   type="button"
                   className="btn-secondary"
@@ -935,18 +927,6 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, theme, showMessage 
                   onChange={handleImageUpload}
                 />
               </div>
-
-              {showEmojiPicker && (
-                <div style={{ position: 'absolute', zIndex: 100, marginTop: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.2)', borderRadius: 8 }}>
-                  <EmojiPicker
-                    theme={theme === 'light' ? EmojiTheme.LIGHT : EmojiTheme.DARK}
-                    onEmojiClick={(emojiData) => {
-                      handleFieldChange('avatar', emojiData.emoji);
-                      setShowEmojiPicker(false);
-                    }}
-                  />
-                </div>
-              )}
             </div>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
@@ -1001,6 +981,25 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, theme, showMessage 
               autoCapitalize="words"
             />
           </div>
+        </div>
+
+        <div className="form-field" style={{ marginTop: '16px' }}>
+          <label htmlFor="profession">Profession / Role</label>
+          <select
+            id="profession"
+            value={formState.profession}
+            onChange={(e) => handleFieldChange('profession', e.target.value)}
+            style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)', background: 'var(--surface-1)', color: 'var(--text-primary)' }}
+          >
+            <option value="Gamer">Gamer</option>
+            <option value="Trader">Trader</option>
+            <option value="Student">Student</option>
+            <option value="Professional">Professional</option>
+            <option value="Freelancer">Freelancer</option>
+            <option value="Entrepreneur">Entrepreneur</option>
+            <option value="Developer">Developer</option>
+            <option value="Designer">Designer</option>
+          </select>
         </div>
         <EmailChangeSection user={user} showMessage={showMessage} />
       </div>
@@ -1093,7 +1092,7 @@ const LanguageTab = ({ lang, setLanguage, showMessage }) => (
             boxShadow: lang === code ? '0 8px 24px rgba(var(--brand-primary-rgb), 0.15)' : 'none'
           }}
         >
-          <span style={{ fontSize: '1.6rem' }} aria-hidden>{info.flag}</span>
+          <MessageCircle size={24} color="var(--brand-primary)" aria-hidden style={{ opacity: lang === code ? 1 : 0.5 }} />
           <span style={{ flex: 1, textAlign: 'left', fontSize: '1.1rem' }}>{info.name}</span>
           {lang === code && <CheckCircle size={20} color="var(--brand-primary)" aria-hidden />}
         </motion.button>
@@ -1105,8 +1104,8 @@ const LanguageTab = ({ lang, setLanguage, showMessage }) => (
 // ============= APPEARANCE TAB =============
 const AppearanceTab = ({ theme, handleThemeChange }) => {
   const themes = [
-    { id: 'light', label: 'Light', icon: '☀️', bg: '#e8f7ed', accent: '#059669', sub: 'Grassy Glass' },
-    { id: 'amoled', label: 'AMOLED', icon: '⚡', bg: '#000000', accent: '#34d399', sub: 'True Black' },
+    { id: 'light', label: 'Light', icon: <Sun size={18} />, bg: '#e8f7ed', accent: '#059669', sub: 'Clean Light' },
+    { id: 'amoled', label: 'AMOLED', icon: <Moon size={18} />, bg: '#000000', accent: '#34d399', sub: 'True Black' },
   ];
 
   return (
@@ -1455,6 +1454,7 @@ function SettingsInner({ context }) {
   const [formState, dispatch] = useReducer(settingsReducer, {
     firstName: (user?.username || '').split(' ')[0] || '',
     lastName: user?.last_name ?? ((user?.username || '').split(' ').slice(1).join(' ') || ''),
+    profession: user?.profession || user?.role || 'Trader',
     monthlyGoal: user?.monthly_goal?.toString() || '',
     currency: user?.currency || 'INR',
     avatar: user?.profile_avatar || '😊',
@@ -1469,6 +1469,31 @@ function SettingsInner({ context }) {
     },
     isDirty: false
   });
+
+  useEffect(() => {
+    if (user) {
+      dispatch({
+        type: 'RESET_FORM',
+        payload: {
+          firstName: (user?.username || '').split(' ')[0] || '',
+          lastName: user?.last_name ?? ((user?.username || '').split(' ').slice(1).join(' ') || ''),
+          profession: user?.profession || user?.role || 'Trader',
+          monthlyGoal: user?.monthly_goal?.toString() || '',
+          currency: user?.currency || 'INR',
+          avatar: user?.profile_avatar || '😊',
+          avatarColor: user?.profile_color || '#059669',
+          notificationPrefs: user?.notification_prefs || {
+            emailReports: true, budgetAlerts: true, goalMilestones: true, unusualSpending: false,
+            pushNotifications: true, weeklyDigest: true, quietHoursEnabled: false, quietHoursStart: '22:00', quietHoursEnd: '08:00'
+          },
+          advancedPrefs: user?.advanced_prefs || {
+            dateFormat: 'MM/DD/YYYY', timeFormat: '12h', firstDayOfWeek: 'Sunday', decimalSeparator: '.',
+            compactMode: false, autoSave: true, animationsEnabled: true, showWeekNumbers: false
+          }
+        }
+      });
+    }
+  }, [user]);
 
   const [activeTab, setActiveTab] = useState('profile');
   const [modals, setModals] = useState({
@@ -1578,8 +1603,8 @@ function SettingsInner({ context }) {
       await api.updateSettings(USER_ID, {
         username: sanitizedUsername,
         last_name: sanitizedLastName,
-        theme,
-        monthly_goal: goalValue,
+        profession: formState.profession,
+        monthly_goal: isGoalValid ? goalValue : (user.monthly_goal || 0),
         currency: formState.currency,
         profile_avatar: formState.avatar,
         profile_color: formState.avatarColor,
@@ -1599,7 +1624,7 @@ function SettingsInner({ context }) {
         setLoadingStates(prev => ({ ...prev, save: false }));
       }
     }
-  }, [formState, theme, USER_ID, refetch, showMessage, user]);
+  }, [formState, USER_ID, refetch, showMessage, user]);
 
   const handleUndo = useCallback(async () => {
     if (!undoSnapshot) return;
@@ -1715,7 +1740,7 @@ function SettingsInner({ context }) {
         await api.updateSettings(USER_ID, {
           username: `${formState.firstName || ''} ${formState.lastName || ''}`.trim(),
           last_name: sanitizeInput(formState.lastName || ''),
-          theme,
+          profession: formState.profession,
           monthly_goal: formState.monthlyGoal,
           currency: formState.currency,
           profile_avatar: formState.avatar,
@@ -1735,7 +1760,7 @@ function SettingsInner({ context }) {
         setLoadingStates(prev => ({ ...prev, switch: null }));
       }
     }
-  }, [modals.switchConfirm, switchUser, refetch, showMessage, formState, theme, USER_ID]);
+  }, [modals.switchConfirm, switchUser, refetch, showMessage, formState, USER_ID]);
 
   const handleThemeChange = useCallback((newTheme) => {
     setThemeDirect(newTheme);

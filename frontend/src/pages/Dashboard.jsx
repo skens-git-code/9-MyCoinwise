@@ -17,15 +17,8 @@ import { useToast } from '../components/ToastProvider';
 
 // ==================== CONSTANTS ====================
 
-const CATEGORY_ICONS = {
-  Food: '🍔', Groceries: '🛒', Transport: '🚌', Shopping: '🛍️',
-  Entertainment: '🎬', Health: '💊', Education: '📚', Bills: '📄',
-  Salary: '💰', Freelance: '💻', Gift: '🎁', Rent: '🏠',
-  Travel: '✈️', Fitness: '🏋️', Subscriptions: '📱', Utilities: '⚡',
-  Insurance: '🛡️', Investment: '📈', Other: '📌', Allowance: '💵',
-};
-
 const PIE_COLORS = ['#059669', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4899'];
+const CATEGORY_OPTIONS = ['Food', 'Groceries', 'Transport', 'Shopping', 'Entertainment', 'Health', 'Education', 'Bills', 'Salary', 'Freelance', 'Gift', 'Rent', 'Travel', 'Fitness', 'Subscriptions', 'Utilities', 'Insurance', 'Investment', 'Other', 'Allowance'];
 
 // ==================== SAFE HELPER FUNCTIONS ====================
 
@@ -69,11 +62,6 @@ const validateTransaction = (transaction) => {
     errors.push('Invalid date format');
   }
   return { isValid: errors.length === 0, errors };
-};
-
-const getCatIcon = (category) => {
-  if (!category || typeof category !== 'string') return '📌';
-  return CATEGORY_ICONS[category] || '📌';
 };
 
 const getDateLabel = (dateStr) => {
@@ -563,7 +551,7 @@ export default function Dashboard() {
   // ==================== RENDER ====================
 
   const categoryOptions = useMemo(() => 
-    Object.keys(CATEGORY_ICONS).map(cat => <option key={cat} value={cat}>{cat}</option>),
+    CATEGORY_OPTIONS.map(cat => <option key={cat} value={cat}>{cat}</option>),
     []
   );
 
@@ -696,7 +684,7 @@ export default function Dashboard() {
                 const tx = item.data;
                 return (
                   <div key={tx.id || `tx-${idx}`} className="bt-item" role="listitem">
-                    <div className={`bt-icn ${tx.type}`}><span className="bt-cat-emoji" aria-hidden="true">{getCatIcon(tx.category)}</span></div>
+                    <div className={`bt-icn ${tx.type}`}><Tag size={16} aria-hidden="true" /></div>
                     <div className="bt-info">
                       <span className="bt-cat">{tx.category || 'Uncategorized'}</span>
                       <span className="bt-date">{getDateLabel(tx.date)}</span>
@@ -760,7 +748,7 @@ export default function Dashboard() {
               </div>
               <div className="bg-goal-actions-row">
                 <p className="bg-nudge">
-                  {goalProgress >= 100 ? '🎉 Monthly Target Achieved!' : (goalProgress < 15 ? '💪 Every bit counts. Keep going!' : `⚡ ${(100 - goalProgress).toFixed(0)}% to reach target`)}
+                  {goalProgress >= 100 ? 'Monthly Target Achieved!' : (goalProgress < 15 ? 'Every bit counts. Keep going!' : `${(100 - goalProgress).toFixed(0)}% to reach target`)}
                 </p>
                 <button
                   className="bg-topup-btn"
@@ -780,7 +768,7 @@ export default function Dashboard() {
             {pieData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart key={`pie-${dataVersion}`}>
-                  <Pie isAnimationActive={!prefersReducedMotion} animationBegin={800} data={pieData} cx="50%" cy="50%" innerRadius="55%" outerRadius="80%" paddingAngle={4} dataKey="value" stroke="none">{pieData.map((_, i) => <Cell key={`cell-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie>
+                  <Pie isAnimationActive={!prefersReducedMotion} animationBegin={800} data={pieData} cx="50%" cy="50%" innerRadius="55%" outerRadius="80%" paddingAngle={4} dataKey="value" nameKey="name" stroke="none">{pieData.map((entry, i) => <Cell key={`cell-${entry.name.replace(/\s+/g, '-')}-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie>
                   <Tooltip contentStyle={tooltipStyle} formatter={(val) => safeFormatCurrency(val, safeFmt, currencySymbol)} />
                   <Legend wrapperStyle={{ fontSize: '0.72rem', fontWeight: 700 }} formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value}</span>} />
                 </PieChart>
@@ -791,9 +779,7 @@ export default function Dashboard() {
 
       </motion.div>
 
-      <AnimatePresence>
-        {showForm && <TransactionForm onClose={() => setShowForm(false)} onSubmit={handleAddTransaction} />}
-      </AnimatePresence>
+      <TransactionForm isOpen={showForm} onClose={() => setShowForm(false)} onSubmit={handleAddTransaction} />
       </div>
     </ErrorBoundary>
   );

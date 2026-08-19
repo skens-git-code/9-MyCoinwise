@@ -1,0 +1,45 @@
+/* Product polish: plain opaque surfaces, compact scale, fast feedback. */
+:root {
+  --glass-1: var(--surface-2);
+  --glass-2: var(--surface-2);
+  --glass-3: var(--surface-3);
+  --glass-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --glass-border-hover: color-mix(in srgb, var(--brand-primary) 55%, transparent);
+  --glass-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+  --glass-shadow-hover: 0 12px 28px rgba(15, 23, 42, 0.14);
+  --glass-blur: 0px;
+  --glass-blur-sm: 0px;
+  --glass-blur-lg: 0px;
+  --glass-saturation: 100%;
+  --glass-brightness: 1;
+}
+html { font-size: 14px; }
+body { background: var(--surface-0); background-image: none; }
+.animated-bg, .gradient-bg, .gradients-container, .particles, .auth-bg { display: none !important; }
+.glass, .glass-sm, .glass-deep, .app-island-layout, .island-sidebar, .island-main, .island-header, .auth-card {
+  background: var(--surface-1) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+.app-island-layout { padding: 8px; gap: 8px; }
+.island-sidebar { width: 240px; border-radius: 16px; }
+.island-sidebar.collapsed { width: 64px; }
+.island-main { border-radius: 16px; }
+.island-header { min-height: 58px; padding: 12px 18px; }
+.island-page { padding: 20px 22px; }
+.island-nav { gap: 2px; }
+.inav-item { padding: 9px 10px; }
+.inav-item, .ibtn, .btn, button, a, .drawer-nav-item, .drawer-tool-chip { transition: color 0.16s ease, background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease; }
+.inav-item:hover, .drawer-nav-item:hover, .drawer-tool-chip:hover, .btn:hover, .ibtn:hover { transform: translateY(-1px); }
+.cal-day-top-row { justify-content: center !important; position: relative; }
+.cal-date-num { align-self: center !important; margin: 0 !important; text-align: center; font-variant-numeric: tabular-nums; }
+.cal-day-quick-add { position: absolute; right: 0; }
+.theme-transition, .theme-transition * { transition-duration: 0.12s !important; }
+@media (max-width: 768px) {
+  .app-island-layout { padding: 0; gap: 0; }
+  .island-main { border-radius: 0; }
+  .island-header { padding: 10px 14px; }
+  .island-page { padding: 16px 14px 84px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }

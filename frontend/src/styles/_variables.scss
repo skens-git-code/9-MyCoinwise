@@ -31,7 +31,7 @@
   --z-base:     1;
   --z-sticky:   100;
   --z-dropdown: 200;
-  --z-modal:    1000;
+  --z-modal:    999999;
   --z-drawer:   1200;
   --z-alerts:   1300;
   --z-tooltip:  2000;
@@ -92,11 +92,11 @@
   --glass-border:       rgba(255, 255, 255, 0.07);
   --glass-border-hover: rgba(255, 255, 255, 0.18);
   --glass-border-active:rgba(16, 185, 129, 0.55);
-  --glass-blur:         24px;
-  --glass-blur-sm:      12px;
-  --glass-blur-lg:      40px;
-  --glass-saturation:   160%;
-  --glass-brightness:   1.06;
+  --glass-blur:         0px;
+  --glass-blur-sm:      0px;
+  --glass-blur-lg:      0px;
+  --glass-saturation:   100%;
+  --glass-brightness:   1.0;
   --glass-radius:       20px;
 
   /* ► Text */
@@ -111,7 +111,7 @@
   /* ► Navigation */
   --nav-active-bg:   rgba(16, 185, 129, 0.12);
   --nav-active-text: #34d399;
-  --nav-hover-bg:    rgba(255, 255, 255, 0.04);
+  --nav-hover-bg:    rgba(255, 255, 255, 0.12);
 
   /* ► Ambient Background */
   --ambient-base:   rgba(8, 10, 10, 1);

@@ -1,4 +1,5 @@
 import React, { useState, useContext, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon,
@@ -296,9 +297,10 @@ export default function Calendar() {
       </div>
 
       {/* Day Details Drilldown Modal */}
-      <AnimatePresence mode="wait">
+      {createPortal(
+        <AnimatePresence mode="wait">
         {selectedDate && (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedDate(null)}>
+          <motion.div key="calendar-modal" className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedDate(null)}>
             <motion.div className="modal-box glass" initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} onClick={e => e.stopPropagation()} style={{ maxWidth: '620px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <div>
@@ -363,18 +365,18 @@ export default function Calendar() {
           </motion.div>
         )}
 
-        {isAdding && (
-          <TransactionForm
-            key="tx-form"
-            initialData={{ date: newTxDate }}
-            onClose={() => setIsAdding(false)}
-            onSubmit={async (tx) => {
-              await addTransaction(tx);
-              setIsAdding(false);
-            }}
-          />
-        )}
-      </AnimatePresence>
+        <TransactionForm
+          isOpen={isAdding}
+          initialData={{ date: newTxDate }}
+          onClose={() => setIsAdding(false)}
+          onSubmit={async (tx) => {
+            await addTransaction(tx);
+            setIsAdding(false);
+          }}
+        />
+      </AnimatePresence>,
+      document.body
+    )}
     </div>
   );
 }

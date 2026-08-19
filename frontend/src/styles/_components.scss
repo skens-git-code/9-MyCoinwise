@@ -435,16 +435,12 @@
 }
 
 @mixin bento-tile-base {
-  /* Enhanced glassmorphism — clean, modern, and polished */
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(32px) saturate(180%);
-  -webkit-backdrop-filter: blur(32px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  /* Enhanced modern styling — clean and polished */
+  background: var(--surface-0);
+  border: 1px solid var(--glass-border);
   border-radius: 24px;
   padding: 24px;
-  box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.2),
-    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-md);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -460,14 +456,12 @@
   @include bento-tile-base;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.08);
-    transform: translateY(-6px) scale(1.008);
-    border-color: rgba(var(--brand-primary-rgb), 0.30);
+    background: var(--surface-1);
+    transform: translateY(-4px) scale(1.005);
+    border-color: rgba(var(--brand-primary-rgb), 0.5);
     box-shadow:
-      var(--shadow-xl),
-      0 0 0 1px rgba(var(--brand-primary-rgb), 0.14),
-      0 12px 40px rgba(var(--brand-primary-rgb), 0.14),
-      inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+      0 12px 30px rgba(var(--brand-primary-rgb), 0.15),
+      0 0 0 1px rgba(var(--brand-primary-rgb), 0.2);
   }
 
   &:active {
@@ -1550,6 +1544,11 @@
       flex: 1;
       color: var(--text-primary);
       font-size: 0.9rem;
+
+      &::placeholder {
+        color: var(--text-muted);
+        opacity: 0.7;
+      }
     }
   }
 
@@ -2079,6 +2078,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
 
   .mh-titles {
     display: flex;
@@ -2135,6 +2136,7 @@
   align-items: center;
   gap: var(--space-4);
   border-radius: var(--border-radius-lg);
+  border: 1px solid var(--glass-border);
 
   .ci-icon-box {
     width: 48px;
@@ -3268,6 +3270,8 @@
   flex-direction: column;
   align-items: center;
   gap: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.15); /* Ensure border is visible */
+  border-radius: 16px;
 
   svg {
     opacity: 0.2;
@@ -4537,7 +4541,8 @@ textarea:focus-visible {
   font-size: 0.9rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
-  align-self: flex-end;
+  align-self: center;
+  text-align: center;
   color: var(--text-primary);
 }
 
@@ -4787,8 +4792,7 @@ textarea:focus-visible {
 .btn-primary,
 .btn-secondary,
 .btn-danger,
-button,
-[role="button"],
+/* Only enforce strict minimum tap targets for navigation/dock items */
 .inav-item,
 .dock-item {
   min-height: 44px;
@@ -7547,6 +7551,10 @@ select {
     gap: 12px;
     margin-bottom: 16px;
 
+    h1, h2 {
+      display: none;
+    }
+
     .mh-actions {
       width: 100%;
       justify-content: space-between;
@@ -7586,13 +7594,14 @@ select {
   }
 
   .quick-action-fab {
-    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(100px + env(safe-area-inset-bottom, 0px));
     right: 16px;
   }
 
   .shortcuts-modal,
   .cmd-palette-modal,
-  .modal-content {
+  .modal-content,
+  .modal-box {
     max-width: 95vw !important;
     width: 95vw !important;
     margin: 0 auto;

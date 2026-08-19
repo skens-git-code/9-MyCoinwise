@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash2, Edit3, RefreshCw, Calendar, TrendingDown,
   Pause, Play, XCircle, AlertCircle, Clock, CheckCircle2,
-  CalendarDays, CreditCard, ChevronRight, Zap
+  CalendarDays, CreditCard, ChevronRight, Zap,
+  Tv, Music, PlaySquare, Cloud, Gamepad2, Package, Sparkles
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { api } from '../services/api';
@@ -11,15 +12,19 @@ import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
 
 const PRESETS = [
-  { name: 'Netflix', amount: 15.49, icon: '🎬', color: '#ef4444' },
-  { name: 'Spotify', amount: 5.99, icon: '🎵', color: '#10b981' },
-  { name: 'YouTube Premium', amount: 13.99, icon: '▶️', color: '#f59e0b' },
-  { name: 'Apple iCloud', amount: 2.99, icon: '☁️', color: '#6b7280' },
-  { name: 'Discord Nitro', amount: 9.99, icon: '🎮', color: '#059669' },
-  { name: 'Xbox Game Pass', amount: 14.99, icon: '🕹️', color: '#10b981' },
-  { name: 'Amazon Prime', amount: 14.99, icon: '📦', color: '#f59e0b' },
-  { name: 'Disney+', amount: 7.99, icon: '🏰', color: '#06b6d4' },
+  { name: 'Netflix', amount: 15.49, icon: 'Tv', color: '#ef4444' },
+  { name: 'Spotify', amount: 5.99, icon: 'Music', color: '#10b981' },
+  { name: 'YouTube Premium', amount: 13.99, icon: 'PlaySquare', color: '#f59e0b' },
+  { name: 'Apple iCloud', amount: 2.99, icon: 'Cloud', color: '#6b7280' },
+  { name: 'Discord Nitro', amount: 9.99, icon: 'Gamepad2', color: '#059669' },
+  { name: 'Xbox Game Pass', amount: 14.99, icon: 'Gamepad2', color: '#10b981' },
+  { name: 'Amazon Prime', amount: 14.99, icon: 'Package', color: '#f59e0b' },
+  { name: 'Disney+', amount: 7.99, icon: 'Sparkles', color: '#06b6d4' },
 ];
+
+const IconMap = {
+  Tv, Music, PlaySquare, Cloud, Gamepad2, Package, Sparkles
+};
 
 function getMonthlyEquivalent(sub) {
   const amt = Number(sub.amount) || 0;
@@ -247,7 +252,9 @@ export default function Subscriptions() {
           <div className="stb-track">
             {upcomingBills.map(({ sub, date, daysLeft }, idx) => (
               <div key={idx} className={`stb-item glass ${daysLeft <= 3 ? 'due-soon' : ''}`}>
-                <span className="stb-icon">{sub.icon || '💳'}</span>
+                <span className="stb-icon">
+                  {sub.icon && IconMap[sub.icon] ? React.createElement(IconMap[sub.icon], { size: 20 }) : '💳'}
+                </span>
                 <div className="stb-info">
                   <strong>{sub.name}</strong>
                   <span>{daysLeft === 0 ? 'Due Today' : `in ${daysLeft} day${daysLeft > 1 ? 's' : ''}`} ({date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})</span>
@@ -262,7 +269,7 @@ export default function Subscriptions() {
       {/* Quick Add Presets */}
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
         <h4 style={{ marginBottom: 14, fontWeight: 800, fontFamily: 'var(--font-head)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.05rem' }}>
-          ⚡ Quick Add Popular Services
+          Quick Add Popular Services
         </h4>
         <div className="carousel-wrapper" style={{ paddingBottom: 12 }}>
           <div className="carousel-track">
@@ -290,8 +297,10 @@ export default function Subscriptions() {
                       Added
                     </span>
                   )}
-                  <span style={{ fontSize: '1.8rem' }}>{p.icon}</span>
-                  <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{p.name}</span>
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: `${p.color}15`, color: p.color, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    {p.icon && IconMap[p.icon] ? React.createElement(IconMap[p.icon], { size: 24 }) : '💳'}
+                  </div>
+                  <strong style={{ display: 'block', fontSize: '0.95rem', marginBottom: 4 }}>{p.name}</strong>
                   <span style={{ color: p.color, fontWeight: 700, fontSize: '0.78rem', background: `${p.color}15`, padding: '2px 8px', borderRadius: 100 }}>
                     {fmt(p.amount)}/mo
                   </span>
@@ -348,7 +357,9 @@ export default function Subscriptions() {
                   >
                     <div className="mc-header" style={{ marginBottom: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div className="mc-icon">{s.icon || '💳'}</div>
+                        <div className="mc-icon">
+                          {s.icon && IconMap[s.icon] ? React.createElement(IconMap[s.icon], { size: 24 }) : '💳'}
+                        </div>
                         {isPaused && <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.2)', color: 'var(--warning)' }}>Paused</span>}
                       </div>
                       <div style={{ display: 'flex', gap: 4 }}>

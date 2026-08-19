@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { createPortal } from 'react-dom';
 import { X, Check } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import Modal from './Modal';
@@ -21,7 +22,7 @@ const formatDateForInput = (dateInput) => {
   return `${year}-${month}-${day}`;
 };
 
-export default function TransactionForm({ onClose, onSubmit, initialData = null }) {
+export default function TransactionForm({ isOpen = true, onClose, onSubmit, initialData = null }) {
   const { currencyInfo } = useContext(AppContext);
   const currSymbol = currencyInfo?.symbol || '₹';
   
@@ -241,16 +242,20 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
 
   return (
     <>
-      <AnimatePresence>
-      <motion.div 
-        className="modal-overlay"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={handleCancel}
-      >
-        <motion.div 
-          ref={modalRef}
+      {createPortal(
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div 
+              key="tx-modal-overlay"
+              className="modal-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={handleCancel}
+            >
+              <motion.div 
+                ref={modalRef}
+                key="tx-modal-box"
           role="dialog"
           aria-modal="true"
           aria-label={initialData ? 'Edit Transaction' : 'New Transaction'}
@@ -471,7 +476,10 @@ export default function TransactionForm({ onClose, onSubmit, initialData = null 
           </form>
         </motion.div>
       </motion.div>
-      </AnimatePresence>
+    )}
+  </AnimatePresence>,
+  document.body
+)}
       <Modal
         isOpen={showUnsavedModal}
         title="Discard Changes?"

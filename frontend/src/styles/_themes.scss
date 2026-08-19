@@ -60,6 +60,7 @@
    AMOLED THEME — Pure Obsidian Black + Stealth Emerald & Monochrome
    ================================================================ */
 [data-theme="amoled"] {
+  --bg-gradient: #000000;
   --surface-0: #000000;
   --surface-1: #050505;
   --surface-2: #0a0a0a;
@@ -101,9 +102,4 @@
   --orb-ai-color:    rgba(167, 139, 250, 0.16);
   --orb-goal-color:  rgba(16, 185, 129, 0.16);
   --orb-chart-color: rgba(52, 211, 153, 0.10);
-
-  --bg-gradient:
-    radial-gradient(ellipse at 20% 15%, rgba(16, 185, 129, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 80%, rgba(167, 139, 250, 0.06) 0%, transparent 50%),
-    linear-gradient(160deg, #000000 0%, #050505 100%);
 }

@@ -1,6 +1,7 @@
 // CurrencyConverter.jsx
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { createPortal } from 'react-dom';
 import { ArrowLeftRight, RefreshCw, X, TrendingUp, AlertCircle } from 'lucide-react';
 
 // ==================== CONSTANTS ====================
@@ -171,7 +172,7 @@ const useDebounce = (value, delay) => {
 };
 
 // ==================== MAIN COMPONENT ====================
-export default function CurrencyConverter({ onClose, initialFrom = 'USD', initialTo = 'INR', initialAmount = '1' }) {
+export default function CurrencyConverter({ isOpen = true, onClose, initialFrom = 'USD', initialTo = 'INR', initialAmount = '1' }) {
   // State
   const [amount, setAmount] = useState(initialAmount);
   const [from, setFrom] = useState(initialFrom);
@@ -291,53 +292,69 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
 
   const exchangeRate = getExchangeRate();
 
-  // ==================== LOADING STATE ====================
   if (loading && !rates) {
     return (
-      <motion.div
-        className="modal-overlay"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        role="dialog"
-        aria-label="Currency converter loading"
-      >
-        <motion.div
-          className="modal-box glass"
-          initial={{ scale: 0.88, y: 24 }}
-          animate={{ scale: 1, y: 0 }}
-          exit={{ scale: 0.88, y: 24 }}
-          style={{ maxWidth: 480, width: '100%' }}
-          onClick={e => e.stopPropagation()}
-        >
-          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <RefreshCw size={32} className="spinning" style={{ color: 'var(--brand-secondary)' }} />
-            <p style={{ marginTop: 16, color: 'var(--text-secondary)' }}>Loading exchange rates...</p>
-          </div>
-        </motion.div>
-      </motion.div>
+      <>
+        {createPortal(
+          <AnimatePresence>
+            {isOpen && (
+              <motion.div
+                key="cc-loading-overlay"
+                className="modal-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={onClose}
+                role="dialog"
+                aria-label="Currency converter loading"
+              >
+                <motion.div
+                  key="cc-loading-box"
+                  className="modal-box glass"
+                  initial={{ scale: 0.88, y: 24 }}
+                  animate={{ scale: 1, y: 0 }}
+                  exit={{ scale: 0.88, y: 24 }}
+                  style={{ maxWidth: 480, width: '100%' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                    <RefreshCw size={32} className="spinning" style={{ color: 'var(--brand-secondary)' }} />
+                    <p style={{ marginTop: 16, color: 'var(--text-secondary)' }}>Loading exchange rates...</p>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
+      </>
     );
   }
 
   // ==================== MAIN RENDER ====================
   return (
-    <motion.div
-      className="modal-overlay"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onClick={onClose}
-      role="dialog"
-      aria-label="Currency converter"
-      aria-modal="true"
-    >
-      <motion.div
-        ref={modalRef}
-        className="modal-box glass"
-        initial={{ scale: 0.88, y: 24 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.88, y: 24 }}
+    <>
+      {createPortal(
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              key="cc-main-overlay"
+              className="modal-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={onClose}
+              role="dialog"
+              aria-label="Currency converter"
+              aria-modal="true"
+            >
+              <motion.div
+                key="cc-main-box"
+                ref={modalRef}
+                className="modal-box glass"
+                initial={{ scale: 0.88, y: 24 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.88, y: 24 }}
         transition={{ type: 'spring', damping: 22, stiffness: 280 }}
         onClick={e => e.stopPropagation()}
         style={{ maxWidth: 480, width: '100%', borderTop: '4px solid var(--brand-secondary)' }}
@@ -412,8 +429,8 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
         </div>
 
         {/* Currency Selection */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-          <div className="form-field" style={{ flex: 1, marginBottom: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, minWidth: 0 }}>
+          <div className="form-field" style={{ flex: 1, marginBottom: 0, minWidth: 0 }}>
             <label htmlFor="from-currency">From</label>
             <select
               id="from-currency"
@@ -452,7 +469,7 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
             <RefreshCw size={16} />
           </motion.button>
 
-          <div className="form-field" style={{ flex: 1, marginBottom: 0 }}>
+          <div className="form-field" style={{ flex: 1, marginBottom: 0, minWidth: 0 }}>
             <label htmlFor="to-currency">To</label>
             <select
               id="to-currency"
@@ -550,5 +567,10 @@ export default function CurrencyConverter({ onClose, initialFrom = 'USD', initia
         </p>
       </motion.div>
     </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+    </>
   );
 }

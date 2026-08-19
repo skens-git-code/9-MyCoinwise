@@ -687,30 +687,25 @@ export default function Transactions() {
 
       </div>
 
-      <AnimatePresence mode="wait">
-        {isAdding && (
-          <TransactionForm
-            onClose={() => setIsAdding(false)}
-            onSubmit={async (tx) => { await addTransaction(tx); setIsAdding(false); }}
-          />
-        )}
+      <TransactionForm
+        isOpen={isAdding}
+        onClose={() => setIsAdding(false)}
+        onSubmit={async (tx) => { await addTransaction(tx); setIsAdding(false); }}
+      />
 
-        {duplicateTxData && (
-          <TransactionForm
-            initialData={duplicateTxData}
-            onClose={() => setDuplicateTxData(null)}
-            onSubmit={async (tx) => { await addTransaction(tx); setDuplicateTxData(null); }}
-          />
-        )}
+      <TransactionForm
+        isOpen={!!duplicateTxData}
+        initialData={duplicateTxData}
+        onClose={() => setDuplicateTxData(null)}
+        onSubmit={async (tx) => { await addTransaction(tx); setDuplicateTxData(null); }}
+      />
 
-        {editingTx && (
-          <TransactionForm
-            initialData={editingTx}
-            onClose={() => setEditingTx(null)}
-            onSubmit={async (tx) => { await editTransaction(getTransactionId(tx), tx); setEditingTx(null); }}
-          />
-        )}
-        
+      <TransactionForm
+        isOpen={!!editingTx}
+        initialData={editingTx}
+        onClose={() => setEditingTx(null)}
+        onSubmit={async (tx) => { await editTransaction(getTransactionId(tx), tx); setEditingTx(null); }}
+      />
         {/* Single Confirm Delete Modal */}
         <Modal
           isOpen={deletingTx !== null}
@@ -809,7 +804,6 @@ export default function Transactions() {
             )}
           </div>
         </Modal>
-      </AnimatePresence>
     </div>
   );
 }
