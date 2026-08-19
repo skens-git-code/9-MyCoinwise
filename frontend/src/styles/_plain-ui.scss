@@ -32,6 +32,143 @@ body { background: var(--surface-0); background-image: none; }
 .inav-item { padding: 9px 10px; }
 .inav-item, .ibtn, .btn, button, a, .drawer-nav-item, .drawer-tool-chip { transition: color 0.16s ease, background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease; }
 .inav-item:hover, .drawer-nav-item:hover, .drawer-tool-chip:hover, .btn:hover, .ibtn:hover { transform: translateY(-1px); }
+
+/* Stable sidebar identity row: the name is allowed two clean lines, while
+   the avatar, role, and brand remain aligned during sidebar animation. */
+.island-brand,
+.island-user .user-trigger {
+  min-width: 0;
+}
+.island-brand .brand-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  align-self: center;
+  line-height: 1.2;
+}
+.island-user .user-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.island-sidebar.open .island-user { min-height: 64px; box-sizing: border-box; }
+.island-user .user-info .u-name {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-primary) !important;
+  background: none !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  -webkit-text-fill-color: var(--text-primary) !important;
+  animation: none !important;
+  line-height: 1.18;
+  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.island-user .user-info .u-role {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-secondary) !important;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Neutral identity and navigation typography for the light product shell. */
+[data-theme="light"] {
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --text-dim: #9ca3af;
+  --nav-active-text: #111827;
+  --nav-active-bg: rgba(17, 24, 39, 0.06);
+  --nav-hover-bg: rgba(17, 24, 39, 0.045);
+
+  .island-brand .brand-name,
+  .mobile-drawer-header .brand-name,
+  .auth-logo-text {
+    color: #111827;
+    background: none;
+    -webkit-text-fill-color: #111827;
+    background-clip: border-box;
+  }
+
+  .island-sidebar .user-info .u-name,
+  .drawer-user-card .user-info .u-name,
+  .mobile-drawer .u-name {
+    color: #111827;
+    background: none;
+    -webkit-text-fill-color: #111827;
+    background-clip: border-box;
+    animation: none;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+  }
+
+  .island-sidebar .u-role,
+  .drawer-user-card .u-role,
+  .mobile-drawer .u-role {
+    color: #6b7280;
+  }
+
+  .island-sidebar .inav-item,
+  .mobile-drawer .drawer-nav-item,
+  .mobile-bottom-dock .dock-item {
+    color: #374151;
+  }
+
+  .island-sidebar .inav-item:hover:not(.active),
+  .mobile-drawer .drawer-nav-item:hover:not(.active),
+  .mobile-bottom-dock .dock-item:hover {
+    color: #111827;
+  }
+
+  .island-sidebar .inav-item.active,
+  .island-sidebar .inav-item.active .inav-label,
+  .island-sidebar .inav-item.active .inav-icon,
+  .mobile-drawer .drawer-nav-item.active,
+  .mobile-drawer .drawer-nav-item.active .drawer-nav-label,
+  .mobile-bottom-dock .dock-item.active,
+  .mobile-bottom-dock .dock-item.active .dock-label,
+  .mobile-bottom-dock .dock-item.active .dock-icon {
+    color: #111827 !important;
+  }
+}
+
+/* Keep identity text readable in AMOLED: the decorative gradient used by the
+   legacy shell must never replace a real name or profession. */
+[data-theme="amoled"] {
+  .island-brand .brand-name,
+  .mobile-drawer-header .brand-name,
+  .island-sidebar .user-info .u-name,
+  .drawer-user-card .user-info .u-name,
+  .mobile-drawer .u-name {
+    color: #f3f4f6 !important;
+    background: none !important;
+    -webkit-text-fill-color: #f3f4f6 !important;
+    background-clip: border-box !important;
+    animation: none !important;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+  }
+
+  .island-sidebar .u-role,
+  .drawer-user-card .u-role,
+  .mobile-drawer .u-role {
+    color: #9ca3af !important;
+  }
+}
+
 .cal-day-top-row { justify-content: center !important; position: relative; }
 .cal-date-num { align-self: center !important; margin: 0 !important; text-align: center; font-variant-numeric: tabular-nums; }
 .cal-day-quick-add { position: absolute; right: 0; }
@@ -43,3 +180,52 @@ body { background: var(--surface-0); background-image: none; }
   .island-page { padding: 16px 14px 84px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+/* Give every navigation icon a stable semantic accent.  Keep these colors on
+   active items as well so the sidebar stays scannable in both themes. */
+.island-sidebar .inav-icon,
+.mobile-drawer .drawer-nav-icon,
+.mobile-bottom-dock .dock-icon {
+  transition: color 0.16s ease, filter 0.16s ease;
+}
+
+.island-sidebar .inav-icon.nav-icon-dashboard,
+.mobile-drawer .drawer-nav-icon.nav-icon-dashboard,
+.mobile-bottom-dock .dock-icon.nav-icon-dashboard { color: #3b82f6 !important; }
+.island-sidebar .inav-icon.nav-icon-transactions,
+.mobile-drawer .drawer-nav-icon.nav-icon-transactions,
+.mobile-bottom-dock .dock-icon.nav-icon-transactions { color: #8b5cf6 !important; }
+.island-sidebar .inav-icon.nav-icon-calendar,
+.mobile-drawer .drawer-nav-icon.nav-icon-calendar,
+.mobile-bottom-dock .dock-icon.nav-icon-calendar { color: #f59e0b !important; }
+.island-sidebar .inav-icon.nav-icon-analytics,
+.mobile-drawer .drawer-nav-icon.nav-icon-analytics,
+.mobile-bottom-dock .dock-icon.nav-icon-analytics { color: #06b6d4 !important; }
+.island-sidebar .inav-icon.nav-icon-calculator,
+.mobile-drawer .drawer-nav-icon.nav-icon-calculator,
+.mobile-bottom-dock .dock-icon.nav-icon-calculator { color: #22c55e !important; }
+.island-sidebar .inav-icon.nav-icon-accounts,
+.mobile-drawer .drawer-nav-icon.nav-icon-accounts,
+.mobile-bottom-dock .dock-icon.nav-icon-accounts { color: #14b8a6 !important; }
+.island-sidebar .inav-icon.nav-icon-budgets,
+.mobile-drawer .drawer-nav-icon.nav-icon-budgets,
+.mobile-bottom-dock .dock-icon.nav-icon-budgets { color: #ec4899 !important; }
+.island-sidebar .inav-icon.nav-icon-goals,
+.mobile-drawer .drawer-nav-icon.nav-icon-goals,
+.mobile-bottom-dock .dock-icon.nav-icon-goals { color: #f97316 !important; }
+.island-sidebar .inav-icon.nav-icon-subscriptions,
+.mobile-drawer .drawer-nav-icon.nav-icon-subscriptions,
+.mobile-bottom-dock .dock-icon.nav-icon-subscriptions { color: #a855f7 !important; }
+.island-sidebar .inav-icon.nav-icon-cashflow,
+.mobile-drawer .drawer-nav-icon.nav-icon-cashflow,
+.mobile-bottom-dock .dock-icon.nav-icon-cashflow { color: #10b981 !important; }
+.island-sidebar .inav-icon.nav-icon-wealth,
+.mobile-drawer .drawer-nav-icon.nav-icon-wealth,
+.mobile-bottom-dock .dock-icon.nav-icon-wealth { color: #eab308 !important; }
+.island-sidebar .inav-icon.nav-icon-about,
+.mobile-drawer .drawer-nav-icon.nav-icon-about,
+.mobile-bottom-dock .dock-icon.nav-icon-about { color: #64748b !important; }
+.island-sidebar .inav-icon.nav-icon-settings,
+.mobile-drawer .drawer-nav-icon.nav-icon-settings { color: #6366f1 !important; }
+.island-sidebar .inav-icon.nav-icon-logout { color: #ef4444 !important; }
+.mobile-bottom-dock .dock-icon.nav-icon-menu { color: #06b6d4 !important; }

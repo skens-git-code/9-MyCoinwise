@@ -14,6 +14,8 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Transactions = lazy(() => import('./pages/Transactions'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const Goals = lazy(() => import('./pages/Goals'));
+const Budgets = lazy(() => import('./pages/Budgets'));
+const Accounts = lazy(() => import('./pages/Accounts'));
 const Subscriptions = lazy(() => import('./pages/Subscriptions'));
 const Cashflow = lazy(() => import('./pages/Cashflow'));
 const Wealth = lazy(() => import('./pages/Wealth'));
@@ -22,6 +24,7 @@ const Calendar = lazy(() => import('./pages/Calendar'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 const About = lazy(() => import('./pages/About'));
+const Calculator = lazy(() => import('./pages/Calculator'));
 
 import { AppContext } from './contexts/AppContext';
 
@@ -30,7 +33,8 @@ const normalizeTheme = (value) => AVAILABLE_THEMES.includes(value) ? value : 'li
 
 export function formatCurrency(amount, currency = 'USD') {
   const info = CURRENCIES[currency] || CURRENCIES.USD;
-  const val = Number(amount);
+  const parsedAmount = Number(amount);
+  const val = Number.isFinite(parsedAmount) ? parsedAmount : 0;
   const isNeg = val < 0;
   const numStr = Math.abs(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `${isNeg ? '-' : ''}${info.symbol}${numStr}`;
@@ -44,6 +48,8 @@ export default function App() {
   const [transactions, setTransactions] = useState([]);
   const [goals, setGoals] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
+  const [budgets, setBudgets] = useState([]);
+  const [accounts, setAccounts] = useState([]);
   const [events, setEvents] = useState([]);
   const [isAppStarting, setIsAppStarting] = useState(true);
   const [isInitialAuthLoad, setIsInitialAuthLoad] = useState(true);
@@ -115,6 +121,8 @@ export default function App() {
     setAllUsers([]);
     setTransactions([]);
     setGoals([]);
+    setBudgets([]);
+    setAccounts([]);
     setSubscriptions([]);
     setEvents([]);
   };
@@ -142,11 +150,13 @@ export default function App() {
       const me = await api.getMe();
       const activeId = me._id || me.id;
 
-      const [txData, goalsData, subsData, eventsData, usersData] = await Promise.all([
+      const [txData, goalsData, subsData, eventsData, budgetsData, accountsData, usersData] = await Promise.all([
         api.getTransactions(activeId),
         api.getGoals(activeId),
         api.getSubscriptions(activeId),
         api.getEvents(activeId),
+        api.getBudgets(activeId),
+        api.getAccounts(activeId),
         api.getAllUsers().catch(() => [])
       ]);
       const localTheme = localStorage.getItem('mcw-theme');
@@ -157,6 +167,8 @@ export default function App() {
       setAllUsers(usersData);
       setTransactions(txData);
       setGoals(goalsData);
+      setBudgets(budgetsData);
+      setAccounts(accountsData);
       setSubscriptions(subsData);
       setEvents(eventsData);
 
@@ -256,7 +268,7 @@ export default function App() {
           fetchTransactions: fetchData,
           refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
           lang, setLanguage, t, token,
-          alerts, insights, deferredPrompt, installPWA, goals, subscriptions, events,
+          alerts, insights, deferredPrompt, installPWA, goals, budgets, accounts, subscriptions, events,
         }}>
           <ToastProvider>
             <Loader fullScreen mode={token ? "auth" : "inline"} />
@@ -276,7 +288,7 @@ export default function App() {
         fetchTransactions: fetchData,
         refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
         lang, setLanguage, t, token,
-        alerts, insights, deferredPrompt, installPWA, goals, subscriptions, events,
+        alerts, insights, deferredPrompt, installPWA, goals, budgets, accounts, subscriptions, events,
       }}>
         <ToastProvider>
           <Router>
@@ -292,6 +304,8 @@ export default function App() {
                         <Route path="/" element={<Dashboard />} />
                         <Route path="/transactions" element={<Transactions />} />
                         <Route path="/analytics" element={<Analytics />} />
+                        <Route path="/accounts" element={<Accounts />} />
+                        <Route path="/budgets" element={<Budgets />} />
                         <Route path="/goals" element={<Goals />} />
                         <Route path="/subscriptions" element={<Subscriptions />} />
                         <Route path="/cashflow" element={<Cashflow />} />
@@ -299,6 +313,7 @@ export default function App() {
                         <Route path="/calendar" element={<Calendar />} />
                         <Route path="/settings" element={<SettingsPage />} />
                         <Route path="/about" element={<About />} />
+                        <Route path="/calculator" element={<Calculator />} />
                         <Route path="*" element={<Navigate to="/" />} />
                       </Routes>
                     </Suspense>

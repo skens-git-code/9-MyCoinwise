@@ -104,6 +104,14 @@ export const api = {
     const res = await axios.delete(`${API_URL}/transactions/${id}`);
     return res.data;
   },
+  processRecurringTransactions: async () => {
+    const res = await axios.post(`${API_URL}/transactions/process-recurring`);
+    return res.data;
+  },
+  bulkDeleteTransactions: async (ids) => {
+    const res = await axios.post(`${API_URL}/transactions/bulk-delete`, { ids });
+    return res.data;
+  },
 
   // Goals
   getGoals: async (userId) => {
@@ -138,6 +146,56 @@ export const api = {
   },
   deleteSubscription: async (id) => {
     const res = await axios.delete(`${API_URL}/subscriptions/${id}`);
+    return res.data;
+  },
+
+  // Budgets
+  getBudgets: async (userId) => {
+    const res = await axios.get(`${API_URL}/budgets/${userId}`);
+    return res.data;
+  },
+  createBudget: async (data) => {
+    const res = await axios.post(`${API_URL}/budgets`, data);
+    return res.data;
+  },
+  updateBudget: async (id, data) => {
+    const res = await axios.put(`${API_URL}/budgets/${id}`, data);
+    return res.data;
+  },
+  deleteBudget: async (id) => {
+    const res = await axios.delete(`${API_URL}/budgets/${id}`);
+    return res.data;
+  },
+
+  // Accounts
+  getAccounts: async (userId) => {
+    const res = await axios.get(`${API_URL}/accounts/${userId}`);
+    return res.data;
+  },
+  createAccount: async (data) => {
+    const res = await axios.post(`${API_URL}/accounts`, data);
+    return res.data;
+  },
+  updateAccount: async (id, data) => {
+    const res = await axios.put(`${API_URL}/accounts/${id}`, data);
+    return res.data;
+  },
+  deleteAccount: async (id) => {
+    const res = await axios.delete(`${API_URL}/accounts/${id}`);
+    return res.data;
+  },
+
+  // Scientific calculator history
+  getCalculations: async (userId, limit = 30) => {
+    const res = await axios.get(`${API_URL}/calculations/${userId}`, { params: { limit } });
+    return res.data;
+  },
+  saveCalculation: async (data) => {
+    const res = await axios.post(`${API_URL}/calculations`, data);
+    return res.data;
+  },
+  clearCalculations: async (userId) => {
+    const res = await axios.delete(`${API_URL}/calculations/${userId}`);
     return res.data;
   },
 
@@ -229,7 +287,7 @@ export const api = {
 
   // ── Data Backup / Restore ─────────────────────────────────────────────────
   exportAllData: async (userId) => {
-    const res = await axios.get(`${API_URL}/export/${userId}`);
+    const res = await axios.get(`${API_URL}/export/backup/${userId}`);
     return res.data;
   },
   importAllData: async (userId, data) => {

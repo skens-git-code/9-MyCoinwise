@@ -25,7 +25,7 @@ const formatDateForInput = (dateInput) => {
 export default function TransactionForm({ isOpen = true, onClose, onSubmit, initialData = null }) {
   const { currencyInfo } = useContext(AppContext);
   const currSymbol = currencyInfo?.symbol || '₹';
-  
+
   // State management with proper initialization
   const [type, setType] = useState(() => initialData?.type || 'expense');
   const [amount, setAmount] = useState(() => {
@@ -45,6 +45,14 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     }
     return formatDateForInput(new Date());
   });
+
+  // Phase 1C Enhanced Fields
+  const [merchant, setMerchant] = useState(initialData?.merchant || '');
+  const [tags, setTags] = useState(initialData?.tags ? initialData.tags.join(', ') : '');
+  const [paymentMethod, setPaymentMethod] = useState(initialData?.payment_method || 'other');
+  const [isRecurring, setIsRecurring] = useState(initialData?.is_recurring || false);
+  const [recurrenceInterval, setRecurrenceInterval] = useState(initialData?.recurrence_interval || 'monthly');
+
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
@@ -60,7 +68,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       const autoFocusEl = Array.from(focusable).find(el => el.hasAttribute('autofocus'));
       if (autoFocusEl) autoFocusEl.focus();
       else focusable[0].focus();
-      
+
       const handleTab = (e) => {
         if (e.key !== 'Tab') return;
         const first = focusable[0];
@@ -73,7 +81,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
           first.focus();
         }
       };
-      
+
       document.addEventListener('keydown', handleTab);
       return () => document.removeEventListener('keydown', handleTab);
     }
@@ -91,21 +99,21 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   // Validate amount input
   const handleAmountChange = useCallback((e) => {
     let val = e.target.value;
-    
+
     // Remove any non-numeric characters except decimal point
     val = val.replace(/[^0-9.]/g, '');
-    
+
     // Prevent multiple decimal points
     const parts = val.split('.');
     if (parts.length > 2) {
       val = parts[0] + '.' + parts.slice(1).join('');
     }
-    
+
     // Limit decimal places to 2
     if (parts.length === 2 && parts[1].length > 2) {
       val = parts[0] + '.' + parts[1].slice(0, 2);
     }
-    
+
     setAmount(val);
   }, []);
 
@@ -116,46 +124,46 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       setError('Please enter an amount.');
       return false;
     }
-    
+
     const amt = parseFloat(amount);
     if (isNaN(amt)) {
       setError('Please enter a valid number.');
       return false;
     }
-    
+
     if (amt <= 0) {
       setError('Amount must be greater than 0.');
       return false;
     }
-    
+
     if (amt > 999999999.99) {
       setError('Amount is too large.');
       return false;
     }
-    
+
     // Check category
     if (!category) {
       setError('Please select a category.');
       return false;
     }
-    
+
     if (!CATEGORIES[type].includes(category)) {
       setError('Invalid category selected.');
       return false;
     }
-    
+
     // Check date
     if (!date) {
       setError('Please select a date.');
       return false;
     }
-    
+
     const selectedDate = new Date(date);
     if (isNaN(selectedDate.getTime())) {
       setError('Invalid date selected.');
       return false;
     }
-    
+
     // Optional: Prevent future dates (uncomment if needed)
     // const today = new Date();
     // today.setHours(0, 0, 0, 0);
@@ -163,7 +171,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     //   setError('Cannot select a future date.');
     //   return false;
     // }
-    
+
     return true;
   }, [amount, category, type, date]);
 
@@ -174,28 +182,33 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     setCategory(CATEGORIES.expense[0]);
     setNote('');
     setDate(formatDateForInput(new Date()));
+    setMerchant('');
+    setTags('');
+    setPaymentMethod('other');
+    setIsRecurring(false);
+    setRecurrenceInterval('monthly');
     setError('');
   }, []);
 
   // Handle form submission
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
-    
+
     // Clear previous error
     setError('');
-    
+
     // Validate form
     if (!validateForm()) {
       return;
     }
-    
+
     // Prevent double submission
     if (isSubmitting) {
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     try {
       const amt = parseFloat(amount);
       const transactionData = {
@@ -204,11 +217,16 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         amount: amt,
         category,
         note: note.trim(),
-        date // Date inputs already provide the API-safe YYYY-MM-DD representation
+        date, // Date inputs already provide the API-safe YYYY-MM-DD representation
+        merchant: merchant.trim(),
+        tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+        payment_method: paymentMethod,
+        is_recurring: isRecurring,
+        recurrence_interval: isRecurring ? recurrenceInterval : null
       };
-      
+
       await onSubmit(transactionData);
-      
+
       // Reset form only for new transactions, not for edits
       if (!initialData) {
         resetForm();
@@ -219,13 +237,13 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     } finally {
       setIsSubmitting(false);
     }
-  }, [validateForm, isSubmitting, amount, initialData, type, category, note, date, onSubmit, resetForm]);
+  }, [validateForm, isSubmitting, amount, initialData, type, category, note, date, merchant, tags, paymentMethod, isRecurring, recurrenceInterval, onSubmit, resetForm]);
 
   // Handle cancel with confirmation if form is dirty
   const handleCancel = useCallback(() => {
     // Check if form has unsaved changes
     const isDirty = (initialData === null) && (amount !== '' || note !== '');
-    
+
     if (isDirty) {
       setShowUnsavedModal(true);
     } else {
@@ -245,7 +263,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       {createPortal(
         <AnimatePresence>
           {isOpen && (
-            <motion.div 
+            <motion.div
               key="tx-modal-overlay"
               className="modal-overlay"
               initial={{ opacity: 0 }}
@@ -253,7 +271,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
               exit={{ opacity: 0 }}
               onClick={handleCancel}
             >
-              <motion.div 
+              <motion.div
                 ref={modalRef}
                 key="tx-modal-box"
           role="dialog"
@@ -274,8 +292,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
             <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>
               {initialData ? '✍️ Edit Transaction' : '✨ New Transaction'}
             </h3>
-            <motion.button 
-              className="icon-btn" 
+            <motion.button
+              className="icon-btn"
               onClick={handleCancel}
               whileHover={{ scale: 1.1, rotate: 90 }}
               whileTap={{ scale: 0.9 }}
@@ -289,9 +307,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
             {/* Error Message */}
             <AnimatePresence>
               {error && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }} 
-                  animate={{ opacity: 1, height: 'auto' }} 
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.2 }}
                   className="feedback-msg error"
@@ -352,17 +370,17 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
               <div className="form-field">
                 <label>Amount ({currSymbol})</label>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ 
-                    position: 'absolute', 
-                    left: 14, 
-                    top: '50%', 
-                    transform: 'translateY(-50%)', 
-                    color: 'var(--text-secondary)', 
-                    fontWeight: 700 
+                  <span style={{
+                    position: 'absolute',
+                    left: 14,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--text-secondary)',
+                    fontWeight: 700
                   }}>
                     {currSymbol}
                   </span>
-                  <input 
+                  <input
                     type="text"
                     inputMode="decimal"
                     value={amount}
@@ -371,9 +389,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                     autoFocus={!initialData}
                     disabled={isSubmitting}
                     aria-required="true"
-                    style={{ 
-                      paddingLeft: 28, 
-                      fontSize: '1.1rem', 
+                    style={{
+                      paddingLeft: 28,
+                      fontSize: '1.1rem',
                       fontWeight: 700,
                       opacity: isSubmitting ? 0.7 : 1
                     }}
@@ -383,15 +401,15 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 
               <div className="form-field">
                 <label>Date</label>
-                <input 
+                <input
                   type="date"
                   value={date}
                   onChange={e => setDate(e.target.value)}
                   disabled={isSubmitting}
                   aria-required="true"
                   className="date-input"
-                  style={{ 
-                    fontSize: '0.9rem', 
+                  style={{
+                    fontSize: '0.9rem',
                     fontWeight: 600,
                     opacity: isSubmitting ? 0.7 : 1
                   }}
@@ -401,8 +419,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 
             <div className="form-field">
               <label>Category</label>
-              <select 
-                value={category} 
+              <select
+                value={category}
                 onChange={e => setCategory(e.target.value)}
                 disabled={isSubmitting}
                 aria-required="true"
@@ -417,7 +435,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 
             <div className="form-field">
               <label>Description (Optional)</label>
-              <input 
+              <input
                 value={note}
                 onChange={e => setNote(e.target.value)}
                 placeholder="What was this for?"
@@ -426,7 +444,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 style={{ opacity: isSubmitting ? 0.7 : 1 }}
               />
               {note.length > 50 && (
-                <small style={{ 
+                <small style={{
                   color: note.length === 60 ? '#ef4444' : 'var(--text-muted)',
                   fontSize: '0.7rem',
                   marginTop: 4,
@@ -437,22 +455,91 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
               )}
             </div>
 
+            {/* Enhanced Fields Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="form-field">
+                <label>Merchant (Optional)</label>
+                <input
+                  value={merchant}
+                  onChange={e => setMerchant(e.target.value)}
+                  placeholder="e.g. Amazon, Starbucks"
+                  maxLength={150}
+                  disabled={isSubmitting}
+                  style={{ opacity: isSubmitting ? 0.7 : 1 }}
+                />
+              </div>
+              <div className="form-field">
+                <label>Tags (Optional)</label>
+                <input
+                  value={tags}
+                  onChange={e => setTags(e.target.value)}
+                  placeholder="e.g. travel, urgent, family"
+                  disabled={isSubmitting}
+                  style={{ opacity: isSubmitting ? 0.7 : 1 }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="form-field">
+                <label>Payment Method</label>
+                <select
+                  value={paymentMethod}
+                  onChange={e => setPaymentMethod(e.target.value)}
+                  disabled={isSubmitting}
+                  style={{ opacity: isSubmitting ? 0.7 : 1 }}
+                >
+                  <option value="other">Other</option>
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="wallet">Wallet</option>
+                </select>
+              </div>
+              <div className="form-field" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={isRecurring}
+                    onChange={e => setIsRecurring(e.target.checked)}
+                    disabled={isSubmitting}
+                    style={{ width: 'auto' }}
+                  />
+                  Is Recurring?
+                </label>
+                {isRecurring && (
+                  <select
+                    value={recurrenceInterval}
+                    onChange={e => setRecurrenceInterval(e.target.value)}
+                    disabled={isSubmitting}
+                    style={{ opacity: isSubmitting ? 0.7 : 1, marginTop: 4, padding: '4px 8px', fontSize: '0.8rem' }}
+                  >
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                )}
+              </div>
+            </div>
+
             <div className="modal-actions" style={{ marginTop: 8, display: 'flex', gap: 12 }}>
-              <button 
-                type="button" 
-                className="btn-secondary" 
+              <button
+                type="button"
+                className="btn-secondary"
                 onClick={handleCancel}
                 disabled={isSubmitting}
                 style={{ opacity: isSubmitting ? 0.7 : 1 }}
               >
                 Cancel
               </button>
-              <button 
-                type="submit" 
-                className="btn-primary" 
-                style={{ 
-                  flex: 1, 
-                  display: 'flex', 
+              <button
+                type="submit"
+                className="btn-primary"
+                style={{
+                  flex: 1,
+                  display: 'flex',
                   justifyContent: 'center',
                   alignItems: 'center',
                   gap: 8,

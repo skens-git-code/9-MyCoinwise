@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { 
-  Rocket, Shield, Zap, Globe, Github, Twitter, Mail, 
+  Rocket, Shield, Zap, Globe, Github, Twitter, Instagram, Facebook, Mail,
   Heart, Code, Sparkles, BrainCircuit
 } from 'lucide-react';
 
@@ -101,11 +102,29 @@ export default function About() {
                     <Twitter size={18} /> Follow Us
                   </a>
                 </div>
+                <div className="about-social-links" aria-label="Social media placeholders">
+                  <a href="#" onClick={(event) => event.preventDefault()} className="about-social-link instagram" aria-label="Instagram coming soon">
+                    <Instagram size={18} /> Instagram <span>Coming soon</span>
+                  </a>
+                  <a href="#" onClick={(event) => event.preventDefault()} className="about-social-link facebook" aria-label="Facebook coming soon">
+                    <Facebook size={18} /> Facebook <span>Coming soon</span>
+                  </a>
+                </div>
               </div>
               <div style={{ width: 140, height: 140, borderRadius: '50%', background: 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(139,92,246,0.2))', border: '1px solid rgba(255,255,255,0.1)', display: 'grid', placeItems: 'center', margin: '0 auto' }}>
                 <Heart size={48} color="var(--brand-primary)" fill="rgba(var(--brand-primary-rgb), 0.2)" />
               </div>
             </div>
+          </motion.div>
+
+          <motion.div variants={itemVariants} className="about-calculator-cta glass-sm">
+            <div className="about-calculator-cta-icon"><Sparkles size={22} /></div>
+            <div>
+              <span className="calculator-eyebrow">New in MyCoinwise</span>
+              <h3>Make every number useful.</h3>
+              <p>Explore the new scientific calculator with trigonometry, powers, memory, history, and keyboard support.</p>
+            </div>
+            <Link to="/calculator" className="btn-primary about-calculator-link">Open Calculator</Link>
           </motion.div>
 
           {/* Footer stats */}

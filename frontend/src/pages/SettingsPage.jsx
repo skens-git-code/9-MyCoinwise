@@ -25,6 +25,16 @@ const validateGoal = (goal) => {
   return { isValid: !isNaN(num) && num >= 0, value: num };
 };
 const sanitizeInput = (input) => input?.trim().replace(/[<>]/g, '') || '';
+const getNameParts = (user) => {
+  const username = String(user?.username || user?.name || '').trim();
+  const surname = String(user?.last_name || user?.surname || '').trim();
+  const words = username.split(/\s+/).filter(Boolean);
+  const surnameMatchesUsername = surname && words.length > 1 && words.at(-1).toLocaleLowerCase() === surname.toLocaleLowerCase();
+  return {
+    firstName: surnameMatchesUsername ? words.slice(0, -1).join(' ') : (words[0] || ''),
+    lastName: surname || (words.length > 1 ? words.slice(1).join(' ') : '')
+  };
+};
 
 // ============= PASSWORD STRENGTH INDICATOR =============
 const PasswordStrengthIndicator = ({ password }) => {
@@ -864,6 +874,15 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
   };
 
   const isBase64Avatar = formState.avatar && formState.avatar.length > 20 && formState.avatar.startsWith('data:image');
+  const profileChecks = [
+    Boolean(formState.firstName?.trim()),
+    Boolean(formState.lastName?.trim()),
+    Boolean(formState.profession?.trim()),
+    Boolean(formState.avatar),
+    Boolean(user?.email)
+  ];
+  const profileCompletion = Math.round((profileChecks.filter(Boolean).length / profileChecks.length) * 100);
+  const memberSince = user?.created_at ? new Date(user.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : 'Recently';
 
   return (
     <>
@@ -880,6 +899,24 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
       </div>
 
       <div className="idp-body">
+        <div className="profile-summary-grid" aria-label="Profile summary">
+          <div className="profile-summary-card">
+            <span className="profile-summary-label">Profile completeness</span>
+            <strong>{profileCompletion}%</strong>
+            <div className="profile-completion-track" aria-hidden="true"><span style={{ width: `${profileCompletion}%` }} /></div>
+          </div>
+          <div className="profile-summary-card">
+            <span className="profile-summary-label">Member since</span>
+            <strong>{memberSince}</strong>
+            <span className="profile-summary-detail">Your personal workspace</span>
+          </div>
+          <div className="profile-summary-card">
+            <span className="profile-summary-label">Email status</span>
+            <strong className={user?.email_verified ? 'status-good' : 'status-pending'}>{user?.email_verified ? 'Verified' : 'Unverified'}</strong>
+            <span className="profile-summary-detail">{formState.currency} workspace</span>
+          </div>
+        </div>
+
         <div style={{ display: 'flex', gap: 30, alignItems: 'center', flexWrap: 'wrap' }}>
           <motion.div
             whileHover={{ scale: 1.05 }}
@@ -985,21 +1022,16 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
 
         <div className="form-field" style={{ marginTop: '16px' }}>
           <label htmlFor="profession">Profession / Role</label>
-          <select
+          <input
             id="profession"
+            type="text"
             value={formState.profession}
             onChange={(e) => handleFieldChange('profession', e.target.value)}
-            style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--glass-border)', background: 'var(--surface-1)', color: 'var(--text-primary)' }}
-          >
-            <option value="Gamer">Gamer</option>
-            <option value="Trader">Trader</option>
-            <option value="Student">Student</option>
-            <option value="Professional">Professional</option>
-            <option value="Freelancer">Freelancer</option>
-            <option value="Entrepreneur">Entrepreneur</option>
-            <option value="Developer">Developer</option>
-            <option value="Designer">Designer</option>
-          </select>
+            placeholder="e.g. Product designer, Student, Consultant"
+            maxLength={80}
+            autoComplete="organization-title"
+          />
+          <span className="form-help">Write the profession or role you want shown on your profile.</span>
         </div>
         <EmailChangeSection user={user} showMessage={showMessage} />
       </div>
@@ -1165,71 +1197,51 @@ const AppearanceTab = ({ theme, handleThemeChange }) => {
 };
 
 // ============= USERS TAB =============
+const getUserDisplayName = (user) => {
+  const username = String(user?.username || '').trim();
+  const surname = String(user?.last_name || '').trim();
+  const duplicateSurname = surname && username.toLocaleLowerCase().endsWith(` ${surname.toLocaleLowerCase()}`);
+  return [username, duplicateSurname ? '' : surname].filter(Boolean).join(' ') || 'Unnamed profile';
+};
+
 const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
   <>
-    <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-      <div className="idp-hero-icon" style={{ width: 64, height: 64, marginBottom: 16, background: 'rgba(16,185,129,0.1)', color: 'var(--success)', border: '1px solid rgba(16,185,129,0.3)' }}>
+    <div className="manage-users-hero">
+      <div className="idp-hero-icon manage-users-hero-icon">
         <Users size={28} />
       </div>
-      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>Manage Users</h3>
-      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Easily switch between household accounts.</p>
+      <div>
+        <div className="manage-users-title-row">
+          <h3>Manage Users</h3>
+          <span className="manage-users-count">{sortedUsers.length} {sortedUsers.length === 1 ? 'profile' : 'profiles'}</span>
+        </div>
+        <p>Easily switch between household accounts and keep each workspace personal.</p>
+      </div>
     </div>
 
-    <div className="idp-body" style={{ padding: 0, background: 'none', border: 'none' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
+    <div className="manage-users-body">
+      <div className="manage-users-list">
         {sortedUsers.map(u => (
           <motion.div
             key={u.id}
             whileHover={{ x: 4 }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 16,
-              padding: '16px 20px',
-              borderRadius: 16,
-              background: u.id === USER_ID ? 'linear-gradient(135deg, rgba(var(--brand-primary-rgb),0.15), rgba(var(--brand-secondary-rgb),0.05))' : 'var(--glass-2)',
-              border: `1px solid ${u.id === USER_ID ? 'rgba(var(--brand-primary-rgb),0.4)' : 'var(--glass-border)'}`,
-              boxShadow: u.id === USER_ID ? '0 8px 24px rgba(var(--brand-primary-rgb),0.1)' : 'none',
-              flexWrap: 'wrap'
-            }}
+            className={`manage-user-card ${u.id === USER_ID ? 'is-active' : ''}`}
           >
-            <span style={{
-              fontSize: '1.4rem',
-              width: 44,
-              height: 44,
-              borderRadius: '50%',
-              background: u.profile_color || '#059669',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: `0 4px 12px ${u.profile_color}66`
-            }} aria-hidden>
+            <span className="manage-user-avatar" style={{ background: u.profile_color || '#059669' }} aria-hidden>
               {u.profile_avatar || '😊'}
             </span>
-            <div style={{ flex: '1 1 180px', minWidth: 0, maxWidth: '100%' }}>
-              <p style={{ fontWeight: 800, fontSize: '1.05rem', margin: '0 0 4px', color: 'var(--text-primary)' }}>
-                {u.username}
-              </p>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={u.email}>
-                {u.email}
-              </p>
+            <div className="manage-user-main">
+              <p className="manage-user-name">{getUserDisplayName(u)}</p>
+              <p className="manage-user-email" title={u.email}>{u.email || 'No email address'}</p>
+              <span className="manage-user-role">{u.profession || 'Personal workspace'}</span>
             </div>
             {u.id === USER_ID && (
-              <span aria-label="Active User" style={{
-                fontSize: '0.75rem',
-                background: 'var(--brand-primary)',
-                color: 'white',
-                padding: '4px 12px',
-                borderRadius: 100,
-                fontWeight: 800,
-                letterSpacing: '0.05em',
-                textTransform: 'uppercase'
-              }}>
+              <span className="manage-user-status" aria-label="Active User">
                 Active
               </span>
             )}
             {u.id !== USER_ID && (
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div className="manage-user-actions">
                 <motion.button
                   type="button"
                   whileHover={{ scale: 1.05 }}
@@ -1237,19 +1249,7 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
                   onClick={() => setModals(prev => ({ ...prev, switchConfirm: u }))}
                   disabled={switchingUserId === u.id}
                   aria-label={`Switch to ${u.username}`}
-                  style={{
-                    background: 'rgba(var(--brand-primary-rgb), 0.1)',
-                    border: '1px solid rgba(var(--brand-primary-rgb), 0.3)',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    color: 'var(--brand-primary)',
-                    fontWeight: 600,
-                    fontSize: '0.8rem'
-                  }}
+                  className="manage-user-switch"
                 >
                   <Users size={14} aria-hidden />
                   {switchingUserId === u.id ? 'Switching...' : 'Switch'}
@@ -1260,18 +1260,8 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setModals(prev => ({ ...prev, deleteUser: u.id }))}
-                  aria-label={`Delete ${u.username}`}
-                  style={{
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    borderRadius: '8px',
-                    padding: '8px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--danger)'
-                  }}
+                  aria-label={`Delete ${getUserDisplayName(u)}`}
+                  className="manage-user-delete"
                 >
                   <Trash2 size={16} aria-hidden />
                 </motion.button>
@@ -1282,18 +1272,10 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
       </div>
       <motion.button
         type="button"
-        className="btn-secondary"
+        className="btn-secondary manage-users-add"
         onClick={() => setModals(prev => ({ ...prev, addUser: { name: '', email: '' } }))}
         aria-label="Add new user"
         whileHover={{ scale: 1.02 }}
-        style={{
-          width: '100%',
-          justifyContent: 'center',
-          padding: 18,
-          borderStyle: 'dashed',
-          borderWidth: 2,
-          background: 'rgba(255,255,255,0.02)'
-        }}
       >
         <Plus size={18} aria-hidden />
         {t?.('add_new_user') || 'Add New User'}
@@ -1450,10 +1432,11 @@ function SettingsInner({ context }) {
     t,
     transactions = []
   } = context;
+  const nameParts = getNameParts(user);
 
   const [formState, dispatch] = useReducer(settingsReducer, {
-    firstName: (user?.username || '').split(' ')[0] || '',
-    lastName: user?.last_name ?? ((user?.username || '').split(' ').slice(1).join(' ') || ''),
+    firstName: nameParts.firstName,
+    lastName: nameParts.lastName,
     profession: user?.profession || user?.role || 'Trader',
     monthlyGoal: user?.monthly_goal?.toString() || '',
     currency: user?.currency || 'INR',
@@ -1475,8 +1458,8 @@ function SettingsInner({ context }) {
       dispatch({
         type: 'RESET_FORM',
         payload: {
-          firstName: (user?.username || '').split(' ')[0] || '',
-          lastName: user?.last_name ?? ((user?.username || '').split(' ').slice(1).join(' ') || ''),
+          firstName: getNameParts(user).firstName,
+          lastName: getNameParts(user).lastName,
           profession: user?.profession || user?.role || 'Trader',
           monthlyGoal: user?.monthly_goal?.toString() || '',
           currency: user?.currency || 'INR',
@@ -1518,30 +1501,6 @@ function SettingsInner({ context }) {
   const isMounted = useRef(true);
 
   useEffect(() => {
-    if (user) {
-      dispatch({
-        type: 'RESET_FORM',
-        payload: {
-          firstName: (user.username || '').split(' ')[0] || '',
-          lastName: user.last_name ?? ((user.username || '').split(' ').slice(1).join(' ') || ''),
-          monthlyGoal: user.monthly_goal?.toString() || '',
-          currency: user.currency || 'INR',
-          avatar: user.profile_avatar || '😊',
-          avatarColor: user.profile_color || '#059669',
-          notificationPrefs: user.notification_prefs || {
-            emailReports: true, budgetAlerts: true, goalMilestones: true, unusualSpending: false,
-            pushNotifications: true, weeklyDigest: true, quietHoursEnabled: false, quietHoursStart: '22:00', quietHoursEnd: '08:00'
-          },
-          advancedPrefs: user.advanced_prefs || {
-            dateFormat: 'MM/DD/YYYY', timeFormat: '12h', firstDayOfWeek: 'Sunday', decimalSeparator: '.',
-            compactMode: false, autoSave: true, animationsEnabled: true, showWeekNumbers: false
-          }
-        }
-      });
-    }
-  }, [user]);
-
-  useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (formState.isDirty) {
         e.preventDefault();
@@ -1572,7 +1531,6 @@ function SettingsInner({ context }) {
 
     const sanitizedFirstName = sanitizeInput(formState.firstName);
     const sanitizedLastName = sanitizeInput(formState.lastName);
-    const sanitizedUsername = `${sanitizedFirstName} ${sanitizedLastName}`.trim();
     if (!sanitizedFirstName) {
       showMessage('error', 'First name cannot be empty.');
       return;
@@ -1591,6 +1549,7 @@ function SettingsInner({ context }) {
       const previousState = {
         username: user?.username,
         last_name: user?.last_name,
+        profession: user?.profession,
         theme: user?.theme,
         monthly_goal: user?.monthly_goal,
         currency: user?.currency,
@@ -1601,7 +1560,7 @@ function SettingsInner({ context }) {
       };
 
       await api.updateSettings(USER_ID, {
-        username: sanitizedUsername,
+        username: sanitizedFirstName,
         last_name: sanitizedLastName,
         profession: formState.profession,
         monthly_goal: isGoalValid ? goalValue : (user.monthly_goal || 0),
@@ -1738,7 +1697,7 @@ function SettingsInner({ context }) {
       if (formState.isDirty) {
         showMessage('success', 'Auto-saving changes before switching...', 2000);
         await api.updateSettings(USER_ID, {
-          username: `${formState.firstName || ''} ${formState.lastName || ''}`.trim(),
+          username: sanitizeInput(formState.firstName || ''),
           last_name: sanitizeInput(formState.lastName || ''),
           profession: formState.profession,
           monthly_goal: formState.monthlyGoal,
@@ -2014,8 +1973,9 @@ function SettingsInner({ context }) {
                     className="btn-secondary"
                     onClick={() => dispatch({
                       type: 'RESET_FORM', payload: {
-                        firstName: (user?.username || '').split(' ')[0] || '',
-                        lastName: user?.last_name ?? ((user?.username || '').split(' ').slice(1).join(' ') || ''),
+                        firstName: getNameParts(user).firstName,
+                        lastName: getNameParts(user).lastName,
+                        profession: user?.profession || user?.role || 'Trader',
                         monthlyGoal: user?.monthly_goal?.toString() || '',
                         currency: user?.currency || 'INR',
                         avatar: user?.profile_avatar || '😊',

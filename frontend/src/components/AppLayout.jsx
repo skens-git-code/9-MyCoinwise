@@ -6,7 +6,7 @@ import {
   CreditCard, Settings, ChevronRight, TrendingUp, TrendingDown,
   Bell, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon,
   Menu, X, Zap, Search, Keyboard, User, Sun, Moon, Check, CheckCircle2,
-  HelpCircle, Shield, ExternalLink, Languages, Coins, Info
+  HelpCircle, Shield, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
@@ -33,8 +33,11 @@ const NAV_ITEMS = [
   { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions' },
   { to: '/calendar', icon: CalendarIcon, labelKey: 'calendar' },
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics' },
+  { to: '/calculator', icon: CalculatorIcon, labelKey: 'calculator' },
+  { to: '/accounts', icon: Landmark, labelKey: 'accounts' },
+  { to: '/budgets', icon: PieChart, labelKey: 'budgets' },
   { to: '/goals', icon: Target, labelKey: 'goals' },
-  { to: '/subscriptions', icon: CreditCard, labelKey: 'subscriptions' },
+  { to: '/subscriptions', icon: Repeat, labelKey: 'subscriptions' },
   { to: '/cashflow', icon: Activity, labelKey: 'cashflow' },
   { to: '/wealth', icon: Briefcase, labelKey: 'wealth' },
   { to: '/about', icon: Info, labelKey: 'about' },
@@ -135,7 +138,12 @@ const useUserDisplay = (user) => {
       return { displayName: 'Guest', avatar: '👤', avatarColor: '#6B7280', rawName: null, isBase64Avatar: false };
     }
 
-    const rawName = user?.name || user?.username;
+    const firstName = String(user?.username || user?.name || '').trim();
+    const surname = String(user?.last_name || user?.surname || '').trim();
+    const hasSurnameAlready = surname && firstName.toLocaleLowerCase().endsWith(surname.toLocaleLowerCase());
+    const rawName = [firstName, surname && !hasSurnameAlready ? surname : '']
+      .filter(Boolean)
+      .join(' ');
     const sanitizedRawName = sanitizeUserInput(rawName);
     const isValidDisplayName = sanitizedRawName &&
       !USER_DISPLAY_RULES.randomIdPattern.test(sanitizedRawName) &&
@@ -146,10 +154,7 @@ const useUserDisplay = (user) => {
     const isBase64Avatar = typeof avatarStr === 'string' && avatarStr.length > 20 && avatarStr.startsWith('data:image');
 
 
-    let role = user?.role || user?.profession || 'Trader';
-    if (role.toLowerCase().includes('english') || role.toLowerCase().includes('indian')) {
-      role = 'Gamer';
-    }
+    const role = sanitizeUserInput(user?.profession || user?.role) || 'Trader';
 
     return {
       displayName: fullDisplayName,
@@ -592,13 +597,7 @@ export default function AppLayout({ children }) {
             <div className="gradient gradient-2"></div>
             <div className="gradient gradient-3"></div>
           </div>
-          <div className="particles">
-            <div className="particle" style={{ left: '10%', animationDuration: '25s', animationDelay: '0s' }}></div>
-            <div className="particle" style={{ left: '30%', animationDuration: '20s', animationDelay: '2s' }}></div>
-            <div className="particle" style={{ left: '55%', animationDuration: '28s', animationDelay: '5s' }}></div>
-            <div className="particle" style={{ left: '75%', animationDuration: '22s', animationDelay: '1s' }}></div>
-            <div className="particle" style={{ left: '90%', animationDuration: '30s', animationDelay: '3s' }}></div>
-          </div>
+          <div className="minimal-pattern"></div>
         </div>
 
         {/* Desktop Sidebar */}
@@ -607,7 +606,6 @@ export default function AppLayout({ children }) {
             sidebarOpen={sidebarOpen}
             onToggle={handleSidebarToggle}
             userInfo={userInfo}
-            user={user}
             currencyInfo={currencyInfo}
             lang={lang}
             t={t}
@@ -773,7 +771,7 @@ export default function AppLayout({ children }) {
 
 const DesktopSidebar = React.memo(({
   sidebarOpen, onToggle,
-  userInfo, user, t, logout
+  userInfo, t, logout
 }) => {
   const [isHovered, setIsHovered] = React.useState(false);
   const isOpen = sidebarOpen || isHovered;
@@ -795,9 +793,10 @@ const DesktopSidebar = React.memo(({
           {isOpen && (
             <motion.span
               className="brand-name"
-              initial={{ opacity: 0, width: 0 }}
-              animate={{ opacity: 1, width: 'auto' }}
-              exit={{ opacity: 0, width: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{ overflow: 'hidden', whiteSpace: 'nowrap', display: 'inline-block' }}
             >
               MyCoinwise
             </motion.span>
@@ -820,9 +819,10 @@ const DesktopSidebar = React.memo(({
       <div className="island-user dropdown-container">
         <div
           className="user-trigger"
-          style={{ ...styles.userTrigger, cursor: 'default' }}
+          style={{ ...styles.userTrigger, cursor: 'default', position: 'relative' }}
         >
-          <div className="user-avatar" style={{ background: userInfo.avatarColor, overflow: 'hidden' }}>
+          <div className="ambient-glow" style={{ position: 'absolute', top: -5, left: -5, right: -5, bottom: -5, background: userInfo.avatarColor, filter: 'blur(15px)', opacity: 0.4, borderRadius: '50%' }}></div>
+          <div className="user-avatar" style={{ background: userInfo.avatarColor, overflow: 'hidden', position: 'relative', zIndex: 1 }}>
             {userInfo.isBase64Avatar ? (
               <img src={userInfo.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
@@ -831,8 +831,8 @@ const DesktopSidebar = React.memo(({
           </div>
           <AnimatePresence>
             {isOpen && (
-              <motion.div className="user-info" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <p className="u-name">{sanitizeUserInput(user?.username) || 'User'}</p>
+              <motion.div className="user-info" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ minWidth: 0, marginLeft: '12px' }}>
+                <p className="u-name" title={userInfo.displayName}>{userInfo.displayName}</p>
                 <p className="u-role">{userInfo.role}</p>
               </motion.div>
             )}
@@ -851,7 +851,7 @@ const DesktopSidebar = React.memo(({
           >
             {({ isActive }) => (
               <>
-                <item.icon size={20} className="inav-icon" />
+                <item.icon size={20} className={`inav-icon nav-icon-${item.labelKey}`} />
                 <AnimatePresence>
                   {isOpen && (
                     <motion.span
@@ -884,7 +884,7 @@ const DesktopSidebar = React.memo(({
 
       <div className="island-footer">
         <NavLink to="/settings" className={({ isActive }) => `inav-item ${isActive ? 'active' : ''}`}>
-          <Settings size={20} className="inav-icon" />
+          <Settings size={20} className="inav-icon nav-icon-settings" />
           <AnimatePresence>
             {isOpen && (
               <motion.span
@@ -899,7 +899,7 @@ const DesktopSidebar = React.memo(({
           </AnimatePresence>
         </NavLink>
         <button onClick={logout} className="inav-item text-danger" style={{ marginTop: '5px' }}>
-          <LogOut size={20} className="inav-icon" />
+          <LogOut size={20} className="inav-icon nav-icon-logout" />
           <AnimatePresence>
             {isOpen && (
               <motion.span
@@ -946,10 +946,11 @@ const Header = React.memo(({
           className="header-search-bar glass"
           onClick={onOpenCmdPalette}
           aria-label="Search transactions, goals, pages (Ctrl+K)"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '12px' }}
         >
-          <Search size={15} className="hsb-icon" />
-          <span className="hsb-placeholder">Search anything...</span>
-          <kbd className="hsb-kbd">⌘K</kbd>
+          <Search size={15} className="hsb-icon" style={{ flexShrink: 0 }} />
+          <span className="hsb-placeholder" style={{ flexGrow: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Search anything...</span>
+          <kbd className="hsb-kbd" style={{ flexShrink: 0 }}>⌘K</kbd>
         </button>
       </div>
 
@@ -962,7 +963,7 @@ const Header = React.memo(({
             title="Search (Cmd+K)"
             aria-label="Search"
           >
-            <Search size={18} />
+            <Search size={18} className="header-icon header-icon-search" />
           </button>
 
           {/* Keyboard Shortcuts Button */}
@@ -972,7 +973,7 @@ const Header = React.memo(({
             title="Keyboard Shortcuts (?)"
             aria-label="Keyboard Shortcuts"
           >
-            <Keyboard size={18} />
+            <Keyboard size={18} className="header-icon header-icon-keyboard" />
           </button>
 
           {/* Language Dropdown */}
@@ -986,7 +987,7 @@ const Header = React.memo(({
               aria-controls="language-dropdown"
               aria-label="Change language"
             >
-              <Languages size={18} aria-hidden="true" />
+              <Languages size={18} className="header-icon header-icon-language" aria-hidden="true" />
             </button>
             <AnimatePresence>
               {activeDropdown === 'language' && (
@@ -1005,7 +1006,7 @@ const Header = React.memo(({
             title="Currency Converter"
             aria-label="Currency converter"
           >
-            <Coins size={18} aria-hidden="true" />
+            <Coins size={18} className="header-icon header-icon-currency" aria-hidden="true" />
           </button>
 
           <button
@@ -1021,7 +1022,7 @@ const Header = React.memo(({
                 animate={{ rotate: 0, opacity: 1 }}
                 exit={{ rotate: 90, opacity: 0 }}
               >
-                {theme === 'amoled' ? <Sun size={18} /> : <Moon size={18} />}
+                {theme === 'amoled' ? <Sun size={18} className="header-icon header-icon-theme" /> : <Moon size={18} className="header-icon header-icon-theme" />}
               </motion.span>
             </AnimatePresence>
           </button>
@@ -1038,7 +1039,7 @@ const Header = React.memo(({
             aria-haspopup="true"
             aria-label={`Alerts${urgentAlertsCount > 0 ? `, ${urgentAlertsCount} urgent` : ''}`}
           >
-            <Bell size={20} />
+            <Bell size={20} className="header-icon header-icon-alerts" />
             <span role="status" aria-live="polite">
               {urgentAlertsCount > 0 && (
                 <motion.span
@@ -1108,7 +1109,7 @@ const Header = React.memo(({
           title="AI Financial Assistant"
           aria-label="AI Assistant"
         >
-          <Sparkles size={20} />
+          <Sparkles size={20} className="header-icon header-icon-ai" />
         </button>
 
         {/* Interactive Balance with Quick-Stats Popover */}
@@ -1120,7 +1121,7 @@ const Header = React.memo(({
             title="Click for financial summary"
             aria-label={`Balance: ${formattedBalance}. Click for quick stats.`}
           >
-            <TrendingUp size={16} />
+            <TrendingUp size={16} className="header-icon header-icon-balance" />
             <span>{formattedBalance}</span>
           </button>
 
@@ -1282,7 +1283,7 @@ const MobileBottomNav = React.memo(({ t, onOpenDrawer }) => {
                 className="dock-icon-wrapper"
                 whileTap={{ scale: 0.88 }}
               >
-                <item.icon size={20} className="dock-icon" />
+                <item.icon size={20} className={`dock-icon nav-icon-${item.labelKey}`} />
                 {isActive && (
                   <motion.div
                     className="dock-active-dot"
@@ -1303,7 +1304,7 @@ const MobileBottomNav = React.memo(({ t, onOpenDrawer }) => {
         aria-label="Open navigation menu"
       >
         <motion.div className="dock-icon-wrapper" whileTap={{ scale: 0.88 }}>
-          <Menu size={20} className="dock-icon" />
+          <Menu size={20} className="dock-icon nav-icon-menu" />
         </motion.div>
         <span className="dock-label">More</span>
       </button>
@@ -1380,7 +1381,7 @@ const MobileDrawer = React.memo(({
             {({ isActive }) => (
               <>
                 <div className="drawer-nav-icon-box">
-                  <item.icon size={16} />
+                  <item.icon size={16} className={`drawer-nav-icon nav-icon-${item.labelKey}`} />
                 </div>
                 <span className="drawer-nav-label">{t(item.labelKey)}</span>
                 {isActive && <div className="drawer-nav-active-indicator" />}
@@ -1396,7 +1397,7 @@ const MobileDrawer = React.memo(({
           {({ isActive }) => (
             <>
               <div className="drawer-nav-icon-box">
-                <Settings size={16} />
+                <Settings size={16} className="drawer-nav-icon nav-icon-settings" />
               </div>
               <span className="drawer-nav-label">{t('settings')}</span>
               {isActive && <div className="drawer-nav-active-indicator" />}

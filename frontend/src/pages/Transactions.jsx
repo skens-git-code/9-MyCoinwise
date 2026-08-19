@@ -12,6 +12,7 @@ import TransactionForm from '../components/TransactionForm';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
 import { exportToPDF } from '../services/pdfExport';
+import { api } from '../services/api';
 
 const STAGGER_VARIANTS = {
   hidden: { opacity: 0 },
@@ -31,7 +32,7 @@ const CATEGORIES = [
 ];
 
 export default function Transactions() {
-  const { transactions = [], deleteTransaction, editTransaction, addTransaction, fmt, user, currencyInfo, USER_ID } = useContext(AppContext);
+  const { transactions = [], deleteTransaction, editTransaction, addTransaction, fmt, user, currencyInfo, USER_ID, refetch } = useContext(AppContext);
   const { showToast } = useToast();
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -136,12 +137,11 @@ export default function Transactions() {
     if (selectedIds.size === 0) return;
     setIsBulkOperating(true);
     try {
-      for (const id of Array.from(selectedIds)) {
-        await deleteTransaction(id);
-      }
+      await api.bulkDeleteTransactions(Array.from(selectedIds));
       showToast('success', `Deleted ${selectedIds.size} transactions`);
       setSelectedIds(new Set());
       setShowBulkDeleteModal(false);
+      await refetch();
       if (selectedIds.has(String(selectedTxId))) setSelectedTxId(null);
     } catch {
       showToast('error', 'Failed to delete some transactions');
@@ -194,7 +194,12 @@ export default function Transactions() {
       category: tx.category,
       amount: tx.amount,
       note: tx.note ? `${tx.note} (Copy)` : 'Copy',
-      date: new Date().toISOString().split('T')[0]
+      date: new Date().toISOString().split('T')[0],
+      merchant: tx.merchant,
+      tags: tx.tags,
+      payment_method: tx.payment_method,
+      is_recurring: tx.is_recurring,
+      recurrence_interval: tx.recurrence_interval
     });
   };
 

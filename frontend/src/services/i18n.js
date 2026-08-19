@@ -17,6 +17,7 @@ export const TRANSLATIONS = {
     dashboard: 'Dashboard',
     transactions: 'Transactions',
     analytics: 'Analytics',
+    calculator: 'Calculator',
     goals: 'Savings Goals',
     subscriptions: 'Subscriptions',
     settings: 'Settings',
