@@ -30,6 +30,36 @@ import { AppContext } from './contexts/AppContext';
 
 const AVAILABLE_THEMES = ['light', 'amoled'];
 const normalizeTheme = (value) => AVAILABLE_THEMES.includes(value) ? value : 'light';
+const DEFAULT_DOCUMENT_TITLE = 'MyCoinwise – Smart Budget Tracker';
+
+const getUserNameForBranding = (userData) => {
+  const firstName = String(userData?.username || userData?.name || '').trim();
+  const lastName = String(userData?.last_name || userData?.surname || '').trim();
+  const name = [firstName, lastName]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return name;
+};
+
+const isUsableImageSource = (value) => (
+  typeof value === 'string' && (
+    value.startsWith('data:image/') ||
+    value.startsWith('blob:') ||
+    value.startsWith('https://') ||
+    value.startsWith('http://') ||
+    value.startsWith('/')
+  )
+);
+
+const getFaviconMimeType = (source) => {
+  const dataMime = source.match(/^data:(image\/[\w.+-]+)/i)?.[1];
+  if (dataMime) return dataMime;
+  if (source === '/favicon.svg' || source.toLowerCase().endsWith('.svg')) return 'image/svg+xml';
+  return '';
+};
 
 export function formatCurrency(amount, currency = 'USD') {
   const info = CURRENCIES[currency] || CURRENCIES.USD;
@@ -107,6 +137,39 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('mcw-theme', theme);
   }, [theme]);
+
+  // Keep the browser chrome personalized with the same saved profile image
+  // shown throughout the app. Invalid/placeholder avatar values fall back to
+  // the branded favicon instead of creating a broken browser-tab icon.
+  useEffect(() => {
+    const userName = getUserNameForBranding(user);
+    const documentTitle = !userName
+      ? DEFAULT_DOCUMENT_TITLE
+      : `${userName}’s Coinwise`;
+    const profileImage = isUsableImageSource(user?.profile_avatar)
+      ? user.profile_avatar
+      : '/favicon.svg';
+
+    document.title = documentTitle;
+
+    const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    appleTitle?.setAttribute('content', documentTitle);
+
+    const socialTitle = document.querySelector('meta[property="og:title"]');
+    socialTitle?.setAttribute('content', documentTitle);
+
+    let favicon = document.getElementById('app-favicon');
+    if (!favicon) {
+      favicon = document.createElement('link');
+      favicon.id = 'app-favicon';
+      favicon.rel = 'icon';
+      document.head.appendChild(favicon);
+    }
+    const faviconMimeType = getFaviconMimeType(profileImage);
+    if (faviconMimeType) favicon.type = faviconMimeType;
+    else favicon.removeAttribute('type');
+    favicon.href = profileImage;
+  }, [user]);
 
   const login = async (newToken, userData) => {
     localStorage.setItem('mcw-token', newToken);
