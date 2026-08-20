@@ -381,7 +381,7 @@ const NotificationPreferences = ({ preferences, onChange }) => {
 };
 
 // ============= PASSWORD CHANGE COMPONENT =============
-const PasswordChange = ({ userId, showMessage }) => {
+const PasswordChange = ({ userId, showMessage, logout }) => {
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
@@ -414,8 +414,11 @@ const PasswordChange = ({ userId, showMessage }) => {
         current: passwordData.currentPassword,
         new: passwordData.newPassword
       });
-      showMessage('success', 'Password changed successfully!');
+      showMessage('success', 'Password changed successfully. Please sign in again.');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      // The backend invalidates every existing session after a password change.
+      // Clear the local token as well so the next request cannot fail silently.
+      window.setTimeout(() => logout?.(), 900);
     } catch (error) {
       showMessage('error', error.response?.data?.message || 'Failed to change password');
     } finally {
@@ -1462,7 +1465,8 @@ function SettingsInner({ context }) {
     lang,
     setLanguage,
     t,
-    transactions = []
+    transactions = [],
+    logout
   } = context;
   const nameParts = getNameParts(user);
 
@@ -1856,7 +1860,7 @@ function SettingsInner({ context }) {
               <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Manage your account security and active sessions.</p>
             </div>
             <div className="idp-body">
-              <PasswordChange userId={USER_ID} showMessage={showMessage} />
+              <PasswordChange userId={USER_ID} showMessage={showMessage} logout={logout} />
               <div style={{ height: 2, background: 'var(--glass-border)', margin: '32px 0' }} />
               <SessionManagement userId={USER_ID} showMessage={showMessage} />
             </div>

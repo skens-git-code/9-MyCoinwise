@@ -395,7 +395,7 @@ export default function AppLayout({ children }) {
 
   // Context
   const contextData = useContext(AppContext) || {};
-  const { user, theme, toggleTheme, currencyInfo, alerts = [], transactions = [], addTransaction, t, lang, setLanguage, logout, fmt } = contextData;
+  const { user, theme, toggleTheme, currencyInfo, alerts = [], transactions = [], addTransaction, t, lang, setLanguage, logout, fmt, refetch, isBackgroundSyncing } = contextData;
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -463,6 +463,8 @@ export default function AppLayout({ children }) {
     '/transactions': 'transactions',
     '/calendar': 'calendar',
     '/analytics': 'analytics',
+    '/accounts': 'accounts',
+    '/budgets': 'budgets',
     '/goals': 'goals',
     '/subscriptions': 'subscriptions',
     '/cashflow': 'cashflow',
@@ -478,6 +480,8 @@ export default function AppLayout({ children }) {
       transactions: 'Transactions',
       calendar: 'Calendar',
       analytics: 'Analytics',
+      accounts: 'Accounts',
+      budgets: 'Budgets',
       goals: 'Savings Goals',
       subscriptions: 'Subscriptions',
       cashflow: 'Forecasting',
@@ -643,6 +647,8 @@ export default function AppLayout({ children }) {
             user={user}
             fmt={fmt}
             navigate={navigate}
+            refetch={refetch}
+            isBackgroundSyncing={isBackgroundSyncing}
           />
 
           <div className="island-content-wrapper">
@@ -930,8 +936,33 @@ const Header = React.memo(({
   onOpenHelp, onOpenTour,
   activeAlerts, onDismissAllAlerts,
   financialSummary, currencySymbol,
-  logout, user, fmt, navigate
+  logout, user, fmt, navigate, refetch, isBackgroundSyncing
 }) => {
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
+  const [syncEnabled, setSyncEnabled] = useState(true);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const syncState = isBackgroundSyncing ? 'saving' : (syncEnabled && isOnline ? 'online' : 'offline');
+  const syncCopy = { online: 'Online', offline: 'Offline', saving: 'Saving' }[syncState];
+  const toggleSync = () => {
+    if (isBackgroundSyncing) return;
+    setSyncEnabled((enabled) => {
+      const next = !enabled;
+      if (next && isOnline) refetch?.();
+      return next;
+    });
+  };
+
   return (
     <header className="island-header glass">
       <div className="ih-left">
@@ -956,6 +987,18 @@ const Header = React.memo(({
 
       <div className="ih-right">
         <div className="ih-btn-group">
+          <button
+            type="button"
+            className={`connection-toggle connection-toggle-${syncState}`}
+            onClick={toggleSync}
+            disabled={isBackgroundSyncing}
+            aria-pressed={syncEnabled}
+            aria-label={`Sync status: ${syncCopy}. Click to ${syncEnabled ? 'disable' : 'enable'} syncing.`}
+            title={`Sync: ${syncCopy}`}
+          >
+            <span className="connection-toggle-dot" aria-hidden="true" />
+          </button>
+
           {/* Search icon button for mobile/compact screens */}
           <button
             className="ibtn header-search-mobile-btn"

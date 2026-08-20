@@ -841,6 +841,44 @@ select:focus,
   padding: 0;
 }
 
+/* Single connection/sync control: green online, red offline, blue saving. */
+.island-header .connection-toggle {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0 2px;
+  border: 1px solid var(--glass-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.island-header .connection-toggle:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.island-header .connection-toggle:disabled {
+  cursor: progress;
+}
+
+.connection-toggle-online { color: #16a34a !important; border-color: rgba(22, 163, 74, 0.35) !important; }
+.connection-toggle-offline { color: #dc2626 !important; border-color: rgba(220, 38, 38, 0.35) !important; }
+.connection-toggle-saving { color: #2563eb !important; border-color: rgba(37, 99, 235, 0.35) !important; }
+
+.connection-toggle-dot {
+  width: 8px;
+  height: 8px;
+  display: block;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 16%, transparent);
+}
+
 .island-header .ibtn {
   width: 40px;
   height: 40px;
