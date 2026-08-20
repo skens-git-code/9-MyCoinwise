@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
+const Account = require('../models/Account');
 const checkOwnership = require('../middleware/ownership');
 
 const router = express.Router();
@@ -22,7 +23,7 @@ const parseTransactionDate = (value) => {
 };
 
 const validateTransactionPayload = (payload) => {
-  const { type, category, amount, date, note, merchant, tags, payment_method, is_recurring, recurrence_interval, recurrence_ends_at, is_split, split_details } = payload;
+  const { type, category, amount, date, note, merchant, tags, payment_method, account_id, is_recurring, recurrence_interval, recurrence_ends_at, is_split, split_details } = payload;
   const numericAmount = parseTransactionAmount(amount);
   if (!TRANSACTION_TYPES.has(type)) return { error: 'Type must be income or expense.' };
   if (typeof category !== 'string' || !category.trim() || category.trim().length > 80) {
@@ -34,11 +35,15 @@ const validateTransactionPayload = (payload) => {
   if (note !== undefined && note !== null && String(note).length > 500) {
     return { error: 'Note must be 500 characters or fewer.' };
   }
+  if (account_id !== undefined && account_id !== null && account_id !== '' && !mongoose.isValidObjectId(account_id)) {
+    return { error: 'Account ID is invalid.' };
+  }
   
   const parsedPayload = { numericAmount, parsedDate };
   if (merchant !== undefined) parsedPayload.merchant = merchant ? String(merchant).trim() : null;
   if (tags !== undefined) parsedPayload.tags = Array.isArray(tags) ? tags.map(t => String(t).trim()).filter(Boolean) : [];
   if (payment_method !== undefined) parsedPayload.payment_method = payment_method;
+  if (account_id !== undefined) parsedPayload.account_id = account_id || null;
   
   if (is_recurring !== undefined) parsedPayload.is_recurring = Boolean(is_recurring);
   if (recurrence_interval !== undefined) parsedPayload.recurrence_interval = recurrence_interval;
@@ -76,6 +81,20 @@ const syncUserBalance = async (userId) => {
   return balance;
 };
 
+const syncAccountBalances = async (accountIds = []) => {
+  const uniqueIds = [...new Set(accountIds.filter(Boolean).map(String))];
+  await Promise.all(uniqueIds.map(async (accountId) => {
+    const account = await Account.findById(accountId).select('initial_balance');
+    if (!account) return;
+    const [result] = await Transaction.aggregate([
+      { $match: { account_id: new mongoose.Types.ObjectId(accountId), is_deleted: { $ne: true } } },
+      { $group: { _id: '$account_id', income: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } }, expense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } } } },
+    ]);
+    const balance = Number((Number(account.initial_balance || 0) + (result?.income || 0) - (result?.expense || 0)).toFixed(2));
+    await Account.findByIdAndUpdate(accountId, { $set: { current_balance: balance } });
+  }));
+};
+
 const nextOccurrence = (date, interval) => {
   const next = new Date(date);
   if (interval === 'daily') next.setDate(next.getDate() + 1);
@@ -96,7 +115,9 @@ const processRecurringForUser = async (userId) => {
   }).select('+recurrence_instance_key');
 
   let created = 0;
+  const affectedAccountIds = new Set();
   for (const template of templates) {
+    if (template.account_id) affectedAccountIds.add(String(template.account_id));
     let occurrence = nextOccurrence(template.date, template.recurrence_interval);
     let safety = 0;
     while (occurrence && occurrence <= now && safety < 240) {
@@ -116,6 +137,7 @@ const processRecurringForUser = async (userId) => {
           location: template.location,
           tags: template.tags,
           merchant: template.merchant,
+          account_id: template.account_id,
           receipt_url: template.receipt_url,
           is_one_time: true,
           parent_transaction_id: template._id,
@@ -128,7 +150,10 @@ const processRecurringForUser = async (userId) => {
       safety += 1;
     }
   }
-  if (created > 0) await syncUserBalance(userId);
+  if (created > 0) {
+    await syncUserBalance(userId);
+    await syncAccountBalances([...affectedAccountIds]);
+  }
   return created;
 };
 
@@ -167,6 +192,10 @@ router.post('/', async (req, res) => {
   try {
     const validation = validateTransactionPayload(req.body);
     if (validation.error) return res.status(400).json({ error: validation.error });
+    if (validation.account_id) {
+      const account = await Account.exists({ _id: validation.account_id, user_id });
+      if (!account) return res.status(400).json({ error: 'Selected account was not found.' });
+    }
     
     const txData = {
       user_id, 
@@ -178,6 +207,7 @@ router.post('/', async (req, res) => {
       merchant: validation.merchant,
       tags: validation.tags,
       payment_method: validation.payment_method,
+      account_id: validation.account_id || null,
       is_recurring: validation.is_recurring,
       recurrence_interval: validation.recurrence_interval,
       recurrence_ends_at: validation.recurrence_ends_at,
@@ -188,6 +218,7 @@ router.post('/', async (req, res) => {
 
     const transaction = await Transaction.create(txData);
     const balance = await syncUserBalance(user_id);
+    await syncAccountBalances([transaction.account_id]);
     res.status(201).json({ transaction, balance, message: 'Transaction added' });
   } catch (error) {
     console.error(error);
@@ -213,15 +244,23 @@ router.put('/:id', async (req, res) => {
     if (next.category === undefined) next.category = t.category;
     if (next.amount === undefined) next.amount = t.amount;
     if (next.date === undefined) next.date = t.date;
+    if (next.account_id === undefined) next.account_id = t.account_id;
 
     const validation = validateTransactionPayload(next);
     if (validation.error) return res.status(400).json({ error: validation.error });
+    if (validation.account_id) {
+      const account = await Account.exists({ _id: validation.account_id, user_id: req.user.id });
+      if (!account) return res.status(400).json({ error: 'Selected account was not found.' });
+    }
+
+    const previousAccountId = t.account_id;
 
     t.type = next.type;
     t.amount = validation.numericAmount;
     t.category = next.category.trim();
     t.note = next.note !== undefined ? (next.note ? String(next.note).trim() : null) : t.note;
     t.date = validation.parsedDate;
+    t.account_id = validation.account_id || null;
     
     if (validation.merchant !== undefined) t.merchant = validation.merchant;
     if (validation.tags !== undefined) t.tags = validation.tags;
@@ -236,6 +275,7 @@ router.put('/:id', async (req, res) => {
     await t.save();
 
     const balance = await syncUserBalance(t.user_id);
+    await syncAccountBalances([previousAccountId, t.account_id]);
     res.json({ transaction: t, balance, message: 'Transaction updated' });
   } catch (error) {
     console.error(error);
@@ -258,6 +298,7 @@ router.delete('/:id', async (req, res) => {
     t.is_deleted = true;
     await t.save();
     const balance = await syncUserBalance(t.user_id);
+    await syncAccountBalances([t.account_id]);
 
     res.json({ balance, message: 'Transaction deleted' });
   } catch (error) {
@@ -278,12 +319,19 @@ router.post('/bulk-delete', async (req, res) => {
       return res.status(400).json({ error: 'No valid transaction IDs provided' });
     }
 
+    const affectedAccountIds = await Transaction.find({
+      _id: { $in: validIds },
+      user_id: req.user.id,
+      is_deleted: { $ne: true },
+    }).distinct('account_id');
+
     const result = await Transaction.updateMany(
       { _id: { $in: validIds }, user_id: req.user.id },
       { $set: { is_deleted: true } }
     );
 
     const balance = await syncUserBalance(req.user.id);
+    await syncAccountBalances(affectedAccountIds);
     res.json({ balance, deletedCount: result.modifiedCount, message: `${result.modifiedCount} transactions deleted` });
   } catch (error) {
     console.error(error);

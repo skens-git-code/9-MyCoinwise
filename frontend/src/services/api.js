@@ -3,13 +3,14 @@ import axios from 'axios';
 // This will use the Vercel variable in production,
 // and your local server while you're coding.
 const API_URL = import.meta.env.VITE_API_URL || 'https://nine-budgettracker.onrender.com/api';
+export const getStoredToken = () => localStorage.getItem('mcw-token') || sessionStorage.getItem('mcw-token');
 
 // ── Global timeout: 15s prevents hanging forever on Render cold start ──
 axios.defaults.timeout = 15000;
 
 // --- Axios Request Interceptor for JWT ---
 axios.interceptors.request.use((config) => {
-  const token = localStorage.getItem('mcw-token');
+  const token = getStoredToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -24,6 +25,7 @@ axios.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('mcw-token');
+      sessionStorage.removeItem('mcw-token');
     }
     return Promise.reject(error);
   }
@@ -62,6 +64,10 @@ export const api = {
   },
   getMe: async () => {
     const res = await axios.get(`${API_URL}/auth/me`);
+    return res.data;
+  },
+  logout: async () => {
+    const res = await axios.post(`${API_URL}/auth/logout`);
     return res.data;
   },
 
@@ -196,6 +202,10 @@ export const api = {
   },
   clearCalculations: async (userId) => {
     const res = await axios.delete(`${API_URL}/calculations/${userId}`);
+    return res.data;
+  },
+  deleteCalculation: async (userId, clientId) => {
+    const res = await axios.delete(`${API_URL}/calculations/${userId}/${encodeURIComponent(clientId)}`);
     return res.data;
   },
 

@@ -1,31 +1,35 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Edit3, Trash2, AlertCircle, Calendar, Wallet } from 'lucide-react';
+import { Plus, Edit3, Trash2, AlertCircle, Calendar, Wallet, Copy, ToggleLeft, ToggleRight } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { api } from '../services/api';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
 
+// Predefined colors for budget cards
 const BUDGET_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6', '#f43f5e', '#14b8a6'];
 
 export default function Budgets() {
-  const { budgets = [], refetch, fmt, transactions = [] } = useContext(AppContext);
+  const { budgets = [], refetch, fmt, transactions = [], loading } = useContext(AppContext);
   const { showToast } = useToast();
 
+  // UI state
   const [showAdd, setShowAdd] = useState(false);
   const [editingBudget, setEditingBudget] = useState(null);
   const [budgetToDelete, setBudgetToDelete] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Form Fields
+  // Form fields
   const [name, setName] = useState('');
   const [type, setType] = useState('monthly');
   const [totalLimit, setTotalLimit] = useState('');
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [rolloverEnabled, setRolloverEnabled] = useState(false);
+  const [isActive, setIsActive] = useState(true); // NEW: active toggle
   const [formError, setFormError] = useState('');
 
+  // Reset form to default (or editing state)
   const resetForm = () => {
     setName('');
     setType('monthly');
@@ -33,34 +37,63 @@ export default function Budgets() {
     setPeriodStart('');
     setPeriodEnd('');
     setRolloverEnabled(false);
+    setIsActive(true);
     setEditingBudget(null);
     setFormError('');
   };
 
+  // Open edit mode with existing budget data
   const openEdit = (budget) => {
     setEditingBudget(budget);
     setName(budget.name || '');
     setType(budget.type || 'monthly');
     setTotalLimit(String(budget.total_limit ?? ''));
-    setPeriodStart(budget.period_start ? new Date(budget.period_start).toISOString().slice(0, 10) : '');
-    setPeriodEnd(budget.period_end ? new Date(budget.period_end).toISOString().slice(0, 10) : '');
+    // Safely format dates
+    const start = budget.period_start ? new Date(budget.period_start) : null;
+    const end = budget.period_end ? new Date(budget.period_end) : null;
+    setPeriodStart(start ? start.toISOString().slice(0, 10) : '');
+    setPeriodEnd(end ? end.toISOString().slice(0, 10) : '');
     setRolloverEnabled(budget.rollover_enabled || false);
+    setIsActive(budget.is_active !== undefined ? budget.is_active : true);
     setFormError('');
     setShowAdd(true);
   };
 
+  // Pre-fill form for duplicating a budget (copy)
+  const openDuplicate = (budget) => {
+    setEditingBudget(null); // ensure it's treated as new
+    setName(budget.name ? `${budget.name} (copy)` : '');
+    setType(budget.type || 'monthly');
+    setTotalLimit(String(budget.total_limit ?? ''));
+    const start = budget.period_start ? new Date(budget.period_start) : null;
+    const end = budget.period_end ? new Date(budget.period_end) : null;
+    setPeriodStart(start ? start.toISOString().slice(0, 10) : '');
+    setPeriodEnd(end ? end.toISOString().slice(0, 10) : '');
+    setRolloverEnabled(budget.rollover_enabled || false);
+    setIsActive(true);
+    setFormError('');
+    setShowAdd(true);
+  };
+
+  // Handle form submission (create or update)
   const handleSubmit = async (e) => {
     e.preventDefault();
     const trimmedName = name.trim();
     const limit = Number(totalLimit);
+
+    // Validation
     if (!trimmedName || !Number.isFinite(limit) || limit <= 0) {
       setFormError('Enter a budget name and a positive limit.');
       return;
     }
-    if (!periodStart || !periodEnd || periodEnd < periodStart) {
+    // Date validation using Date objects
+    const startDate = new Date(periodStart);
+    const endDate = new Date(periodEnd);
+    if (!periodStart || !periodEnd || isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || endDate < startDate) {
       setFormError('Choose a valid date range. The end date cannot be before the start date.');
       return;
     }
+
     setIsSubmitting(true);
     try {
       const payload = {
@@ -69,9 +102,10 @@ export default function Budgets() {
         total_limit: limit,
         period_start: periodStart,
         period_end: periodEnd,
-        rollover_enabled: rolloverEnabled
+        rollover_enabled: rolloverEnabled,
+        is_active: isActive, // NEW: include active status
       };
-      
+
       if (editingBudget) {
         await api.updateBudget(editingBudget.id || editingBudget._id, payload);
         showToast('success', 'Budget updated successfully!');
@@ -89,6 +123,7 @@ export default function Budgets() {
     }
   };
 
+  // Delete handler
   const handleDelete = async () => {
     if (!budgetToDelete) return;
     try {
@@ -101,28 +136,54 @@ export default function Budgets() {
     }
   };
 
-  // Compute live spending against budgets based on transactions
+  // Compute live spending against budgets
   const activeBudgets = useMemo(() => {
-    return budgets.filter(b => b.is_active !== false).map(b => {
-      const start = new Date(b.period_start).getTime();
-      const end = new Date(b.period_end).getTime();
-      const spent = transactions
-        .filter(t => t.type === 'expense' && t.is_deleted !== true)
-        .filter(t => {
-          const tTime = new Date(t.date).getTime();
-          return tTime >= start && tTime <= end;
-        })
-        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-      const backendSpent = Number(b.total_spent);
-      const reliableSpent = Number.isFinite(backendSpent) ? backendSpent : spent;
-      
-      const remaining = Math.max(0, b.total_limit + (b.rollover_amount || 0) - reliableSpent);
-      const limit = b.total_limit + (b.rollover_amount || 0);
-      const progress = limit > 0 ? Math.min(100, (reliableSpent / limit) * 100) : 0;
-      
-      return { ...b, spent: reliableSpent, remaining, progress, limit };
-    });
+    // Assign a deterministic color based on index or id
+    return budgets
+      .filter(b => b.is_active !== false) // show only active by default (we can still show inactive if we want, but we filter)
+      .map((b, index) => {
+        const start = new Date(b.period_start).getTime();
+        const end = new Date(b.period_end).getTime();
+        const spent = transactions
+          .filter(t => t.type === 'expense' && t.is_deleted !== true)
+          .filter(t => {
+            const tTime = new Date(t.date).getTime();
+            return tTime >= start && tTime <= end;
+          })
+          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        const backendSpent = Number(b.total_spent);
+        const reliableSpent = Number.isFinite(backendSpent) ? backendSpent : spent;
+
+        const rolloverAmount = Number(b.rollover_amount) || 0;
+        const baseLimit = Number(b.total_limit) || 0;
+        const limit = baseLimit + rolloverAmount;
+        const remaining = Math.max(0, limit - reliableSpent);
+        const progress = limit > 0 ? Math.min(100, (reliableSpent / limit) * 100) : 0;
+
+        // Assign a color from the palette (based on index or hash)
+        const colorIndex = (b.id || b._id || index).toString().length % BUDGET_COLORS.length;
+        const color = BUDGET_COLORS[colorIndex];
+
+        return {
+          ...b,
+          spent: reliableSpent,
+          remaining,
+          progress,
+          limit,
+          rolloverAmount,
+          color,
+        };
+      });
   }, [budgets, transactions]);
+
+  // If budgets are still loading, show a simple loading indicator
+  if (loading && budgets.length === 0) {
+    return (
+      <div className="budget-page" style={{ padding: 'var(--spacing-lg)', maxWidth: '1200px', margin: '0 auto' }}>
+        <p>Loading budgets...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="budget-page" style={{ padding: 'var(--spacing-lg)', maxWidth: '1200px', margin: '0 auto' }}>
@@ -145,12 +206,13 @@ export default function Budgets() {
         </div>
       ) : (
         <div className="budgets-grid">
-          {activeBudgets.map(b => (
-            <motion.div 
+          {activeBudgets.map((b) => (
+            <motion.div
               key={b.id || b._id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="budget-card"
+              style={{ borderLeft: `4px solid ${b.color}` }} // accent color
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                 <div>
@@ -159,9 +221,22 @@ export default function Budgets() {
                     <Calendar size={14} />
                     <span>{new Date(b.period_start).toLocaleDateString()} - {new Date(b.period_end).toLocaleDateString()}</span>
                   </div>
+                  {/* Show rollover amount if any */}
+                  {b.rolloverAmount > 0 && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      Rollover: {fmt(b.rolloverAmount)}
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  {/* Active/Inactive indicator */}
+                  {b.is_active ? (
+                    <ToggleRight size={18} color="var(--success-color)" title="Active" />
+                  ) : (
+                    <ToggleLeft size={18} color="var(--text-muted)" title="Inactive" />
+                  )}
                   <button onClick={() => openEdit(b)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Edit3 size={16} /></button>
+                  <button onClick={() => openDuplicate(b)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Copy size={16} /></button>
                   <button onClick={() => setBudgetToDelete(b)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={16} /></button>
                 </div>
               </div>
@@ -181,17 +256,23 @@ export default function Budgets() {
                 </div>
               </div>
 
-              <div style={{ height: '8px', background: 'var(--bg-color)', borderRadius: '4px', overflow: 'hidden' }}>
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(100, b.progress)}%` }}
-                  transition={{ duration: 1, ease: 'easeOut' }}
-                  style={{
-                    height: '100%',
-                    background: b.progress >= 100 ? 'var(--danger-color)' : b.progress >= 80 ? 'var(--warning-color)' : 'var(--primary-color)',
-                    borderRadius: '4px'
-                  }}
-                />
+              {/* Progress bar with warning icon if >=80% */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ flex: 1, height: '8px', background: 'var(--bg-color)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(100, b.progress)}%` }}
+                    transition={{ duration: 1, ease: 'easeOut' }}
+                    style={{
+                      height: '100%',
+                      background: b.progress >= 100 ? 'var(--danger-color)' : b.progress >= 80 ? 'var(--warning-color)' : b.color,
+                      borderRadius: '4px'
+                    }}
+                  />
+                </div>
+                {b.progress >= 80 && (
+                  <AlertCircle size={16} color={b.progress >= 100 ? 'var(--danger-color)' : 'var(--warning-color)'} title="Budget nearly exhausted" />
+                )}
               </div>
               <div style={{ textAlign: 'right', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 {b.progress.toFixed(0)}% used
@@ -237,6 +318,11 @@ export default function Budgets() {
               <div className="budget-rollover-field">
                 <input type="checkbox" id="rollover" checked={rolloverEnabled} onChange={e => setRolloverEnabled(e.target.checked)} />
                 <label htmlFor="rollover">Enable rollover (carry remaining budget forward)</label>
+              </div>
+              {/* NEW: Active toggle */}
+              <div className="budget-rollover-field">
+                <input type="checkbox" id="active-toggle" checked={isActive} onChange={e => setIsActive(e.target.checked)} />
+                <label htmlFor="active-toggle">Active (visible and tracked)</label>
               </div>
               {formError && <p className="form-error" role="alert">{formError}</p>}
               <div className="budget-form-actions">

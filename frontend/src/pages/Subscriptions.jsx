@@ -12,14 +12,14 @@ import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
 
 const PRESETS = [
-  { name: 'Netflix', amount: 15.49, icon: 'Tv', color: '#ef4444' },
-  { name: 'Spotify', amount: 5.99, icon: 'Music', color: '#10b981' },
-  { name: 'YouTube Premium', amount: 13.99, icon: 'PlaySquare', color: '#f59e0b' },
-  { name: 'Apple iCloud', amount: 2.99, icon: 'Cloud', color: '#6b7280' },
+  { name: 'Netflix', amount: 199.00, icon: 'Tv', color: '#ef4444' },
+  { name: 'Spotify', amount: 89.00, icon: 'Music', color: '#10b981' },
+  { name: 'YouTube Premium', amount: 89.00, icon: 'PlaySquare', color: '#f59e0b' },
+  { name: 'Apple iCloud', amount: 1000.00, icon: 'Cloud', color: '#6b7280' },
   { name: 'Discord Nitro', amount: 9.99, icon: 'Gamepad2', color: '#059669' },
-  { name: 'Xbox Game Pass', amount: 14.99, icon: 'Gamepad2', color: '#10b981' },
-  { name: 'Amazon Prime', amount: 14.99, icon: 'Package', color: '#f59e0b' },
-  { name: 'Disney+', amount: 7.99, icon: 'Sparkles', color: '#06b6d4' },
+  { name: 'Xbox Game Pass', amount: 5000.00, icon: 'Gamepad2', color: '#10b981' },
+  { name: 'Amazon Prime', amount: 1200.00, icon: 'Package', color: '#f59e0b' },
+  { name: 'Disney+', amount: 500.00, icon: 'Sparkles', color: '#06b6d4' },
 ];
 
 const IconMap = {

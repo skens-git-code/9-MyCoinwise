@@ -1,111 +1,257 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const { body, param, query, validationResult } = require('express-validator');
 const Goal = require('../models/Goal');
 const checkOwnership = require('../middleware/ownership');
 
 const router = express.Router();
 
+// ---------- Helpers ----------
 const parseMoney = (value, { allowZero = true } = {}) => {
   if (value === '' || value === null || value === undefined) return null;
   const amount = typeof value === 'string' ? Number(value.trim()) : value;
   if (!Number.isFinite(amount) || amount < (allowZero ? 0 : Number.EPSILON) || amount > 999999999.99) return null;
-  const rounded = Math.round(amount * 100) / 100;
-  return Number(rounded.toFixed(2));
+  return Number(amount.toFixed(2));
 };
 
-router.get('/:userId', checkOwnership('userId'), async (req, res) => {
-  try {
-    const goals = await Goal.find({ user_id: req.params.userId }).sort({ created_at: 1 });
-    res.json(goals);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
+const INTERVALS = ['daily', 'weekly', 'monthly'];
+const PRIORITIES = ['low', 'medium', 'high'];
 
-router.post('/', async (req, res) => {
-  const { name, target, saved, color, icon, deadline, priority, category, notes, auto_save_amount, auto_save_interval } = req.body;
-  const user_id = req.user.id;
-  try {
-    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Goal name is required.' });
+// ---------- GET: List all goals for a user ----------
+router.get(
+  '/:userId',
+  checkOwnership('userId'),
+  [
+    param('userId').isMongoId().withMessage('Invalid user ID.'),
+    query('category').optional().isString().trim().escape(),
+    query('priority').optional().isIn(PRIORITIES),
+    query('achieved').optional().isBoolean().toBoolean(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    try {
+      const filter = { user_id: req.params.userId };
+      if (req.query.category) filter.category = req.query.category;
+      if (req.query.priority) filter.priority = req.query.priority;
+      if (req.query.achieved !== undefined) filter.achieved = req.query.achieved;
+
+      const goals = await Goal.find(filter).sort({ created_at: 1 });
+      res.json(goals);
+    } catch (error) {
+      console.error('[Goals] list error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+);
+
+// ---------- GET: Single goal by ID ----------
+router.get(
+  '/single/:id',
+  checkOwnership('id', { model: Goal, paramName: 'id' }), // checks the goal's user_id
+  [
+    param('id').isMongoId().withMessage('Invalid goal ID.'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    try {
+      const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user.id });
+      if (!goal) return res.status(404).json({ error: 'Goal not found.' });
+      res.json(goal);
+    } catch (error) {
+      console.error('[Goals] get error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+);
+
+// ---------- POST: Create a new goal ----------
+router.post(
+  '/',
+  [
+    body('name').isString().trim().notEmpty().withMessage('Goal name is required.'),
+    body('target').isFloat({ min: 0.01 }).withMessage('Target must be a positive number.'),
+    body('saved').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
+    body('color').optional().isString().trim().matches(/^#[0-9a-f]{6}$/i).withMessage('Invalid hex color.'),
+    body('icon').optional().isString().trim().isLength({ max: 40 }),
+    body('deadline').optional({ nullable: true }).isISO8601().toDate(),
+    body('priority').optional().isIn(PRIORITIES),
+    body('category').optional().isString().trim().notEmpty(),
+    body('notes').optional().isString().trim().isLength({ max: 1000 }),
+    body('auto_save_amount').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
+    body('auto_save_interval').optional().isIn(INTERVALS),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { name, target, saved = 0, color, icon, deadline, priority, category, notes, auto_save_amount, auto_save_interval } = req.body;
+
     const targetNum = parseMoney(target, { allowZero: false });
-    if (targetNum === null) return res.status(400).json({ error: 'Target must be a positive number with at most 2 decimal places.' });
-    const savedNum = saved !== undefined && saved !== '' ? parseMoney(saved, { allowZero: true }) : 0;
-    if (savedNum === null) return res.status(400).json({ error: 'Already saved amount must be a non-negative number.' });
-    if (savedNum > targetNum) return res.status(400).json({ error: 'Already saved amount cannot exceed target.' });
+    if (targetNum === null) {
+      return res.status(400).json({ error: 'Target must be a positive number with at most 2 decimal places.' });
+    }
 
-    const goalData = { user_id, name: String(name).trim(), target: targetNum, saved: savedNum, color, icon };
+    const savedNum = parseMoney(saved, { allowZero: true });
+    if (savedNum === null) {
+      return res.status(400).json({ error: 'Already saved amount must be a non‑negative number.' });
+    }
+    if (savedNum > targetNum) {
+      return res.status(400).json({ error: 'Already saved cannot exceed target.' });
+    }
 
-    if (deadline) goalData.deadline = new Date(deadline);
-    if (priority) goalData.priority = String(priority).toLowerCase().trim();
-    if (category) goalData.category = String(category).toLowerCase().trim();
-    if (notes) goalData.notes = String(notes).trim().substring(0, 1000);
-    if (auto_save_amount !== undefined) goalData.auto_save_amount = auto_save_amount;
-    if (auto_save_interval) goalData.auto_save_interval = auto_save_interval;
+    const goalData = {
+      user_id: req.user.id,
+      name: String(name).trim(),
+      target: targetNum,
+      saved: savedNum,
+      color: color || '#3b82f6',
+      icon: icon || '🎯',
+      deadline: deadline || null,
+      priority: priority || 'medium',
+      category: category ? String(category).toLowerCase().trim() : 'other',
+      notes: notes ? String(notes).trim().slice(0, 1000) : '',
+      auto_save_amount: auto_save_amount !== undefined ? parseMoney(auto_save_amount, { allowZero: true }) : null,
+      auto_save_interval: auto_save_interval || null,
+      achieved: false,
+      achieved_at: null,
+    };
 
-    const goal = await Goal.create(goalData);
-    res.json({ id: goal._id, message: 'Goal created', goal });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+    try {
+      const goal = await Goal.create(goalData);
+      res.status(201).json({ id: goal._id, message: 'Goal created', goal });
+    } catch (error) {
+      console.error('[Goals] create error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
   }
-});
+);
 
-router.put('/:id', async (req, res) => {
-  try {
-    const goal = await Goal.findById(req.params.id);
-    if (!goal) return res.status(404).json({ error: 'Goal not found' });
-    if (goal.user_id.toString() !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+// ---------- PUT: Update a goal ----------
+router.put(
+  '/:id',
+  checkOwnership('id', { model: Goal, paramName: 'id' }), // custom middleware that checks user_id
+  [
+    param('id').isMongoId().withMessage('Invalid goal ID.'),
+    body('name').optional().isString().trim().notEmpty(),
+    body('target').optional().isFloat({ min: 0.01 }).toFloat(),
+    body('saved').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
+    body('color').optional().isString().trim().matches(/^#[0-9a-f]{6}$/i),
+    body('icon').optional().isString().trim().isLength({ max: 40 }),
+    body('deadline').optional({ nullable: true }).isISO8601().toDate(),
+    body('priority').optional().isIn(PRIORITIES),
+    body('category').optional().isString().trim().notEmpty(),
+    body('notes').optional().isString().trim().isLength({ max: 1000 }),
+    body('auto_save_amount').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
+    body('auto_save_interval').optional().isIn(INTERVALS),
+    body('achieved').optional().isBoolean().toBoolean(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { saved, name, target, color, icon, deadline, priority, category, notes, auto_save_amount, auto_save_interval } = req.body;
-    if (saved !== undefined) {
-      const savedNum = parseMoney(saved);
-      if (savedNum === null) return res.status(400).json({ error: 'Saved amount must be a non-negative number.' });
-      goal.saved = savedNum;
+    try {
+      const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user.id });
+      if (!goal) return res.status(404).json({ error: 'Goal not found.' });
+
+      const {
+        name, target, saved, color, icon, deadline, priority,
+        category, notes, auto_save_amount, auto_save_interval, achieved,
+      } = req.body;
+
+      // Update fields
+      if (name !== undefined) goal.name = String(name).trim();
+      if (target !== undefined) {
+        const targetNum = parseMoney(target, { allowZero: false });
+        if (targetNum === null) return res.status(400).json({ error: 'Target must be a positive number.' });
+        goal.target = targetNum;
+      }
+      if (saved !== undefined) {
+        const savedNum = parseMoney(saved, { allowZero: true });
+        if (savedNum === null) return res.status(400).json({ error: 'Saved amount must be a non‑negative number.' });
+        goal.saved = savedNum;
+      }
+      if (color !== undefined) goal.color = color;
+      if (icon !== undefined) goal.icon = icon;
+      if (deadline !== undefined) {
+        if (deadline === null) {
+          goal.deadline = null;
+        } else {
+          const d = new Date(deadline);
+          if (isNaN(d.getTime())) return res.status(400).json({ error: 'Invalid deadline date.' });
+          goal.deadline = d;
+        }
+      }
+      if (priority !== undefined) {
+        if (!PRIORITIES.includes(priority)) return res.status(400).json({ error: 'Invalid priority.' });
+        goal.priority = priority;
+      }
+      if (category !== undefined) {
+        goal.category = category ? String(category).toLowerCase().trim() : 'other';
+      }
+      if (notes !== undefined) {
+        goal.notes = notes ? String(notes).trim().slice(0, 1000) : '';
+      }
+      if (auto_save_amount !== undefined) {
+        goal.auto_save_amount = auto_save_amount !== null ? parseMoney(auto_save_amount, { allowZero: true }) : null;
+      }
+      if (auto_save_interval !== undefined) {
+        if (auto_save_interval !== null && !INTERVALS.includes(auto_save_interval)) {
+          return res.status(400).json({ error: 'Invalid auto‑save interval.' });
+        }
+        goal.auto_save_interval = auto_save_interval || null;
+      }
+
+      // Handle "achieved" status
+      if (achieved !== undefined) {
+        const wasAchieved = goal.achieved;
+        goal.achieved = achieved;
+        if (achieved && !wasAchieved) {
+          goal.achieved_at = new Date();
+          // Optionally set saved = target?
+          // We can leave it up to the frontend to manage saved amount.
+        } else if (!achieved && wasAchieved) {
+          goal.achieved_at = null;
+        }
+      }
+
+      // Validate: saved cannot exceed target
+      if (goal.saved > goal.target) {
+        return res.status(400).json({ error: 'Saved amount cannot exceed target.' });
+      }
+
+      await goal.save();
+      res.json({ message: 'Goal updated', goal });
+    } catch (error) {
+      console.error('[Goals] update error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
     }
-    if (name !== undefined) goal.name = String(name).trim();
-    if (target !== undefined) {
-      const targetNum = parseMoney(target, { allowZero: false });
-      if (targetNum === null) return res.status(400).json({ error: 'Target must be a positive number.' });
-      goal.target = targetNum;
-    }
-    if (goal.saved > goal.target) return res.status(400).json({ error: 'Saved amount cannot exceed target.' });
-    if (color !== undefined) goal.color = color;
-    if (icon !== undefined) goal.icon = icon;
-    if (deadline !== undefined) {
-      const parsedDeadline = new Date(deadline);
-      if (Number.isNaN(parsedDeadline.getTime())) return res.status(400).json({ error: 'Invalid deadline.' });
-      goal.deadline = parsedDeadline;
-    }
-    if (priority !== undefined) goal.priority = priority;
-    if (category !== undefined) goal.category = category;
-    if (notes !== undefined) goal.notes = notes;
-    if (auto_save_amount !== undefined) {
-      const autoAmount = parseMoney(auto_save_amount);
-      if (autoAmount === null) return res.status(400).json({ error: 'Auto-save amount must be non-negative.' });
-      goal.auto_save_amount = autoAmount;
-    }
-    if (auto_save_interval !== undefined) goal.auto_save_interval = auto_save_interval;
-    await goal.save();
-    res.json({ message: 'Goal updated', goal });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
   }
-});
+);
 
-router.delete('/:id', async (req, res) => {
-  try {
-    const goal = await Goal.findById(req.params.id);
-    if (!goal) return res.status(404).json({ error: 'Goal not found' });
-    if (goal.user_id.toString() !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+// ---------- DELETE: Remove a goal ----------
+router.delete(
+  '/:id',
+  checkOwnership('id', { model: Goal, paramName: 'id' }),
+  [
+    param('id').isMongoId().withMessage('Invalid goal ID.'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    await Goal.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Goal deleted' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    try {
+      const goal = await Goal.findOneAndDelete({ _id: req.params.id, user_id: req.user.id });
+      if (!goal) return res.status(404).json({ error: 'Goal not found.' });
+      res.json({ message: 'Goal deleted' });
+    } catch (error) {
+      console.error('[Goals] delete error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
   }
-});
+);
 
 module.exports = router;

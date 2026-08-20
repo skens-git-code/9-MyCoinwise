@@ -3,9 +3,11 @@ const { body, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 const User = require('../models/User');
 const LoginLog = require('../models/LoginLog');
 const Transaction = require('../models/Transaction');
+const Session = require('../models/Session');
 const auth = require('../middleware/auth');
 const { logger, auditLogger } = require('../utils/logger');
 
@@ -20,6 +22,24 @@ const authLimiter = rateLimit({
 const CURRENCY_CODES = new Set(['USD', 'INR', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SGD', 'AED', 'CHF', 'CNY', 'MXN', 'BRL', 'KRW', 'THB']);
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+const createSessionToken = async (user, req, { rememberMe = true, browser, os, device_type } = {}) => {
+  const tokenId = crypto.randomUUID();
+  const token = jwt.sign(
+    { id: user._id, session_version: user.session_version || 0, jti: tokenId },
+    process.env.JWT_SECRET,
+    { expiresIn: rememberMe ? '30d' : '1d' }
+  );
+  const device = [browser, os, device_type].filter(Boolean).join(' · ') || 'Unknown device';
+  await Session.create({
+    user_id: user._id,
+    token_id: tokenId,
+    device,
+    ip: req.ip || req.headers['x-forwarded-for'] || '',
+    user_agent: req.headers['user-agent'] || '',
+  });
+  return token;
+};
 
 const getTransactionBalance = async (userId) => {
   const [result] = await Transaction.aggregate([
@@ -46,7 +66,12 @@ router.use(authLimiter);
 router.post('/register', [
   body('username').notEmpty().trim().isLength({ min: 2, max: 80 }),
   body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 6 })
+  body('password')
+    .isLength({ min: 8 })
+    .matches(/[a-z]/)
+    .matches(/[A-Z]/)
+    .matches(/\d/)
+    .matches(/[^a-zA-Z0-9]/)
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -66,7 +91,9 @@ router.post('/register', [
       return res.status(503).json({ error: 'Database unavailable. Start MongoDB or configure a reachable MONGO_URI.' });
     }
     const user = await User.create({ username: username.trim(), email, password, currency, profile_avatar, profile_color });
-    const token = jwt.sign({ id: user._id, session_version: user.session_version }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    user.household_id = user._id;
+    await user.save();
+    const token = await createSessionToken(user, req, { browser, os, device_type });
 
     await LoginLog.create({
       user_id: user._id, email, status: 'success', reason: 'registered',
@@ -74,7 +101,15 @@ router.post('/register', [
       failed_attempts_before: 0
     }).catch(() => { });
 
-    res.status(201).json({ token, user: { id: user._id, username, email } });
+    res.status(201).json({ token, user: {
+      id: user._id,
+      username: user.username,
+      last_name: user.last_name,
+      profession: user.profession,
+      email: user.email,
+      profile_avatar: user.profile_avatar,
+      profile_color: user.profile_color,
+    } });
   } catch (error) {
     if (error.code === 11000) {
       if (error.keyPattern && error.keyPattern.username) {
@@ -147,7 +182,12 @@ router.post('/login', [
     }
 
     await user.resetLoginAttempts(ipAddr);
-    const token = jwt.sign({ id: user._id, session_version: user.session_version }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = await createSessionToken(user, req, {
+      rememberMe: req.body.rememberMe !== false,
+      browser,
+      os,
+      device_type,
+    });
 
     await LoginLog.create({
       user_id: user._id, email, status: 'success', reason: 'login',
@@ -155,7 +195,15 @@ router.post('/login', [
       failed_attempts_before: 0
     }).catch(() => { });
 
-    res.json({ token, user: { id: user._id, username: user.username, email: user.email } });
+    res.json({ token, user: {
+      id: user._id,
+      username: user.username,
+      last_name: user.last_name,
+      profession: user.profession,
+      email: user.email,
+      profile_avatar: user.profile_avatar,
+      profile_color: user.profile_color,
+    } });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Server error' });
@@ -175,7 +223,14 @@ router.get('/me', auth, async (req, res) => {
 
 router.post('/logout', auth, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.user.id, { $inc: { session_version: 1 } });
+    if (req.user.jti) {
+      await Session.updateOne(
+        { token_id: req.user.jti, user_id: req.user.id },
+        { $set: { is_active: false, last_active: new Date() } }
+      );
+    } else {
+      await User.findByIdAndUpdate(req.user.id, { $inc: { session_version: 1 } });
+    }
     auditLogger.info('User logged out', { userId: req.user.id, ip: req.ip });
     res.json({ message: 'Logged out successfully.' });
   } catch (error) {
@@ -196,6 +251,7 @@ router.post('/change-password', auth, async (req, res) => {
     user.password = newPassword;
     user.session_version += 1;
     await user.save();
+    await Session.updateMany({ user_id: user._id, is_active: true }, { $set: { is_active: false } });
     auditLogger.info('Password changed', { userId: req.user.id, ip: req.ip });
     res.json({ message: 'Password updated. Please log in again.' });
   } catch (error) {

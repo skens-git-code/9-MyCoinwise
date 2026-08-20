@@ -1,4 +1,6 @@
-import React, { useContext, useMemo, useState, useRef } from 'react';
+import React, {
+  useContext, useMemo, useState, useRef, useCallback, useEffect, memo
+} from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AppContext } from '../contexts/AppContext';
 import {
@@ -8,16 +10,18 @@ import {
 import {
   TrendingUp, TrendingDown, AlertTriangle, CheckCircle2,
   Calendar, Download, Share2, Sparkles, Eye, ShieldAlert,
-  ArrowUpRight, ArrowDownRight, Layers, BarChart3, HelpCircle
+  ArrowUpRight, ArrowDownRight, Layers, BarChart3, HelpCircle,
+  X, Filter, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useToast } from '../components/ToastProvider';
 
-// Constants
-const PIE_COLORS = ['#059669', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#8b5cf6', '#3b82f6', '#f97316', '#14b8a6'];
-const CATEGORY_COLORS = ['#10b981', '#06b6d4', '#f59e0b', '#8b5cf6', '#ec4899', '#3b82f6', '#ef4444', '#14b8a6'];
-const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// ---------- Constants ----------
+const PIE_COLORS_LIGHT = ['#059669', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#8b5cf6', '#3b82f6', '#f97316', '#14b8a6'];
+const PIE_COLORS_DARK = ['#34d399', '#22d3ee', '#fbbf24', '#6ee7b7', '#f87171', '#f472b6', '#a78bfa', '#60a5fa', '#fb923c', '#5eead4'];
+const CATEGORY_COLORS_LIGHT = ['#10b981', '#06b6d4', '#f59e0b', '#8b5cf6', '#ec4899', '#3b82f6', '#ef4444', '#14b8a6'];
+const CATEGORY_COLORS_DARK = ['#34d399', '#22d3ee', '#fbbf24', '#a78bfa', '#f472b6', '#60a5fa', '#f87171', '#5eead4'];
 
-// Utility functions
+// ---------- Utilities ----------
 const validateTransaction = (t) => {
   if (!t || typeof t !== 'object') return false;
   if (!t.date || isNaN(new Date(t.date).getTime())) return false;
@@ -32,10 +36,31 @@ const safeParseAmount = (amount) => {
   return isNaN(num) || num < 0 ? 0 : num;
 };
 
-// Custom Tooltip Component
-const CustomTooltip = ({ active, payload, label, isDark, fmt }) => {
+const formatDelta = (cur, prev) => {
+  if (prev === 0) {
+    return cur > 0 ? '+∞' : cur < 0 ? '-∞' : '0%';
+  }
+  if (Math.abs(prev) < 0.01 && Math.abs(cur) < 0.01) return '0%';
+  const delta = ((cur - prev) / Math.abs(prev)) * 100;
+  if (!Number.isFinite(delta)) return '∞';
+  if (Math.abs(delta) > 9999) return delta > 0 ? '>9999%' : '<-9999%';
+  return `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%`;
+};
+
+const toMonthKey = (date) => {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const formatMonthLabel = (key) => {
+  const [year, month] = key.split('-');
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+};
+
+// ---------- Custom Tooltip (memoized) ----------
+const CustomTooltip = memo(({ active, payload, label, isDark, fmt }) => {
   if (!active || !payload || !payload.length) return null;
-  
   return (
     <div className="custom-tooltip glass" style={{
       backgroundColor: isDark ? 'rgba(10,10,26,0.95)' : 'rgba(255,255,255,0.95)',
@@ -54,31 +79,94 @@ const CustomTooltip = ({ active, payload, label, isDark, fmt }) => {
       ))}
     </div>
   );
+});
+
+// ---------- Drill‑Down Modal ----------
+const DrillDownModal = ({ isOpen, onClose, title, transactions, fmt }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-color)', maxWidth: '600px', width: '90%', maxHeight: '80vh', borderRadius: '16px', padding: '1.5rem', overflow: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <h3>{title}</h3>
+          <button onClick={onClose} aria-label="Close modal"><X size={20} /></button>
+        </div>
+        {transactions.length === 0 ? (
+          <p>No transactions found.</p>
+        ) : (
+          <ul style={{ listStyle: 'none', padding: 0 }}>
+            {transactions.map((t, idx) => (
+              <li key={t.id || t._id || idx} style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
+                <span>{t.note || t.category || 'Uncategorized'} – {new Date(t.date).toLocaleDateString()}</span>
+                <span style={{ fontWeight: 'bold' }}>{fmt ? fmt(t.amount) : t.amount}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
 };
 
+// ---------- Main Component ----------
 export default function Analytics() {
-  const { transactions = [], theme, fmt } = useContext(AppContext);
+  const { transactions = [], theme, fmt: contextFmt } = useContext(AppContext);
   const { showToast } = useToast();
-  
-  const [periodFilter, setPeriodFilter] = useState('month'); // 'month', 'quarter', 'year', 'all'
-  const [chartType, setChartType] = useState('bar');
-  const [showAllEvolutionCategories, setShowAllEvolutionCategories] = useState(false);
-  const [reviewedAnomalies, setReviewedAnomalies] = useState(() => new Set());
-  const chartSectionRef = useRef(null);
-
   const isDark = theme === 'amoled';
 
+  // Fallback fmt
+  const fmt = useCallback(
+    (value) => {
+      if (contextFmt) return contextFmt(value);
+      if (value === undefined || value === null) return '$0.00';
+      const num = Number(value);
+      if (isNaN(num)) return '$0.00';
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
+    },
+    [contextFmt]
+  );
+
+  // ---------- State ----------
+  const [periodFilter, setPeriodFilter] = useState('month');
+  const [chartType, setChartType] = useState('bar');
+  const [showAllEvolutionCategories, setShowAllEvolutionCategories] = useState(false);
+  const [reviewedAnomalies, setReviewedAnomalies] = useState(() => {
+    try {
+      const stored = localStorage.getItem('mycoinwise-reviewed-anomalies');
+      return new Set(stored ? JSON.parse(stored) : []);
+    } catch { return new Set(); }
+  });
+  const [customRange, setCustomRange] = useState({ start: '', end: '' });
+  const [showCustomRange, setShowCustomRange] = useState(false);
+  const [drillData, setDrillData] = useState({ isOpen: false, title: '', transactions: [] });
+
+  const chartSectionRef = useRef(null);
+
+  // ---------- Persist reviewed anomalies ----------
+  useEffect(() => {
+    localStorage.setItem('mycoinwise-reviewed-anomalies', JSON.stringify([...reviewedAnomalies]));
+  }, [reviewedAnomalies]);
+
+  // ---------- Stable Transactions Memo ----------
   const validTransactions = useMemo(() => {
     if (!Array.isArray(transactions)) return [];
+    // Use a stable serialization to avoid recomputation on reference changes
     return transactions.filter(validateTransaction);
-  }, [transactions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(transactions)]);
 
-  // ── Period Comparison Logic (Current vs Previous) ─────────────────────────
+  // ---------- Period Comparison Logic ----------
   const comparisonMetrics = useMemo(() => {
     const now = new Date();
     let currentStart, currentEnd, prevStart, prevEnd;
+    const isAll = periodFilter === 'all';
 
-    if (periodFilter === 'month') {
+    if (isAll) {
+      currentStart = new Date(0);
+      currentEnd = new Date();
+      prevStart = null;
+      prevEnd = null;
+    } else if (periodFilter === 'month') {
       currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
       currentEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
       prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -95,95 +183,99 @@ export default function Analytics() {
       prevStart = new Date(now.getFullYear() - 1, 0, 1);
       prevEnd = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59);
     } else {
-      // All time
-      currentStart = new Date(0);
-      currentEnd = new Date();
-      prevStart = new Date(0);
-      prevEnd = new Date(0);
+      // custom range
+      if (customRange.start && customRange.end) {
+        currentStart = new Date(customRange.start);
+        currentEnd = new Date(customRange.end);
+        // For custom, we don't compute previous automatically; we'll show only current
+        prevStart = null;
+        prevEnd = null;
+      } else {
+        currentStart = new Date(0);
+        currentEnd = new Date();
+        prevStart = null;
+        prevEnd = null;
+      }
     }
 
-    const currentTxs = validTransactions.filter(t => {
-      const d = new Date(t.date);
-      return d >= currentStart && d <= currentEnd;
-    });
+    const filterTxs = (start, end) => {
+      if (!start || !end) return [];
+      return validTransactions.filter(t => {
+        const d = new Date(t.date);
+        return d >= start && d <= end;
+      });
+    };
 
-    const prevTxs = validTransactions.filter(t => {
-      const d = new Date(t.date);
-      return d >= prevStart && d <= prevEnd;
-    });
+    const currentTxs = filterTxs(currentStart, currentEnd);
+    const prevTxs = (prevStart && prevEnd) ? filterTxs(prevStart, prevEnd) : [];
 
     const sumTxs = (list) => {
       const inc = list.filter(t => t.type === 'income').reduce((a, c) => a + safeParseAmount(c.amount), 0);
       const exp = list.filter(t => t.type === 'expense').reduce((a, c) => a + safeParseAmount(c.amount), 0);
-      return { income: inc, expense: exp, net: inc - exp };
+      return { income: inc, expense: exp, net: inc - exp, count: list.length };
     };
 
     const curSum = sumTxs(currentTxs);
     const prevSum = sumTxs(prevTxs);
 
-    const calcDelta = (cur, prev) => {
-      if (prev === 0) return cur > 0 ? 100 : (cur < 0 ? -100 : 0);
-      return ((cur - prev) / Math.abs(prev)) * 100;
-    };
+    const deltaIncome = prevStart ? formatDelta(curSum.income, prevSum.income) : 'N/A';
+    const deltaExpense = prevStart ? formatDelta(curSum.expense, prevSum.expense) : 'N/A';
+    const deltaNet = prevStart ? formatDelta(curSum.net, prevSum.net) : 'N/A';
+
+    // Savings rate
+    const savingsRate = curSum.income > 0 ? ((curSum.net / curSum.income) * 100) : 0;
 
     return {
       current: curSum,
       previous: prevSum,
-      incomeDelta: calcDelta(curSum.income, prevSum.income),
-      expenseDelta: calcDelta(curSum.expense, prevSum.expense),
-      netDelta: calcDelta(curSum.net, prevSum.net)
+      incomeDelta: deltaIncome,
+      expenseDelta: deltaExpense,
+      netDelta: deltaNet,
+      savingsRate,
+      hasComparison: !!prevStart
     };
-  }, [validTransactions, periodFilter]);
+  }, [validTransactions, periodFilter, customRange]);
 
-  // ── Monthly Aggregates ───────────────────────────────────────────────────
+  // ---------- Monthly Aggregates ----------
   const monthlyData = useMemo(() => {
     const monthMap = new Map();
-    
     validTransactions.forEach(t => {
-      const date = new Date(t.date);
-      if (isNaN(date.getTime())) return;
-      
-      const key = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      const key = toMonthKey(t.date);
       const amount = safeParseAmount(t.amount);
-      
       if (!monthMap.has(key)) {
-        monthMap.set(key, { name: key, income: 0, expense: 0, timestamp: date.getTime(), savings: 0 });
+        monthMap.set(key, { name: key, income: 0, expense: 0, timestamp: new Date(t.date).getTime() });
       }
-      
-      const monthData = monthMap.get(key);
-      if (t.type === 'income') monthData.income += amount;
-      else monthData.expense += amount;
+      const data = monthMap.get(key);
+      if (t.type === 'income') data.income += amount;
+      else data.expense += amount;
     });
-    
     return Array.from(monthMap.values())
       .map(m => ({
         ...m,
-        savings: parseFloat((m.income - m.expense).toFixed(2))
+        savings: parseFloat((m.income - m.expense).toFixed(2)),
+        displayName: formatMonthLabel(m.name)
       }))
       .sort((a, b) => a.timestamp - b.timestamp)
       .slice(-8);
   }, [validTransactions]);
 
-  // ── Category Spending Evolution Over Time ─────────────────────────────────
+  // ---------- Category Evolution ----------
   const categoryEvolution = useMemo(() => {
     const catTotals = {};
     validTransactions.filter(t => t.type === 'expense').forEach(t => {
       const c = t.category || 'Other';
       catTotals[c] = (catTotals[c] || 0) + safeParseAmount(t.amount);
     });
-
     const sortedCats = Object.entries(catTotals)
       .sort((a, b) => b[1] - a[1])
       .map(e => e[0]);
-
     const activeCats = showAllEvolutionCategories ? sortedCats.slice(0, 8) : sortedCats.slice(0, 5);
 
     const monthMap = {};
     validTransactions.filter(t => t.type === 'expense').forEach(t => {
-      const date = new Date(t.date);
-      const mKey = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      const mKey = toMonthKey(t.date);
       if (!monthMap[mKey]) {
-        monthMap[mKey] = { name: mKey, timestamp: date.getTime() };
+        monthMap[mKey] = { name: mKey, timestamp: new Date(t.date).getTime() };
         activeCats.forEach(c => { monthMap[mKey][c] = 0; });
       }
       const cat = t.category || 'Other';
@@ -192,11 +284,15 @@ export default function Analytics() {
       }
     });
 
-    const data = Object.values(monthMap).sort((a, b) => a.timestamp - b.timestamp).slice(-6);
+    const data = Object.values(monthMap)
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(-6)
+      .map(d => ({ ...d, displayName: formatMonthLabel(d.name) }));
+
     return { data, categories: activeCats };
   }, [validTransactions, showAllEvolutionCategories]);
 
-  // ── Day of Week Breakdown ─────────────────────────────────────────────────
+  // ---------- Day of Week ----------
   const dayOfWeekData = useMemo(() => {
     const days = [
       { name: 'Sun', expense: 0, income: 0, count: 0 },
@@ -207,9 +303,7 @@ export default function Analytics() {
       { name: 'Fri', expense: 0, income: 0, count: 0 },
       { name: 'Sat', expense: 0, income: 0, count: 0 },
     ];
-
     let weekendExp = 0, weekdayExp = 0;
-
     validTransactions.forEach(t => {
       const d = new Date(t.date).getDay();
       const amt = safeParseAmount(t.amount);
@@ -222,16 +316,12 @@ export default function Analytics() {
       }
       days[d].count++;
     });
-
-    return {
-      days,
-      weekendExp,
-      weekdayExp,
-      weekendPct: (weekendExp + weekdayExp) > 0 ? ((weekendExp / (weekendExp + weekdayExp)) * 100).toFixed(0) : 0
-    };
+    const totalExp = weekendExp + weekdayExp;
+    const weekendPct = totalExp > 0 ? ((weekendExp / totalExp) * 100).toFixed(0) : '0';
+    return { days, weekendExp, weekdayExp, weekendPct: Number(weekendPct) };
   }, [validTransactions]);
 
-  // ── Anomaly Detection (> 2 std deviations from category mean) ─────────────
+  // ---------- Anomaly Detection ----------
   const anomalies = useMemo(() => {
     const catStats = {};
     validTransactions.filter(t => t.type === 'expense').forEach(t => {
@@ -239,18 +329,17 @@ export default function Analytics() {
       if (!catStats[cat]) catStats[cat] = [];
       catStats[cat].push({ tx: t, amount: safeParseAmount(t.amount) });
     });
-
     const flagged = [];
     Object.entries(catStats).forEach(([cat, list]) => {
-      if (list.length < 3) return; // need enough samples
+      if (list.length < 3) return;
       const mean = list.reduce((a, c) => a + c.amount, 0) / list.length;
       const variance = list.reduce((a, c) => a + Math.pow(c.amount - mean, 2), 0) / list.length;
       const stdDev = Math.sqrt(variance);
-
       list.forEach(({ tx, amount }) => {
         if (amount > mean + (2 * stdDev) && amount > 50) {
+          const id = tx.id || tx._id || `${cat}-${tx.date}-${amount}-${Math.random()}`;
           flagged.push({
-            id: tx.id || tx._id || `${cat}-${tx.date}-${amount}`,
+            id,
             tx,
             mean,
             stdDev,
@@ -259,11 +348,15 @@ export default function Analytics() {
         }
       });
     });
-
     return flagged.sort((a, b) => new Date(b.tx.date) - new Date(a.tx.date));
   }, [validTransactions]);
 
-  // ── Expense & Income Category Breakdown ──────────────────────────────────
+  const activeAnomalies = useMemo(
+    () => anomalies.filter(a => !reviewedAnomalies.has(a.id)),
+    [anomalies, reviewedAnomalies]
+  );
+
+  // ---------- Expense Categories ----------
   const expenseCategories = useMemo(() => {
     const map = new Map();
     validTransactions.filter(t => t.type === 'expense').forEach(t => {
@@ -278,31 +371,36 @@ export default function Analytics() {
     })).sort((a, b) => b.value - a.value).slice(0, 8);
   }, [validTransactions]);
 
-  // ── AI Insights Cards ─────────────────────────────────────────────────────
+  // ---------- AI Insights ----------
   const generatedInsights = useMemo(() => {
     const cards = [];
-    if (comparisonMetrics.expenseDelta > 15) {
-      cards.push({
-        type: 'warning',
-        title: 'Spending Acceleration',
-        message: `Your spending this period is ${comparisonMetrics.expenseDelta.toFixed(0)}% higher than the previous period. Consider reviewing discretionary expenses.`
-      });
-    } else if (comparisonMetrics.expenseDelta < -10) {
-      cards.push({
-        type: 'success',
-        title: 'Spending Discipline',
-        message: `Great job! Your spending is down by ${Math.abs(comparisonMetrics.expenseDelta).toFixed(0)}% compared to last period.`
-      });
+    const expDelta = comparisonMetrics.expenseDelta;
+    if (typeof expDelta === 'string' && expDelta.startsWith('+')) {
+      const num = parseFloat(expDelta);
+      if (num > 15) {
+        cards.push({
+          type: 'warning',
+          title: 'Spending Acceleration',
+          message: `Your spending this period is ${num.toFixed(0)}% higher than the previous period. Consider reviewing discretionary expenses.`
+        });
+      }
+    } else if (typeof expDelta === 'string' && expDelta.startsWith('-')) {
+      const num = parseFloat(expDelta);
+      if (num < -10) {
+        cards.push({
+          type: 'success',
+          title: 'Spending Discipline',
+          message: `Great job! Your spending is down by ${Math.abs(num).toFixed(0)}% compared to last period.`
+        });
+      }
     }
-
-    if (Number(dayOfWeekData.weekendPct) >= 40) {
+    if (dayOfWeekData.weekendPct >= 40) {
       cards.push({
         type: 'info',
         title: 'Weekend Outflow Concentration',
         message: `${dayOfWeekData.weekendPct}% of your total expenses occur on Saturdays & Sundays.`
       });
     }
-
     if (expenseCategories.length > 0 && Number(expenseCategories[0]?.percentage) > 35) {
       cards.push({
         type: 'info',
@@ -310,7 +408,13 @@ export default function Analytics() {
         message: `${expenseCategories[0].name} accounts for ${expenseCategories[0].percentage}% of total expenses. Diversifying or budgeting this area will boost net savings.`
       });
     }
-
+    if (comparisonMetrics.savingsRate < 10 && comparisonMetrics.savingsRate >= 0) {
+      cards.push({
+        type: 'warning',
+        title: 'Low Savings Rate',
+        message: `Your savings rate is only ${comparisonMetrics.savingsRate.toFixed(1)}%. Consider cutting non‑essential expenses.`
+      });
+    }
     if (cards.length === 0) {
       cards.push({
         type: 'success',
@@ -318,22 +422,37 @@ export default function Analytics() {
         message: 'Your income-to-expense distribution remains healthy and within normal variance.'
       });
     }
-
     return cards;
   }, [comparisonMetrics, dayOfWeekData, expenseCategories]);
 
-  // ── Export Chart as PNG ───────────────────────────────────────────────────
+  // ---------- Handlers ----------
+  const handleMarkAnomalyReviewed = useCallback((id) => {
+    setReviewedAnomalies(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    showToast('success', 'Transaction marked as reviewed.');
+  }, [showToast]);
+
+  const handleDismissAnomaly = useCallback((id) => {
+    setReviewedAnomalies(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    showToast('success', 'Anomaly dismissed.');
+  }, [showToast]);
+
   const exportChartAsImage = async () => {
     try {
       const { default: html2canvas } = await import('html2canvas');
       if (!chartSectionRef.current) return;
-
       const canvas = await html2canvas(chartSectionRef.current, {
         scale: 2,
         backgroundColor: isDark ? '#090d16' : '#ffffff',
         useCORS: true
       });
-
       const url = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.href = url;
@@ -346,32 +465,89 @@ export default function Analytics() {
     }
   };
 
-  // ── Share Summary to Clipboard ───────────────────────────────────────────
-  const handleShareSummary = () => {
+  const exportCSV = useCallback(() => {
+    const headers = ['Date', 'Type', 'Category', 'Amount', 'Note'];
+    const rows = validTransactions.map(t => [
+      t.date,
+      t.type,
+      t.category || 'Other',
+      safeParseAmount(t.amount),
+      t.note || ''
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `mycoinwise_data_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast('success', 'CSV exported successfully!');
+  }, [validTransactions, showToast]);
+
+  const handleShareSummary = useCallback(() => {
     const text = `📊 MyCoinwise Financial Report (${periodFilter.toUpperCase()})
 • Inflow: ${fmt(comparisonMetrics.current.income)}
 • Outflow: ${fmt(comparisonMetrics.current.expense)}
 • Net Savings: ${fmt(comparisonMetrics.current.net)}
+• Savings Rate: ${comparisonMetrics.savingsRate.toFixed(1)}%
 • Top Category: ${expenseCategories[0]?.name || 'N/A'} (${expenseCategories[0]?.percentage || 0}%)
-• Period vs Period Expense Shift: ${comparisonMetrics.expenseDelta >= 0 ? '+' : ''}${comparisonMetrics.expenseDelta.toFixed(1)}%`;
-
+• Period vs Period Expense Shift: ${comparisonMetrics.expenseDelta}`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text);
       showToast('success', 'Financial summary copied to clipboard!');
+    } else {
+      showToast('error', 'Clipboard not available.');
     }
-  };
+  }, [periodFilter, fmt, comparisonMetrics, expenseCategories, showToast]);
 
-  const handleMarkAnomalyReviewed = (id) => {
-    setReviewedAnomalies(prev => {
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-    showToast('success', 'Transaction marked as reviewed.');
-  };
+  const handleChartClick = useCallback((data, chartType) => {
+    if (!data) return;
+    let title = '';
+    let filtered = [];
+    if (chartType === 'bar' && data.activeLabel) {
+      // Click on a monthly bar – show transactions in that month
+      const monthKey = data.activeLabel; // this is the display name, but we need to map back to YYYY-MM
+      // Find the month key from monthlyData
+      const monthEntry = monthlyData.find(m => m.displayName === monthKey);
+      if (monthEntry) {
+        const key = monthEntry.name;
+        const start = new Date(key);
+        const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+        filtered = validTransactions.filter(t => {
+          const d = new Date(t.date);
+          return d >= start && d <= end;
+        });
+        title = `Transactions for ${monthKey}`;
+      }
+    } else if (chartType === 'pie' && data && data.name) {
+      // Click on a pie slice – show transactions in that category
+      const cat = data.name;
+      filtered = validTransactions.filter(t => (t.category || 'Other') === cat && t.type === 'expense');
+      title = `Expenses in "${cat}"`;
+    }
+    if (filtered.length > 0) {
+      setDrillData({ isOpen: true, title, transactions: filtered });
+    } else {
+      showToast('info', 'No transactions found for this selection.');
+    }
+  }, [monthlyData, validTransactions, showToast]);
 
-  const activeAnomalies = anomalies.filter(a => !reviewedAnomalies.has(a.id));
+  // ---------- Custom Range ----------
+  const applyCustomRange = useCallback(() => {
+    if (customRange.start && customRange.end) {
+      setPeriodFilter('custom');
+      showToast('success', 'Custom range applied.');
+    } else {
+      showToast('error', 'Please select both start and end dates.');
+    }
+  }, [customRange, showToast]);
 
+  // ---------- Theme-aware colours ----------
+  const pieColors = isDark ? PIE_COLORS_DARK : PIE_COLORS_LIGHT;
+  const categoryColors = isDark ? CATEGORY_COLORS_DARK : CATEGORY_COLORS_LIGHT;
+
+  // ---------- Render ----------
   return (
     <div className="shared-page analytics-page-wrap">
       <div className="spage-header">
@@ -383,13 +559,16 @@ export default function Analytics() {
           <button onClick={exportChartAsImage} className="btn-secondary" title="Download PNG of analytics charts">
             <Download size={15} /> Export PNG
           </button>
+          <button onClick={exportCSV} className="btn-secondary" title="Export data as CSV">
+            <Download size={15} /> CSV
+          </button>
           <button onClick={handleShareSummary} className="btn-primary" title="Copy shareable summary report">
             <Share2 size={15} /> Share Summary
           </button>
         </div>
       </div>
 
-      {/* Period Selector Strip */}
+      {/* Period Selector */}
       <div className="analytics-period-bar glass">
         <span className="apb-label"><Calendar size={14} /> Compare Period:</span>
         <div className="apb-buttons">
@@ -397,7 +576,6 @@ export default function Analytics() {
             { id: 'month', label: 'This Month vs Last' },
             { id: 'quarter', label: 'This Quarter vs Last' },
             { id: 'year', label: 'Year over Year' },
-            { id: 'all', label: 'All Time' }
           ].map(p => (
             <button
               key={p.id}
@@ -407,51 +585,78 @@ export default function Analytics() {
               {p.label}
             </button>
           ))}
+          <button
+            className={`apb-btn ${periodFilter === 'custom' ? 'active' : ''}`}
+            onClick={() => setShowCustomRange(!showCustomRange)}
+          >
+            <Filter size={14} /> Custom
+          </button>
         </div>
       </div>
 
-      {/* Period vs Period Comparison Cards */}
+      {/* Custom Range Inputs */}
+      {showCustomRange && (
+        <div className="custom-range-panel glass" style={{ padding: '0.75rem', marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <label>Start: <input type="date" value={customRange.start} onChange={e => setCustomRange(prev => ({ ...prev, start: e.target.value }))} /></label>
+          <label>End: <input type="date" value={customRange.end} onChange={e => setCustomRange(prev => ({ ...prev, end: e.target.value }))} /></label>
+          <button className="btn-secondary" onClick={applyCustomRange}>Apply</button>
+          <button className="btn-secondary" onClick={() => { setShowCustomRange(false); setPeriodFilter('month'); }}>Cancel</button>
+        </div>
+      )}
+
+      {/* Comparison Cards */}
       <div className="analytics-comparison-grid">
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Period Inflow</span>
-            <span className={`sc-delta ${comparisonMetrics.incomeDelta >= 0 ? 'text-success' : 'text-danger'}`}>
-              {comparisonMetrics.incomeDelta >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-              {Math.abs(comparisonMetrics.incomeDelta).toFixed(1)}%
+            <span className={`sc-delta ${comparisonMetrics.incomeDelta !== 'N/A' && !comparisonMetrics.incomeDelta.startsWith('-') ? 'text-success' : 'text-danger'}`}>
+              {comparisonMetrics.incomeDelta !== 'N/A' ? (comparisonMetrics.incomeDelta.startsWith('+') ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />) : null}
+              {comparisonMetrics.incomeDelta}
             </span>
           </div>
           <h3 className="sc-val text-success">+{fmt(comparisonMetrics.current.income)}</h3>
-          <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.income)}</p>
+          {comparisonMetrics.hasComparison && <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.income)}</p>}
         </motion.div>
 
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Period Outflow</span>
-            <span className={`sc-delta ${comparisonMetrics.expenseDelta <= 0 ? 'text-success' : 'text-danger'}`}>
-              {comparisonMetrics.expenseDelta >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-              {Math.abs(comparisonMetrics.expenseDelta).toFixed(1)}%
+            <span className={`sc-delta ${comparisonMetrics.expenseDelta !== 'N/A' && comparisonMetrics.expenseDelta.startsWith('-') ? 'text-success' : 'text-danger'}`}>
+              {comparisonMetrics.expenseDelta !== 'N/A' ? (comparisonMetrics.expenseDelta.startsWith('-') ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />) : null}
+              {comparisonMetrics.expenseDelta}
             </span>
           </div>
           <h3 className="sc-val text-danger">-{fmt(comparisonMetrics.current.expense)}</h3>
-          <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.expense)}</p>
+          {comparisonMetrics.hasComparison && <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.expense)}</p>}
         </motion.div>
 
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Net Position</span>
-            <span className={`sc-delta ${comparisonMetrics.netDelta >= 0 ? 'text-success' : 'text-danger'}`}>
-              {comparisonMetrics.netDelta >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-              {Math.abs(comparisonMetrics.netDelta).toFixed(1)}%
+            <span className={`sc-delta ${comparisonMetrics.netDelta !== 'N/A' && comparisonMetrics.netDelta.startsWith('+') ? 'text-success' : 'text-danger'}`}>
+              {comparisonMetrics.netDelta !== 'N/A' ? (comparisonMetrics.netDelta.startsWith('+') ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />) : null}
+              {comparisonMetrics.netDelta}
             </span>
           </div>
           <h3 className={`sc-val ${comparisonMetrics.current.net >= 0 ? 'text-success' : 'text-danger'}`}>
             {comparisonMetrics.current.net >= 0 ? '+' : ''}{fmt(comparisonMetrics.current.net)}
           </h3>
-          <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.net)}</p>
+          {comparisonMetrics.hasComparison && <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.net)}</p>}
+        </motion.div>
+
+        <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
+          <div className="sc-header">
+            <span className="sc-label">Savings Rate</span>
+            <span className={`sc-delta ${comparisonMetrics.savingsRate >= 15 ? 'text-success' : 'text-warning'}`}>
+              {comparisonMetrics.savingsRate >= 15 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+            </span>
+          </div>
+          <h3 className="sc-val">{comparisonMetrics.savingsRate.toFixed(1)}%</h3>
+          <p className="sc-prev">of income saved</p>
         </motion.div>
       </div>
 
-      {/* AI Insights Strip */}
+      {/* AI Insights */}
       <div className="analytics-ai-strip">
         {generatedInsights.map((ins, i) => (
           <div key={i} className={`ai-insight-card glass ${ins.type}`}>
@@ -466,7 +671,7 @@ export default function Analytics() {
         ))}
       </div>
 
-      {/* Anomaly Detection Banner / Table */}
+      {/* Anomalies */}
       {activeAnomalies.length > 0 && (
         <motion.div className="analytics-anomaly-box glass" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <div className="aab-header">
@@ -477,7 +682,7 @@ export default function Analytics() {
             <span className="aab-sub">Transactions {'>'}2 standard deviations above category average</span>
           </div>
           <div className="aab-list">
-            {activeAnomalies.slice(0, 3).map(a => (
+            {activeAnomalies.slice(0, 5).map(a => (
               <div key={a.id} className="aab-row">
                 <div className="aab-info">
                   <span className="aab-cat">{a.tx.category}</span>
@@ -490,6 +695,9 @@ export default function Analytics() {
                   <button className="aab-action-btn" onClick={() => handleMarkAnomalyReviewed(a.id)}>
                     <CheckCircle2 size={14} /> Review
                   </button>
+                  <button className="aab-action-btn" onClick={() => handleDismissAnomaly(a.id)}>
+                    <X size={14} /> Dismiss
+                  </button>
                 </div>
               </div>
             ))}
@@ -497,9 +705,8 @@ export default function Analytics() {
         </motion.div>
       )}
 
-      {/* Main Charts Section for PNG Export */}
+      {/* Charts Section */}
       <div ref={chartSectionRef} className="analytics-charts">
-        {/* Monthly Overview Chart */}
         <motion.div className="chart-card glass chart-card-large" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <h3>Monthly Financial Trajectory</h3>
@@ -508,30 +715,29 @@ export default function Analytics() {
               <button onClick={() => setChartType('line')} className={`chart-type-btn ${chartType === 'line' ? 'active' : ''}`}>Line</button>
             </div>
           </div>
-          
           {monthlyData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               {chartType === 'bar' ? (
-                <BarChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                <BarChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }} onClick={(data) => handleChartClick(data, 'bar')}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
-                  <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                  <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
                   <Legend />
-                  <Bar dataKey="income" fill="#10b981" radius={[6, 6, 0, 0]} name="Inflow" />
-                  <Bar dataKey="expense" fill="#ef4444" radius={[6, 6, 0, 0]} name="Outflow" />
-                  <Bar dataKey="savings" fill="#059669" radius={[6, 6, 0, 0]} name="Net Savings" />
+                  <Bar dataKey="income" fill={isDark ? '#34d399' : '#10b981'} radius={[6, 6, 0, 0]} name="Inflow" />
+                  <Bar dataKey="expense" fill={isDark ? '#f87171' : '#ef4444'} radius={[6, 6, 0, 0]} name="Outflow" />
+                  <Bar dataKey="savings" fill={isDark ? '#6ee7b7' : '#059669'} radius={[6, 6, 0, 0]} name="Net Savings" />
                 </BarChart>
               ) : (
-                <LineChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                <LineChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }} onClick={(data) => handleChartClick(data, 'line')}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
-                  <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                  <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
                   <Legend />
-                  <Line type="monotone" dataKey="income" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4 }} name="Inflow" />
-                  <Line type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2.5} dot={{ r: 4 }} name="Outflow" />
-                  <Line type="monotone" dataKey="savings" stroke="#059669" strokeWidth={2.5} dot={{ r: 4 }} name="Net Savings" />
+                  <Line type="monotone" dataKey="income" stroke={isDark ? '#34d399' : '#10b981'} strokeWidth={2.5} dot={{ r: 4 }} name="Inflow" />
+                  <Line type="monotone" dataKey="expense" stroke={isDark ? '#f87171' : '#ef4444'} strokeWidth={2.5} dot={{ r: 4 }} name="Outflow" />
+                  <Line type="monotone" dataKey="savings" stroke={isDark ? '#6ee7b7' : '#059669'} strokeWidth={2.5} dot={{ r: 4 }} name="Net Savings" />
                 </LineChart>
               )}
             </ResponsiveContainer>
@@ -540,7 +746,6 @@ export default function Analytics() {
           )}
         </motion.div>
 
-        {/* Category Spending Evolution Multi-Line Chart */}
         <motion.div className="chart-card glass chart-card-large" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <div>
@@ -555,12 +760,11 @@ export default function Analytics() {
               {showAllEvolutionCategories ? 'Show Top 5' : 'Show All (Top 8)'}
             </button>
           </div>
-
           {categoryEvolution.data.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={categoryEvolution.data} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+              <LineChart data={categoryEvolution.data.map(d => ({ ...d, displayName: d.displayName }))} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
-                <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                 <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                 <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
                 <Legend wrapperStyle={{ fontSize: '0.75rem' }} />
@@ -569,7 +773,7 @@ export default function Analytics() {
                     key={cat}
                     type="monotone"
                     dataKey={cat}
-                    stroke={CATEGORY_COLORS[idx % CATEGORY_COLORS.length]}
+                    stroke={categoryColors[idx % categoryColors.length]}
                     strokeWidth={2}
                     dot={{ r: 3 }}
                   />
@@ -581,31 +785,27 @@ export default function Analytics() {
           )}
         </motion.div>
 
-        {/* Day of Week Breakdown */}
         <motion.div className="chart-card glass" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <h3>Day of Week Outflow</h3>
             <span className="chart-badge">{dayOfWeekData.weekendPct}% Weekend</span>
           </div>
-
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={dayOfWeekData.days} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
               <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
               <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
               <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
-              <Bar dataKey="expense" fill="#f59e0b" radius={[6, 6, 0, 0]} name="Daily Expense" />
+              <Bar dataKey="expense" fill={isDark ? '#fbbf24' : '#f59e0b'} radius={[6, 6, 0, 0]} name="Daily Expense" />
             </BarChart>
           </ResponsiveContainer>
         </motion.div>
 
-        {/* Expense Distribution Pie */}
         <motion.div className="chart-card glass" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <h3>Expense Allocation</h3>
             <span className="chart-badge">By Category</span>
           </div>
-          
           {expenseCategories.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
@@ -618,9 +818,10 @@ export default function Analytics() {
                   paddingAngle={3}
                   dataKey="value"
                   nameKey="name"
+                  onClick={(data) => handleChartClick(data, 'pie')}
                 >
                   {expenseCategories.map((entry, index) => (
-                    <Cell key={`cell-${entry.name.replace(/\s+/g, '-')}-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    <Cell key={`cell-${entry.name.replace(/\s+/g, '-')}-${index}`} fill={pieColors[index % pieColors.length]} />
                   ))}
                 </Pie>
                 <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
@@ -632,6 +833,15 @@ export default function Analytics() {
           )}
         </motion.div>
       </div>
+
+      {/* Drill‑Down Modal */}
+      <DrillDownModal
+        isOpen={drillData.isOpen}
+        onClose={() => setDrillData({ isOpen: false, title: '', transactions: [] })}
+        title={drillData.title}
+        transactions={drillData.transactions}
+        fmt={fmt}
+      />
     </div>
   );
 }

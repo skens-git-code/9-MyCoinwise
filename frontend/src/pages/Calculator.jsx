@@ -2,7 +2,7 @@ import React, { useCallback, useContext, useEffect, useMemo, useState } from 're
 import { motion } from 'framer-motion';
 import {
   Calculator as CalculatorIcon, Check, Clock3, Copy, Delete,
-  History, Keyboard, MemoryStick, Sparkles, Trash2
+  History, Keyboard, MemoryStick, Sparkles, Trash2, X
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { api } from '../services/api';
@@ -20,15 +20,17 @@ const getHistoryKey = (userId) => `${HISTORY_KEY}:${userId || 'guest'}`;
 const getPendingKey = (userId) => `${PENDING_KEY}:${userId || 'guest'}`;
 const newClientId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const normalizeHistoryItem = (item) => ({
-  id: item.id || item._id || item.client_id,
+  id: item.id || item._id || item.client_id || item.clientId,
   clientId: item.clientId || item.client_id || item.id || item._id,
   expression: item.expression,
   result: item.result,
   numericResult: item.numericResult ?? item.numeric_result,
   angleMode: item.angleMode || item.angle_mode || 'DEG',
-  timestamp: item.timestamp || item.created_at || Date.now()
+  timestamp: item.timestamp || item.created_at || Date.now(),
+  synced: item.synced ?? true, // NEW: track sync status
 });
 
+// ---------- Tokenizer & Parser (unchanged, but added implicit multiplication) ----------
 function tokenize(expression) {
   const tokens = [];
   let index = 0;
@@ -65,7 +67,18 @@ function tokenize(expression) {
 }
 
 function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) {
-  const tokens = tokenize(expression.replaceAll('×', '*').replaceAll('÷', '/').replaceAll('−', '-').replaceAll('√', 'sqrt'));
+  // Replace display symbols with parser-friendly ones
+  const cleaned = expression
+    .replaceAll('×', '*')
+    .replaceAll('÷', '/')
+    .replaceAll('−', '-')
+    .replaceAll('√', 'sqrt')
+    // Implicit multiplication: number followed by '(' -> number*(
+    .replace(/(\d)\(/g, '$1*(')
+    // Also handle ')(' -> ')*('
+    .replace(/\)\(/g, ')*(');
+
+  const tokens = tokenize(cleaned);
   let position = 0;
   const peek = () => tokens[position];
   const take = () => tokens[position++];
@@ -181,6 +194,7 @@ const formatResult = (value) => {
   return Number(value.toPrecision(12)).toString();
 };
 
+// ---------- Button Layout ----------
 const buttonGroups = {
   scientific: [
     ['sin(', 'sin'], ['cos(', 'cos'], ['tan(', 'tan'], ['log(', 'log'], ['ln(', 'ln'],
@@ -209,6 +223,7 @@ export default function Calculator() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
 
+  // ---------- Sync with server ----------
   useEffect(() => {
     if (!USER_ID) return undefined;
     let active = true;
@@ -216,39 +231,65 @@ export default function Calculator() {
       const pendingKey = getPendingKey(USER_ID);
       let pending = [];
       try { pending = JSON.parse(localStorage.getItem(pendingKey) || '[]'); } catch { pending = []; }
+
+      // Attempt to send all pending items
       const remaining = [];
       for (const item of pending) {
         try {
           await api.saveCalculation({
+            userId: USER_ID, // FIX: added userId
             client_id: item.clientId,
             expression: item.expression,
             result: item.result,
             numeric_result: item.numericResult,
             angle_mode: item.angleMode
           });
-        } catch { remaining.push(item); }
+        } catch {
+          remaining.push(item);
+        }
       }
-      if (remaining.length) localStorage.setItem(pendingKey, JSON.stringify(remaining));
-      else localStorage.removeItem(pendingKey);
+      if (remaining.length) {
+        localStorage.setItem(pendingKey, JSON.stringify(remaining));
+      } else {
+        localStorage.removeItem(pendingKey);
+      }
 
+      // Fetch remote history
       try {
         const remoteHistory = (await api.getCalculations(USER_ID)).map(normalizeHistoryItem);
         if (!active) return;
-        setHistory(remoteHistory);
-        localStorage.setItem(getHistoryKey(USER_ID), JSON.stringify(remoteHistory));
+
+        // Merge: remote items + pending items that are not already in remote (compare by expression+result+timestamp)
+        const remoteIds = new Set(remoteHistory.map(item => item.clientId));
+        const merged = [
+          ...remoteHistory,
+          ...remaining
+            .filter(item => !remoteIds.has(item.clientId))
+            .map(item => ({ ...item, synced: false }))
+        ];
+        // Sort by timestamp descending
+        merged.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        setHistory(merged);
+        localStorage.setItem(getHistoryKey(USER_ID), JSON.stringify(merged));
       } catch {
-        if (active && remaining.length) setError('Some calculations are waiting to sync with the database.');
+        // On error, at least keep pending items in history
+        if (active && remaining.length) {
+          setHistory(remaining.map(item => ({ ...item, synced: false })));
+          setError('Some calculations are waiting to sync with the database.');
+        }
       }
     };
     syncAndLoadHistory();
     return () => { active = false; };
   }, [USER_ID]);
 
+  // ---------- Preview ----------
   const preview = useMemo(() => {
     if (!expression.trim()) return '';
     try { return formatResult(evaluateExpression(expression, { angleMode, answer })); } catch { return ''; }
   }, [angleMode, answer, expression]);
 
+  // ---------- Append / Input ----------
   const append = useCallback((value) => {
     setExpression((current) => {
       if (value === ')') {
@@ -261,6 +302,7 @@ export default function Calculator() {
     setError('');
   }, []);
 
+  // ---------- Calculate ----------
   const calculate = useCallback(() => {
     if (!expression.trim()) return;
     try {
@@ -270,27 +312,58 @@ export default function Calculator() {
       setAnswer(numericResult);
       setError('');
       const entry = normalizeHistoryItem({
-        clientId: newClientId(), expression, result: formatted, numericResult, angleMode, timestamp: new Date().toISOString()
+        clientId: newClientId(),
+        expression,
+        result: formatted,
+        numericResult,
+        angleMode,
+        timestamp: new Date().toISOString(),
+        synced: false, // will be set to true after successful API call
       });
+
+      // Update history locally
       setHistory((current) => {
         const next = [entry, ...current].slice(0, 30);
         localStorage.setItem(getHistoryKey(USER_ID), JSON.stringify(next));
         return next;
       });
+
+      // Save to server
       if (USER_ID) {
         api.saveCalculation({
+          userId: USER_ID,
           client_id: entry.clientId,
           expression: entry.expression,
           result: entry.result,
           numeric_result: entry.numericResult,
           angle_mode: entry.angleMode
-        }).catch(() => {
-          const pendingKey = getPendingKey(USER_ID);
-          let pending = [];
-          try { pending = JSON.parse(localStorage.getItem(pendingKey) || '[]'); } catch { pending = []; }
-          localStorage.setItem(pendingKey, JSON.stringify([...pending, entry].slice(-30)));
-          setError('Calculation saved locally and queued for database sync.');
-        });
+        })
+          .then(() => {
+            // Mark as synced in history
+            setHistory((current) =>
+              current.map((item) =>
+                item.clientId === entry.clientId ? { ...item, synced: true } : item
+              )
+            );
+            // Update localStorage
+            const stored = JSON.parse(localStorage.getItem(getHistoryKey(USER_ID)) || '[]');
+            const updated = stored.map((item) =>
+              item.clientId === entry.clientId ? { ...item, synced: true } : item
+            );
+            localStorage.setItem(getHistoryKey(USER_ID), JSON.stringify(updated));
+          })
+          .catch(() => {
+            // Add to pending queue
+            const pendingKey = getPendingKey(USER_ID);
+            let pending = [];
+            try { pending = JSON.parse(localStorage.getItem(pendingKey) || '[]'); } catch { pending = []; }
+            // Avoid duplicates (shouldn't happen)
+            if (!pending.some(item => item.clientId === entry.clientId)) {
+              pending.push(entry);
+            }
+            localStorage.setItem(pendingKey, JSON.stringify(pending.slice(-30)));
+            setError('Calculation saved locally and queued for database sync.');
+          });
       }
     } catch (calculationError) {
       setError(calculationError.message || 'Unable to calculate');
@@ -298,6 +371,7 @@ export default function Calculator() {
     }
   }, [USER_ID, angleMode, answer, expression]);
 
+  // ---------- Keyboard handler ----------
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.target instanceof HTMLInputElement) return;
@@ -310,7 +384,10 @@ export default function Calculator() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [append, calculate]);
 
+  // ---------- Clear functions ----------
   const clear = () => { setExpression(''); setResult('0'); setError(''); };
+  const clearEntry = () => { setExpression(''); setError(''); }; // CE only clears expression
+
   const clearHistory = async () => {
     if (USER_ID) {
       try {
@@ -323,17 +400,61 @@ export default function Calculator() {
     }
     setHistory([]);
     localStorage.removeItem(getHistoryKey(USER_ID));
+    setError(''); // clear error on success
   };
-  const handleMemory = (action) => {
+
+  // ---------- Memory ----------
+  const handleMemory = useCallback((action) => {
     const numericValue = Number(result);
-    const next = action === 'clear' ? 0 : action === 'store' ? (isFiniteNumber(numericValue) ? numericValue : memory) : action === 'add' ? memory + numericValue : memory;
+    if (!isFiniteNumber(numericValue) && action !== 'clear') {
+      setError('Cannot perform memory operation on non‑finite result.');
+      return;
+    }
+    let next;
+    switch (action) {
+      case 'clear': next = 0; break;
+      case 'store': next = numericValue; break;
+      case 'add': next = memory + numericValue; break;
+      case 'subtract': next = memory - numericValue; break; // NEW
+      default: next = memory;
+    }
     setMemory(next);
     localStorage.setItem(MEMORY_KEY, String(next));
-  };
+    setError('');
+  }, [memory, result]);
+
+  // ---------- Copy result ----------
   const copyResult = async () => {
     try { await navigator.clipboard.writeText(result); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch { setError('Clipboard access is unavailable'); }
   };
 
+  // ---------- Delete individual history item ----------
+  const deleteHistoryItem = useCallback(async (item) => {
+    // Remove from local state
+    setHistory((current) => {
+      const filtered = current.filter((h) => h.clientId !== item.clientId);
+      localStorage.setItem(getHistoryKey(USER_ID), JSON.stringify(filtered));
+      return filtered;
+    });
+    // Remove from server if synced
+    if (item.synced && USER_ID) {
+      try {
+        await api.deleteCalculation(USER_ID, item.clientId);
+      } catch {
+        setError('Failed to delete from server, but removed locally.');
+      }
+    }
+    // Also remove from pending if present
+    if (!item.synced) {
+      const pendingKey = getPendingKey(USER_ID);
+      let pending = [];
+      try { pending = JSON.parse(localStorage.getItem(pendingKey) || '[]'); } catch { pending = []; }
+      const updated = pending.filter((p) => p.clientId !== item.clientId);
+      localStorage.setItem(pendingKey, JSON.stringify(updated));
+    }
+  }, [USER_ID]);
+
+  // ---------- Render ----------
   return (
     <div className="island-page calculator-page">
       <header className="island-header glass-sm calculator-page-header">
@@ -348,39 +469,105 @@ export default function Calculator() {
           <div className="calculator-display">
             <div className="calculator-display-top"><span>{angleMode} mode</span><span><Keyboard size={13} /> Keyboard ready</span></div>
             <div className="calculator-expression" aria-label="Current expression">{expression || '0'}</div>
-            <div className="calculator-result-row"><strong>{result}</strong><button type="button" className="calculator-copy" onClick={copyResult} aria-label="Copy result" title="Copy result">{copied ? <Check size={16} /> : <Copy size={16} />}</button></div>
+            <div className="calculator-result-row">
+              <strong>{result}</strong>
+              <button type="button" className="calculator-copy" onClick={copyResult} aria-label="Copy result" title="Copy result">
+                {copied ? <Check size={16} /> : <Copy size={16} />}
+              </button>
+            </div>
             {preview && preview !== result && <div className="calculator-preview">= {preview}</div>}
             {error && <p className="calculator-error" role="alert">{error}</p>}
           </div>
 
+          {/* Toolbar with memory and angle */}
           <div className="calculator-toolbar">
-            <button type="button" className="calculator-tool" onClick={() => handleMemory('clear')}><MemoryStick size={15} /> MC</button>
-            <button type="button" className="calculator-tool" onClick={() => append(String(memory))}><MemoryStick size={15} /> MR</button>
-            <button type="button" className="calculator-tool" onClick={() => handleMemory('add')}><MemoryStick size={15} /> M+</button>
-            <button type="button" className="calculator-tool" onClick={() => handleMemory('store')}><MemoryStick size={15} /> MS</button>
+            <button type="button" className="calculator-tool" onClick={() => handleMemory('clear')} aria-label="Memory clear">MC</button>
+            <button type="button" className="calculator-tool" onClick={() => append(String(memory))} aria-label="Memory recall">MR</button>
+            <button type="button" className="calculator-tool" onClick={() => handleMemory('add')} aria-label="Memory add">M+</button>
+            <button type="button" className="calculator-tool" onClick={() => handleMemory('subtract')} aria-label="Memory subtract">M−</button> {/* NEW */}
+            <button type="button" className="calculator-tool" onClick={() => handleMemory('store')} aria-label="Memory store">MS</button>
             <span className="calculator-memory-status">M {formatResult(memory)}</span>
             <button type="button" className="calculator-angle" onClick={() => setAngleMode((mode) => mode === 'DEG' ? 'RAD' : 'DEG')}>{angleMode}</button>
           </div>
 
+          {/* Keypad */}
           <div className="calculator-keypad">
             <div className="calculator-scientific-grid">
-              {buttonGroups.scientific.map(([value, label]) => <button type="button" key={label} className="calculator-key scientific" onClick={() => append(value)}>{label}</button>)}
+              {buttonGroups.scientific.map(([value, label]) => (
+                <button type="button" key={label} className="calculator-key scientific" onClick={() => append(value)} aria-label={label}>
+                  {label}
+                </button>
+              ))}
             </div>
             <div className="calculator-basic-grid">
-              <button type="button" className="calculator-key utility" onClick={clear}>C</button>
-              <button type="button" className="calculator-key utility" onClick={() => setExpression((current) => current.slice(0, -1))}><Delete size={18} /></button>
-              <button type="button" className="calculator-key utility" onClick={() => append('(')}>(</button>
-              <button type="button" className="calculator-key utility" onClick={() => append(')')}>)</button>
-              {buttonGroups.basic.map(([value, label]) => <button type="button" key={`${value}-${label}`} className={`calculator-key ${['/', '*', '-', '+', '^'].includes(value) ? 'operator' : ''}`} onClick={() => append(value)}>{label}</button>)}
-              <button type="button" className="calculator-key equals" onClick={calculate}>=</button>
+              {/* CE and C buttons */}
+              <button type="button" className="calculator-key utility" onClick={clearEntry} aria-label="Clear entry">CE</button>
+              <button type="button" className="calculator-key utility" onClick={clear} aria-label="Clear all">C</button>
+              <button type="button" className="calculator-key utility" onClick={() => setExpression((current) => current.slice(0, -1))} aria-label="Backspace">
+                <Delete size={18} />
+              </button>
+              <button type="button" className="calculator-key utility" onClick={() => append('(')} aria-label="Open parenthesis">(</button>
+              <button type="button" className="calculator-key utility" onClick={() => append(')')} aria-label="Close parenthesis">)</button>
+              {buttonGroups.basic.map(([value, label]) => (
+                <button
+                  type="button"
+                  key={`${value}-${label}`}
+                  className={`calculator-key ${['/', '*', '-', '+', '^'].includes(value) ? 'operator' : ''}`}
+                  onClick={() => append(value)}
+                  aria-label={label}
+                >
+                  {label}
+                </button>
+              ))}
+              <button type="button" className="calculator-key equals" onClick={calculate} aria-label="Calculate">=</button>
             </div>
           </div>
           <p className="calculator-hint"><Clock3 size={14} /> Use parentheses for clarity, and press Enter to calculate.</p>
         </section>
 
+        {/* History Panel */}
         <aside className="calculator-history glass" aria-label="Calculation history">
-          <div className="calculator-history-heading"><div><span className="calculator-eyebrow"><History size={14} /> Recent work</span><h2>History</h2></div><button type="button" className="calculator-icon-button" onClick={clearHistory} aria-label="Clear calculation history" title="Clear history"><Trash2 size={16} /></button></div>
-          {history.length === 0 ? <div className="calculator-empty-history"><CalculatorIcon size={28} /><p>Your calculations will appear here.</p><span>Results are securely stored for your account.</span></div> : <div className="calculator-history-list">{history.map((item, index) => <button type="button" className="calculator-history-item" key={`${item.clientId || item.timestamp}-${index}`} onClick={() => { setExpression(item.expression); setResult(item.result); }}><span>{item.expression}</span><strong>= {item.result}</strong><small>{item.angleMode} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small></button>)}</div>}
+          <div className="calculator-history-heading">
+            <div>
+              <span className="calculator-eyebrow"><History size={14} /> Recent work</span>
+              <h2>History</h2>
+            </div>
+            <button type="button" className="calculator-icon-button" onClick={clearHistory} aria-label="Clear calculation history" title="Clear history">
+              <Trash2 size={16} />
+            </button>
+          </div>
+          {history.length === 0 ? (
+            <div className="calculator-empty-history">
+              <CalculatorIcon size={28} />
+              <p>Your calculations will appear here.</p>
+              <span>Results are securely stored for your account.</span>
+            </div>
+          ) : (
+            <div className="calculator-history-list">
+              {history.map((item, index) => (
+                <div key={`${item.clientId || item.timestamp}-${index}`} className="calculator-history-item-wrapper">
+                  <button
+                    type="button"
+                    className="calculator-history-item"
+                    onClick={() => { setExpression(item.expression); setResult(item.result); }}
+                    aria-label={`Restore calculation: ${item.expression} = ${item.result}`}
+                  >
+                    <span>{item.expression} {!item.synced && <Clock3 size={12} style={{ marginLeft: 4 }} title="Not synced" />}</span>
+                    <strong>= {item.result}</strong>
+                    <small>{item.angleMode} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
+                  </button>
+                  <button
+                    type="button"
+                    className="calculator-history-delete"
+                    onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item); }}
+                    aria-label="Delete this history entry"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </aside>
       </div>
     </div>

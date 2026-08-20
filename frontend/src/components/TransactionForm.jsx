@@ -23,7 +23,7 @@ const formatDateForInput = (dateInput) => {
 };
 
 export default function TransactionForm({ isOpen = true, onClose, onSubmit, initialData = null }) {
-  const { currencyInfo } = useContext(AppContext);
+  const { currencyInfo, accounts = [] } = useContext(AppContext);
   const currSymbol = currencyInfo?.symbol || '₹';
 
   // State management with proper initialization
@@ -50,6 +50,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   const [merchant, setMerchant] = useState(initialData?.merchant || '');
   const [tags, setTags] = useState(initialData?.tags ? initialData.tags.join(', ') : '');
   const [paymentMethod, setPaymentMethod] = useState(initialData?.payment_method || 'other');
+  const [accountId, setAccountId] = useState(initialData?.account_id || '');
   const [isRecurring, setIsRecurring] = useState(initialData?.is_recurring || false);
   const [recurrenceInterval, setRecurrenceInterval] = useState(initialData?.recurrence_interval || 'monthly');
 
@@ -185,6 +186,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     setMerchant('');
     setTags('');
     setPaymentMethod('other');
+    setAccountId('');
     setIsRecurring(false);
     setRecurrenceInterval('monthly');
     setError('');
@@ -221,6 +223,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         merchant: merchant.trim(),
         tags: tags.split(',').map(t => t.trim()).filter(Boolean),
         payment_method: paymentMethod,
+        account_id: accountId || null,
         is_recurring: isRecurring,
         recurrence_interval: isRecurring ? recurrenceInterval : null
       };
@@ -237,7 +240,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     } finally {
       setIsSubmitting(false);
     }
-  }, [validateForm, isSubmitting, amount, initialData, type, category, note, date, merchant, tags, paymentMethod, isRecurring, recurrenceInterval, onSubmit, resetForm]);
+  }, [validateForm, isSubmitting, amount, initialData, type, category, note, date, merchant, tags, paymentMethod, accountId, isRecurring, recurrenceInterval, onSubmit, resetForm]);
 
   // Handle cancel with confirmation if form is dirty
   const handleCancel = useCallback(() => {
@@ -453,6 +456,24 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                   {note.length}/60 characters
                 </small>
               )}
+            </div>
+
+            <div className="form-field">
+              <label htmlFor="transaction-account">Account (Optional)</label>
+              <select
+                id="transaction-account"
+                value={accountId}
+                onChange={e => setAccountId(e.target.value)}
+                disabled={isSubmitting}
+                style={{ opacity: isSubmitting ? 0.7 : 1 }}
+              >
+                <option value="">No account selected</option>
+                {accounts.filter(account => account.is_active !== false).map(account => (
+                  <option key={account.id || account._id} value={account.id || account._id}>
+                    {account.name} · {account.currency || 'USD'}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Enhanced Fields Grid */}

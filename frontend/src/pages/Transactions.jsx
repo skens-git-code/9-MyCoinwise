@@ -348,7 +348,7 @@ export default function Transactions() {
           <motion.button
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
-            className="btn-secondary"
+            className="btn-secondary tx-import-btn"
             onClick={() => fileInputRef.current?.click()}
             title="Import bank statement or CSV"
           >
@@ -360,7 +360,7 @@ export default function Transactions() {
             <motion.button
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
-              className="btn-secondary"
+              className="btn-secondary tx-export-btn"
               onClick={() => setShowExportMenu(prev => !prev)}
             >
               <Download size={15} /> Export <ChevronDown size={14} />
@@ -474,7 +474,7 @@ export default function Transactions() {
         <div className="inbox-list-pane glass">
           <div className="il-filters">
             <div className="il-search">
-              <Search size={16} aria-hidden="true" />
+              <Search className="il-search-icon" size={16} aria-hidden="true" />
               <input
                 aria-label="Search transactions"
                 placeholder="Search category, note, or amount..."

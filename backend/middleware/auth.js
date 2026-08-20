@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Session = require('../models/Session');
 
 const auth = async (req, res, next) => {
   try {
@@ -31,8 +32,30 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ error: 'Session has been revoked or expired. Please log in again.' });
     }
 
+    let session = null;
+    if (verified.jti) {
+      session = await Session.findOne({
+        token_id: verified.jti,
+        user_id: user._id,
+        is_active: true,
+      }).select('+token_id');
+      if (!session) {
+        return res.status(401).json({ error: 'This session has been revoked. Please log in again.' });
+      }
+
+      // Avoid a write on every request while still keeping session activity fresh.
+      if (!session.last_active || Date.now() - session.last_active.getTime() > 60_000) {
+        Session.updateOne({ _id: session._id }, { $set: { last_active: new Date() } }).catch(() => {});
+      }
+    }
+
     // Add user string object to request object to not break previous routes expecting req.user.id
-    req.user = { id: user.id || user._id, ...verified };
+    req.user = {
+      id: String(user.id || user._id),
+      household_id: String(user.household_id || user._id),
+      session_id: session?._id ? String(session._id) : null,
+      ...verified,
+    };
 
     next();
   } catch (err) {

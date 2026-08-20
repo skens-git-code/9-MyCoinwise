@@ -1198,10 +1198,39 @@ const AppearanceTab = ({ theme, handleThemeChange }) => {
 
 // ============= USERS TAB =============
 const getUserDisplayName = (user) => {
-  const username = String(user?.username || '').trim();
-  const surname = String(user?.last_name || '').trim();
-  const duplicateSurname = surname && username.toLocaleLowerCase().endsWith(` ${surname.toLocaleLowerCase()}`);
-  return [username, duplicateSurname ? '' : surname].filter(Boolean).join(' ') || 'Unnamed profile';
+  const username = String(user?.username || '').trim().replace(/\s+/g, ' ');
+  const surname = String(user?.last_name || '').trim().replace(/\s+/g, ' ');
+  // Older records can contain a token or another accidentally persisted value.
+  // Never allow that value to become the visible profile name.
+  const safeUsername = username.length <= 80 ? username : '';
+  const safeSurname = surname.length <= 80 ? surname : '';
+  const duplicateSurname = safeSurname && safeUsername.toLocaleLowerCase().endsWith(` ${safeSurname.toLocaleLowerCase()}`);
+  return [safeUsername, duplicateSurname ? '' : safeSurname].filter(Boolean).join(' ') || 'Unnamed profile';
+};
+
+const getSafeUserEmail = (user) => {
+  const email = String(user?.email || '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 160
+    ? email
+    : 'Personal workspace';
+};
+
+const isUsableAvatarSource = (value) => {
+  const avatar = String(value || '').trim();
+  return avatar.length > 20 && (
+    /^data:image\/(?:png|jpe?g|webp|gif|avif);base64,/i.test(avatar) ||
+    /^https?:\/\//i.test(avatar)
+  );
+};
+
+const getSafeUserAvatar = (user) => {
+  const avatar = String(user?.profile_avatar || '').trim();
+  if (isUsableAvatarSource(avatar)) return { type: 'image', value: avatar };
+  if (avatar && avatar.length <= 12 && !/[A-Za-z0-9_-]{20,}/.test(avatar)) {
+    return { type: 'text', value: avatar };
+  }
+  const name = getUserDisplayName(user);
+  return { type: 'text', value: name.charAt(0).toUpperCase() || 'U' };
 };
 
 const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
@@ -1221,18 +1250,20 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
 
     <div className="manage-users-body">
       <div className="manage-users-list">
-        {sortedUsers.map(u => (
-          <motion.div
-            key={u.id}
-            whileHover={{ x: 4 }}
-            className={`manage-user-card ${u.id === USER_ID ? 'is-active' : ''}`}
-          >
-            <span className="manage-user-avatar" style={{ background: u.profile_color || '#059669' }} aria-hidden>
-              {u.profile_avatar || '😊'}
-            </span>
+        {sortedUsers.map(u => {
+          const avatar = getSafeUserAvatar(u);
+          return (
+            <motion.div
+              key={u.id}
+              whileHover={{ x: 4 }}
+              className={`manage-user-card ${u.id === USER_ID ? 'is-active' : ''}`}
+            >
+              <span className="manage-user-avatar" style={{ background: u.profile_color || '#059669' }} aria-hidden>
+                {avatar.type === 'image' ? <img src={avatar.value} alt="" /> : avatar.value}
+              </span>
             <div className="manage-user-main">
               <p className="manage-user-name">{getUserDisplayName(u)}</p>
-              <p className="manage-user-email" title={u.email}>{u.email || 'No email address'}</p>
+              <p className="manage-user-email" title={getSafeUserEmail(u)}>{getSafeUserEmail(u)}</p>
               <span className="manage-user-role">{u.profession || 'Personal workspace'}</span>
             </div>
             {u.id === USER_ID && (
@@ -1267,8 +1298,9 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
                 </motion.button>
               </div>
             )}
-          </motion.div>
-        ))}
+            </motion.div>
+          );
+        })}
       </div>
       <motion.button
         type="button"

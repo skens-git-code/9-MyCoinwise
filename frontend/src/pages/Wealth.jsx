@@ -7,7 +7,8 @@ import {
 import {
   Briefcase, TrendingUp, AlertOctagon, Sparkles,
   RefreshCw, Plus, X, Trash2, Edit3, ShieldAlert,
-  Calculator, CheckCircle2, DollarSign, Clock, ArrowUpRight
+  Calculator, CheckCircle2, DollarSign, Clock, ArrowUpRight,
+  Download, FileText, Save
 } from 'lucide-react';
 import axios from 'axios';
 import { AppContext } from '../contexts/AppContext';
@@ -32,6 +33,16 @@ const CLASS_LABELS = {
   liability: '💳 Liability / Debt',
 };
 
+// ==================== HELPER: Format History Data ====================
+const formatHistoryData = (rawData) => {
+  if (!Array.isArray(rawData)) return [];
+  return rawData.map(item => ({
+    month: item.month || item.date?.slice(0, 7) || 'Unknown',
+    netWorth: item.netWorth ?? item.value ?? item.net_worth ?? 0,
+  }));
+};
+
+// ==================== MAIN COMPONENT ====================
 export default function Wealth() {
   const { fmt, token, t, theme } = useContext(AppContext);
   const { showToast } = useToast();
@@ -41,7 +52,7 @@ export default function Wealth() {
   const [isLoading, setIsLoading] = useState(false);
   const [aiInsight, setAiInsight] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
-  
+
   // Modals & CRUD
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -49,7 +60,7 @@ export default function Wealth() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fetchError, setFetchError] = useState(null);
 
-  // Debt Payoff Simulator state
+  // Debt Payoff Simulator
   const [selectedDebtId, setSelectedDebtId] = useState('');
   const [extraPayment, setExtraPayment] = useState(2000);
   const [monthlyBasePayment, setMonthlyBasePayment] = useState(5000);
@@ -58,6 +69,7 @@ export default function Wealth() {
   const aiCooldown = useRef(0);
   const isDark = theme === 'amoled';
 
+  // ==================== FORM STATE ====================
   const [formData, setFormData] = useState({
     name: '',
     asset_class: 'liquid_asset',
@@ -66,9 +78,10 @@ export default function Wealth() {
     quantity: '',
     interest_rate: '',
     acquisition_date: new Date().toISOString().split('T')[0],
+    note: '',
   });
 
-  // Fetch Wealth Data & History
+  // ==================== DATA FETCHING ====================
   const fetchWealthData = useCallback(async () => {
     if (!token) return;
     setIsLoading(true);
@@ -77,10 +90,10 @@ export default function Wealth() {
       const cfg = { headers: { Authorization: `Bearer ${token}` } };
       const [itemsRes, histRes] = await Promise.all([
         axios.get(`${API_BASE}/wealth/items`, cfg),
-        axios.get(`${API_BASE}/wealth/history`, cfg).catch(() => ({ data: [] }))
+        axios.get(`${API_BASE}/wealth/history`, cfg).catch(() => ({ data: [] })),
       ]);
       setWealthItems(Array.isArray(itemsRes.data) ? itemsRes.data : []);
-      setHistoryData(Array.isArray(histRes.data) ? histRes.data : []);
+      setHistoryData(formatHistoryData(histRes.data));
     } catch (err) {
       if (err.response?.status === 401) {
         setFetchError('Session expired. Please log out and log back in.');
@@ -98,7 +111,7 @@ export default function Wealth() {
     if (token) fetchWealthData();
   }, [token, fetchWealthData]);
 
-  // Core Financial Maths
+  // ==================== COMPUTED METRICS ====================
   const {
     totalAssets,
     totalLiabilities,
@@ -109,6 +122,7 @@ export default function Wealth() {
     liabilitiesList,
     toxicDebts,
     hasHighInterestDebts,
+    debtToAssetRatio,
   } = useMemo(() => {
     let assets = 0;
     let liabilities = 0;
@@ -120,10 +134,11 @@ export default function Wealth() {
 
     wealthItems.forEach(item => {
       const val = item.current_value ?? item.base_value ?? 0;
+      const absVal = Math.abs(val);
 
       if (item.asset_class === 'liability') {
-        liabilities += Math.abs(val);
-        const debtObj = { ...item, computedValue: Math.abs(val) };
+        liabilities += absVal;
+        const debtObj = { ...item, computedValue: absVal };
         liabList.push(debtObj);
         if ((item.interest_rate || 0) > 12) tDebts.push(debtObj);
       } else {
@@ -142,6 +157,8 @@ export default function Wealth() {
         color: CLASS_COLORS[cls] || '#64748b',
       }));
 
+    const dta = assets > 0 ? liabilities / assets : 0;
+
     return {
       totalAssets: assets,
       totalLiabilities: liabilities,
@@ -152,12 +169,13 @@ export default function Wealth() {
       liabilitiesList: liabList,
       toxicDebts: tDebts,
       hasHighInterestDebts: tDebts.length > 0,
+      debtToAssetRatio: dta,
     };
   }, [wealthItems]);
 
   const nwColor = netWorth >= 0 ? 'var(--brand-primary)' : 'var(--danger)';
 
-  // AI Strategy Insights
+  // ==================== AI INSIGHTS ====================
   useEffect(() => {
     if (wealthItems.length === 0 || !token) {
       setAiInsight('Add assets and liabilities to unlock your AI wealth strategy.');
@@ -195,21 +213,23 @@ export default function Wealth() {
     };
   }, [totalAssets, totalLiabilities, liquidAssets, physicalAssets, token, wealthItems.length]);
 
-  // Debt Payoff Simulator Math
+  // ==================== DEBT PAYOFF CALCULATION (FIXED) ====================
   const debtPayoffCalculation = useMemo(() => {
     const debt = liabilitiesList.find(d => (d._id === selectedDebtId || d.id === selectedDebtId)) || liabilitiesList[0];
     if (!debt) return null;
 
     const principal = debt.computedValue || debt.base_value || 0;
     if (principal <= 0) return null;
-    const annualRate = Math.max(0.1, debt.interest_rate || 10) / 100;
+    // Fix: allow 0% interest; don't force minimum
+    const annualRate = (debt.interest_rate ?? 10) / 100;
     const monthlyRate = annualRate / 12;
 
+    // Minimum payment: interest + some principal (at least 50)
     const minRequiredPay = (principal * monthlyRate) + 50;
     const basePay = Math.max(monthlyBasePayment, minRequiredPay);
     const acceleratedPay = basePay + Math.max(0, Number(extraPayment));
 
-    // Standard payoff months
+    // Standard payoff
     let balanceBase = principal;
     let monthsBase = 0;
     let totalInterestBase = 0;
@@ -221,7 +241,7 @@ export default function Wealth() {
       if (balanceBase <= 0) break;
     }
 
-    // Accelerated payoff months
+    // Accelerated
     let balanceAcc = principal;
     let monthsAcc = 0;
     let totalInterestAcc = 0;
@@ -239,11 +259,11 @@ export default function Wealth() {
       monthsBase,
       monthsAcc,
       savedMonths: Math.max(0, monthsBase - monthsAcc),
-      savedInterest: Math.max(0, totalInterestBase - totalInterestAcc)
+      savedInterest: Math.max(0, totalInterestBase - totalInterestAcc),
     };
   }, [liabilitiesList, selectedDebtId, extraPayment, monthlyBasePayment]);
 
-  // Form Handlers
+  // ==================== CRUD HANDLERS ====================
   const openEdit = (item) => {
     setEditingItem(item);
     setFormData({
@@ -252,26 +272,44 @@ export default function Wealth() {
       base_value: String(item.base_value || ''),
       symbol: item.symbol || '',
       quantity: String(item.quantity || ''),
-      interest_rate: String(item.interest_rate || ''),
-      acquisition_date: item.acquisition_date ? new Date(item.acquisition_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+      interest_rate: String(item.interest_rate ?? ''),
+      acquisition_date: item.acquisition_date ? new Date(item.acquisition_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      note: item.note || '',
     });
   };
 
   const handleSaveItem = async () => {
-    if (!formData.name.trim() || formData.base_value === '') {
-      showToast('error', 'Please enter a name and base value.');
+    const trimmedName = formData.name.trim();
+    const baseVal = parseFloat(formData.base_value);
+
+    if (!trimmedName) {
+      showToast('error', 'Please enter a name.');
       return;
+    }
+    if (isNaN(baseVal) || baseVal <= 0) {
+      showToast('error', 'Base value must be a positive number.');
+      return;
+    }
+
+    // If liability, interest rate is optional but must be a number if provided
+    if (formData.asset_class === 'liability' && formData.interest_rate) {
+      const rate = parseFloat(formData.interest_rate);
+      if (isNaN(rate) || rate < 0) {
+        showToast('error', 'Interest rate must be a positive number or 0.');
+        return;
+      }
     }
 
     setIsSubmitting(true);
     try {
+      const payload = { ...formData, base_value: baseVal };
       if (editingItem) {
-        await axios.put(`${API_BASE}/wealth/items/${editingItem._id || editingItem.id}`, formData, {
+        await axios.put(`${API_BASE}/wealth/items/${editingItem._id || editingItem.id}`, payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
         showToast('success', 'Entry updated successfully');
       } else {
-        await axios.post(`${API_BASE}/wealth/items`, formData, {
+        await axios.post(`${API_BASE}/wealth/items`, payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
         showToast('success', 'Entry added successfully');
@@ -283,6 +321,7 @@ export default function Wealth() {
         name: '', asset_class: 'liquid_asset', base_value: '',
         symbol: '', quantity: '', interest_rate: '',
         acquisition_date: new Date().toISOString().split('T')[0],
+        note: '',
       });
       fetchWealthData();
     } catch (err) {
@@ -310,18 +349,48 @@ export default function Wealth() {
     }
   };
 
+  // ==================== EXPORT ====================
+  const exportPortfolio = () => {
+    const dataStr = JSON.stringify(wealthItems, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `wealth_portfolio_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast('success', 'Portfolio exported as JSON.');
+  };
+
+  // ==================== RENDER ====================
   return (
     <div className="masonry-layout-page wealth-page-wrap">
       <div className="masonry-header">
         <div className="mh-titles">
           <h2>{t('wealth')}</h2>
-          <span className="mh-badge">Live Market Connected</span>
+          <span className="mh-badge">Portfolio Manager</span>
         </div>
-        <div className="mh-actions" style={{ display: 'flex', gap: 10 }}>
-          <button className="btn-secondary" onClick={fetchWealthData} title="Refresh valuations and live market prices">
+        <div className="mh-actions" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            className="btn-secondary"
+            onClick={fetchWealthData}
+            disabled={isLoading}
+            aria-label="Refresh portfolio data"
+          >
             <RefreshCw size={15} className={isLoading ? 'spin' : ''} /> Refresh
           </button>
-          <button className="btn-primary" onClick={() => { setEditingItem(null); setIsAddingItem(true); }}>
+          <button
+            className="btn-secondary"
+            onClick={exportPortfolio}
+            aria-label="Export portfolio to JSON"
+          >
+            <Download size={15} /> Export
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => { setEditingItem(null); setIsAddingItem(true); }}
+            aria-label="Add new asset or liability"
+          >
             <Plus size={16} /> Add Entry
           </button>
         </div>
@@ -338,9 +407,11 @@ export default function Wealth() {
       <motion.div
         className="glass bento-tile hero-networth-card"
         style={{
-          padding: '36px 24px', textAlign: 'center', borderColor: nwColor,
+          padding: '36px 24px',
+          textAlign: 'center',
+          borderColor: nwColor,
           boxShadow: `0 8px 40px 0 ${netWorth >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.2)'}`,
-          marginBottom: 20
+          marginBottom: 20,
         }}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -351,7 +422,7 @@ export default function Wealth() {
         <div style={{ fontSize: 'clamp(2.4rem, 5vw, 3.4rem)', fontWeight: 900, fontFamily: 'var(--font-mono)', color: nwColor }}>
           {fmt(netWorth)}
         </div>
-        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 32 }}>
+        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 32, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>Assets</div>
             <div style={{ fontWeight: 700, color: 'var(--brand-primary)' }}>{fmt(totalAssets)}</div>
@@ -360,17 +431,23 @@ export default function Wealth() {
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>Liabilities</div>
             <div style={{ fontWeight: 700, color: 'var(--danger)' }}>-{fmt(totalLiabilities)}</div>
           </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>Debt‑to‑Asset</div>
+            <div style={{ fontWeight: 700, color: debtToAssetRatio > 0.5 ? 'var(--warning)' : 'var(--brand-primary)' }}>
+              {(debtToAssetRatio * 100).toFixed(1)}%
+            </div>
+          </div>
         </div>
       </motion.div>
 
-      {/* Warning: High Interest Debt */}
+      {/* High‑Interest Debt Warning */}
       {hasHighInterestDebts && (
         <motion.div className="glass" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ padding: 16, borderLeft: '4px solid var(--danger)', background: 'rgba(239,68,68,0.06)', borderRadius: 12, marginBottom: 20 }}>
           <h3 style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.95rem', margin: '0 0 4px 0' }}>
-            <ShieldAlert size={18} /> High-Interest Debt Warning
+            <ShieldAlert size={18} /> High‑Interest Debt Warning
           </h3>
           <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.84rem' }}>
-            You have {toxicDebts.length} high-interest debt(s) exceeding 12% interest ({toxicDebts.map(d => `${d.name} @ ${d.interest_rate}%`).join(', ')}). Use the Debt Payoff Simulator below to cut repayment interest.
+            You have {toxicDebts.length} high‑interest debt(s) exceeding 12% interest ({toxicDebts.map(d => `${d.name} @ ${d.interest_rate}%`).join(', ')}). Use the Debt Payoff Simulator below to cut repayment interest.
           </p>
         </motion.div>
       )}
@@ -381,13 +458,13 @@ export default function Wealth() {
           <Sparkles size={16} /> MyCoinwise AI Wealth Advisor
         </h3>
         <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: '0.88rem', lineHeight: 1.5, margin: '8px 0 0 0' }}>
-          {isAiLoading ? 'Analyzing portfolio asset allocation and debt-to-asset metrics…' : aiInsight}
+          {isAiLoading ? 'Analyzing portfolio asset allocation and debt‑to‑asset metrics…' : aiInsight}
         </p>
       </motion.div>
 
-      {/* Charts Grid: Historical Net Worth Growth + Asset Allocation */}
+      {/* Charts Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20, marginBottom: 20 }}>
-        {/* Historical Net Worth Area Chart */}
+        {/* Historical Net Worth */}
         <motion.div className="glass bento-tile" style={{ padding: 20 }}>
           <h3 className="heading-accent" style={{ fontSize: '0.95rem', marginBottom: 12 }}>Net Worth Trajectory</h3>
           <div style={{ height: 220 }}>
@@ -440,7 +517,7 @@ export default function Wealth() {
         </motion.div>
       </div>
 
-      {/* Debt Payoff / Loan Amortization Simulator */}
+      {/* Debt Payoff Simulator */}
       {liabilitiesList.length > 0 && debtPayoffCalculation && (
         <motion.div className="glass bento-tile" style={{ padding: 22, marginBottom: 20 }}>
           <div className="bt-header" style={{ marginBottom: 14 }}>
@@ -460,7 +537,7 @@ export default function Wealth() {
               >
                 {liabilitiesList.map(l => (
                   <option key={l._id || l.id} value={l._id || l.id}>
-                    {l.name} ({fmt(l.computedValue)} @ {l.interest_rate || 10}%)
+                    {l.name} ({fmt(l.computedValue)} @ {l.interest_rate || 0}%)
                   </option>
                 ))}
               </select>
@@ -506,39 +583,58 @@ export default function Wealth() {
         </motion.div>
       )}
 
-      {/* Portfolio Items Table */}
+      {/* Portfolio Table */}
       <motion.div className="glass bento-tile" style={{ padding: 22 }}>
         <h3 className="heading-accent" style={{ marginBottom: 16 }}>Portfolio Assets & Liabilities</h3>
-        {wealthItems.length === 0 ? (
+        {isLoading && wealthItems.length === 0 ? (
+          <div style={{ padding: '20px 0', textAlign: 'center' }}>
+            <div className="spinner" style={{ width: 30, height: 30, border: '3px solid var(--glass-2)', borderTop: '3px solid var(--brand-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 10px' }}></div>
+            <p style={{ color: 'var(--text-muted)' }}>Loading portfolio…</p>
+          </div>
+        ) : wealthItems.length === 0 ? (
           <div style={{ padding: '36px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
             <Briefcase size={40} style={{ margin: '0 auto 10px', opacity: 0.3 }} />
             <p>Your portfolio is empty. Add your first asset or debt above.</p>
           </div>
         ) : (
-          wealthItems.map((item, idx) => (
-            <div key={item._id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--glass-border)', flexWrap: 'wrap', gap: 8 }}>
-              <div>
-                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.92rem' }}>{item.name}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                  <span className="badge" style={{ background: 'var(--glass-2)', marginRight: 6 }}>{CLASS_LABELS[item.asset_class] || item.asset_class}</span>
-                  {item.symbol && <span style={{ color: '#3b82f6', fontWeight: 600 }}>{item.symbol} {item.quantity ? `× ${item.quantity}` : ''}</span>}
-                  {item.interest_rate ? <span style={{ color: 'var(--danger)', marginLeft: 6 }}>{item.interest_rate}% interest</span> : null}
+          <>
+            {wealthItems.map((item, idx) => (
+              <div key={item._id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--glass-border)', flexWrap: 'wrap', gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.92rem' }}>{item.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                    <span className="badge" style={{ background: 'var(--glass-2)', marginRight: 6 }}>{CLASS_LABELS[item.asset_class] || item.asset_class}</span>
+                    {item.symbol && <span style={{ color: '#3b82f6', fontWeight: 600 }}>{item.symbol} {item.quantity ? `× ${item.quantity}` : ''}</span>}
+                    {item.interest_rate != null && <span style={{ color: 'var(--danger)', marginLeft: 6 }}>{item.interest_rate}% interest</span>}
+                    {item.note && <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: '0.7rem' }}>· {item.note}</span>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ fontWeight: 800, fontSize: '1.05rem', color: item.asset_class === 'liability' ? 'var(--danger)' : 'var(--brand-primary)' }}>
+                    {item.asset_class === 'liability' ? '-' : ''}{fmt(item.current_value ?? item.base_value)}
+                  </div>
+                  <button
+                    className="del-btn"
+                    onClick={() => openEdit(item)}
+                    aria-label={`Edit ${item.name}`}
+                  >
+                    <Edit3 size={15} />
+                  </button>
+                  <button
+                    className="del-btn"
+                    onClick={() => setItemToDelete(item._id || item.id)}
+                    aria-label={`Delete ${item.name}`}
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ fontWeight: 800, fontSize: '1.05rem', color: item.asset_class === 'liability' ? 'var(--danger)' : 'var(--brand-primary)' }}>
-                  {item.asset_class === 'liability' ? '-' : ''}{fmt(item.current_value ?? item.base_value)}
-                </div>
-                <button className="del-btn" onClick={() => openEdit(item)} title="Edit entry"><Edit3 size={15} /></button>
-                <button className="del-btn" onClick={() => setItemToDelete(item._id || item.id)} title="Delete entry"><Trash2 size={15} /></button>
-              </div>
-            </div>
-          ))
+            ))}
+          </>
         )}
       </motion.div>
 
-      {/* Add / Edit Wealth Modal */}
+      {/* Add / Edit Modal */}
       <Modal
         isOpen={isAddingItem || editingItem !== null}
         onClose={() => { setIsAddingItem(false); setEditingItem(null); }}
@@ -548,12 +644,13 @@ export default function Wealth() {
         isLoading={isSubmitting}
       >
         <div className="form-group" style={{ marginBottom: 14 }}>
-          <label>Name</label>
+          <label>Name *</label>
           <input
             value={formData.name}
             onChange={e => setFormData({ ...formData, name: e.target.value })}
             placeholder="e.g. HDFC Fixed Deposit, S&P 500 ETF, Home Mortgage"
             autoFocus
+            aria-required="true"
           />
         </div>
 
@@ -575,12 +672,15 @@ export default function Wealth() {
           </div>
 
           <div className="form-group">
-            <label>{formData.asset_class === 'liability' ? 'Principal Owed' : 'Base Valuation'}</label>
+            <label>{formData.asset_class === 'liability' ? 'Principal Owed' : 'Base Valuation'} *</label>
             <input
               type="number"
+              min="0.01"
+              step="0.01"
               value={formData.base_value}
               onChange={e => setFormData({ ...formData, base_value: e.target.value })}
               placeholder="0.00"
+              aria-required="true"
             />
           </div>
         </div>
@@ -599,6 +699,8 @@ export default function Wealth() {
               <label>Quantity / Units</label>
               <input
                 type="number"
+                min="0"
+                step="0.0001"
                 value={formData.quantity}
                 onChange={e => setFormData({ ...formData, quantity: e.target.value })}
                 placeholder="e.g. 10"
@@ -609,15 +711,36 @@ export default function Wealth() {
 
         {formData.asset_class === 'liability' && (
           <div className="form-group" style={{ marginBottom: 14 }}>
-            <label>Annual Interest Rate (%)</label>
+            <label>Annual Interest Rate (%) (0 for 0%)</label>
             <input
               type="number"
+              min="0"
+              step="0.01"
               value={formData.interest_rate}
               onChange={e => setFormData({ ...formData, interest_rate: e.target.value })}
               placeholder="e.g. 8.5"
             />
           </div>
         )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div className="form-group">
+            <label>Acquisition Date</label>
+            <input
+              type="date"
+              value={formData.acquisition_date}
+              onChange={e => setFormData({ ...formData, acquisition_date: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label>Note (optional)</label>
+            <input
+              value={formData.note}
+              onChange={e => setFormData({ ...formData, note: e.target.value })}
+              placeholder="e.g. Bought at discount"
+            />
+          </div>
+        </div>
       </Modal>
 
       {/* Delete Modal */}
@@ -631,8 +754,9 @@ export default function Wealth() {
         danger={true}
       >
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
-          Are you sure you want to completely remove this entry from your wealth portfolio?
+          Are you sure you want to permanently remove <strong>{wealthItems.find(i => (i._id || i.id) === itemToDelete)?.name || 'this entry'}</strong> from your portfolio?
         </p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>This action cannot be undone.</p>
       </Modal>
     </div>
   );

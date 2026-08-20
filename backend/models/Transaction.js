@@ -8,6 +8,7 @@ const transactionSchema = new mongoose.Schema({
   amount:   { type: Number, required: true, min: 0 },
   date:     { type: Date, default: Date.now, index: true },
   note:     { type: String, default: null, maxlength: 500 },
+  account_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Account', default: null, index: true },
 
   // ── Enhanced Financial Details ─────────────────────────────────────────────
   currency:        { type: String, default: null, maxlength: 10 },
@@ -55,6 +56,7 @@ const transactionSchema = new mongoose.Schema({
 transactionSchema.index({ user_id: 1, date: -1 });
 transactionSchema.index({ user_id: 1, type: 1 });
 transactionSchema.index({ user_id: 1, category: 1 });
+transactionSchema.index({ user_id: 1, account_id: 1, is_deleted: 1 });
 transactionSchema.index({ tags: 1 });
 transactionSchema.index(
   { user_id: 1, recurrence_instance_key: 1 },

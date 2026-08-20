@@ -45,10 +45,10 @@ const NAV_ITEMS = [
 
 // Mobile dock shows only core 4 + Settings (Apple HIG: max 5)
 const MOBILE_NAV_ITEMS = [
-  { to: '/', icon: LayoutDashboard, labelKey: 'dashboard' },
-  { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions' },
-  { to: '/analytics', icon: BarChart3, labelKey: 'analytics' },
-  { to: '/goals', icon: Target, labelKey: 'goals' },
+  { to: '/', icon: LayoutDashboard, labelKey: 'dashboard', mobileLabel: 'Dashboard' },
+  { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions', mobileLabel: 'Transactions' },
+  { to: '/analytics', icon: BarChart3, labelKey: 'analytics', mobileLabel: 'Analytics' },
+  { to: '/goals', icon: Target, labelKey: 'goals', mobileLabel: 'Savings' },
 ];
 
 const USER_DISPLAY_RULES = {
@@ -1292,7 +1292,10 @@ const MobileBottomNav = React.memo(({ t, onOpenDrawer }) => {
                   />
                 )}
               </motion.div>
-              <span className="dock-label">{t(item.labelKey)}</span>
+              <span className="dock-label">
+                <span className="dock-label-full">{t(item.labelKey)}</span>
+                <span className="dock-label-short">{item.mobileLabel}</span>
+              </span>
             </>
           )}
         </NavLink>

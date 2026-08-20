@@ -4,7 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import AppLayout from './components/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import Loader from './components/Loader';
-import { api, CURRENCIES } from './services/api';
+import { api, CURRENCIES, getStoredToken } from './services/api';
 import { generateAlerts, getSpendingInsights } from './services/aiEngine';
 import { getT, LANGUAGES } from './services/i18n';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -85,7 +85,7 @@ export default function App() {
   const [isInitialAuthLoad, setIsInitialAuthLoad] = useState(true);
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
   const [globalError, setGlobalError] = useState(null);
-  const [token, setToken] = useState(() => localStorage.getItem('mcw-token') || null);
+  const [token, setToken] = useState(() => getStoredToken());
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
   // Keep the branded startup screen visible long enough to feel intentional,
@@ -171,14 +171,18 @@ export default function App() {
     favicon.href = profileImage;
   }, [user]);
 
-  const login = async (newToken, userData) => {
-    localStorage.setItem('mcw-token', newToken);
+  const login = async (newToken, userData, rememberMe = true) => {
+    localStorage.removeItem('mcw-token');
+    sessionStorage.removeItem('mcw-token');
+    (rememberMe ? localStorage : sessionStorage).setItem('mcw-token', newToken);
     setToken(newToken);
     setUser(userData);
   };
 
   const logout = () => {
+    api.logout().catch(() => {});
     localStorage.removeItem('mcw-token');
+    sessionStorage.removeItem('mcw-token');
     setToken(null);
     setUser(null);
     setAllUsers([]);
@@ -200,6 +204,7 @@ export default function App() {
     const timeoutId = setTimeout(() => {
       console.warn('[App] fetchData timed out — clearing token and redirecting to login');
       localStorage.removeItem('mcw-token');
+      sessionStorage.removeItem('mcw-token');
       setToken(null);
       setIsInitialAuthLoad(false);
       setIsBackgroundSyncing(false);
@@ -326,6 +331,7 @@ export default function App() {
         <AppContext.Provider value={{
           user, allUsers, transactions, theme, toggleTheme, setThemeDirect,
           addTransaction, deleteTransaction, editTransaction,
+          updateTransaction: editTransaction,
           resetAccount, createUser, switchUser, login, logout,
           isInitialAuthLoad, isBackgroundSyncing, globalError,
           fetchTransactions: fetchData,
@@ -346,6 +352,7 @@ export default function App() {
       <AppContext.Provider value={{
         user, allUsers, transactions, theme, toggleTheme, setThemeDirect,
         addTransaction, deleteTransaction, editTransaction,
+        updateTransaction: editTransaction,
         resetAccount, createUser, switchUser, login, logout, 
         isInitialAuthLoad, isBackgroundSyncing, globalError,
         fetchTransactions: fetchData,

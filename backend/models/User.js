@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
   username:  { type: String, required: true, trim: true, maxlength: 80 },
   last_name: { type: String, default: '', trim: true, maxlength: 80 },
   profession: { type: String, default: 'Trader', trim: true, maxlength: 80 },
+  household_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   email:     { type: String, required: true, unique: true, lowercase: true, trim: true },
   password:  { type: String, required: true, select: false },
   phone:     { type: String, default: null, trim: true },
