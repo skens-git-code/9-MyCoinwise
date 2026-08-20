@@ -57,14 +57,56 @@ const isEmojiAvatar = (value) => {
   return Boolean(source) && !isUsableImageSource(source) && source.length <= 8 && /\p{Extended_Pictographic}/u.test(source);
 };
 
+const createCircleImageFavicon = (src) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const size = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(src);
+          return;
+        }
+
+        // Clean circular clipping (no outer border)
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+
+        // Calculate aspect ratio cover
+        const minDim = Math.min(img.width, img.height);
+        const sx = (img.width - minDim) / 2;
+        const sy = (img.height - minDim) / 2;
+        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+        ctx.restore();
+
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        resolve(src);
+      }
+    };
+    img.onerror = () => {
+      resolve(src);
+    };
+    img.src = src;
+  });
+};
+
 const createEmojiFavicon = (emoji, color = '#059669') => {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><rect width="64" height="64" rx="18" fill="${color}" fill-opacity="0.16"/><rect x="1" y="1" width="62" height="62" rx="17" fill="none" stroke="${color}" stroke-opacity="0.3" stroke-width="2"/><text x="32" y="44" text-anchor="middle" font-size="36" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',sans-serif">${emoji}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><circle cx="32" cy="32" r="30" fill="${color}" fill-opacity="0.18"/><circle cx="32" cy="32" r="29" fill="none" stroke="${color}" stroke-opacity="0.5" stroke-width="2.5"/><text x="32" y="44" text-anchor="middle" font-size="34" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',sans-serif">${emoji}</text></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 };
 
 const createLetterFavicon = (letter, color = '#059669') => {
   const char = String(letter || 'M').charAt(0).toUpperCase();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${color}"/><stop offset="100%" stop-color="#0284c7"/></linearGradient></defs><rect width="64" height="64" rx="18" fill="url(#g)"/><rect x="1.5" y="1.5" width="61" height="61" rx="16.5" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2"/><text x="32" y="45" text-anchor="middle" fill="#ffffff" font-size="34" font-weight="800" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,sans-serif">${char}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${color}"/><stop offset="100%" stop-color="#0284c7"/></linearGradient></defs><circle cx="32" cy="32" r="30" fill="url(#g)"/><circle cx="32" cy="32" r="29" fill="none" stroke="#ffffff" stroke-opacity="0.4" stroke-width="2.5"/><text x="32" y="44" text-anchor="middle" fill="#ffffff" font-size="32" font-weight="800" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,sans-serif">${char}</text></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 };
 
@@ -162,22 +204,13 @@ export default function App() {
   // shown throughout the app. Invalid/placeholder avatar values fall back to
   // the branded favicon instead of creating a broken browser-tab icon.
   useEffect(() => {
+    let isCancelled = false;
     const userName = getUserNameForBranding(user);
     const documentTitle = !userName
       ? DEFAULT_DOCUMENT_TITLE
       : `${userName}’s Coinwise`;
     const avatar = String(user?.profile_avatar || '').trim();
     const userColor = user?.profile_color || '#059669';
-    
-    let profileImage = '/favicon.svg';
-    if (isUsableImageSource(avatar)) {
-      profileImage = avatar;
-    } else if (isEmojiAvatar(avatar)) {
-      profileImage = createEmojiFavicon(avatar, userColor);
-    } else if (user) {
-      const initial = userName?.charAt(0) || 'U';
-      profileImage = createLetterFavicon(initial, userColor);
-    }
 
     document.title = documentTitle;
 
@@ -187,25 +220,44 @@ export default function App() {
     const socialTitle = document.querySelector('meta[property="og:title"]');
     socialTitle?.setAttribute('content', documentTitle);
 
-    let favicon = document.getElementById('app-favicon');
-    if (!favicon) {
-      favicon = document.createElement('link');
-      favicon.id = 'app-favicon';
-      document.head.appendChild(favicon);
-    }
-    favicon.rel = 'icon';
-    favicon.setAttribute('data-personalized', user ? 'true' : 'false');
-    const faviconMimeType = getFaviconMimeType(profileImage);
-    if (faviconMimeType) favicon.type = faviconMimeType;
-    else favicon.removeAttribute('type');
-    favicon.href = /^https?:\/\//i.test(profileImage)
-      ? `${profileImage}${profileImage.includes('?') ? '&' : '?'}avatar=${encodeURIComponent(avatar.slice(-24))}`
-      : profileImage;
-    // Remove competing static icon links so the browser cannot keep showing
-    // the default tab icon after a user changes their avatar.
-    document.querySelectorAll('link[rel~="icon"]').forEach((link) => {
-      if (link !== favicon) link.remove();
-    });
+    const updateFavicon = async () => {
+      let profileImage = '/favicon.svg';
+      if (isUsableImageSource(avatar)) {
+        profileImage = await createCircleImageFavicon(avatar);
+      } else if (isEmojiAvatar(avatar)) {
+        profileImage = createEmojiFavicon(avatar, userColor);
+      } else if (user) {
+        const initial = userName?.charAt(0) || 'U';
+        profileImage = createLetterFavicon(initial, userColor);
+      }
+
+      if (isCancelled) return;
+
+      let favicon = document.getElementById('app-favicon');
+      if (!favicon) {
+        favicon = document.createElement('link');
+        favicon.id = 'app-favicon';
+        document.head.appendChild(favicon);
+      }
+      favicon.rel = 'icon';
+      favicon.setAttribute('data-personalized', user ? 'true' : 'false');
+      const faviconMimeType = getFaviconMimeType(profileImage);
+      if (faviconMimeType) favicon.type = faviconMimeType;
+      else favicon.removeAttribute('type');
+      favicon.href = profileImage;
+
+      // Remove competing static icon links so the browser cannot keep showing
+      // the default tab icon after a user changes their avatar.
+      document.querySelectorAll('link[rel~="icon"]').forEach((link) => {
+        if (link !== favicon) link.remove();
+      });
+    };
+
+    updateFavicon();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [user]);
 
   const login = async (newToken, userData, rememberMe = true) => {
