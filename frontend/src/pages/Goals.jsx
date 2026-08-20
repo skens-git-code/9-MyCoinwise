@@ -12,7 +12,38 @@ import { useToast } from '../components/ToastProvider';
 
 const GOAL_COLORS = ['#059669', '#06b6d4', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#3b82f6', '#ef4444'];
 const GOAL_ICONS = ['🎯', '💻', '✈️', '🎮', '📚', '🏋️', '🎸', '🚗', '🏠', '💍', '🛡️', '📈'];
-const GOAL_CATEGORIES = ['Emergency Fund', 'Vacation', 'Gadget', 'Investment', 'Vehicle', 'Home', 'Education', 'Other'];
+
+const GOAL_CATEGORIES = [
+  { key: 'all', labelKey: 'category_all', fallback: 'All' },
+  { key: 'emergency_fund', labelKey: 'category_emergency_fund', fallback: 'Emergency Fund' },
+  { key: 'vacation', labelKey: 'category_vacation', fallback: 'Vacation' },
+  { key: 'gadget', labelKey: 'category_gadget', fallback: 'Gadget' },
+  { key: 'investment', labelKey: 'category_investment', fallback: 'Investment' },
+  { key: 'vehicle', labelKey: 'category_vehicle', fallback: 'Vehicle' },
+  { key: 'home', labelKey: 'category_home', fallback: 'Home' },
+  { key: 'education', labelKey: 'category_education', fallback: 'Education' },
+  { key: 'other', labelKey: 'category_other', fallback: 'Other' },
+];
+
+const getCategoryKey = (cat) => {
+  if (!cat) return 'other';
+  const clean = String(cat).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (['emergency_fund', 'savings'].includes(clean)) return 'emergency_fund';
+  if (['vacation', 'trip', 'holiday'].includes(clean)) return 'vacation';
+  if (['gadget', 'tech', 'electronics'].includes(clean)) return 'gadget';
+  if (['investment', 'stocks', 'crypto'].includes(clean)) return 'investment';
+  if (['vehicle', 'car', 'bike'].includes(clean)) return 'vehicle';
+  if (['home', 'house', 'property'].includes(clean)) return 'home';
+  if (['education', 'course', 'college'].includes(clean)) return 'education';
+  if (['debt', 'loan'].includes(clean)) return 'debt';
+  if (['purchase'].includes(clean)) return 'purchase';
+  return clean;
+};
+
+const getCategoryLabel = (cat, t) => {
+  const key = getCategoryKey(cat);
+  return t?.(`category_${key}`) || t?.(key) || cat || 'Goal';
+};
 
 // Lightweight Canvas Confetti Burst
 function fireConfetti(canvas) {
@@ -77,14 +108,14 @@ export default function Goals() {
   const [goalToDelete, setGoalToDelete] = useState(null);
   const [contributeGoal, setContributeGoal] = useState(null);
   const [contributeAmount, setContributeAmount] = useState('');
-  const [activeCategoryFilter, setActiveCategoryFilter] = useState('All');
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState('all');
 
   // Form Fields
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
   const [saved, setSaved] = useState('');
   const [deadline, setDeadline] = useState('');
-  const [category, setCategory] = useState('Emergency Fund');
+  const [category, setCategory] = useState('emergency_fund');
   const [notes, setNotes] = useState('');
   const [selectedIcon, setSelectedIcon] = useState('🎯');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -100,7 +131,7 @@ export default function Goals() {
     setTarget('');
     setSaved('');
     setDeadline('');
-    setCategory('Emergency Fund');
+    setCategory('emergency_fund');
     setNotes('');
     setSelectedIcon('🎯');
     setEditingGoal(null);
@@ -112,7 +143,7 @@ export default function Goals() {
     setTarget(String(g.target || ''));
     setSaved(String(g.saved || ''));
     setDeadline(g.deadline ? new Date(g.deadline).toISOString().split('T')[0] : '');
-    setCategory(g.category || 'Other');
+    setCategory(getCategoryKey(g.category));
     setNotes(g.notes || '');
     setSelectedIcon(g.icon || '🎯');
   };
@@ -124,15 +155,19 @@ export default function Goals() {
     const savedNum = parseFloat(saved) || 0;
 
     if (!trimmedName) {
-      showToast('error', 'Please enter a goal name.');
+      showToast('error', t?.('enter_goal_name') || 'Please enter a goal name.');
       return;
     }
     if (!target || isNaN(targetNum) || targetNum <= 0) {
-      showToast('error', 'Target amount must be a positive number.');
+      showToast('error', t?.('target_positive_error') || 'Target amount must be a positive number.');
       return;
     }
     if (savedNum < 0) {
-      showToast('error', 'Already saved amount cannot be negative.');
+      showToast('error', t?.('saved_negative_error') || 'Already saved amount cannot be negative.');
+      return;
+    }
+    if (savedNum > targetNum) {
+      showToast('error', t?.('saved_exceed_error') || 'Already saved amount cannot exceed the target.');
       return;
     }
 
@@ -145,17 +180,18 @@ export default function Goals() {
         saved: Math.round(savedNum * 100) / 100,
         color: editingGoal?.color || GOAL_COLORS[goals.length % GOAL_COLORS.length],
         icon: selectedIcon,
-        category,
-        deadline: deadline ? new Date(deadline) : undefined,
+        category: getCategoryKey(category),
+        deadline: deadline ? deadline : null,
         notes: notes.trim() || undefined,
       };
 
       if (editingGoal) {
-        await api.updateGoal(editingGoal.id || editingGoal._id, payload);
-        showToast('success', 'Goal updated successfully!');
+        const goalId = editingGoal.id || editingGoal._id;
+        await api.updateGoal(goalId, payload);
+        showToast('success', t?.('goal_updated') || 'Goal updated successfully!');
       } else {
         await api.createGoal(payload);
-        showToast('success', 'Goal created successfully!');
+        showToast('success', t?.('goal_created') || 'Goal created successfully!');
       }
 
       await refetch();
@@ -176,9 +212,9 @@ export default function Goals() {
       await api.deleteGoal(goalToDelete);
       await refetch();
       setGoalToDelete(null);
-      showToast('success', 'Goal deleted');
+      showToast('success', t?.('goal_deleted') || 'Goal deleted');
     } catch {
-      showToast('error', 'Failed to delete goal');
+      showToast('error', t?.('goal_delete_failed') || 'Failed to delete goal');
     } finally {
       setIsSubmitting(false);
     }
@@ -187,13 +223,13 @@ export default function Goals() {
   const contribute = async (id) => {
     const amt = parseFloat(contributeAmount);
     if (!amt || isNaN(amt)) {
-      showToast('error', 'Please enter a valid amount.');
+      showToast('error', t?.('enter_valid_amount') || 'Please enter a valid amount.');
       return;
     }
     setIsSubmitting(true);
     try {
       const goal = goals.find(g => (g.id === id || g._id === id));
-      const newSaved = Math.max(0, parseFloat((Number(goal.saved) + amt).toFixed(2)));
+      const newSaved = Math.min(Number(goal.target), Math.max(0, parseFloat((Number(goal.saved) + amt).toFixed(2))));
       const willHit100 = newSaved >= Number(goal.target) && Number(goal.saved) < Number(goal.target);
 
       await api.updateGoal(id, { saved: newSaved });
@@ -203,9 +239,9 @@ export default function Goals() {
       
       if (willHit100 && confettiCanvasRef.current) {
         fireConfetti(confettiCanvasRef.current);
-        showToast('success', '🎉 Congratulations! You reached your goal target!');
+        showToast('success', t?.('goal_achieved') || '🎉 Congratulations! You reached your goal target!');
       } else {
-        showToast('success', amt > 0 ? 'Funds added to goal!' : 'Funds removed from goal!');
+        showToast('success', amt > 0 ? (t?.('funds_added') || 'Funds added to goal!') : (t?.('funds_removed') || 'Funds removed from goal!'));
       }
     } catch (err) {
       const msg = err?.response?.data?.error || 'Failed to update goal';
@@ -217,8 +253,8 @@ export default function Goals() {
 
   // Filter goals by category
   const filteredGoals = useMemo(() => {
-    if (activeCategoryFilter === 'All') return goals;
-    return goals.filter(g => (g.category || 'Other') === activeCategoryFilter);
+    if (activeCategoryFilter === 'all' || activeCategoryFilter === 'All') return goals;
+    return goals.filter(g => getCategoryKey(g.category) === activeCategoryFilter);
   }, [goals, activeCategoryFilter]);
 
   const totalGoalTarget = goals.reduce((a, c) => a + Number(c.target), 0);
@@ -233,11 +269,11 @@ export default function Goals() {
 
       <div className="masonry-header">
         <div className="mh-titles">
-          <h2>{t('goals')}</h2>
-          <span className="mh-badge">{goals.length} {t("active")}</span>
+          <h2>{t?.('goals') || 'Savings Goals'}</h2>
+          <span className="mh-badge">{goals.length} {t?.('active') || 'active'}</span>
         </div>
         <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="btn-primary" onClick={() => { resetForm(); setShowAdd(true); }}>
-          <Plus size={16} /> {t("new_goal")}
+          <Plus size={16} /> {t?.('new_goal') || 'New Goal'}
         </motion.button>
       </div>
 
@@ -245,9 +281,9 @@ export default function Goals() {
       <div className="carousel-wrapper" style={{ minHeight: 110 }}>
         <div className="carousel-track">
           {[
-            { label: t('net_available'), value: fmt(totalSaved), color: totalSaved >= 0 ? 'var(--success)' : 'var(--danger)', icon: '💰' },
-            { label: t('target_amount'), value: fmt(totalGoalTarget), color: 'var(--brand-primary)', icon: '🎯' },
-            { label: t('contributed'), value: fmt(totalGoalSaved), color: 'var(--brand-secondary)', icon: '✅' },
+            { label: t?.('net_available') || 'Net Available', value: fmt(totalSaved), color: totalSaved >= 0 ? 'var(--success)' : 'var(--danger)', icon: '💰' },
+            { label: t?.('target_amount') || 'Target Amount', value: fmt(totalGoalTarget), color: 'var(--brand-primary)', icon: '🎯' },
+            { label: t?.('contributed') || 'Contributed', value: fmt(totalGoalSaved), color: 'var(--brand-secondary)', icon: '✅' },
           ].map((s, i) => (
             <motion.div key={i} initial={{ opacity: 0, scale: 0.9, x: 20 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ delay: i * 0.1, type: 'spring' }}
               className="carousel-item glass"
@@ -267,13 +303,13 @@ export default function Goals() {
 
       {/* Goal Categories Filter Strip */}
       <div className="goals-category-filter-strip">
-        {['All', ...GOAL_CATEGORIES].map(cat => (
+        {GOAL_CATEGORIES.map(cat => (
           <button
-            key={cat}
-            className={`gcf-pill ${activeCategoryFilter === cat ? 'active' : ''}`}
-            onClick={() => setActiveCategoryFilter(cat)}
+            key={cat.key}
+            className={`gcf-pill ${activeCategoryFilter === cat.key ? 'active' : ''}`}
+            onClick={() => setActiveCategoryFilter(cat.key)}
           >
-            {cat}
+            {t?.(cat.labelKey) || cat.fallback}
           </button>
         ))}
       </div>
@@ -282,10 +318,10 @@ export default function Goals() {
       {filteredGoals.length === 0 ? (
         <motion.div className="glass empty-state" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Target size={52} />
-          <p className="primary-msg">{t("no_goals_yet")}</p>
-          <p className="secondary-msg">{t("set_first_savings_target")}</p>
+          <p className="primary-msg">{t?.('no_goals_yet') || 'No goals yet.'}</p>
+          <p className="secondary-msg">{t?.('set_first_savings_target') || 'Set your first savings target for a trip, a gadget, or an emergency fund.'}</p>
           <motion.button whileHover={{ scale: 1.04 }} className="btn-primary" style={{ marginTop: 20 }} onClick={() => { resetForm(); setShowAdd(true); }}>
-            <Plus size={16} /> {t("create_goal")}
+            <Plus size={16} /> {t?.('create_goal') || 'Create Goal'}
           </motion.button>
         </motion.div>
       ) : (
@@ -321,18 +357,18 @@ export default function Goals() {
                 >
                   {done && (
                     <motion.div className="mc-badge" initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.3 }}>
-                      🎉 {t("achieved")}
+                      🎉 {t?.('achieved') || 'Achieved!'}
                     </motion.div>
                   )}
 
                   <div className="mc-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div className="mc-icon">{g.icon || '🎯'}</div>
-                      <span className="goal-category-tag badge">{g.category || 'Goal'}</span>
+                      <span className="goal-category-tag badge">{getCategoryLabel(g.category, t)}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="del-btn" onClick={() => openEdit(g)} title="Edit goal"><Edit3 size={15} /></button>
-                      <button className="del-btn" onClick={() => setGoalToDelete(goalId)} title="Delete goal"><Trash2 size={15} /></button>
+                      <button className="del-btn" onClick={() => openEdit(g)} title={t?.('edit') || 'Edit goal'}><Edit3 size={15} /></button>
+                      <button className="del-btn" onClick={() => setGoalToDelete(goalId)} title={t?.('delete') || 'Delete goal'}><Trash2 size={15} /></button>
                     </div>
                   </div>
 
@@ -348,16 +384,16 @@ export default function Goals() {
                   {/* Deadline & Target Contribution Metrics */}
                   {g.deadline && !done && (
                     <div className="goal-deadline-strip">
-                      <span className="gds-item"><Calendar size={13} /> {daysRemaining} days left</span>
+                      <span className="gds-item"><Calendar size={13} /> {daysRemaining} {t?.('days_left') || 'days left'}</span>
                       {monthlyNeeded > 0 && (
-                        <span className="gds-item text-brand">Target: {fmt(monthlyNeeded)}/mo</span>
+                        <span className="gds-item text-brand">{t?.('target') || 'Target'}: {fmt(monthlyNeeded)}/{t?.('monthly')?.slice(0, 2) || 'mo'}</span>
                       )}
                     </div>
                   )}
 
                   <div className="mc-amounts">
                     <span className="mc-saved">{fmt(g.saved)}</span>
-                    <span className="mc-target">of {fmt(g.target)}</span>
+                    <span className="mc-target">{t?.('of') || 'of'} {fmt(g.target)}</span>
                   </div>
 
                   <div className="mc-progress-box">
@@ -380,8 +416,8 @@ export default function Goals() {
                     </div>
 
                     <div className="mc-progress-stats">
-                      <span>{pct.toFixed(0)}% completed</span>
-                      <span>{fmt(Math.max(0, Number(g.target) - Number(g.saved)))} left</span>
+                      <span>{pct.toFixed(0)}% {t?.('completed') || 'completed'}</span>
+                      <span>{fmt(Math.max(0, Number(g.target) - Number(g.saved)))} {t?.('left') || 'left'}</span>
                     </div>
                   </div>
 
@@ -393,7 +429,7 @@ export default function Goals() {
                         whileTap={{ scale: 0.96 }}
                         onClick={() => { setContributeGoal(goalId); setContributeAmount(''); }}
                       >
-                        <PlusCircle size={14} /> Add / Remove Funds
+                        <PlusCircle size={14} /> {t?.('contribute') || 'Add / Remove Funds'}
                       </motion.button>
                     )}
 
@@ -402,12 +438,12 @@ export default function Goals() {
                       if (!pred || pred.achieved) return null;
                       if (!pred.months) return (
                         <div className="mc-ai-pred mc-ai-empty">
-                          <Zap size={12} /> Save regularly for AI predictions
+                          <Zap size={12} /> {t?.('save_regularly_ai') || 'Save regularly for AI predictions'}
                         </div>
                       );
                       return (
                         <motion.div className="mc-ai-pred" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                          <Clock size={12} /> <span>~{pred.months} mo</span> at {fmt(pred.savingsPerMonth)}/mo
+                          <Clock size={12} /> <span>~{pred.months} {t?.('months') || 'mo'}</span> @ {fmt(pred.savingsPerMonth)}/mo
                         </motion.div>
                       );
                     })()}
@@ -423,27 +459,27 @@ export default function Goals() {
       <Modal
         isOpen={showAdd || editingGoal !== null}
         onClose={() => { setShowAdd(false); resetForm(); }}
-        title={editingGoal ? `✏️ Edit Savings Goal` : `🎯 ${t('new_goal') || 'New Savings Goal'}`}
-        confirmText={editingGoal ? 'Update Goal' : (t('save_goal') || 'Save Goal')}
+        title={editingGoal ? `✏️ ${t?.('edit') || 'Edit'} ${t?.('goals') || 'Goal'}` : `🎯 ${t?.('new_goal') || 'New Savings Goal'}`}
+        confirmText={editingGoal ? (t?.('save') || 'Update Goal') : (t?.('save_goal') || 'Save Goal')}
         onConfirm={handleSaveGoal}
         isLoading={isSubmitting}
       >
         <div className="form-group">
-          <label>{t('goal_name') || 'Goal Name'}</label>
+          <label>{t?.('goal_name') || 'Goal Name'}</label>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Dream Vacation" autoFocus />
         </div>
 
         <div className="form-group">
-          <label>Category</label>
+          <label>{t?.('category') || 'Category'}</label>
           <select value={category} onChange={e => setCategory(e.target.value)} className="filter-select" style={{ width: '100%' }}>
-            {GOAL_CATEGORIES.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
+            {GOAL_CATEGORIES.filter(c => c.key !== 'all').map(c => (
+              <option key={c.key} value={c.key}>{t?.(c.labelKey) || c.fallback}</option>
             ))}
           </select>
         </div>
 
         <div className="form-group">
-          <label>{t('choose_icon') || 'Choose Icon'}</label>
+          <label>{t?.('choose_icon') || 'Choose Icon'}</label>
           <div className="goal-icon-picker">
             {GOAL_ICONS.map(ic => (
               <button
@@ -459,24 +495,24 @@ export default function Goals() {
         </div>
 
         <div className="form-group">
-          <label>{t('target_amount') || 'Target Amount'}</label>
+          <label>{t?.('target_amount') || 'Target Amount'}</label>
           <input type="number" min="0.01" step="0.01" value={target} onChange={e => setTarget(e.target.value)} placeholder="e.g. 500" />
         </div>
 
         <div className="form-group">
-          <label>{t('already_saved') || 'Already Saved'}</label>
+          <label>{t?.('already_saved') || 'Already Saved'}</label>
           <input type="number" min="0" step="0.01" value={saved} onChange={e => setSaved(e.target.value)} placeholder="0" />
         </div>
 
         <div className="form-group">
-          <label>Target Deadline <span className="form-label-hint">({t('optional') || 'optional'})</span></label>
+          <label>{t?.('target_deadline') || 'Target Deadline'} <span className="form-label-hint">({t?.('optional') || 'optional'})</span></label>
           <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
         </div>
 
         <div className="form-group">
           <label>
-            {t('description') || 'Description'}
-            <span className="form-label-hint">({t('optional') || 'optional'})</span>
+            {t?.('description') || 'Description'}
+            <span className="form-label-hint"> ({t?.('optional') || 'optional'})</span>
           </label>
           <textarea
             value={notes}
@@ -492,16 +528,16 @@ export default function Goals() {
       <Modal
         isOpen={contributeGoal !== null}
         onClose={() => setContributeGoal(null)}
-        title={t('contribute') || 'Add / Remove Funds'}
-        confirmText={parseFloat(contributeAmount) < 0 ? (t('remove_funds') || 'Remove Funds') : (t('add_funds') || 'Add Funds')}
+        title={t?.('contribute') || 'Add / Remove Funds'}
+        confirmText={parseFloat(contributeAmount) < 0 ? (t?.('remove_funds') || 'Remove Funds') : (t?.('add_funds') || 'Add Funds')}
         onConfirm={() => contribute(contributeGoal)}
         isLoading={isSubmitting}
       >
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 16 }}>
-          Updating: <strong>{goals.find(g => (g.id === contributeGoal || g._id === contributeGoal))?.name}</strong>
+          {t?.('updating') || 'Updating'}: <strong>{goals.find(g => (g.id === contributeGoal || g._id === contributeGoal))?.name}</strong>
         </p>
         <div className="form-group">
-          <label>Amount (Use negative to remove)</label>
+          <label>{t?.('amount') || 'Amount'} ({t?.('negative_to_remove') || 'Use negative to remove'})</label>
           <input
             type="number"
             step="0.01"
@@ -517,14 +553,14 @@ export default function Goals() {
       <Modal
         isOpen={goalToDelete !== null}
         onClose={() => setGoalToDelete(null)}
-        title={t("delete_goal")}
-        confirmText={t("delete")}
+        title={t?.('delete_goal') || 'Delete Goal?'}
+        confirmText={t?.('delete') || 'Delete'}
         onConfirm={confirmDelete}
         isLoading={isSubmitting}
         danger={true}
       >
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
-          Are you sure you want to delete the goal <strong>{goals.find(g => (g.id === goalToDelete || g._id === goalToDelete))?.name}</strong>?
+          {t?.('are_you_sure_delete_goal') || 'Are you sure you want to delete'} <strong>{goals.find(g => (g.id === goalToDelete || g._id === goalToDelete))?.name}</strong>?
         </p>
       </Modal>
     </div>

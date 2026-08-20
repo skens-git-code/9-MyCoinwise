@@ -82,12 +82,12 @@ router.post(
     body('cycle').optional().isIn(SUBSCRIPTION_CYCLES).withMessage('Invalid billing cycle.'),
     body('color').optional().isString().trim().matches(/^#[0-9a-f]{6}$/i).withMessage('Invalid hex color.'),
     body('icon').optional().isString().trim().isLength({ max: 40 }),
-    body('url').optional().isURL().withMessage('Must be a valid URL.'),
-    body('notes').optional().isString().trim().isLength({ max: 500 }),
+    body('url').optional({ nullable: true, checkFalsy: true }).isURL().withMessage('Must be a valid URL.'),
+    body('notes').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 500 }),
     body('payment_method').optional().isIn(PAYMENT_METHODS).withMessage('Invalid payment method.'),
-    body('start_date').optional({ nullable: true }).isISO8601().toDate(),
-    body('next_billing_date').optional({ nullable: true }).isISO8601().toDate(),
-    body('trial_ends').optional({ nullable: true }).isISO8601().toDate(),
+    body('start_date').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
+    body('next_billing_date').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
+    body('trial_ends').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -100,37 +100,26 @@ router.post(
       return res.status(400).json({ error: 'Amount must be a positive number with at most 2 decimals.' });
     }
 
-    const subData = {
+    const subscriptionData = {
       user_id: req.user.id,
       name: name.trim(),
       amount: amountNum,
       cycle: cycle || 'monthly',
-      color: color || '#10b981',
-      icon: icon || '📱',
+      color: color || '#3b82f6',
+      icon: icon || '💳',
+      url: url ? String(url).trim() : null,
+      notes: notes ? String(notes).trim().slice(0, 500) : '',
+      payment_method: payment_method || 'credit_card',
+      start_date: start_date || null,
+      next_billing_date: next_billing_date || null,
+      trial_ends: trial_ends || null,
       is_active: true,
       is_paused: false,
     };
 
-    if (url) subData.url = url.trim();
-    if (notes) subData.notes = notes.trim();
-    if (payment_method) subData.payment_method = payment_method;
-    if (start_date) subData.start_date = start_date;
-    if (next_billing_date) {
-      if (start_date && next_billing_date < start_date) {
-        return res.status(400).json({ error: 'Next billing date must be after the start date.' });
-      }
-      subData.next_billing_date = next_billing_date;
-    }
-    if (trial_ends) {
-      if (start_date && trial_ends > start_date) {
-        return res.status(400).json({ error: 'Trial end must be before the start date.' });
-      }
-      subData.trial_ends = trial_ends;
-    }
-
     try {
-      const sub = await Subscription.create(subData);
-      res.status(201).json({ id: sub._id, message: 'Subscription created', sub });
+      const subscription = await Subscription.create(subscriptionData);
+      res.status(201).json({ id: subscription._id, message: 'Subscription created', subscription });
     } catch (error) {
       console.error('[Subscriptions] create error:', error);
       res.status(500).json({ error: 'Internal Server Error' });
@@ -149,15 +138,15 @@ router.put(
     body('cycle').optional().isIn(SUBSCRIPTION_CYCLES),
     body('color').optional().isString().trim().matches(/^#[0-9a-f]{6}$/i),
     body('icon').optional().isString().trim().isLength({ max: 40 }),
-    body('url').optional().isURL(),
-    body('notes').optional().isString().trim().isLength({ max: 500 }),
+    body('url').optional({ nullable: true, checkFalsy: true }).isURL(),
+    body('notes').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 500 }),
     body('payment_method').optional().isIn(PAYMENT_METHODS),
-    body('start_date').optional({ nullable: true }).isISO8601().toDate(),
-    body('next_billing_date').optional({ nullable: true }).isISO8601().toDate(),
-    body('trial_ends').optional({ nullable: true }).isISO8601().toDate(),
+    body('start_date').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
+    body('next_billing_date').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
+    body('trial_ends').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
     body('is_active').optional().isBoolean().toBoolean(),
     body('is_paused').optional().isBoolean().toBoolean(),
-    body('cancelled_at').optional({ nullable: true }).isISO8601().toDate(),
+    body('cancelled_at').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
   ],
   async (req, res) => {
     const errors = validationResult(req);

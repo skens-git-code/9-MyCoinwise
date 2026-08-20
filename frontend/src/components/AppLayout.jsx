@@ -5,7 +5,7 @@ import {
   LayoutDashboard, ArrowLeftRight, BarChart3, Target, Activity, Briefcase,
   CreditCard, Settings, ChevronRight, TrendingUp, TrendingDown,
   Bell, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon,
-  Menu, X, Zap, Search, Keyboard, User, Sun, Moon, Check, CheckCircle2,
+  Menu, X, Zap, Search, Keyboard, User, Users, Sun, Moon, Check, CheckCircle2,
   HelpCircle, Shield, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
@@ -132,10 +132,10 @@ const useDropdownManager = () => {
 };
 
 // Hook for user display info
-const useUserDisplay = (user) => {
+const useUserDisplay = (user, t) => {
   return useMemo(() => {
     if (!user) {
-      return { displayName: 'Guest', avatar: '👤', avatarColor: '#6B7280', rawName: null, isBase64Avatar: false };
+      return { displayName: t?.('guest') || 'Guest', avatar: '👤', avatarColor: '#6B7280', rawName: null, isBase64Avatar: false, role: t?.('role_trader') || 'Trader' };
     }
 
     const firstName = String(user?.username || user?.name || '').trim();
@@ -150,11 +150,18 @@ const useUserDisplay = (user) => {
       !USER_DISPLAY_RULES.excludedIds.has(sanitizedRawName);
 
     const fullDisplayName = isValidDisplayName ? sanitizedRawName : USER_DISPLAY_RULES.defaultDisplayName;
-    const avatarStr = user?.profile_avatar || fullDisplayName.charAt(0).toUpperCase();
-    const isBase64Avatar = typeof avatarStr === 'string' && avatarStr.length > 20 && avatarStr.startsWith('data:image');
+    const avatarStr = String(user?.profile_avatar || fullDisplayName.charAt(0).toUpperCase()).trim();
+    const isImageAvatar = /^(?:data:image\/|blob:|https?:\/\/|\/(?!\/))/i.test(avatarStr);
 
-
-    const role = sanitizeUserInput(user?.profession || user?.role) || 'Trader';
+    const rawRole = sanitizeUserInput(user?.profession || user?.role) || 'Trader';
+    const lowerRole = rawRole.toLowerCase().trim();
+    let localizedRole = rawRole;
+    if (lowerRole === 'student') localizedRole = t?.('role_student') || 'Student';
+    else if (lowerRole === 'trader') localizedRole = t?.('role_trader') || 'Trader';
+    else if (lowerRole === 'freelancer') localizedRole = t?.('role_freelancer') || 'Freelancer';
+    else if (lowerRole === 'professional') localizedRole = t?.('role_professional') || 'Professional';
+    else if (lowerRole === 'engineer') localizedRole = t?.('role_engineer') || 'Engineer';
+    else if (lowerRole === 'consultant') localizedRole = t?.('role_consultant') || 'Consultant';
 
     return {
       displayName: fullDisplayName,
@@ -162,10 +169,10 @@ const useUserDisplay = (user) => {
       avatar: avatarStr,
       avatarColor: validateColorHex(user?.profile_color),
       rawName: sanitizedRawName,
-      isBase64Avatar,
-      role
+      isBase64Avatar: isImageAvatar,
+      role: localizedRole
     };
-  }, [user]);
+  }, [user, t]);
 };
 
 // Hook for responsive sidebar
@@ -328,7 +335,7 @@ class ErrorBoundary extends React.Component {
 // ==============================
 
 const LanguageDropdown = React.memo(({
-  currentLang,
+  currentLang, t,
   onLanguageChange,
   onClose
 }) => {
@@ -344,7 +351,7 @@ const LanguageDropdown = React.memo(({
       exit={{ opacity: 0, y: -10, scale: 0.95 }}
       onClick={e => e.stopPropagation()}
     >
-      <p className="drp-label">Language</p>
+      <p className="drp-label">{t?.('language') || 'Language'}</p>
       {Object.entries(LANGUAGES).map(([code, info]) => (
         <button
           key={code}
@@ -415,7 +422,7 @@ export default function AppLayout({ children }) {
   }, [drawerOpen]);
 
   // Custom hooks
-  const userInfo = useUserDisplay(user);
+  const userInfo = useUserDisplay(user, t);
   useClickOutside(activeDropdown, closeAll);
 
   useEffect(() => {
@@ -633,6 +640,7 @@ export default function AppLayout({ children }) {
             theme={theme}
             onToggleTheme={toggleTheme}
             lang={lang}
+            t={t}
             onLanguageChange={handleLanguageChange}
             onOpenProfile={handleOpenProfile}
             onOpenCmdPalette={handleOpenCmdPalette}
@@ -904,7 +912,7 @@ const DesktopSidebar = React.memo(({
             )}
           </AnimatePresence>
         </NavLink>
-        <button onClick={logout} className="inav-item text-danger" style={{ marginTop: '5px' }}>
+        <button onClick={logout} className="inav-item text-danger" style={{ marginTop: '5px' }} aria-label={t?.('logout') || 'Log Out'}>
           <LogOut size={20} className="inav-icon nav-icon-logout" />
           <AnimatePresence>
             {isOpen && (
@@ -914,7 +922,7 @@ const DesktopSidebar = React.memo(({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
-                Log Out
+                {t?.('logout') || 'Log Out'}
               </motion.span>
             )}
           </AnimatePresence>
@@ -931,7 +939,7 @@ const Header = React.memo(({
   activeDropdown, onDropdownToggle, onCloseDropdowns,
   onShowConverter, onShowAlerts, onShowAI, urgentAlertsCount,
   formattedBalance, theme, onToggleTheme,
-  lang, onLanguageChange, onOpenProfile,
+  lang, t, onLanguageChange, onOpenProfile,
   onOpenCmdPalette, onOpenShortcuts,
   onOpenHelp, onOpenTour,
   activeAlerts, onDismissAllAlerts,
@@ -980,7 +988,9 @@ const Header = React.memo(({
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '12px' }}
         >
           <Search size={15} className="hsb-icon" style={{ flexShrink: 0 }} />
-          <span className="hsb-placeholder" style={{ flexGrow: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Search anything...</span>
+          <span className="hsb-placeholder" style={{ flexGrow: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {t?.('search_anything_placeholder') || 'Search anything...'}
+          </span>
           <kbd className="hsb-kbd" style={{ flexShrink: 0 }}>⌘K</kbd>
         </button>
       </div>
@@ -1036,6 +1046,7 @@ const Header = React.memo(({
               {activeDropdown === 'language' && (
                 <LanguageDropdown
                   currentLang={lang}
+                  t={t}
                   onLanguageChange={onLanguageChange}
                   onClose={onCloseDropdowns}
                 />
@@ -1265,36 +1276,40 @@ const Header = React.memo(({
                 <div className="hpd-actions">
                   <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); navigate('/settings'); }}>
                     <Settings size={16} />
-                    <span>Settings & Preferences</span>
+                    <span>{t?.('settings') || 'Settings & Preferences'}</span>
+                  </button>
+                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); navigate('/settings?tab=users'); }}>
+                    <Users size={16} />
+                    <span>{t?.('manage_users') || 'Manage Users'}</span>
                   </button>
                   <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenShortcuts(); }}>
                     <Keyboard size={16} />
-                    <span>Keyboard Shortcuts</span>
+                    <span>{t?.('shortcuts') || 'Keyboard Shortcuts'}</span>
                     <kbd className="hpd-kbd">?</kbd>
                   </button>
                   <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenCmdPalette(); }}>
                     <Search size={16} />
-                    <span>Global Search</span>
+                    <span>{t?.('global_search') || 'Global Search'}</span>
                     <kbd className="hpd-kbd">⌘K</kbd>
                   </button>
                   <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenHelp(); }}>
                     <HelpCircle size={16} />
-                    <span>Help & Knowledge Base</span>
+                    <span>{t?.('help_center') || 'Help & Knowledge Base'}</span>
                   </button>
                   <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenTour(); }}>
                     <Sparkles size={16} />
-                    <span>Platform Onboarding Tour</span>
+                    <span>{t?.('onboarding_tour') || 'Platform Onboarding Tour'}</span>
                   </button>
                   <button className="hpd-action-btn" onClick={() => { onToggleTheme(); }}>
                     {theme === 'amoled' ? <Sun size={16} /> : <Moon size={16} />}
-                    <span>Theme: {theme === 'amoled' ? 'AMOLED' : 'Light'}</span>
+                    <span>{t?.('theme') || 'Theme'}: {theme === 'amoled' ? 'AMOLED' : 'Light'}</span>
                   </button>
                 </div>
 
                 <div className="hpd-footer">
                   <button className="hpd-logout-btn text-danger" onClick={() => { onCloseDropdowns(); logout(); }}>
                     <LogOut size={16} />
-                    <span>Log Out</span>
+                    <span>{t?.('logout') || 'Log Out'}</span>
                   </button>
                 </div>
               </motion.div>
@@ -1481,7 +1496,7 @@ const MobileDrawer = React.memo(({
       {/* Language Picker */}
       <p className="drawer-section-title">Language</p>
       <div className="drawer-preferences-row">
-        {Object.entries(LANGUAGES).slice(0, 4).map(([code, info]) => (
+        {Object.entries(LANGUAGES).map(([code, info]) => (
           <button
             key={code}
             className="drawer-pref-btn"

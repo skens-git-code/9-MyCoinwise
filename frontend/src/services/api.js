@@ -26,6 +26,10 @@ axios.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('mcw-token');
       sessionStorage.removeItem('mcw-token');
+      const requestUrl = String(error.config?.url || '');
+      if (!requestUrl.includes('/auth/')) {
+        window.dispatchEvent(new CustomEvent('mcw:auth-expired'));
+      }
     }
     return Promise.reject(error);
   }

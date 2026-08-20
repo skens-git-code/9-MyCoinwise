@@ -10,7 +10,7 @@ import { useToast } from '../components/ToastProvider';
 const BUDGET_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6', '#f43f5e', '#14b8a6'];
 
 export default function Budgets() {
-  const { budgets = [], refetch, fmt, transactions = [], loading } = useContext(AppContext);
+  const { budgets = [], refetch, fmt, transactions = [], loading, t } = useContext(AppContext);
   const { showToast } = useToast();
 
   // UI state
@@ -26,7 +26,7 @@ export default function Budgets() {
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [rolloverEnabled, setRolloverEnabled] = useState(false);
-  const [isActive, setIsActive] = useState(true); // NEW: active toggle
+  const [isActive, setIsActive] = useState(true);
   const [formError, setFormError] = useState('');
 
   // Reset form to default (or editing state)
@@ -48,64 +48,62 @@ export default function Budgets() {
     setName(budget.name || '');
     setType(budget.type || 'monthly');
     setTotalLimit(String(budget.total_limit ?? ''));
-    // Safely format dates
-    const start = budget.period_start ? new Date(budget.period_start) : null;
-    const end = budget.period_end ? new Date(budget.period_end) : null;
-    setPeriodStart(start ? start.toISOString().slice(0, 10) : '');
-    setPeriodEnd(end ? end.toISOString().slice(0, 10) : '');
-    setRolloverEnabled(budget.rollover_enabled || false);
-    setIsActive(budget.is_active !== undefined ? budget.is_active : true);
+    setPeriodStart(budget.period_start ? new Date(budget.period_start).toISOString().split('T')[0] : '');
+    setPeriodEnd(budget.period_end ? new Date(budget.period_end).toISOString().split('T')[0] : '');
+    setRolloverEnabled(Boolean(budget.rollover_enabled));
+    setIsActive(budget.is_active !== undefined ? Boolean(budget.is_active) : true);
     setFormError('');
     setShowAdd(true);
   };
 
-  // Pre-fill form for duplicating a budget (copy)
+  // Duplicate budget handler
   const openDuplicate = (budget) => {
-    setEditingBudget(null); // ensure it's treated as new
-    setName(budget.name ? `${budget.name} (copy)` : '');
+    setEditingBudget(null); // creation mode
+    setName(`${budget.name || ''} (Copy)`);
     setType(budget.type || 'monthly');
     setTotalLimit(String(budget.total_limit ?? ''));
-    const start = budget.period_start ? new Date(budget.period_start) : null;
-    const end = budget.period_end ? new Date(budget.period_end) : null;
-    setPeriodStart(start ? start.toISOString().slice(0, 10) : '');
-    setPeriodEnd(end ? end.toISOString().slice(0, 10) : '');
-    setRolloverEnabled(budget.rollover_enabled || false);
+    setPeriodStart(budget.period_start ? new Date(budget.period_start).toISOString().split('T')[0] : '');
+    setPeriodEnd(budget.period_end ? new Date(budget.period_end).toISOString().split('T')[0] : '');
+    setRolloverEnabled(Boolean(budget.rollover_enabled));
     setIsActive(true);
     setFormError('');
     setShowAdd(true);
   };
 
-  // Handle form submission (create or update)
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const trimmedName = name.trim();
-    const limit = Number(totalLimit);
+  // Validate form
+  const validate = () => {
+    if (!name.trim()) return 'Budget name is required.';
+    const limitNum = parseFloat(totalLimit);
+    if (isNaN(limitNum) || limitNum <= 0) return 'Total limit must be a positive number.';
+    if (!periodStart) return 'Start date is required.';
+    if (!periodEnd) return 'End date is required.';
+    if (new Date(periodStart) > new Date(periodEnd)) return 'Start date cannot be after end date.';
+    return null;
+  };
 
-    // Validation
-    if (!trimmedName || !Number.isFinite(limit) || limit <= 0) {
-      setFormError('Enter a budget name and a positive limit.');
-      return;
-    }
-    // Date validation using Date objects
-    const startDate = new Date(periodStart);
-    const endDate = new Date(periodEnd);
-    if (!periodStart || !periodEnd || isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || endDate < startDate) {
-      setFormError('Choose a valid date range. The end date cannot be before the start date.');
+  // Save budget (create or update)
+  const handleSubmit = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    const error = validate();
+    if (error) {
+      setFormError(error);
       return;
     }
 
     setIsSubmitting(true);
-    try {
-      const payload = {
-        name: trimmedName,
-        type,
-        total_limit: limit,
-        period_start: periodStart,
-        period_end: periodEnd,
-        rollover_enabled: rolloverEnabled,
-        is_active: isActive, // NEW: include active status
-      };
+    setFormError('');
 
+    const payload = {
+      name: name.trim(),
+      type,
+      total_limit: parseFloat(totalLimit),
+      period_start: periodStart,
+      period_end: periodEnd,
+      rollover_enabled: rolloverEnabled,
+      is_active: isActive,
+    };
+
+    try {
       if (editingBudget) {
         await api.updateBudget(editingBudget.id || editingBudget._id, payload);
         showToast('success', 'Budget updated successfully!');
@@ -113,9 +111,9 @@ export default function Budgets() {
         await api.createBudget(payload);
         showToast('success', 'Budget created successfully!');
       }
-      resetForm();
-      setShowAdd(false);
       await refetch();
+      setShowAdd(false);
+      resetForm();
     } catch (err) {
       showToast('error', err.response?.data?.error || 'Failed to save budget.');
     } finally {
@@ -138,9 +136,8 @@ export default function Budgets() {
 
   // Compute live spending against budgets
   const activeBudgets = useMemo(() => {
-    // Assign a deterministic color based on index or id
     return budgets
-      .filter(b => b.is_active !== false) // show only active by default (we can still show inactive if we want, but we filter)
+      .filter(b => b.is_active !== false)
       .map((b, index) => {
         const start = new Date(b.period_start).getTime();
         const end = new Date(b.period_end).getTime();
@@ -160,7 +157,6 @@ export default function Budgets() {
         const remaining = Math.max(0, limit - reliableSpent);
         const progress = limit > 0 ? Math.min(100, (reliableSpent / limit) * 100) : 0;
 
-        // Assign a color from the palette (based on index or hash)
         const colorIndex = (b.id || b._id || index).toString().length % BUDGET_COLORS.length;
         const color = BUDGET_COLORS[colorIndex];
 
@@ -180,7 +176,7 @@ export default function Budgets() {
   if (loading && budgets.length === 0) {
     return (
       <div className="budget-page" style={{ padding: 'var(--spacing-lg)', maxWidth: '1200px', margin: '0 auto' }}>
-        <p>Loading budgets...</p>
+        <p>{t?.('loading') || 'Loading budgets...'}</p>
       </div>
     );
   }
@@ -189,20 +185,20 @@ export default function Budgets() {
     <div className="budget-page" style={{ padding: 'var(--spacing-lg)', maxWidth: '1200px', margin: '0 auto' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-xl)' }}>
         <div>
-          <h1 style={{ fontSize: '1.875rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Budgets</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Control your spending and track category limits.</p>
+          <h1 style={{ fontSize: '1.875rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-main)' }}>{t?.('budgets') || 'Budgets'}</h1>
+          <p style={{ color: 'var(--text-muted)' }}>{t?.('monthly_budgets') || 'Control your spending and track category limits.'}</p>
         </div>
         <button className="btn-primary" onClick={() => { resetForm(); setShowAdd(true); }} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Plus size={18} /> New Budget
+          <Plus size={18} /> {t?.('create_budget') || 'New Budget'}
         </button>
       </header>
 
       {activeBudgets.length === 0 ? (
         <div className="budgets-empty">
           <Wallet size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem', opacity: 0.5 }} />
-          <h3 style={{ marginBottom: '0.5rem' }}>No active budgets</h3>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Create a budget to start tracking your spending.</p>
-          <button className="btn-primary" onClick={() => { resetForm(); setShowAdd(true); }}>Create First Budget</button>
+          <h3 style={{ marginBottom: '0.5rem' }}>{t?.('no_budgets_yet') || 'No active budgets'}</h3>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>{t?.('set_first_budget') || 'Create a budget to start tracking your spending.'}</p>
+          <button className="btn-primary" onClick={() => { resetForm(); setShowAdd(true); }}>{t?.('create_budget') || 'Create First Budget'}</button>
         </div>
       ) : (
         <div className="budgets-grid">
@@ -212,7 +208,7 @@ export default function Budgets() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="budget-card"
-              style={{ borderLeft: `4px solid ${b.color}` }} // accent color
+              style={{ borderLeft: `4px solid ${b.color}` }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                 <div>
@@ -221,7 +217,6 @@ export default function Budgets() {
                     <Calendar size={14} />
                     <span>{new Date(b.period_start).toLocaleDateString()} - {new Date(b.period_end).toLocaleDateString()}</span>
                   </div>
-                  {/* Show rollover amount if any */}
                   {b.rolloverAmount > 0 && (
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                       Rollover: {fmt(b.rolloverAmount)}
@@ -229,9 +224,8 @@ export default function Budgets() {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  {/* Active/Inactive indicator */}
                   {b.is_active ? (
-                    <ToggleRight size={18} color="var(--success-color)" title="Active" />
+                    <ToggleRight size={18} color="var(--success-color)" title={t?.('active') || 'Active'} />
                   ) : (
                     <ToggleLeft size={18} color="var(--text-muted)" title="Inactive" />
                   )}
@@ -243,20 +237,19 @@ export default function Budgets() {
 
               <div style={{ marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Spent</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{t?.('spent') || 'Spent'}</span>
                   <span style={{ fontWeight: '600', color: b.progress >= 100 ? 'var(--danger-color)' : 'var(--text-main)' }}>{fmt(b.spent)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Remaining</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{t?.('remaining_budget') || 'Remaining'}</span>
                   <span style={{ fontWeight: '600', color: 'var(--success-color)' }}>{fmt(b.remaining)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Total Limit</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{t?.('budget_limit') || 'Total Limit'}</span>
                   <span style={{ fontWeight: '600' }}>{fmt(b.limit)}</span>
                 </div>
               </div>
 
-              {/* Progress bar with warning icon if >=80% */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <div style={{ flex: 1, height: '8px', background: 'var(--bg-color)', borderRadius: '4px', overflow: 'hidden' }}>
                   <motion.div

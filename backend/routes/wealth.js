@@ -154,7 +154,7 @@ router.get('/items', auth, async (req, res) => {
 
       if (item.asset_class === 'illiquid_asset' || item.asset_class === 'business_equity') {
         // Apply depreciation for illiquid assets if no manual override
-        if (item.current_value_override) {
+        if (item.current_value_override !== null && item.current_value_override !== undefined) {
           currentValue = item.current_value_override;
         } else {
           currentValue = calculateDepreciation(

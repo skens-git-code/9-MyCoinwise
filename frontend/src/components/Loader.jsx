@@ -1,21 +1,25 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpRight, Check, Zap } from 'lucide-react';
+import { AppContext } from '../contexts/AppContext';
 
 const visuallyHidden = { position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 };
 
 export default function Loader({ fullScreen = false, mode = 'inline', text }) {
+  const appContext = useContext(AppContext);
+  const t = appContext?.t;
   const prefersReducedMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   if (mode === 'button') {
-    return <span className="loader loader--button" role="status" aria-label={text || 'Loading'}>
+    return <span className="loader loader--button" role="status" aria-label={text || t?.('loading') || 'Loading'}>
       <motion.span aria-hidden="true" animate={prefersReducedMotion ? {} : { rotate: 360 }} transition={{ duration: .85, repeat: Infinity, ease: 'linear' }} style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,.35)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block' }} />
-      <span style={visuallyHidden}>{text || 'Loading'}</span>
+      <span style={visuallyHidden}>{text || t?.('loading') || 'Loading'}</span>
     </span>;
   }
 
   const isFull = fullScreen || mode === 'auth';
-  const statusText = text || (mode === 'auth' ? 'Securing your session' : 'Preparing your workspace');
+  const defaultStatus = t?.('loading_workspace') || (mode === 'auth' ? 'Securing your session' : 'Preparing your workspace');
+  const statusText = text || defaultStatus;
 
   return <div className={`loader loader--${isFull ? 'fullscreen' : 'inline'} loader--${mode}`} role="status" aria-live="polite" aria-busy="true" aria-label={statusText} style={{ position: isFull ? 'fixed' : 'relative', inset: isFull ? 0 : 'auto', zIndex: isFull ? 9999 : 1, minHeight: isFull ? '100dvh' : 240, width: '100%', overflow: 'hidden', display: 'grid', placeItems: 'center', padding: 24, boxSizing: 'border-box', color: 'var(--text-primary)', background: isFull ? 'radial-gradient(circle at 50% 30%, rgba(16,185,129,.14), transparent 45%), radial-gradient(circle at 80% 80%, rgba(139,92,246,.10), transparent 50%), var(--surface-0)' : 'transparent' }}>
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }} aria-hidden="true">

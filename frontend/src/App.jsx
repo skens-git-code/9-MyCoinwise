@@ -44,15 +44,29 @@ const getUserNameForBranding = (userData) => {
   return name;
 };
 
-const isUsableImageSource = (value) => (
-  typeof value === 'string' && (
-    value.startsWith('data:image/') ||
-    value.startsWith('blob:') ||
-    value.startsWith('https://') ||
-    value.startsWith('http://') ||
-    value.startsWith('/')
-  )
-);
+const isUsableImageSource = (value) => {
+  const source = String(value || '').trim();
+  return source.length > 10 && (
+    /^data:image\//i.test(source) || /^blob:/i.test(source) ||
+    /^https?:\/\//i.test(source) || /^\/(?!\/)/.test(source)
+  );
+};
+
+const isEmojiAvatar = (value) => {
+  const source = String(value || '').trim();
+  return Boolean(source) && !isUsableImageSource(source) && source.length <= 8 && /\p{Extended_Pictographic}/u.test(source);
+};
+
+const createEmojiFavicon = (emoji, color = '#059669') => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><rect width="64" height="64" rx="18" fill="${color}" fill-opacity="0.16"/><rect x="1" y="1" width="62" height="62" rx="17" fill="none" stroke="${color}" stroke-opacity="0.3" stroke-width="2"/><text x="32" y="44" text-anchor="middle" font-size="36" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',sans-serif">${emoji}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
+
+const createLetterFavicon = (letter, color = '#059669') => {
+  const char = String(letter || 'M').charAt(0).toUpperCase();
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${color}"/><stop offset="100%" stop-color="#0284c7"/></linearGradient></defs><rect width="64" height="64" rx="18" fill="url(#g)"/><rect x="1.5" y="1.5" width="61" height="61" rx="16.5" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2"/><text x="32" y="45" text-anchor="middle" fill="#ffffff" font-size="34" font-weight="800" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,sans-serif">${char}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
 
 const getFaviconMimeType = (source) => {
   const dataMime = source.match(/^data:(image\/[\w.+-]+)/i)?.[1];
@@ -129,6 +143,7 @@ export default function App() {
   };
 
   const setLanguage = (code) => {
+    if (!LANGUAGES[code]) return;
     setLang(code);
     localStorage.setItem('mcw-lang', code);
   };
@@ -138,6 +153,11 @@ export default function App() {
     localStorage.setItem('mcw-theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    document.documentElement.lang = LANGUAGES[lang]?.code || LANGUAGES.en.code;
+    document.documentElement.dir = 'ltr';
+  }, [lang]);
+
   // Keep the browser chrome personalized with the same saved profile image
   // shown throughout the app. Invalid/placeholder avatar values fall back to
   // the branded favicon instead of creating a broken browser-tab icon.
@@ -146,9 +166,18 @@ export default function App() {
     const documentTitle = !userName
       ? DEFAULT_DOCUMENT_TITLE
       : `${userName}’s Coinwise`;
-    const profileImage = isUsableImageSource(user?.profile_avatar)
-      ? user.profile_avatar
-      : '/favicon.svg';
+    const avatar = String(user?.profile_avatar || '').trim();
+    const userColor = user?.profile_color || '#059669';
+    
+    let profileImage = '/favicon.svg';
+    if (isUsableImageSource(avatar)) {
+      profileImage = avatar;
+    } else if (isEmojiAvatar(avatar)) {
+      profileImage = createEmojiFavicon(avatar, userColor);
+    } else if (user) {
+      const initial = userName?.charAt(0) || 'U';
+      profileImage = createLetterFavicon(initial, userColor);
+    }
 
     document.title = documentTitle;
 
@@ -162,13 +191,21 @@ export default function App() {
     if (!favicon) {
       favicon = document.createElement('link');
       favicon.id = 'app-favicon';
-      favicon.rel = 'icon';
       document.head.appendChild(favicon);
     }
+    favicon.rel = 'icon';
+    favicon.setAttribute('data-personalized', user ? 'true' : 'false');
     const faviconMimeType = getFaviconMimeType(profileImage);
     if (faviconMimeType) favicon.type = faviconMimeType;
     else favicon.removeAttribute('type');
-    favicon.href = profileImage;
+    favicon.href = /^https?:\/\//i.test(profileImage)
+      ? `${profileImage}${profileImage.includes('?') ? '&' : '?'}avatar=${encodeURIComponent(avatar.slice(-24))}`
+      : profileImage;
+    // Remove competing static icon links so the browser cannot keep showing
+    // the default tab icon after a user changes their avatar.
+    document.querySelectorAll('link[rel~="icon"]').forEach((link) => {
+      if (link !== favicon) link.remove();
+    });
   }, [user]);
 
   const login = async (newToken, userData, rememberMe = true) => {
@@ -194,6 +231,25 @@ export default function App() {
     setEvents([]);
   };
 
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      localStorage.removeItem('mcw-token');
+      sessionStorage.removeItem('mcw-token');
+      setToken(null);
+      setUser(null);
+      setAllUsers([]);
+      setTransactions([]);
+      setGoals([]);
+      setBudgets([]);
+      setAccounts([]);
+      setSubscriptions([]);
+      setEvents([]);
+      setGlobalError(null);
+    };
+    window.addEventListener('mcw:auth-expired', handleAuthExpired);
+    return () => window.removeEventListener('mcw:auth-expired', handleAuthExpired);
+  }, []);
+
   const fetchData = async () => {
     if (!token) {
       setIsInitialAuthLoad(false);
@@ -218,7 +274,7 @@ export default function App() {
       const me = await api.getMe();
       const activeId = me._id || me.id;
 
-      const [txData, goalsData, subsData, eventsData, budgetsData, accountsData, usersData] = await Promise.all([
+      const results = await Promise.allSettled([
         api.getTransactions(activeId),
         api.getGoals(activeId),
         api.getSubscriptions(activeId),
@@ -227,6 +283,17 @@ export default function App() {
         api.getAccounts(activeId),
         api.getAllUsers().catch(() => [])
       ]);
+      const [txResult, goalsResult, subsResult, eventsResult, budgetsResult, accountsResult, usersResult] = results;
+      const firstFailure = results.slice(0, 6).find((result) => result.status === 'rejected');
+      if (firstFailure?.reason?.response?.status === 401) throw firstFailure.reason;
+      const settledValue = (result, fallback) => result.status === 'fulfilled' ? result.value : fallback;
+      const txData = settledValue(txResult, []);
+      const goalsData = settledValue(goalsResult, []);
+      const subsData = settledValue(subsResult, []);
+      const eventsData = settledValue(eventsResult, []);
+      const budgetsData = settledValue(budgetsResult, []);
+      const accountsData = settledValue(accountsResult, []);
+      const usersData = settledValue(usersResult, []);
       const localTheme = localStorage.getItem('mcw-theme');
       const backendTheme = normalizeTheme(me?.theme);
       const resolvedTheme = (localTheme && ['light', 'amoled'].includes(localTheme)) ? localTheme : backendTheme;

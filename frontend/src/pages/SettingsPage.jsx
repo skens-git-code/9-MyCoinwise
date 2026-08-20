@@ -1,6 +1,8 @@
 // SettingsPage.jsx - COMPLETE VERSION
 import React, { useState, useContext, useEffect, useRef, useCallback, useMemo, useReducer } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import EmojiPicker from 'emoji-picker-react';
 import {
   Save, User, Users, Target, Moon, Sun, Download, CheckCircle, AlertCircle,
   Palette, Database, Plus, Settings, ShieldAlert, Globe, Bell, Zap, Smartphone,
@@ -767,7 +769,7 @@ const AdvancedPreferences = ({ prefs, onChange }) => {
 };
 
 // ============= EMAIL CHANGE SECTION =============
-const EmailChangeSection = ({ user, showMessage }) => {
+const EmailChangeSection = ({ user, showMessage, t }) => {
   const [showModal, setShowModal] = useState(false);
   const [emailForm, setEmailForm] = useState({ newEmail: '', currentPassword: '' });
   const [loading, setLoading] = useState(false);
@@ -801,7 +803,7 @@ const EmailChangeSection = ({ user, showMessage }) => {
   return (
     <>
       <div className="form-field" style={{ marginTop: 24 }}>
-        <label>Email Address</label>
+        <label>{t?.('email_address') || 'Email Address'}</label>
         {/* Added flexWrap to prevent squishing on mobile */}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
@@ -815,7 +817,7 @@ const EmailChangeSection = ({ user, showMessage }) => {
             onClick={() => setShowModal(true)}
             style={{ whiteSpace: 'nowrap' }}
           >
-            Change Email
+            {t?.('change_email') || 'Change Email'}
           </button>
         </div>
       </div>
@@ -864,8 +866,8 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 20 * 1024 * 1024) {
-        showMessage('error', 'Image must be less than 20MB');
+      if (file.size > 4 * 1024 * 1024) {
+        showMessage('error', 'Image must be 4 MB or smaller');
         return;
       }
       const reader = new FileReader();
@@ -876,7 +878,12 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
     }
   };
 
-  const isBase64Avatar = formState.avatar && formState.avatar.length > 20 && formState.avatar.startsWith('data:image');
+  const isBase64Avatar = /^(?:data:image\/|blob:|https?:\/\/|\/(?!\/))/i.test(String(formState.avatar || '').trim());
+  const [showEmojiTray, setShowEmojiTray] = useState(false);
+  const selectEmoji = (emojiData) => {
+    handleFieldChange('avatar', emojiData.emoji);
+    setShowEmojiTray(false);
+  };
   const profileChecks = [
     Boolean(formState.firstName?.trim()),
     Boolean(formState.lastName?.trim()),
@@ -897,26 +904,28 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
           {t?.('profile') || 'Profile'}
         </h3>
         <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
-          Configure your personal identity within MyCoinwise.
+          {t?.('configure_identity_desc') || 'Configure your personal identity within MyCoinwise.'}
         </p>
       </div>
 
       <div className="idp-body">
         <div className="profile-summary-grid" aria-label="Profile summary">
           <div className="profile-summary-card">
-            <span className="profile-summary-label">Profile completeness</span>
+            <span className="profile-summary-label">{t?.('profile_completeness') || 'Profile completeness'}</span>
             <strong>{profileCompletion}%</strong>
             <div className="profile-completion-track" aria-hidden="true"><span style={{ width: `${profileCompletion}%` }} /></div>
           </div>
           <div className="profile-summary-card">
-            <span className="profile-summary-label">Member since</span>
+            <span className="profile-summary-label">{t?.('member_since') || 'Member since'}</span>
             <strong>{memberSince}</strong>
-            <span className="profile-summary-detail">Your personal workspace</span>
+            <span className="profile-summary-detail">{t?.('personal_workspace') || 'Your personal workspace'}</span>
           </div>
           <div className="profile-summary-card">
-            <span className="profile-summary-label">Email status</span>
-            <strong className={user?.email_verified ? 'status-good' : 'status-pending'}>{user?.email_verified ? 'Verified' : 'Unverified'}</strong>
-            <span className="profile-summary-detail">{formState.currency} workspace</span>
+            <span className="profile-summary-label">{t?.('email_status') || 'Email status'}</span>
+            <strong className={user?.email_verified ? 'status-good' : 'status-pending'}>
+              {user?.email_verified ? (t?.('verified') || 'Verified') : (t?.('unverified') || 'Unverified')}
+            </strong>
+            <span className="profile-summary-detail">{formState.currency} {t?.('personal_workspace') || 'workspace'}</span>
           </div>
         </div>
 
@@ -947,17 +956,26 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
           <div style={{ flex: 1, minWidth: '240px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
-                Profile Picture
+                {t?.('profile_picture') || 'Profile Picture'}
               </label>
 
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn-secondary profile-emoji-trigger"
+                  onClick={() => setShowEmojiTray((open) => !open)}
+                  aria-expanded={showEmojiTray}
+                  aria-controls="profile-emoji-tray"
+                >
+                  😊 {t?.('choose_emoji') || 'Choose Emoji'}
+                </button>
                 <button
                   type="button"
                   className="btn-secondary"
                   onClick={() => fileInputRef.current?.click()}
                   style={{ flex: 1, minWidth: 140, justifyContent: 'center' }}
                 >
-                  <Upload size={16} /> Upload Image
+                  <Upload size={16} /> {t?.('upload_image') || 'Upload Image'}
                 </button>
                 <input
                   type="file"
@@ -967,10 +985,21 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
                   onChange={handleImageUpload}
                 />
               </div>
+              {showEmojiTray && (
+                <div id="profile-emoji-tray" className="profile-emoji-tray" role="dialog" aria-label="Choose a profile emoji">
+                  <EmojiPicker
+                    onEmojiClick={selectEmoji}
+                    width="100%"
+                    height={360}
+                    lazyLoadEmojis={false}
+                    previewConfig={{ showPreview: false }}
+                  />
+                </div>
+              )}
             </div>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
-                Profile Color
+                {t?.('profile_color') || 'Profile Color'}
               </label>
               <div className="profile-color-options" role="group" aria-label="Choose your profile color">
                 {AVATAR_COLORS.map(color => (
@@ -1024,7 +1053,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
         </div>
 
         <div className="form-field" style={{ marginTop: '16px' }}>
-          <label htmlFor="profession">Profession / Role</label>
+          <label htmlFor="profession">{t?.('profession_role') || 'Profession / Role'}</label>
           <input
             id="profession"
             type="text"
@@ -1034,9 +1063,9 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
             maxLength={80}
             autoComplete="organization-title"
           />
-          <span className="form-help">Write the profession or role you want shown on your profile.</span>
+          <span className="form-help">{t?.('profession_role_hint') || 'Write the profession or role you want shown on your profile.'}</span>
         </div>
-        <EmailChangeSection user={user} showMessage={showMessage} />
+        <EmailChangeSection user={user} showMessage={showMessage} t={t} />
       </div>
     </>
   );
@@ -1090,13 +1119,13 @@ const PreferencesTab = ({ formState, handleFieldChange, t }) => (
 );
 
 // ============= LANGUAGE TAB =============
-const LanguageTab = ({ lang, setLanguage, showMessage }) => (
+const LanguageTab = ({ lang, setLanguage, showMessage, t }) => (
   <>
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
       <div className="idp-hero-icon" style={{ width: 64, height: 64, marginBottom: 16, background: 'rgba(251,191,36,0.1)', color: 'var(--warning)', border: '1px solid rgba(251,191,36,0.3)' }}>
         <Globe size={28} />
       </div>
-      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>Language</h3>
+      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>{t?.('language') || 'Language'}</h3>
       <p style={{ color: 'var(--text-secondary)', margin: 0 }}>MyCoinwise speaks your language.</p>
     </div>
 
@@ -1107,7 +1136,7 @@ const LanguageTab = ({ lang, setLanguage, showMessage }) => (
           type="button"
           onClick={() => {
             setLanguage(code);
-            showMessage('success', 'Language updated successfully');
+            showMessage('success', t?.('language_updated') || 'Language updated successfully');
           }}
           whileHover={{ x: 4, scale: 1.01 }}
           aria-label={`Switch language to ${info.name}`}
@@ -1221,8 +1250,10 @@ const getSafeUserEmail = (user) => {
 const isUsableAvatarSource = (value) => {
   const avatar = String(value || '').trim();
   return avatar.length > 20 && (
-    /^data:image\/(?:png|jpe?g|webp|gif|avif);base64,/i.test(avatar) ||
-    /^https?:\/\//i.test(avatar)
+    /^data:image\//i.test(avatar) ||
+    /^blob:/i.test(avatar) ||
+    /^https?:\/\//i.test(avatar) ||
+    /^\/(?!\/)/.test(avatar)
   );
 };
 
@@ -1244,22 +1275,24 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
       </div>
       <div>
         <div className="manage-users-title-row">
-          <h3>Manage Users</h3>
-          <span className="manage-users-count">{sortedUsers.length} {sortedUsers.length === 1 ? 'profile' : 'profiles'}</span>
+          <h3>{t?.('manage_users') || 'Manage Users'}</h3>
+          <span className="manage-users-count">{sortedUsers.length} {sortedUsers.length === 1 ? (t?.('profile_count') || 'profile') : (t?.('profiles_count') || 'profiles')}</span>
         </div>
-        <p>Easily switch between household accounts and keep each workspace personal.</p>
+        <p>{t?.('manage_users_desc') || 'Easily switch between household accounts and keep each workspace personal.'}</p>
       </div>
     </div>
 
     <div className="manage-users-body">
       <div className="manage-users-list">
         {sortedUsers.map(u => {
+          const uid = u.id || u._id;
+          const isCurrentUser = String(uid) === String(USER_ID);
           const avatar = getSafeUserAvatar(u);
           return (
             <motion.div
-              key={u.id}
+              key={uid}
               whileHover={{ x: 4 }}
-              className={`manage-user-card ${u.id === USER_ID ? 'is-active' : ''}`}
+              className={`manage-user-card ${isCurrentUser ? 'is-active' : ''}`}
             >
               <span className="manage-user-avatar" style={{ background: u.profile_color || '#059669' }} aria-hidden>
                 {avatar.type === 'image' ? <img src={avatar.value} alt="" /> : avatar.value}
@@ -1267,33 +1300,33 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
             <div className="manage-user-main">
               <p className="manage-user-name">{getUserDisplayName(u)}</p>
               <p className="manage-user-email" title={getSafeUserEmail(u)}>{getSafeUserEmail(u)}</p>
-              <span className="manage-user-role">{u.profession || 'Personal workspace'}</span>
+              <span className="manage-user-role">{u.profession || t?.('personal_workspace') || 'Personal workspace'}</span>
             </div>
-            {u.id === USER_ID && (
-              <span className="manage-user-status" aria-label="Active User">
-                Active
+            {isCurrentUser && (
+              <span className="manage-user-status" aria-label={t?.('active_user') || 'Active User'}>
+                {t?.('active') || 'Active'}
               </span>
             )}
-            {u.id !== USER_ID && (
+            {!isCurrentUser && (
               <div className="manage-user-actions">
                 <motion.button
                   type="button"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setModals(prev => ({ ...prev, switchConfirm: u }))}
-                  disabled={switchingUserId === u.id}
+                  disabled={switchingUserId === uid}
                   aria-label={`Switch to ${u.username}`}
                   className="manage-user-switch"
                 >
                   <Users size={14} aria-hidden />
-                  {switchingUserId === u.id ? 'Switching...' : 'Switch'}
+                  {switchingUserId === uid ? (t?.('switching') || 'Switching...') : (t?.('switch') || 'Switch')}
                 </motion.button>
 
                 <motion.button
                   type="button"
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => setModals(prev => ({ ...prev, deleteUser: u.id }))}
+                  onClick={() => setModals(prev => ({ ...prev, deleteUser: uid }))}
                   aria-label={`Delete ${getUserDisplayName(u)}`}
                   className="manage-user-delete"
                 >
@@ -1320,14 +1353,14 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
 );
 
 // ============= DATA TAB =============
-const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, pdfLoading }) => (
+const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, pdfLoading, t }) => (
   <>
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
       <div className="idp-hero-icon expense" style={{ width: 64, height: 64, marginBottom: 16 }}>
         <Database size={28} />
       </div>
-      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>Data & Security</h3>
-      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Export your data or permanently wipe your account.</p>
+      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>{t?.('data_security') || 'Data & Security'}</h3>
+      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>{t?.('data_security_desc') || 'Export your data, backup your transactions, or manage your data vaults.'}</p>
     </div>
 
     <div className="idp-body" style={{ background: 'transparent', border: 'none', padding: 0 }}>
@@ -1343,7 +1376,7 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
           <div style={{ padding: 12, background: 'rgba(16,185,129,0.1)', borderRadius: 12, color: 'var(--success)' }}>
             <Download size={24} aria-hidden />
           </div>
-          <span style={{ fontWeight: 800 }}>{excelLoading ? 'Exporting...' : 'Download Excel'}</span>
+          <span style={{ fontWeight: 800 }}>{excelLoading ? (t?.('exporting') || 'Exporting...') : (t?.('download_excel') || 'Download Excel')}</span>
         </motion.button>
         <motion.button
           type="button"
@@ -1356,16 +1389,16 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
           <div style={{ padding: 12, background: 'rgba(56,189,248,0.1)', borderRadius: 12, color: 'var(--brand-secondary)' }}>
             <FileText size={24} aria-hidden />
           </div>
-          <span style={{ fontWeight: 800 }}>{pdfLoading ? 'Generating...' : 'Download PDF'}</span>
+          <span style={{ fontWeight: 800 }}>{pdfLoading ? (t?.('exporting') || 'Generating...') : (t?.('download_pdf') || 'Download PDF')}</span>
         </motion.button>
       </div>
 
       <div className="idp-section" style={{ background: 'rgba(239,68,68,0.05)', padding: 24, borderRadius: 20, border: '1px solid rgba(239,68,68,0.2)' }}>
         <h4 style={{ color: 'var(--danger)', fontSize: '1.2rem', fontWeight: 800, margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ShieldAlert size={20} aria-hidden /> Danger Zone
+          <ShieldAlert size={20} aria-hidden /> {t?.('danger_zone') || 'Danger Zone'}
         </h4>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20, lineHeight: 1.6 }}>
-          Permanently delete all your transactions, goals, and subscriptions. This action cannot be reversed.
+          {t?.('reset_warning') || 'This will delete ALL your transactions and reset your balance to zero. This action cannot be undone.'}
         </p>
         <motion.button
           type="button"
@@ -1375,7 +1408,7 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
           whileHover={{ scale: 1.02 }}
           style={{ background: 'var(--danger)', width: 'max-content' }}
         >
-          <ShieldAlert size={16} aria-hidden /> Factory Reset Account
+          <ShieldAlert size={16} aria-hidden /> {t?.('factory_reset') || 'Factory Reset Account'}
         </motion.button>
       </div>
     </div>
@@ -1514,7 +1547,19 @@ function SettingsInner({ context }) {
     }
   }, [user]);
 
-  const [activeTab, setActiveTab] = useState('profile');
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(() => (
+    tabParam && ['profile', 'preferences', 'language', 'appearance', 'notifications', 'security', 'users', 'data', 'advanced'].includes(tabParam)
+      ? tabParam
+      : 'profile'
+  ));
+
+  useEffect(() => {
+    if (tabParam && ['profile', 'preferences', 'language', 'appearance', 'notifications', 'security', 'users', 'data', 'advanced'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
   const [modals, setModals] = useState({
     addUser: false,
     resetConfirm: false,
@@ -1810,14 +1855,14 @@ function SettingsInner({ context }) {
 
   const TABS = useMemo(() => [
     { id: 'profile', icon: User, label: t?.('profile') || 'Profile' },
-    { id: 'preferences', icon: Settings, label: 'Preferences' },
-    { id: 'language', icon: Globe, label: 'Language' },
+    { id: 'preferences', icon: Settings, label: t?.('preferences') || 'Preferences' },
+    { id: 'language', icon: Globe, label: t?.('language') || 'Language' },
     { id: 'appearance', icon: Palette, label: t?.('appearance') || 'Appearance' },
-    { id: 'notifications', icon: BellIcon, label: 'Notifications' },
-    { id: 'security', icon: Shield, label: 'Security' },
-    { id: 'users', icon: Users, label: 'Manage Users' },
-    { id: 'data', icon: Database, label: 'Data & Security' },
-    { id: 'advanced', icon: Zap, label: 'Advanced' },
+    { id: 'notifications', icon: BellIcon, label: t?.('notifications') || 'Notifications' },
+    { id: 'security', icon: Shield, label: t?.('security') || 'Security' },
+    { id: 'users', icon: Users, label: t?.('manage_users') || 'Manage Users' },
+    { id: 'data', icon: Database, label: t?.('data_security') || 'Data & Security' },
+    { id: 'advanced', icon: Zap, label: t?.('advanced') || 'Advanced' },
   ], [t]);
 
   const renderTabContent = () => {
@@ -1908,7 +1953,7 @@ function SettingsInner({ context }) {
         <div className="inbox-list-pane glass" role="tablist" aria-orientation="vertical">
           <div className="il-filters">
             <h3 className="il-title">
-              Categories
+              {t?.('categories') || 'Categories'}
             </h3>
           </div>
           <div className="il-scrollable">

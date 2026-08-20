@@ -16,6 +16,24 @@ const parseMoney = (value, { allowZero = true } = {}) => {
 
 const INTERVALS = ['daily', 'weekly', 'monthly'];
 const PRIORITIES = ['low', 'medium', 'high'];
+const CATEGORY_ALIASES = {
+  'emergency fund': 'emergency_fund',
+  emergency_fund: 'emergency_fund',
+  savings: 'savings',
+  vacation: 'vacation',
+  gadget: 'gadget',
+  investment: 'investment',
+  vehicle: 'vehicle',
+  home: 'home',
+  education: 'education',
+  debt: 'debt',
+  purchase: 'purchase',
+  other: 'other',
+};
+const normalizeCategory = (value) => {
+  const clean = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return CATEGORY_ALIASES[clean] || CATEGORY_ALIASES[String(value || '').trim().toLowerCase()] || 'other';
+};
 
 // ---------- GET: List all goals for a user ----------
 router.get(
@@ -35,7 +53,7 @@ router.get(
       const filter = { user_id: req.params.userId };
       if (req.query.category) filter.category = req.query.category;
       if (req.query.priority) filter.priority = req.query.priority;
-      if (req.query.achieved !== undefined) filter.achieved = req.query.achieved;
+      if (req.query.achieved !== undefined) filter.is_completed = req.query.achieved;
 
       const goals = await Goal.find(filter).sort({ created_at: 1 });
       res.json(goals);
@@ -77,10 +95,10 @@ router.post(
     body('saved').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
     body('color').optional().isString().trim().matches(/^#[0-9a-f]{6}$/i).withMessage('Invalid hex color.'),
     body('icon').optional().isString().trim().isLength({ max: 40 }),
-    body('deadline').optional({ nullable: true }).isISO8601().toDate(),
+    body('deadline').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
     body('priority').optional().isIn(PRIORITIES),
     body('category').optional().isString().trim().notEmpty(),
-    body('notes').optional().isString().trim().isLength({ max: 1000 }),
+    body('notes').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 1000 }),
     body('auto_save_amount').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
     body('auto_save_interval').optional().isIn(INTERVALS),
   ],
@@ -112,12 +130,12 @@ router.post(
       icon: icon || '🎯',
       deadline: deadline || null,
       priority: priority || 'medium',
-      category: category ? String(category).toLowerCase().trim() : 'other',
+      category: normalizeCategory(category),
       notes: notes ? String(notes).trim().slice(0, 1000) : '',
       auto_save_amount: auto_save_amount !== undefined ? parseMoney(auto_save_amount, { allowZero: true }) : null,
       auto_save_interval: auto_save_interval || null,
-      achieved: false,
-      achieved_at: null,
+      is_completed: savedNum >= targetNum,
+      completed_at: savedNum >= targetNum ? new Date() : null,
     };
 
     try {
@@ -133,7 +151,7 @@ router.post(
 // ---------- PUT: Update a goal ----------
 router.put(
   '/:id',
-  checkOwnership('id', { model: Goal, paramName: 'id' }), // custom middleware that checks user_id
+  checkOwnership('id', { model: Goal, paramName: 'id' }),
   [
     param('id').isMongoId().withMessage('Invalid goal ID.'),
     body('name').optional().isString().trim().notEmpty(),
@@ -141,10 +159,10 @@ router.put(
     body('saved').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
     body('color').optional().isString().trim().matches(/^#[0-9a-f]{6}$/i),
     body('icon').optional().isString().trim().isLength({ max: 40 }),
-    body('deadline').optional({ nullable: true }).isISO8601().toDate(),
+    body('deadline').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
     body('priority').optional().isIn(PRIORITIES),
     body('category').optional().isString().trim().notEmpty(),
-    body('notes').optional().isString().trim().isLength({ max: 1000 }),
+    body('notes').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 1000 }),
     body('auto_save_amount').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
     body('auto_save_interval').optional().isIn(INTERVALS),
     body('achieved').optional().isBoolean().toBoolean(),
@@ -177,7 +195,7 @@ router.put(
       if (color !== undefined) goal.color = color;
       if (icon !== undefined) goal.icon = icon;
       if (deadline !== undefined) {
-        if (deadline === null) {
+        if (deadline === null || deadline === '') {
           goal.deadline = null;
         } else {
           const d = new Date(deadline);
@@ -190,7 +208,7 @@ router.put(
         goal.priority = priority;
       }
       if (category !== undefined) {
-        goal.category = category ? String(category).toLowerCase().trim() : 'other';
+        goal.category = normalizeCategory(category);
       }
       if (notes !== undefined) {
         goal.notes = notes ? String(notes).trim().slice(0, 1000) : '';
@@ -205,16 +223,13 @@ router.put(
         goal.auto_save_interval = auto_save_interval || null;
       }
 
-      // Handle "achieved" status
+      // Handle completion status
       if (achieved !== undefined) {
-        const wasAchieved = goal.achieved;
-        goal.achieved = achieved;
-        if (achieved && !wasAchieved) {
-          goal.achieved_at = new Date();
-          // Optionally set saved = target?
-          // We can leave it up to the frontend to manage saved amount.
-        } else if (!achieved && wasAchieved) {
-          goal.achieved_at = null;
+        goal.is_completed = Boolean(achieved);
+        if (achieved) {
+          goal.completed_at = goal.completed_at || new Date();
+        } else {
+          goal.completed_at = null;
         }
       }
 

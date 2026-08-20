@@ -745,10 +745,10 @@ export default function Dashboard() {
             onChange={(e) => setDateFilter(e.target.value)}
             aria-label="Filter by date"
           >
-            <option value="all">All Time</option>
-            <option value="7days">Last 7 Days</option>
-            <option value="30days">Last 30 Days</option>
-            <option value="thisMonth">This Month</option>
+            <option value="all">{getLocalizedText('all_time', 'All Time')}</option>
+            <option value="7days">{getLocalizedText('last_7_days', 'Last 7 Days')}</option>
+            <option value="30days">{getLocalizedText('last_30_days', 'Last 30 Days')}</option>
+            <option value="thisMonth">{getLocalizedText('this_month', 'This Month')}</option>
           </select>
           <select
             className="filter-select"
@@ -756,7 +756,7 @@ export default function Dashboard() {
             onChange={(e) => setCategoryFilter(e.target.value)}
             aria-label="Filter by category"
           >
-            <option value="all">All Categories</option>
+            <option value="all">{getLocalizedText('all_categories', 'All Categories')}</option>
             {categoryOptions}
           </select>
           {(dateFilter !== 'all' || categoryFilter !== 'all') && (
@@ -765,7 +765,7 @@ export default function Dashboard() {
               onClick={() => { setDateFilter('all'); setCategoryFilter('all'); }}
               aria-label="Clear filters"
             >
-              Clear Filters
+              {getLocalizedText('clear_filters', 'Clear Filters')}
             </button>
           )}
         </motion.div>

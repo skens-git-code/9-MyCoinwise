@@ -196,8 +196,8 @@ export default function Subscriptions() {
     <div className="masonry-layout-page subscriptions-page-wrap">
       <div className="masonry-header">
         <div className="mh-titles">
-          <h2>Subscriptions & Recurring Hub</h2>
-          <span className="mh-badge">{activeSubs.length} Active Services</span>
+          <h2>{t?.('subscriptions_hub_title') || 'Subscriptions & Recurring Hub'}</h2>
+          <span className="mh-badge">{activeSubs.length} {t?.('active_services_count') || 'Active Services'}</span>
         </div>
         <motion.button
           whileHover={{ scale: 1.04 }}
@@ -205,7 +205,7 @@ export default function Subscriptions() {
           className="btn-primary"
           onClick={() => { resetForm(); setShowAdd(true); }}
         >
-          <Plus size={16} /> Add Subscription
+          <Plus size={16} /> {t?.('add_subscription_btn') || 'Add Subscription'}
         </motion.button>
       </div>
 
@@ -213,10 +213,10 @@ export default function Subscriptions() {
       <div className="carousel-wrapper" style={{ minHeight: 90 }}>
         <div className="carousel-track">
           {[
-            { label: t('monthly_cost'), value: fmt(monthlyTotal), color: 'var(--danger)', icon: <Calendar size={18} /> },
-            { label: t('annual_cost'), value: fmt(yearlyTotal), color: 'var(--warning)', icon: <TrendingDown size={18} /> },
-            { label: '% of Income', value: `${incomePct}%`, color: '#0ea5e9', icon: <Zap size={18} /> },
-            { label: t('active_subs'), value: activeSubs.length, color: 'var(--brand-primary)', icon: <CreditCard size={18} /> },
+            { label: t?.('monthly_cost') || 'Monthly Cost', value: fmt(monthlyTotal), color: 'var(--danger)', icon: <Calendar size={18} /> },
+            { label: t?.('annual_cost') || 'Annual Cost', value: fmt(yearlyTotal), color: 'var(--warning)', icon: <TrendingDown size={18} /> },
+            { label: t?.('pct_of_income') || '% of Income', value: `${incomePct}%`, color: '#0ea5e9', icon: <Zap size={18} /> },
+            { label: t?.('active_subs') || 'Active Subs', value: activeSubs.length, color: 'var(--brand-primary)', icon: <CreditCard size={18} /> },
           ].map((s, i) => (
             <motion.div
               key={i}
@@ -244,9 +244,9 @@ export default function Subscriptions() {
           <div className="stb-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <CalendarDays size={16} className="text-brand" />
-              <h4>Upcoming Charges (Next 30 Days)</h4>
+              <h4>{t?.('upcoming_charges') || 'Upcoming Charges (Next 30 Days)'}</h4>
             </div>
-            <span className="stb-total">Total due: {fmt(upcomingBills.reduce((a, c) => a + Number(c.sub.amount), 0))}</span>
+            <span className="stb-total">{t?.('total_due') || 'Total due'}: {fmt(upcomingBills.reduce((a, c) => a + Number(c.sub.amount), 0))}</span>
           </div>
 
           <div className="stb-track">
@@ -257,7 +257,7 @@ export default function Subscriptions() {
                 </span>
                 <div className="stb-info">
                   <strong>{sub.name}</strong>
-                  <span>{daysLeft === 0 ? 'Due Today' : `in ${daysLeft} day${daysLeft > 1 ? 's' : ''}`} ({date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})</span>
+                  <span>{daysLeft === 0 ? (t?.('due_today') || 'Due Today') : `in ${daysLeft} ${t?.('days_left') || 'days'}`} ({date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})</span>
                 </div>
                 <span className="stb-amt text-danger">-{fmt(sub.amount)}</span>
               </div>
@@ -269,7 +269,7 @@ export default function Subscriptions() {
       {/* Quick Add Presets */}
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
         <h4 style={{ marginBottom: 14, fontWeight: 800, fontFamily: 'var(--font-head)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.05rem' }}>
-          Quick Add Popular Services
+          {t?.('quick_add_popular') || 'Quick Add Popular Services'}
         </h4>
         <div className="carousel-wrapper" style={{ paddingBottom: 12 }}>
           <div className="carousel-track">
@@ -294,7 +294,7 @@ export default function Subscriptions() {
                 >
                   {added && (
                     <span style={{ position: 'absolute', top: 6, right: 6, fontSize: '0.65rem', background: 'rgba(16,185,129,0.2)', color: 'var(--success)', padding: '2px 6px', borderRadius: 100, fontWeight: 800 }}>
-                      Added
+                      {t?.('added') || 'Added'}
                     </span>
                   )}
                   <div style={{ width: 48, height: 48, borderRadius: 14, background: `${p.color}15`, color: p.color, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
@@ -314,9 +314,9 @@ export default function Subscriptions() {
       {/* Filter Tabs */}
       <div className="sub-filter-strip">
         {[
-          { id: 'all', label: `All (${subs.length})` },
-          { id: 'active', label: `Active (${activeSubs.length})` },
-          { id: 'paused', label: `Paused (${subs.filter(s => s.is_paused).length})` }
+          { id: 'all', label: `${t?.('all') || 'All'} (${subs.length})` },
+          { id: 'active', label: `${t?.('active') || 'Active'} (${activeSubs.length})` },
+          { id: 'paused', label: `${t?.('paused') || 'Paused'} (${subs.filter(s => s.is_paused).length})` }
         ].map(tab => (
           <button
             key={tab.id}
@@ -333,8 +333,8 @@ export default function Subscriptions() {
         {filteredSubs.length === 0 ? (
           <motion.div className="glass empty-state" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ padding: '40px 20px', textAlign: 'center' }}>
             <RefreshCw size={42} style={{ color: 'var(--text-muted)', margin: '0 auto 12px', opacity: 0.4 }} />
-            <h3 style={{ color: 'var(--text-secondary)', marginBottom: 6, fontSize: '1rem' }}>No Subscriptions Found</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Add custom subscriptions or use the quick presets above.</p>
+            <h3 style={{ color: 'var(--text-secondary)', marginBottom: 6, fontSize: '1rem' }}>{t?.('no_subscriptions_found') || 'No Subscriptions Found'}</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t?.('add_custom_subs_desc') || 'Add custom subscriptions or use the quick presets above.'}</p>
           </motion.div>
         ) : (
           <div className="masonry-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>

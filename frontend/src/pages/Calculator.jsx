@@ -10,6 +10,7 @@ import { api } from '../services/api';
 const HISTORY_KEY = 'mycoinwise-calculator-history';
 const PENDING_KEY = 'mycoinwise-calculator-pending';
 const MEMORY_KEY = 'mycoinwise-calculator-memory';
+const getMemoryKey = (userId) => `${MEMORY_KEY}:${userId || 'guest'}`;
 const FUNCTIONS = new Set([
   'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh',
   'log', 'ln', 'sqrt', 'cbrt', 'abs', 'exp', 'floor', 'ceil', 'round', 'pow', 'min', 'max'
@@ -199,7 +200,8 @@ const buttonGroups = {
   scientific: [
     ['sin(', 'sin'], ['cos(', 'cos'], ['tan(', 'tan'], ['log(', 'log'], ['ln(', 'ln'],
     ['asin(', 'asin'], ['acos(', 'acos'], ['atan(', 'atan'], ['sqrt(', '√'], ['cbrt(', '∛'],
-    ['abs(', 'abs'], ['exp(', 'exp'], ['x!', '!'], ['π', 'π'], ['e', 'e']
+    ['abs(', 'abs'], ['exp(', 'exp'], ['floor(', 'floor'], ['ceil(', 'ceil'], ['round(', 'round'],
+    ['pow(', 'pow'], ['min(', 'min'], ['max(', 'max'], ['!', '!'], ['π', 'π'], ['e', 'e']
   ],
   basic: [
     ['7', '7'], ['8', '8'], ['9', '9'], ['/', '÷'],
@@ -211,11 +213,11 @@ const buttonGroups = {
 };
 
 export default function Calculator() {
-  const { USER_ID } = useContext(AppContext);
+  const { USER_ID, t } = useContext(AppContext);
   const [expression, setExpression] = useState('');
   const [result, setResult] = useState('0');
   const [angleMode, setAngleMode] = useState('DEG');
-  const [memory, setMemory] = useState(() => Number(localStorage.getItem(MEMORY_KEY)) || 0);
+  const [memory, setMemory] = useState(() => Number(localStorage.getItem(getMemoryKey(USER_ID))) || 0);
   const [answer, setAnswer] = useState(0);
   const [history, setHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem(getHistoryKey(USER_ID)) || '[]').map(normalizeHistoryItem); } catch { return []; }
@@ -419,9 +421,9 @@ export default function Calculator() {
       default: next = memory;
     }
     setMemory(next);
-    localStorage.setItem(MEMORY_KEY, String(next));
+    localStorage.setItem(getMemoryKey(USER_ID), String(next));
     setError('');
-  }, [memory, result]);
+  }, [USER_ID, memory, result]);
 
   // ---------- Copy result ----------
   const copyResult = async () => {
@@ -459,15 +461,15 @@ export default function Calculator() {
     <div className="island-page calculator-page">
       <header className="island-header glass-sm calculator-page-header">
         <div className="ih-left">
-          <div className="ih-titles"><h1>Scientific Calculator</h1><p>Fast, precise calculations for everyday decisions.</p></div>
+          <div className="ih-titles"><h1>{t('calculator_title') || 'Scientific Calculator'}</h1><p>{t('calculator_subtitle') || 'Fast, precise calculations for everyday decisions.'}</p></div>
         </div>
-        <div className="calculator-header-badge"><Sparkles size={15} /> Precision tools</div>
+        <div className="calculator-header-badge"><Sparkles size={15} /> {t('precision_tools') || 'Precision tools'}</div>
       </header>
 
       <div className="calculator-shell">
         <section className="calculator-main glass" aria-label="Scientific calculator">
           <div className="calculator-display">
-            <div className="calculator-display-top"><span>{angleMode} mode</span><span><Keyboard size={13} /> Keyboard ready</span></div>
+            <div className="calculator-display-top"><span>{angleMode} {t('mode') || 'mode'}</span><span><Keyboard size={13} /> {t('keyboard_ready') || 'Keyboard ready'}</span></div>
             <div className="calculator-expression" aria-label="Current expression">{expression || '0'}</div>
             <div className="calculator-result-row">
               <strong>{result}</strong>
@@ -508,6 +510,7 @@ export default function Calculator() {
               </button>
               <button type="button" className="calculator-key utility" onClick={() => append('(')} aria-label="Open parenthesis">(</button>
               <button type="button" className="calculator-key utility" onClick={() => append(')')} aria-label="Close parenthesis">)</button>
+              <button type="button" className="calculator-key utility" onClick={() => append(',')} aria-label="Function argument separator">,</button>
               {buttonGroups.basic.map(([value, label]) => (
                 <button
                   type="button"
@@ -522,15 +525,15 @@ export default function Calculator() {
               <button type="button" className="calculator-key equals" onClick={calculate} aria-label="Calculate">=</button>
             </div>
           </div>
-          <p className="calculator-hint"><Clock3 size={14} /> Use parentheses for clarity, and press Enter to calculate.</p>
+          <p className="calculator-hint"><Clock3 size={14} /> {t('calculator_hint') || 'Use parentheses for clarity, and press Enter to calculate.'}</p>
         </section>
 
         {/* History Panel */}
         <aside className="calculator-history glass" aria-label="Calculation history">
           <div className="calculator-history-heading">
             <div>
-              <span className="calculator-eyebrow"><History size={14} /> Recent work</span>
-              <h2>History</h2>
+              <span className="calculator-eyebrow"><History size={14} /> {t('recent_work') || 'Recent work'}</span>
+              <h2>{t('history') || 'History'}</h2>
             </div>
             <button type="button" className="calculator-icon-button" onClick={clearHistory} aria-label="Clear calculation history" title="Clear history">
               <Trash2 size={16} />
@@ -539,8 +542,8 @@ export default function Calculator() {
           {history.length === 0 ? (
             <div className="calculator-empty-history">
               <CalculatorIcon size={28} />
-              <p>Your calculations will appear here.</p>
-              <span>Results are securely stored for your account.</span>
+              <p>{t('calculator_empty') || 'Your calculations will appear here.'}</p>
+              <span>{t('calculator_stored') || 'Results are securely stored for your account.'}</span>
             </div>
           ) : (
             <div className="calculator-history-list">

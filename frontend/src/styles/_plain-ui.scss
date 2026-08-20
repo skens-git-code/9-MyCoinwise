@@ -828,3 +828,82 @@ a,
     display: none;
   }
 }
+
+/* Keep the complete auth card reachable on short and narrow viewports. */
+.auth-page {
+  min-height: 100dvh;
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-items: flex-start;
+  padding: clamp(16px, 4vh, 48px) 16px;
+}
+
+.auth-card {
+  flex: 0 1 auto;
+  margin: auto 0;
+  min-width: 0;
+}
+
+.auth-footer,
+.auth-alt-btn { flex-shrink: 0; }
+
+.profile-emoji-trigger {
+  min-width: 140px;
+  justify-content: center;
+}
+
+.profile-emoji-tray {
+  width: min(100%, 380px);
+  margin-top: 12px;
+  padding: 6px;
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-lg, 0 16px 40px rgba(0, 0, 0, 0.14));
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.profile-emoji-tray .EmojiPickerReact {
+  width: 100% !important;
+  max-width: 100%;
+  border: 0 !important;
+  font-family: var(--font-body);
+}
+
+/* The What-If controls are also used outside the forecast toolbar. */
+.cashflow-page-wrap .fcb-pill {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--glass-2);
+  color: var(--text-secondary);
+  font: 600 0.78rem var(--font-body);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cashflow-page-wrap .fcb-pill:hover,
+.cashflow-page-wrap .fcb-pill.active {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary);
+  color: #fff;
+}
+
+@media (max-height: 720px) {
+  .auth-page { padding-block: 16px; }
+  .auth-card { padding-block: 24px; }
+  .auth-logo { margin-bottom: 1rem; }
+  .auth-header { margin-bottom: 1rem; }
+  .auth-form { gap: 0.75rem; margin-bottom: 0.75rem; }
+  .auth-secure-note { margin-top: 0.75rem; }
+}
+
+@media (max-width: 480px) {
+  .auth-page { padding-inline: 10px; }
+  .auth-card { width: 100%; padding-inline: 18px; }
+  .auth-extra-row { gap: 10px; }
+  .auth-forgot-link { margin-left: auto; }
+}

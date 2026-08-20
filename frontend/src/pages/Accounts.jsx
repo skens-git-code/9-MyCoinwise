@@ -34,7 +34,7 @@ const convertToBase = (amount, fromCurrency, baseCurrency = 'USD') => {
 
 // ---------- Component ----------
 export default function Accounts() {
-  const { accounts = [], refetch, fmt, currency: userCurrency = 'USD', loading } = useContext(AppContext);
+  const { accounts = [], refetch, fmt, currency: userCurrency = 'USD', loading, t } = useContext(AppContext);
   const { showToast } = useToast();
 
   // UI state
@@ -247,19 +247,19 @@ export default function Accounts() {
 
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--spacing-xl)' }}>
         <div>
-          <h1 style={{ fontSize: '1.875rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Accounts</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Manage your bank accounts, wallets, and credit cards.</p>
+          <h1 style={{ fontSize: '1.875rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-main)' }}>{t?.('accounts') || 'Accounts'}</h1>
+          <p style={{ color: 'var(--text-muted)' }}>{t?.('bank_accounts') || 'Manage your bank accounts, wallets, and credit cards.'}</p>
           <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
             <div>
               <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>
-                Net Worth (in {userCurrency})
+                {t?.('net_worth') || 'Net Worth'} (in {userCurrency})
               </span>
               <span style={{ fontSize: '1.5rem', fontWeight: '700' }}>{fmt(totalInBase)}</span>
             </div>
             {allCurrencies.length > 0 && (
               <div>
                 <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>
-                  Balances by Currency
+                  {t?.('currency') || 'Balances by Currency'}
                 </span>
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                   {allCurrencies.map(curr => (
@@ -286,7 +286,7 @@ export default function Accounts() {
             onClick={() => { resetForm(); setShowAdd(true); }}
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <Plus size={18} /> Add Account
+            <Plus size={18} /> {t?.('add_account') || 'Add Account'}
           </button>
         </div>
       </header>
@@ -295,15 +295,15 @@ export default function Accounts() {
         <div className="accounts-empty">
           <Landmark size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem', opacity: 0.5 }} />
           <h3 style={{ marginBottom: '0.5rem' }}>
-            {showArchived ? 'No archived accounts' : 'No active accounts yet'}
+            {showArchived ? 'No archived accounts' : (t?.('no_accounts_yet') || 'No active accounts yet')}
           </h3>
           <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-            {showArchived
-              ? 'Archived accounts will appear here when you archive them.'
-              : 'Add your first account to start tracking your balances.'}
+            {t?.('create_first_account') || 'Add your bank, credit, or cash accounts to track where your money lives.'}
           </p>
           {!showArchived && (
-            <button className="btn-primary" onClick={() => { resetForm(); setShowAdd(true); }}>Add Account</button>
+            <button className="btn-primary" onClick={() => { resetForm(); setShowAdd(true); }}>
+              <Plus size={18} /> {t?.('add_account') || 'Add Account'}
+            </button>
           )}
         </div>
       ) : (

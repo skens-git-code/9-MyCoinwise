@@ -32,7 +32,7 @@ const CATEGORIES = [
 ];
 
 export default function Transactions() {
-  const { transactions = [], deleteTransaction, editTransaction, addTransaction, fmt, user, currencyInfo, USER_ID, refetch } = useContext(AppContext);
+  const { transactions = [], deleteTransaction, editTransaction, addTransaction, fmt, user, currencyInfo, USER_ID, refetch, t } = useContext(AppContext);
   const { showToast } = useToast();
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -339,8 +339,8 @@ export default function Transactions() {
 
       <div className="inbox-header">
         <div className="ih-titles">
-          <h2>Transactions</h2>
-          <span className="ih-badge">{transactions.length} total</span>
+          <h2>{t?.('transactions') || 'Transactions'}</h2>
+          <span className="ih-badge">{transactions.length} {t?.('all_transactions') || 'total'}</span>
         </div>
 
         <div className="inbox-header-actions">
@@ -352,7 +352,7 @@ export default function Transactions() {
             onClick={() => fileInputRef.current?.click()}
             title="Import bank statement or CSV"
           >
-            <Upload size={15} /> Import CSV
+            <Upload size={15} /> {t?.('import_csv') || 'Import CSV'}
           </motion.button>
 
           {/* Export Dropdown */}
@@ -363,7 +363,7 @@ export default function Transactions() {
               className="btn-secondary tx-export-btn"
               onClick={() => setShowExportMenu(prev => !prev)}
             >
-              <Download size={15} /> Export <ChevronDown size={14} />
+              <Download size={15} /> {t?.('export') || 'Export'} <ChevronDown size={14} />
             </motion.button>
 
             <AnimatePresence>
@@ -377,11 +377,11 @@ export default function Transactions() {
                 >
                   <button className="tx-export-item" onClick={() => handleExportCSV(false)}>
                     <FileSpreadsheet size={15} className="text-success" />
-                    <span>Export CSV (Excel)</span>
+                    <span>{t?.('download_excel') || 'Export CSV (Excel)'}</span>
                   </button>
                   <button className="tx-export-item" onClick={handleExportPDF}>
                     <FileText size={15} className="text-danger" />
-                    <span>Export PDF Report</span>
+                    <span>{t?.('download_pdf') || 'Export PDF Report'}</span>
                   </button>
                   <button className="tx-export-item" onClick={handleExportJSON}>
                     <FileCode size={15} className="text-brand" />
@@ -405,7 +405,7 @@ export default function Transactions() {
             className="btn-primary"
             onClick={() => setIsAdding(true)}
           >
-            <Plus size={16} /> Add New
+            <Plus size={16} /> {t?.('add_transaction') || 'Add New'}
           </motion.button>
         </div>
       </div>
@@ -413,10 +413,10 @@ export default function Transactions() {
       {/* Quick Filter Presets Strip */}
       <div className="tx-presets-strip">
         {[
-          { id: 'all', label: 'All' },
-          { id: 'thisMonth', label: 'This Month' },
-          { id: 'highValue', label: 'High Value (>500)' },
-          { id: 'uncategorized', label: 'Uncategorized' }
+          { id: 'all', label: t?.('category_all') || 'All' },
+          { id: 'thisMonth', label: t?.('this_month') || 'This Month' },
+          { id: 'highValue', label: t?.('high_value') || 'High Value (>500)' },
+          { id: 'uncategorized', label: t?.('uncategorized') || 'Uncategorized' }
         ].map(p => (
           <button
             key={p.id}
@@ -440,7 +440,7 @@ export default function Transactions() {
             <div className="tbt-left">
               <span className="tbt-count">
                 <CheckCircle2 size={16} className="text-success" />
-                {selectedIds.size} transaction{selectedIds.size > 1 ? 's' : ''} selected
+                {selectedIds.size} {t?.('total_transactions') || 'selected'}
               </span>
             </div>
             <div className="tbt-actions">
@@ -448,13 +448,13 @@ export default function Transactions() {
                 className="tbt-btn"
                 onClick={() => setShowBulkCategoryModal(true)}
               >
-                <Layers size={14} /> Change Category
+                <Layers size={14} /> {t?.('change_category') || 'Change Category'}
               </button>
               <button
                 className="tbt-btn danger"
                 onClick={() => setShowBulkDeleteModal(true)}
               >
-                <Trash2 size={14} /> Delete Selected
+                <Trash2 size={14} /> {t?.('delete_selected') || 'Delete Selected'}
               </button>
               <button
                 className="tbt-btn-close"
@@ -477,7 +477,7 @@ export default function Transactions() {
               <Search className="il-search-icon" size={16} aria-hidden="true" />
               <input
                 aria-label="Search transactions"
-                placeholder="Search category, note, or amount..."
+                placeholder={t?.('search_transactions_placeholder') || 'Search category, note, or amount...'}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -488,19 +488,19 @@ export default function Transactions() {
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value)}
               >
-                <option value="all">All Types</option>
-                <option value="income">Income</option>
-                <option value="expense">Expense</option>
+                <option value="all">{t?.('all_types') || 'All Types'}</option>
+                <option value="income">{t?.('income_label') || 'Income'}</option>
+                <option value="expense">{t?.('expense_label') || 'Expense'}</option>
               </select>
               <select
                 aria-label="Sort transactions"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
               >
-                <option value="date-desc">Newest</option>
-                <option value="date-asc">Oldest</option>
-                <option value="amount-desc">Highest</option>
-                <option value="amount-asc">Lowest</option>
+                <option value="date-desc">{t?.('newest') || 'Newest'}</option>
+                <option value="date-asc">{t?.('oldest') || 'Oldest'}</option>
+                <option value="amount-desc">{t?.('highest_amount') || 'Highest'}</option>
+                <option value="amount-asc">{t?.('lowest_amount') || 'Lowest'}</option>
               </select>
               {(searchTerm || filterType !== 'all' || activePreset !== 'all') && (
                 <button
@@ -525,7 +525,7 @@ export default function Transactions() {
                 ) : (
                   <Square size={16} />
                 )}
-                <span>Select All ({filtered.length})</span>
+                <span>{t?.('select_all') || 'Select All'} ({filtered.length})</span>
               </button>
             </div>
           )}
@@ -536,17 +536,17 @@ export default function Transactions() {
             {transactions.length === 0 ? (
                <div className="il-empty">
                  <Wallet size={36} opacity={0.3} />
-                 <p>No transactions yet</p>
+                 <p>{t?.('no_transactions') || 'No transactions yet'}</p>
                  <button className="btn-primary" onClick={() => setIsAdding(true)} style={{ marginTop: 10 }}>
-                   <Plus size={14} /> Add First Transaction
+                   <Plus size={14} /> {t?.('add_transaction') || 'Add First Transaction'}
                  </button>
                </div>
             ) : filtered.length === 0 ? (
                <div className="il-empty">
                  <Filter size={36} opacity={0.3} />
-                 <p>No matching transactions</p>
+                 <p>{t?.('no_tx_found') || 'No matching transactions'}</p>
                  <button className="btn-secondary" onClick={() => { setSearchTerm(''); setFilterType('all'); setActivePreset('all'); }}>
-                   Reset Filters
+                   {t?.('clear_filters') || 'Reset Filters'}
                  </button>
                </div>
             ) : (
@@ -636,13 +636,13 @@ export default function Transactions() {
 
                 <div className="idp-body">
                   <div className="idp-section">
-                    <label>Type</label>
+                    <label>{t?.('type') || 'Type'}</label>
                     <p style={{ textTransform: 'capitalize', color: selectedTx.type === 'income' ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>
-                      {selectedTx.type}
+                      {selectedTx.type === 'income' ? (t?.('income_label') || 'Income') : (t?.('expense_label') || 'Expense')}
                     </p>
                   </div>
                   <div className="idp-section">
-                    <label><FileText size={14}/> Note</label>
+                    <label><FileText size={14}/> {t?.('description') || 'Note'}</label>
                     {selectedTx.note ? (
                       <p className="idp-note-box">{selectedTx.note}</p>
                     ) : (
@@ -653,13 +653,13 @@ export default function Transactions() {
 
                 <div className="idp-actions">
                   <button className="idp-btn edit" onClick={() => setEditingTx(selectedTx)}>
-                    <Edit3 size={16} /> Edit Details
+                    <Edit3 size={16} /> {t?.('edit') || 'Edit Details'}
                   </button>
                   <button className="idp-btn duplicate" onClick={() => handleDuplicate(selectedTx)} title="Duplicate transaction">
                     <Copy size={16} /> Duplicate
                   </button>
                   <button className="idp-btn delete" onClick={() => setDeletingTx(selectedTx)}>
-                    <Trash2 size={16} /> Delete
+                    <Trash2 size={16} /> {t?.('delete') || 'Delete'}
                   </button>
                 </div>
               </motion.div>
@@ -668,20 +668,20 @@ export default function Transactions() {
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               >
                 <Wallet size={48} className="idp-empty-icon" />
-                <h3>Select a Transaction</h3>
-                <p>Click on any transaction in the list to view, edit, duplicate, or inspect its details.</p>
+                <h3>{t?.('select_a_transaction') || 'Select a Transaction'}</h3>
+                <p>{t?.('click_transaction_to_inspect') || 'Click on any transaction in the list to view, edit, duplicate, or inspect its details.'}</p>
 
                 <div className="idp-quick-stats">
                   <div className="iqs-box glass">
-                    <label>Earned</label>
+                    <label>{t?.('earned') || 'EARNED'}</label>
                     <span className="success">{fmt(totalIncome)}</span>
                   </div>
                   <div className="iqs-box glass">
-                    <label>Spent</label>
+                    <label>{t?.('spent_upper') || 'SPENT'}</label>
                     <span className="danger">{fmt(totalExpense)}</span>
                   </div>
                   <div className="iqs-box glass">
-                    <label>Net</label>
+                    <label>{t?.('net_upper') || 'NET'}</label>
                     <span className="primary">{fmt(netChange)}</span>
                   </div>
                 </div>

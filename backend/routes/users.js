@@ -148,10 +148,11 @@ const buildSettingsUpdate = (payload = {}) => {
     updates.currency = currency;
   }
   if (payload.profile_avatar !== undefined) {
-    if (typeof payload.profile_avatar !== 'string' || payload.profile_avatar.length > 4000000) {
+    const avatar = typeof payload.profile_avatar === 'string' ? payload.profile_avatar.trim() : '';
+    if (!avatar || avatar.length > 4000000) {
       return { error: 'Profile avatar is invalid or too large.' };
     }
-    updates.profile_avatar = payload.profile_avatar;
+    updates.profile_avatar = avatar;
   }
   if (payload.profile_color !== undefined) {
     if (typeof payload.profile_color !== 'string' || !HEX_COLOR.test(payload.profile_color)) {

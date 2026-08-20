@@ -3,13 +3,14 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../services/api';
 import { AppContext } from '../contexts/AppContext';
+import { LANGUAGES } from '../services/i18n';
 import {
   KeyRound, Mail, AlertTriangle, Zap, Eye, EyeOff,
-  ArrowRight, Shield, CheckCircle2, Lock, Info
+  ArrowRight, Shield, Globe
 } from 'lucide-react';
 
 export default function Login() {
-  const { login } = useContext(AppContext);
+  const { login, t, lang = 'en', setLanguage } = useContext(AppContext);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -29,9 +30,9 @@ export default function Login() {
   const validateField = (name, value) => {
     switch (name) {
       case 'email':
-        return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? 'Enter a valid email address.' : '';
+        return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? (t?.('invalid_email') || 'Enter a valid email address.') : '';
       case 'password':
-        return value.length < 1 ? 'Password is required.' : '';
+        return value.length < 1 ? (t?.('password_required') || 'Password is required.') : '';
       default:
         return '';
     }
@@ -52,7 +53,6 @@ export default function Login() {
     if (name === 'email') setEmail(value);
     else if (name === 'password') setPassword(value);
     else if (name === 'rememberMe') setRememberMe(checked);
-    // Clear field error on change
     setFieldErrors(prev => ({ ...prev, [name]: '' }));
     if (error) setError('');
   };
@@ -70,7 +70,6 @@ export default function Login() {
     setError('');
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
-      // Focus first field with error
       const firstError = Object.keys(validationErrors)[0];
       if (firstError === 'email') emailInputRef.current?.focus();
       if (firstError === 'password') passwordInputRef.current?.focus();
@@ -82,17 +81,17 @@ export default function Login() {
       const { token, user } = await api.login({
         email: email.trim().toLowerCase(),
         password,
-        rememberMe, // if backend supports it
+        rememberMe,
       });
       await login(token, user, rememberMe);
       const destination = location.state?.from?.pathname || '/';
       navigate(destination, { replace: true });
     } catch (err) {
-      let errorMsg = 'Invalid credentials. Please try again.';
+      let errorMsg = t?.('invalid_credentials') || 'Invalid credentials. Please try again.';
       if (err.response) {
         errorMsg = err.response?.data?.error || errorMsg;
       } else if (err.code === 'ERR_NETWORK' || !err.response) {
-        errorMsg = 'Cannot reach the server. Please check your network connection.';
+        errorMsg = t?.('server_unreachable') || 'Cannot reach the server. Please check your network connection.';
       }
       setError(errorMsg);
     } finally {
@@ -100,7 +99,6 @@ export default function Login() {
     }
   };
 
-  // ---------- Render ----------
   return (
     <div className="auth-page">
       <div className="auth-bg">
@@ -114,7 +112,35 @@ export default function Login() {
         initial={{ opacity: 0, y: 32, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        style={{ position: 'relative' }}
       >
+        {/* Language Selector in Auth Card */}
+        <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Globe size={14} style={{ color: 'var(--text-muted)' }} />
+          <select
+            value={lang}
+            onChange={(e) => setLanguage && setLanguage(e.target.value)}
+            aria-label={t?.('language') || 'Language'}
+            style={{
+              background: 'var(--glass-2)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--glass-border)',
+              borderRadius: 8,
+              padding: '4px 8px',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              outline: 'none'
+            }}
+          >
+            {Object.entries(LANGUAGES).map(([code, l]) => (
+              <option key={code} value={code}>
+                {l.flag} {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="auth-logo">
           <motion.div
             className="auth-logo-icon"
@@ -127,8 +153,8 @@ export default function Login() {
         </div>
 
         <div className="auth-header">
-          <h1>Welcome back</h1>
-          <p>Sign in to your account to continue</p>
+          <h1>{t?.('welcome_back_title') || 'Welcome back'}</h1>
+          <p>{t?.('sign_in_to_continue') || 'Sign in to your account to continue'}</p>
         </div>
 
         <AnimatePresence>
@@ -150,7 +176,7 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
           {/* Email */}
           <div className={`form-group ${fieldErrors.email && touched.email ? 'has-error' : ''}`}>
-            <label htmlFor="login-email">Email Address</label>
+            <label htmlFor="login-email">{t?.('email_address') || 'Email Address'}</label>
             <div className="input-wrapper">
               <Mail className="input-icon" size={17} />
               <input
@@ -163,7 +189,7 @@ export default function Login() {
                 onBlur={handleBlur}
                 required
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder={t?.('email_placeholder') || 'you@example.com'}
                 disabled={loading}
                 aria-describedby={fieldErrors.email ? 'email-error' : undefined}
               />
@@ -175,7 +201,7 @@ export default function Login() {
 
           {/* Password */}
           <div className={`form-group ${fieldErrors.password && touched.password ? 'has-error' : ''}`}>
-            <label htmlFor="login-password">Password</label>
+            <label htmlFor="login-password">{t?.('password') || 'Password'}</label>
             <div className="input-wrapper">
               <KeyRound className="input-icon" size={17} />
               <input
@@ -188,7 +214,7 @@ export default function Login() {
                 onBlur={handleBlur}
                 required
                 autoComplete="current-password"
-                placeholder="••••••••"
+                placeholder={t?.('password_placeholder') || '••••••••'}
                 disabled={loading}
                 aria-describedby={fieldErrors.password ? 'password-error' : undefined}
               />
@@ -218,10 +244,10 @@ export default function Login() {
                 onChange={handleChange}
                 disabled={loading}
               />
-              <span>Remember me</span>
+              <span>{t?.('remember_me') || 'Remember me'}</span>
             </label>
             <Link to="/forgot-password" className="auth-forgot-link">
-              Forgot password?
+              {t?.('forgot_password') || 'Forgot password?'}
             </Link>
           </div>
 
@@ -238,29 +264,29 @@ export default function Login() {
                 animate={{ opacity: [1, 0.5, 1] }}
                 transition={{ duration: 1, repeat: Infinity }}
               >
-                Authenticating…
+                {t?.('authenticating') || 'Authenticating…'}
               </motion.span>
             ) : (
               <>
-                Log In <ArrowRight size={16} style={{ marginLeft: 6 }} />
+                {t?.('log_in') || 'Log In'} <ArrowRight size={16} style={{ marginLeft: 6 }} />
               </>
             )}
           </motion.button>
         </form>
 
         <div className="auth-divider">
-          <span>New to MyCoinwise?</span>
+          <span>{t?.('new_to_mycoinwise') || 'New to MyCoinwise?'}</span>
         </div>
 
         <div className="auth-footer">
           <Link to="/register" className="auth-alt-btn">
-            Create a free account
+            {t?.('create_free_account') || 'Create a free account'}
           </Link>
         </div>
 
         <div className="auth-secure-note">
           <Shield size={12} />
-          <span>256-bit encrypted · JWT session tokens</span>
+          <span>{t?.('encryption_badge') || '256-bit encrypted · JWT session tokens'}</span>
         </div>
       </motion.div>
     </div>

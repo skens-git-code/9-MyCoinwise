@@ -12,6 +12,9 @@ export const ToastProvider = ({ children }) => {
     const id = Date.now() + Math.random();
     
     setToasts(prev => {
+      // Prevent parallel protected requests from stacking the same error
+      // while the auth-expired handler clears the session.
+      if (prev.some((toast) => toast.type === type && toast.text === text)) return prev;
       // Limit to 3 active toasts
       const newToasts = [...prev, { id, type, text, action }];
       if (newToasts.length > 3) return newToasts.slice(-3);

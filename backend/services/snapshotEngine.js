@@ -38,7 +38,9 @@ const takeSnapshot = async (userId) => {
     items.forEach(item => {
       let currentVal;
 
-      if (item.asset_class === 'illiquid_asset') {
+      if (item.current_value_override !== null && item.current_value_override !== undefined) {
+        currentVal = item.current_value_override;
+      } else if (item.asset_class === 'illiquid_asset' || item.asset_class === 'business_equity') {
         // Apply depreciation for physical assets
         currentVal = calculateDepreciation(item.base_value, item.acquisition_date);
       } else if (item.symbol && item.quantity && livePrices[item.symbol]) {

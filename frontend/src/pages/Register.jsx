@@ -3,9 +3,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../services/api';
 import { AppContext } from '../contexts/AppContext';
+import { LANGUAGES } from '../services/i18n';
 import {
   User, Mail, KeyRound, AlertTriangle, Zap, Eye, EyeOff,
-  ArrowRight, Shield, CheckCircle2, Lock, Info
+  ArrowRight, Shield, CheckCircle2, Lock, Globe
 } from 'lucide-react';
 
 // ==================== PASSWORD STRENGTH ====================
@@ -25,7 +26,7 @@ const strengthWidths = ['20%', '40%', '60%', '75%', '90%', '100%'];
 
 // ==================== MAIN COMPONENT ====================
 export default function Register() {
-  const { login } = useContext(AppContext);
+  const { login, t, lang = 'en', setLanguage } = useContext(AppContext);
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -52,19 +53,19 @@ export default function Register() {
   const validateField = (name, value) => {
     switch (name) {
       case 'username':
-        return value.trim().length < 2 ? 'Username must be at least 2 characters.' : '';
+        return value.trim().length < 2 ? (t?.('username_min_chars') || 'Username must be at least 2 characters.') : '';
       case 'email':
-        return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? 'Enter a valid email address.' : '';
+        return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? (t?.('invalid_email') || 'Enter a valid email address.') : '';
       case 'password':
-        if (value.length < 8) return 'Password must be at least 8 characters.';
-        if (!/[a-z]/.test(value) || !/[A-Z]/.test(value)) return 'Include both uppercase and lowercase letters.';
-        if (!/\d/.test(value)) return 'Include at least one number.';
-        if (!/[^a-zA-Z0-9]/.test(value)) return 'Include at least one special character.';
+        if (value.length < 8) return t?.('password_min_chars') || 'Password must be at least 8 characters.';
+        if (!/[a-z]/.test(value) || !/[A-Z]/.test(value)) return t?.('password_case_req') || 'Include both uppercase and lowercase letters.';
+        if (!/\d/.test(value)) return t?.('password_num_req') || 'Include at least one number.';
+        if (!/[^a-zA-Z0-9]/.test(value)) return t?.('password_special_req') || 'Include at least one special character.';
         return '';
       case 'confirmPassword':
-        return value !== formData.password ? 'Passwords do not match.' : '';
+        return value !== formData.password ? (t?.('passwords_do_not_match') || 'Passwords do not match.') : '';
       case 'agreeTerms':
-        return !value ? 'You must accept the Terms & Conditions.' : '';
+        return !value ? (t?.('accept_terms_req') || 'You must accept the Terms & Conditions.') : '';
       default:
         return '';
     }
@@ -84,9 +85,7 @@ export default function Register() {
     const { name, value, type, checked } = e.target;
     const val = type === 'checkbox' ? checked : value;
     setFormData(prev => ({ ...prev, [name]: val }));
-    // Clear error for this field
     setFieldErrors(prev => ({ ...prev, [name]: '' }));
-    // Clear global error when user types
     if (error) setError('');
   };
 
@@ -103,15 +102,11 @@ export default function Register() {
     setError('');
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
-      // Focus first field with error
       const firstError = Object.keys(validationErrors)[0];
-      const ref = {
-        username: nameInputRef,
-        email: emailInputRef,
-        password: passwordInputRef,
-        confirmPassword: confirmPasswordInputRef,
-      }[firstError];
-      ref?.current?.focus();
+      if (firstError === 'username') nameInputRef.current?.focus();
+      else if (firstError === 'email') emailInputRef.current?.focus();
+      else if (firstError === 'password') passwordInputRef.current?.focus();
+      else if (firstError === 'confirmPassword') confirmPasswordInputRef.current?.focus();
       return;
     }
 
@@ -123,28 +118,25 @@ export default function Register() {
         password: formData.password,
       });
       await login(token, user);
-      navigate('/');
+      navigate('/', { replace: true });
     } catch (err) {
-      const serverMessage = err.response?.data?.error || err.response?.data?.message;
-      if (serverMessage) {
-        setError(serverMessage);
+      let errorMsg = t?.('registration_failed') || 'Registration failed. Please try again.';
+      if (err.response) {
+        errorMsg = err.response?.data?.error || errorMsg;
       } else if (err.code === 'ERR_NETWORK' || !err.response) {
-        setError('Cannot reach the server. Please check your network connection.');
-      } else {
-        setError('Failed to create account. Please try again.');
+        errorMsg = t?.('server_unreachable') || 'Cannot reach the server. Please check your network connection.';
       }
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
-  // ---------- Password Strength ----------
   const strengthScore = getPasswordStrength(formData.password);
-  const strengthLabel = strengthLabels[strengthScore] || 'Very weak';
-  const strengthColor = strengthColors[strengthScore] || '#ef4444';
-  const strengthWidth = strengthWidths[strengthScore] || '20%';
+  const strengthLabel = strengthLabels[strengthScore];
+  const strengthColor = strengthColors[strengthScore];
+  const strengthWidth = strengthWidths[strengthScore];
 
-  // ---------- Render ----------
   return (
     <div className="auth-page">
       <div className="auth-bg">
@@ -158,7 +150,35 @@ export default function Register() {
         initial={{ opacity: 0, y: 32, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        style={{ position: 'relative' }}
       >
+        {/* Language Selector in Auth Card */}
+        <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Globe size={14} style={{ color: 'var(--text-muted)' }} />
+          <select
+            value={lang}
+            onChange={(e) => setLanguage && setLanguage(e.target.value)}
+            aria-label={t?.('language') || 'Language'}
+            style={{
+              background: 'var(--glass-2)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--glass-border)',
+              borderRadius: 8,
+              padding: '4px 8px',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              outline: 'none'
+            }}
+          >
+            {Object.entries(LANGUAGES).map(([code, l]) => (
+              <option key={code} value={code}>
+                {l.flag} {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="auth-logo">
           <motion.div
             className="auth-logo-icon"
@@ -171,12 +191,16 @@ export default function Register() {
         </div>
 
         <div className="auth-header">
-          <h1>Create account</h1>
-          <p>Start your journey to smarter budgeting</p>
+          <h1>{t?.('create_account_title') || 'Create Account'}</h1>
+          <p>{t?.('create_account_subtitle') || 'Start your journey to smarter budgeting'}</p>
         </div>
 
         <ul className="auth-benefits">
-          {['Secure JWT authentication', 'Track income & expenses', 'Smart AI spending alerts'].map(b => (
+          {[
+            t?.('encryption_badge') || 'Secure JWT authentication',
+            t?.('track_plan_grow') || 'Track income & expenses',
+            t?.('ai_insights') || 'Smart AI spending alerts'
+          ].map(b => (
             <li key={b}><CheckCircle2 size={14} />{b}</li>
           ))}
         </ul>
@@ -200,7 +224,7 @@ export default function Register() {
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
           {/* Username */}
           <div className={`form-group ${fieldErrors.username && touched.username ? 'has-error' : ''}`}>
-            <label htmlFor="reg-username">Username</label>
+            <label htmlFor="reg-username">{t?.('username') || 'Username'}</label>
             <div className="input-wrapper">
               <User className="input-icon" size={17} />
               <input
@@ -225,7 +249,7 @@ export default function Register() {
 
           {/* Email */}
           <div className={`form-group ${fieldErrors.email && touched.email ? 'has-error' : ''}`}>
-            <label htmlFor="reg-email">Email Address</label>
+            <label htmlFor="reg-email">{t?.('email_address') || 'Email Address'}</label>
             <div className="input-wrapper">
               <Mail className="input-icon" size={17} />
               <input
@@ -238,7 +262,7 @@ export default function Register() {
                 onBlur={handleBlur}
                 required
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder={t?.('email_placeholder') || 'you@example.com'}
                 disabled={loading}
                 aria-describedby={fieldErrors.email ? 'email-error' : undefined}
               />
@@ -250,7 +274,7 @@ export default function Register() {
 
           {/* Password */}
           <div className={`form-group ${fieldErrors.password && touched.password ? 'has-error' : ''}`}>
-            <label htmlFor="reg-password">Password</label>
+            <label htmlFor="reg-password">{t?.('password') || 'Password'}</label>
             <div className="input-wrapper">
               <KeyRound className="input-icon" size={17} />
               <input
@@ -263,7 +287,7 @@ export default function Register() {
                 onBlur={handleBlur}
                 required
                 autoComplete="new-password"
-                placeholder="Min. 8 chars, mix of cases, number, special"
+                placeholder={t?.('password_placeholder') || '••••••••'}
                 disabled={loading}
                 aria-describedby={fieldErrors.password ? 'password-error' : 'password-requirements'}
               />
@@ -293,13 +317,13 @@ export default function Register() {
               </div>
             )}
             <div id="password-requirements" className="form-hint" style={{ color: strengthColor }}>
-              {formData.password.length > 0 ? `Strength: ${strengthLabel}` : 'Use 8+ chars with uppercase, lowercase, number, special.'}
+              {formData.password.length > 0 ? `${strengthLabel}` : 'Use 8+ chars with uppercase, lowercase, number, special.'}
             </div>
           </div>
 
           {/* Confirm Password */}
           <div className={`form-group ${fieldErrors.confirmPassword && touched.confirmPassword ? 'has-error' : ''}`}>
-            <label htmlFor="reg-confirm">Confirm Password</label>
+            <label htmlFor="reg-confirm">{t?.('confirm_password') || 'Confirm Password'}</label>
             <div className="input-wrapper">
               <Lock className="input-icon" size={17} />
               <input
@@ -312,7 +336,7 @@ export default function Register() {
                 onBlur={handleBlur}
                 required
                 autoComplete="new-password"
-                placeholder="Re-enter password"
+                placeholder={t?.('password_placeholder') || '••••••••'}
                 disabled={loading}
                 aria-describedby={fieldErrors.confirmPassword ? 'confirm-error' : undefined}
               />
@@ -343,7 +367,7 @@ export default function Register() {
                 onBlur={handleBlur}
                 disabled={loading}
               />
-              <span>I agree to the <Link to="/terms" target="_blank">Terms & Conditions</Link> and <Link to="/privacy" target="_blank">Privacy Policy</Link>.</span>
+              <span>{t?.('agree_to_terms') || 'I agree to the Terms & Conditions'}</span>
             </label>
             {fieldErrors.agreeTerms && touched.agreeTerms && (
               <div className="form-error" role="alert">{fieldErrors.agreeTerms}</div>
@@ -363,29 +387,29 @@ export default function Register() {
                 animate={{ opacity: [1, 0.5, 1] }}
                 transition={{ duration: 1, repeat: Infinity }}
               >
-                Creating Account…
+                {t?.('creating_account') || 'Creating account…'}
               </motion.span>
             ) : (
               <>
-                Create Account <ArrowRight size={16} style={{ marginLeft: 6 }} />
+                {t?.('create_account_title') || 'Create Account'} <ArrowRight size={16} style={{ marginLeft: 6 }} />
               </>
             )}
           </motion.button>
         </form>
 
         <div className="auth-divider">
-          <span>Already have an account?</span>
+          <span>{t?.('already_have_account') || 'Already have an account?'}</span>
         </div>
 
         <div className="auth-footer">
           <Link to="/login" className="auth-alt-btn">
-            Sign in instead
+            {t?.('sign_in') || 'Sign in instead'}
           </Link>
         </div>
 
         <div className="auth-secure-note">
           <Shield size={12} />
-          <span>256-bit encrypted · bcrypt password hashing</span>
+          <span>{t?.('encryption_badge') || '256-bit encrypted · secure sessions'}</span>
         </div>
       </motion.div>
     </div>

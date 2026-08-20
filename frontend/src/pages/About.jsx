@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
   Rocket, Shield, Zap, Globe, Github, Twitter, Instagram, Facebook, Mail,
   Heart, Code, Sparkles, BrainCircuit, Users, Award, Clock
 } from 'lucide-react';
+import { AppContext } from '../contexts/AppContext';
 
-// ==================== STATIC DATA (replace with API calls) ====================
+// ==================== STATIC DATA ====================
 const DEFAULT_STATS = {
   users: '10k+',
   managed: '$2B+',
@@ -21,6 +22,7 @@ const TEAM_MEMBERS = [
 
 // ==================== MAIN COMPONENT ====================
 export default function About({ stats = DEFAULT_STATS }) {
+  const { t } = useContext(AppContext);
   // Detect reduced motion preference
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => (
     typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -55,14 +57,10 @@ export default function About({ stats = DEFAULT_STATS }) {
         },
       };
 
-  // Analytics tracking for the Calculator CTA
   const handleCalculatorClick = () => {
-    // Replace with your analytics call (e.g., gtag, mixpanel, etc.)
     if (typeof window !== 'undefined' && window.gtag) {
       window.gtag('event', 'click', { event_category: 'engagement', event_label: 'calculator_cta' });
     }
-    // You can also log to console for debugging
-    console.log('Calculator CTA clicked');
   };
 
   return (
@@ -75,8 +73,8 @@ export default function About({ stats = DEFAULT_STATS }) {
       >
         <div className="ih-left">
           <div className="ih-titles">
-            <h1>About Us</h1>
-            <p>Meet the vision behind MyCoinwise</p>
+            <h1>{t?.('about') || 'About Us'}</h1>
+            <p>{t?.('about_hero_tag') || 'Meet the vision behind MyCoinwise'}</p>
           </div>
         </div>
       </motion.div>
@@ -141,7 +139,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 marginBottom: 16,
               }}
             >
-              Redefining Personal Finance
+              {t?.('about_hero_title') || 'Empowering Next-Gen Financial Freedom'}
             </h2>
             <p
               style={{
@@ -152,9 +150,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 lineHeight: 1.6,
               }}
             >
-              MyCoinwise is a next‑generation AI‑powered wealth management
-              platform designed to provide beautiful, intuitive, and actionable
-              insights into your financial life.
+              {t?.('about_hero_desc') || 'MyCoinwise delivers intelligent budgeting, wealth forecasting, and instant multi-currency analytics designed to keep your finances clear, secure, and thriving.'}
             </p>
           </motion.div>
 

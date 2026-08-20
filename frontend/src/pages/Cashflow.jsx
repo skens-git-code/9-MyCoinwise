@@ -703,7 +703,7 @@ export default function Cashflow() {
           <motion.div className="glass bento-tile" style={{ padding: 22 }} whileHover={{ y: -2 }}>
             <div className="bt-header" style={{ marginBottom: 14 }}>
               <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Target size={18} /> Safety & Critical Floors
+                <Target size={18} /> {t('safety_floors') || 'Safety & Critical Floors'}
               </h3>
             </div>
 
@@ -718,7 +718,7 @@ export default function Cashflow() {
                   marginBottom: 6,
                 }}
               >
-                Safety Buffer: <strong>{fmt(safetyThreshold)}</strong>
+                {t('safety_buffer') || 'Safety Buffer'}: <strong>{fmt(safetyThreshold)}</strong>
               </label>
               <input
                 id="safety-slider"
@@ -747,7 +747,7 @@ export default function Cashflow() {
                   marginBottom: 6,
                 }}
               >
-                Critical Warning Floor: <strong>{fmt(criticalThreshold)}</strong>
+                {t('critical_warning_floor') || 'Critical Warning Floor'}: <strong>{fmt(criticalThreshold)}</strong>
               </label>
               <input
                 id="critical-slider"
@@ -770,7 +770,7 @@ export default function Cashflow() {
           <motion.div className="glass bento-tile" style={{ padding: 22 }} whileHover={{ y: -2 }}>
             <div className="bt-header" style={{ marginBottom: 12 }}>
               <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Zap size={18} /> What-If Scenario Modeler
+                <Zap size={18} /> {t('what_if_modeler') || 'What-If Scenario Modeler'}
               </h3>
               <button
                 className="btn-secondary"
@@ -778,7 +778,7 @@ export default function Cashflow() {
                 style={{ padding: '4px 10px', fontSize: '0.7rem' }}
                 aria-label="Reset scenario"
               >
-                <RotateCcw size={14} /> Reset
+                <RotateCcw size={14} /> {t('reset') || 'Reset'}
               </button>
             </div>
 
@@ -788,14 +788,14 @@ export default function Cashflow() {
                 onClick={() => setScenarioType('oneTime')}
                 aria-label="One-time scenario"
               >
-                One-Time
+                {t('one_time') || 'One-Time'}
               </button>
               <button
                 className={`fcb-pill ${scenarioType === 'recurring' ? 'active' : ''}`}
                 onClick={() => setScenarioType('recurring')}
                 aria-label="Recurring scenario"
               >
-                Recurring
+                {t('recurring') || 'Recurring'}
               </button>
             </div>
 
@@ -804,7 +804,7 @@ export default function Cashflow() {
                 htmlFor="whatif-amount"
                 style={{ fontSize: '0.76rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}
               >
-                {scenarioType === 'oneTime' ? 'One-off Expense / Inflow' : 'Recurring Amount'}
+                {scenarioType === 'oneTime' ? (t('one_off_expense_inflow') || 'One-off Expense / Inflow') : (t('recurring_amount') || 'Recurring Amount')}
               </label>
               <input
                 id="whatif-amount"
@@ -821,7 +821,7 @@ export default function Cashflow() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
                 <div>
                   <label htmlFor="scenario-freq" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    Frequency
+                    {t('frequency') || 'Frequency'}
                   </label>
                   <select
                     id="scenario-freq"
@@ -838,7 +838,7 @@ export default function Cashflow() {
                 </div>
                 <div>
                   <label htmlFor="scenario-months" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    Duration (Months)
+                    {t('duration_months') || 'Duration (Months)'}
                   </label>
                   <input
                     id="scenario-months"
@@ -857,7 +857,7 @@ export default function Cashflow() {
             {/* Start Day */}
             <div style={{ marginBottom: 12 }}>
               <label htmlFor="scenario-start" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                Start Day (1 = today)
+                {t('start_day_today') || 'Start Day (1 = today)'}
               </label>
               <input
                 id="scenario-start"

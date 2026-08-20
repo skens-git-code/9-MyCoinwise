@@ -54,11 +54,15 @@ const goalSchema = new mongoose.Schema({
       // Existing goals whose deadlines have passed must still be editable
       // (e.g. updating `saved`) without triggering a validation error.
       validator: function(v) {
-        if (v === null) return true;
+        if (v === null || v === undefined) return true;
         if (!this.isNew) return true;   // skip on updates — deadline was set in the past legally
-        return v > new Date();
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        const deadline = new Date(v);
+        return !isNaN(deadline.getTime()) && deadline >= yesterday;
       },
-      message: 'Deadline must be in the future'
+      message: 'Deadline must be today or in the future'
     }
   },
   priority: { 
@@ -73,7 +77,7 @@ const goalSchema = new mongoose.Schema({
   category: { 
     type: String, 
     enum: {
-      values: ['savings', 'debt', 'purchase', 'investment', 'other'],
+      values: ['savings', 'emergency_fund', 'vacation', 'gadget', 'investment', 'vehicle', 'home', 'education', 'debt', 'purchase', 'other'],
       message: 'Invalid category'
     },
     default: 'savings',
@@ -291,6 +295,12 @@ goalSchema.virtual('status').get(function() {
   return 'not_started';
 });
 
+goalSchema.virtual('achieved').get(function() {
+  return this.is_completed;
+}).set(function(value) {
+  this.is_completed = Boolean(value);
+});
+
 goalSchema.virtual('is_overdue').get(function() {
   return this.status === 'overdue';
 });
@@ -426,5 +436,3 @@ goalSchema.statics.getDashboardStats = async function(userId) {
 
 // ── Export Model ──────────────────────────────────────────────────────────────
 module.exports = mongoose.model('Goal', goalSchema);
-
-

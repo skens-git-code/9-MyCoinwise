@@ -23,7 +23,7 @@ const formatDateForInput = (dateInput) => {
 };
 
 export default function TransactionForm({ isOpen = true, onClose, onSubmit, initialData = null }) {
-  const { currencyInfo, accounts = [] } = useContext(AppContext);
+  const { currencyInfo, accounts = [], t } = useContext(AppContext);
   const currSymbol = currencyInfo?.symbol || '₹';
 
   // State management with proper initialization
@@ -257,9 +257,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   // Memoized values for performance
   const isExpense = useMemo(() => type === 'expense', [type]);
   const submitButtonText = useMemo(() => {
-    if (initialData) return 'Save Changes';
-    return `Add ${type.charAt(0).toUpperCase() + type.slice(1)}`;
-  }, [initialData, type]);
+    if (initialData) return t?.('save_changes') || 'Save Changes';
+    return type === 'income' ? (t?.('add_income_btn') || 'Add Income') : (t?.('add_expense_btn') || 'Add Expense');
+  }, [initialData, type, t]);
 
   return (
     <>
@@ -279,7 +279,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 key="tx-modal-box"
           role="dialog"
           aria-modal="true"
-          aria-label={initialData ? 'Edit Transaction' : 'New Transaction'}
+          aria-label={initialData ? (t?.('edit_transaction') || 'Edit Transaction') : (t?.('new_transaction') || 'New Transaction')}
           className="modal-box glass"
           initial={{ scale: 0.88, y: 24 }}
           animate={{ scale: 1, y: 0 }}
@@ -293,7 +293,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>
-              {initialData ? '✍️ Edit Transaction' : '✨ New Transaction'}
+              {initialData ? `✍️ ${t?.('edit_transaction') || 'Edit Transaction'}` : `✨ ${t?.('new_transaction') || 'New Transaction'}`}
             </h3>
             <motion.button
               className="icon-btn"
@@ -332,11 +332,11 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 
             {/* Type Toggle */}
             <div className="type-toggle" style={{ display: 'flex', background: 'var(--glass-1)', borderRadius: 12, padding: 4, position: 'relative' }}>
-              {['expense', 'income'].map(t => (
+              {['expense', 'income'].map(toggleType => (
                 <button
-                  key={t}
+                  key={toggleType}
                   type="button"
-                  onClick={() => setType(t)}
+                  onClick={() => setType(toggleType)}
                   style={{
                     flex: 1,
                     padding: '10px 0',
@@ -344,14 +344,14 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                     background: 'transparent',
                     cursor: 'pointer',
                     zIndex: 1,
-                    color: type === t ? 'white' : 'var(--text-secondary)',
+                    color: type === toggleType ? 'white' : 'var(--text-secondary)',
                     fontWeight: 600,
                     fontSize: '0.9rem',
                     textTransform: 'capitalize',
                     transition: 'color 0.2s'
                   }}
                 >
-                  {t}
+                  {toggleType === 'expense' ? (t?.('expense_label') || 'Expense') : (t?.('income_label') || 'Income')}
                 </button>
               ))}
               <motion.div
@@ -371,7 +371,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="form-field">
-                <label>Amount ({currSymbol})</label>
+                <label>{t?.('amount') || 'Amount'} ({currSymbol})</label>
                 <div style={{ position: 'relative' }}>
                   <span style={{
                     position: 'absolute',
@@ -403,7 +403,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
               </div>
 
               <div className="form-field">
-                <label>Date</label>
+                <label>{t?.('date') || 'Date'}</label>
                 <input
                   type="date"
                   value={date}
@@ -421,7 +421,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
             </div>
 
             <div className="form-field">
-              <label>Category</label>
+              <label>{t?.('category') || 'Category'}</label>
               <select
                 value={category}
                 onChange={e => setCategory(e.target.value)}
@@ -429,7 +429,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 aria-required="true"
                 style={{ opacity: isSubmitting ? 0.7 : 1 }}
               >
-                <option value="">Select category...</option>
+                <option value="">{t?.('category') || 'Select category'}...</option>
                 {CATEGORIES[type].map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
@@ -437,11 +437,11 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
             </div>
 
             <div className="form-field">
-              <label>Description (Optional)</label>
+              <label>{t?.('description') || 'Description'} ({t?.('optional') || 'Optional'})</label>
               <input
                 value={note}
                 onChange={e => setNote(e.target.value)}
-                placeholder="What was this for?"
+                placeholder={t?.('what_was_this_for') || 'What was this for?'}
                 maxLength={60}
                 disabled={isSubmitting}
                 style={{ opacity: isSubmitting ? 0.7 : 1 }}
@@ -459,7 +459,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
             </div>
 
             <div className="form-field">
-              <label htmlFor="transaction-account">Account (Optional)</label>
+              <label htmlFor="transaction-account">{t?.('account_optional') || 'Account (Optional)'}</label>
               <select
                 id="transaction-account"
                 value={accountId}
@@ -467,7 +467,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 disabled={isSubmitting}
                 style={{ opacity: isSubmitting ? 0.7 : 1 }}
               >
-                <option value="">No account selected</option>
+                <option value="">{t?.('no_account_selected') || 'No account selected'}</option>
                 {accounts.filter(account => account.is_active !== false).map(account => (
                   <option key={account.id || account._id} value={account.id || account._id}>
                     {account.name} · {account.currency || 'USD'}
@@ -479,7 +479,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
             {/* Enhanced Fields Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="form-field">
-                <label>Merchant (Optional)</label>
+                <label>{t?.('merchant_optional') || 'Merchant (Optional)'}</label>
                 <input
                   value={merchant}
                   onChange={e => setMerchant(e.target.value)}
@@ -490,7 +490,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 />
               </div>
               <div className="form-field">
-                <label>Tags (Optional)</label>
+                <label>{t?.('tags_optional') || 'Tags (Optional)'}</label>
                 <input
                   value={tags}
                   onChange={e => setTags(e.target.value)}
@@ -503,19 +503,19 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="form-field">
-                <label>Payment Method</label>
+                <label>{t?.('payment_method') || 'Payment Method'}</label>
                 <select
                   value={paymentMethod}
                   onChange={e => setPaymentMethod(e.target.value)}
                   disabled={isSubmitting}
                   style={{ opacity: isSubmitting ? 0.7 : 1 }}
                 >
-                  <option value="other">Other</option>
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                  <option value="upi">UPI</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                  <option value="wallet">Wallet</option>
+                  <option value="other">{t?.('pm_other') || 'Other'}</option>
+                  <option value="cash">{t?.('pm_cash') || 'Cash'}</option>
+                  <option value="card">{t?.('pm_card') || 'Card'}</option>
+                  <option value="upi">{t?.('pm_upi') || 'UPI'}</option>
+                  <option value="bank_transfer">{t?.('pm_bank_transfer') || 'Bank Transfer'}</option>
+                  <option value="wallet">{t?.('pm_wallet') || 'Wallet'}</option>
                 </select>
               </div>
               <div className="form-field" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -527,7 +527,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                     disabled={isSubmitting}
                     style={{ width: 'auto' }}
                   />
-                  Is Recurring?
+                  {t?.('is_recurring') || 'Is Recurring?'}
                 </label>
                 {isRecurring && (
                   <select
@@ -536,10 +536,10 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                     disabled={isSubmitting}
                     style={{ opacity: isSubmitting ? 0.7 : 1, marginTop: 4, padding: '4px 8px', fontSize: '0.8rem' }}
                   >
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="yearly">Yearly</option>
+                    <option value="daily">{t?.('daily') || 'Daily'}</option>
+                    <option value="weekly">{t?.('weekly') || 'Weekly'}</option>
+                    <option value="monthly">{t?.('monthly') || 'Monthly'}</option>
+                    <option value="yearly">{t?.('yearly') || 'Yearly'}</option>
                   </select>
                 )}
               </div>
@@ -553,7 +553,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 disabled={isSubmitting}
                 style={{ opacity: isSubmitting ? 0.7 : 1 }}
               >
-                Cancel
+                {t?.('cancel') || 'Cancel'}
               </button>
               <button
                 type="submit"
