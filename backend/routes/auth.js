@@ -61,9 +61,7 @@ const syncUserBalance = async (userId) => {
   return balance;
 };
 
-router.use(authLimiter);
-
-router.post('/register', [
+router.post('/register', authLimiter, [
   body('username').notEmpty().trim().isLength({ min: 2, max: 80 }),
   body('email').isEmail().normalizeEmail(),
   body('password')
@@ -122,7 +120,7 @@ router.post('/register', [
   }
 });
 
-router.post('/login', [
+router.post('/login', authLimiter, [
   body('email').isEmail().normalizeEmail(),
   body('password').isString().notEmpty()
 ], async (req, res) => {

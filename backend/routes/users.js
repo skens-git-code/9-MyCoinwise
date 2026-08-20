@@ -24,20 +24,20 @@ const router = express.Router();
 // Rate limiting for sensitive operations
 const settingsLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 120,
   message: { error: 'Too many settings update requests. Please try again later.' },
 });
 
 const deleteLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 5,
+  max: 10,
   message: { error: 'Too many account deletion attempts. Please try again later.' },
 });
 
 // ---------- Constants ----------
 const CURRENCY_CODES = new Set(['USD', 'INR', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SGD', 'AED', 'CHF', 'CNY', 'MXN', 'BRL', 'KRW', 'THB']);
 const THEME_VALUES = new Set(['light', 'amoled']);
-const HEX_COLOR = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/;
+const HEX_COLOR = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{4}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/;
 
 const DEFAULT_NOTIFICATION_PREFS = {
   emailReports: true,
@@ -149,10 +149,10 @@ const buildSettingsUpdate = (payload = {}) => {
   }
   if (payload.profile_avatar !== undefined) {
     const avatar = typeof payload.profile_avatar === 'string' ? payload.profile_avatar.trim() : '';
-    if (!avatar || avatar.length > 4000000) {
-      return { error: 'Profile avatar is invalid or too large.' };
+    if (avatar.length > 8000000) {
+      return { error: 'Profile avatar is too large.' };
     }
-    updates.profile_avatar = avatar;
+    updates.profile_avatar = avatar || '😊';
   }
   if (payload.profile_color !== undefined) {
     if (typeof payload.profile_color !== 'string' || !HEX_COLOR.test(payload.profile_color)) {
@@ -588,7 +588,7 @@ router.post(
   ],
   async (req, res) => {
     const backup = req.body;
-    if (!backup || typeof backup !== 'object' || Array.isArray(backup) || ![1, 2, 3].includes(backup.version)) {
+    if (!backup || typeof backup !== 'object' || Array.isArray(backup) || ![1, 2, 3, 4].includes(backup.version)) {
       return res.status(400).json({ message: 'Unsupported or malformed backup format.' });
     }
 

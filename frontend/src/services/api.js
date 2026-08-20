@@ -5,8 +5,8 @@ import axios from 'axios';
 const API_URL = import.meta.env.VITE_API_URL || 'https://nine-budgettracker.onrender.com/api';
 export const getStoredToken = () => localStorage.getItem('mcw-token') || sessionStorage.getItem('mcw-token');
 
-// ── Global timeout: 15s prevents hanging forever on Render cold start ──
-axios.defaults.timeout = 15000;
+// ── Global timeout: 30s prevents prematurely timing out on cold starts ──
+axios.defaults.timeout = 30000;
 
 // --- Axios Request Interceptor for JWT ---
 axios.interceptors.request.use((config) => {

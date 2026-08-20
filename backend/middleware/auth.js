@@ -37,14 +37,24 @@ const auth = async (req, res, next) => {
       session = await Session.findOne({
         token_id: verified.jti,
         user_id: user._id,
-        is_active: true,
       }).select('+token_id');
-      if (!session) {
+
+      // Only reject if the session was explicitly deactivated/revoked
+      if (session && session.is_active === false) {
         return res.status(401).json({ error: 'This session has been revoked. Please log in again.' });
       }
 
-      // Avoid a write on every request while still keeping session activity fresh.
-      if (!session.last_active || Date.now() - session.last_active.getTime() > 60_000) {
+      // If session record does not exist yet (e.g. legacy/reconnected token), heal on the fly
+      if (!session) {
+        session = await Session.create({
+          user_id: user._id,
+          token_id: verified.jti,
+          device: 'Active session',
+          ip: req.ip || req.headers['x-forwarded-for'] || '',
+          user_agent: req.headers['user-agent'] || '',
+          is_active: true,
+        }).catch(() => null);
+      } else if (!session.last_active || Date.now() - session.last_active.getTime() > 60_000) {
         Session.updateOne({ _id: session._id }, { $set: { last_active: new Date() } }).catch(() => {});
       }
     }

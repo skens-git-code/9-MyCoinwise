@@ -256,16 +256,6 @@ export default function App() {
       return;
     }
 
-    // Safety net: if backend doesn't respond in 16s (Render cold start), bail out
-    const timeoutId = setTimeout(() => {
-      console.warn('[App] fetchData timed out — clearing token and redirecting to login');
-      localStorage.removeItem('mcw-token');
-      sessionStorage.removeItem('mcw-token');
-      setToken(null);
-      setIsInitialAuthLoad(false);
-      setIsBackgroundSyncing(false);
-    }, 16000);
-
     try {
       if (!user) setIsInitialAuthLoad(true);
       else setIsBackgroundSyncing(true);
@@ -284,8 +274,6 @@ export default function App() {
         api.getAllUsers().catch(() => [])
       ]);
       const [txResult, goalsResult, subsResult, eventsResult, budgetsResult, accountsResult, usersResult] = results;
-      const firstFailure = results.slice(0, 6).find((result) => result.status === 'rejected');
-      if (firstFailure?.reason?.response?.status === 401) throw firstFailure.reason;
       const settledValue = (result, fallback) => result.status === 'fulfilled' ? result.value : fallback;
       const txData = settledValue(txResult, []);
       const goalsData = settledValue(goalsResult, []);
@@ -315,13 +303,12 @@ export default function App() {
       localStorage.setItem('mcw-theme', resolvedTheme);
     } catch (err) {
       console.error('Error loading data:', err);
-      if (err.response?.status === 401 || err.code === 'ECONNABORTED') {
+      if (err.response?.status === 401) {
         logout();
       } else {
-        setGlobalError("Failed to synchronize data. Please try again.");
+        setGlobalError(t?.('sync_error') || "Failed to synchronize live data. Retrying in background...");
       }
     } finally {
-      clearTimeout(timeoutId);
       setIsInitialAuthLoad(false);
       setIsBackgroundSyncing(false);
     }

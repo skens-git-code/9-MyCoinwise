@@ -83,8 +83,8 @@ app.use(morgan(':id :method :url :status :res[content-length] - :response-time m
 // ─── Security & compression ─────────────────────────────────────────────────
 app.use(helmet());
 app.use(compression());
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
@@ -128,7 +128,7 @@ const exportLimiter = rateLimit({
 
 // Public routes (no authentication)
 const authRoutes = require('./routes/auth');
-app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/auth', authRoutes);
 
 // Protected routes (authentication applied inside each router)
 app.use('/api/users', auth, writeLimiter, require('./routes/users'));

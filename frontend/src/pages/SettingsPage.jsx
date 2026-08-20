@@ -864,18 +864,52 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
   const fileInputRef = useRef(null);
 
   const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 4 * 1024 * 1024) {
-        showMessage('error', 'Image must be 4 MB or smaller');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        handleFieldChange('avatar', reader.result);
-      };
-      reader.readAsDataURL(file);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showMessage('error', t?.('image_too_large') || 'Image must be 10 MB or smaller');
+      return;
     }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 360;
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.90);
+          handleFieldChange('avatar', compressed);
+          showMessage('success', 'Photo selected! Click "Save Settings" below to persist.');
+        } else {
+          handleFieldChange('avatar', event.target.result);
+        }
+      };
+      img.onerror = () => {
+        showMessage('error', 'Invalid image file.');
+      };
+      img.src = event.target.result;
+    };
+    reader.onerror = () => {
+      showMessage('error', 'Could not read image file.');
+    };
+    reader.readAsDataURL(file);
   };
 
   const isBase64Avatar = /^(?:data:image\/|blob:|https?:\/\/|\/(?!\/))/i.test(String(formState.avatar || '').trim());
