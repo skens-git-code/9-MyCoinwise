@@ -2,7 +2,7 @@ import React, { useCallback, useContext, useEffect, useMemo, useState } from 're
 import { motion } from 'framer-motion';
 import {
   Calculator as CalculatorIcon, Check, Clock3, Copy, Delete,
-  History, Keyboard, MemoryStick, Sparkles, Trash2, X
+  ChevronDown, History, Keyboard, MemoryStick, Sparkles, Trash2, X
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { api } from '../services/api';
@@ -224,6 +224,16 @@ export default function Calculator() {
   });
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
+  const [showScientific, setShowScientific] = useState(() => (
+    typeof window === 'undefined' ? true : window.matchMedia('(min-width: 641px)').matches
+  ));
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 641px)');
+    const syncToViewport = () => setShowScientific(mediaQuery.matches);
+    mediaQuery.addEventListener?.('change', syncToViewport);
+    return () => mediaQuery.removeEventListener?.('change', syncToViewport);
+  }, []);
 
   // ---------- Sync with server ----------
   useEffect(() => {
@@ -494,14 +504,26 @@ export default function Calculator() {
 
           {/* Keypad */}
           <div className="calculator-keypad">
-            <div className="calculator-scientific-grid">
-              {buttonGroups.scientific.map(([value, label]) => (
-                <button type="button" key={label} className="calculator-key scientific" onClick={() => append(value)} aria-label={label}>
-                  {label}
-                </button>
-              ))}
+            <button
+              type="button"
+              className="calculator-functions-toggle"
+              aria-expanded={showScientific}
+              onClick={() => setShowScientific((visible) => !visible)}
+            >
+              <span><Sparkles size={14} /> Scientific functions</span>
+              <ChevronDown size={16} />
+            </button>
+            <div className={`calculator-scientific-panel ${showScientific ? 'is-open' : ''}`}>
+              <div className="calculator-scientific-grid">
+                {buttonGroups.scientific.map(([value, label]) => (
+                  <button type="button" key={label} className="calculator-key scientific" onClick={() => append(value)} aria-label={label}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="calculator-basic-grid">
+            <div className="calculator-basic-panel">
+              <div className="calculator-basic-grid">
               {/* CE and C buttons */}
               <button type="button" className="calculator-key utility" onClick={clearEntry} aria-label="Clear entry">CE</button>
               <button type="button" className="calculator-key utility" onClick={clear} aria-label="Clear all">C</button>
@@ -523,6 +545,7 @@ export default function Calculator() {
                 </button>
               ))}
               <button type="button" className="calculator-key equals" onClick={calculate} aria-label="Calculate">=</button>
+              </div>
             </div>
           </div>
           <p className="calculator-hint"><Clock3 size={14} /> {t('calculator_hint') || 'Use parentheses for clarity, and press Enter to calculate.'}</p>
@@ -552,7 +575,14 @@ export default function Calculator() {
                   <button
                     type="button"
                     className="calculator-history-item"
-                    onClick={() => { setExpression(item.expression); setResult(item.result); }}
+                    onClick={() => {
+                      setExpression(item.expression);
+                      setResult(item.result);
+                      setAngleMode(item.angleMode || 'DEG');
+                      const restoredAnswer = Number(item.numericResult);
+                      setAnswer(isFiniteNumber(restoredAnswer) ? restoredAnswer : 0);
+                      setError('');
+                    }}
                     aria-label={`Restore calculation: ${item.expression} = ${item.result}`}
                   >
                     <span>{item.expression} {!item.synced && <Clock3 size={12} style={{ marginLeft: 4 }} title="Not synced" />}</span>
