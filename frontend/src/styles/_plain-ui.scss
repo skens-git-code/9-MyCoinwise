@@ -1020,6 +1020,16 @@ a,
   overflow-x: hidden;
 }
 
+/* Keep the fixed quick-action control out of the calculator's final row and
+   leave enough scroll room above the mobile navigation dock. */
+.calculator-page {
+  padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+}
+
+.fab-container-calculator {
+  bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+}
+
 .calculator-main:hover,
 .calculator-history:hover {
   transform: none;
@@ -1044,7 +1054,7 @@ a,
 
 @media (max-width: 640px) {
   .calculator-page {
-    padding: 12px 10px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding: 12px 10px calc(132px + env(safe-area-inset-bottom, 0px));
   }
 
   .calculator-page-header {
@@ -1143,6 +1153,10 @@ a,
 
   .calculator-empty-history {
     min-height: 150px;
+  }
+
+  .fab-container-calculator {
+    bottom: calc(108px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -1264,6 +1278,30 @@ a,
 
 /* Calculator panels: basic mode is immediately usable on phones, while the
    scientific key set stays available behind an explicit toggle. */
+.island-header .connection-toggle {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  margin: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-1) 86%, transparent);
+}
+
+.island-header .connection-toggle:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.connection-toggle-disabled {
+  color: var(--text-secondary) !important;
+  border-color: var(--glass-border) !important;
+}
+
+.island-header .connection-toggle-dot {
+  width: 9px;
+  height: 9px;
+}
+
 .calculator-scientific-panel,
 .calculator-basic-panel {
   min-width: 0;

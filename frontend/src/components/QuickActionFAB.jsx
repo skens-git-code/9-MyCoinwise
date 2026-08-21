@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, ArrowLeftRight, Target, CreditCard, X, Sparkles } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function QuickActionFAB({ onAddTransaction }) {
   const [isOpen, setIsOpen] = useState(false);
+  const location = useLocation();
   const navigate = useNavigate();
 
   const actions = [
@@ -41,7 +42,7 @@ export default function QuickActionFAB({ onAddTransaction }) {
   ];
 
   return (
-    <div className="fab-container">
+    <div className={`fab-container ${location.pathname === '/calculator' ? 'fab-container-calculator' : ''}`}>
       <AnimatePresence>
         {isOpen && (
           <>

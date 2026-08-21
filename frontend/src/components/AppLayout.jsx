@@ -70,6 +70,8 @@ const ANIMATION_DURATIONS = {
   slow: 0.35
 };
 
+const SYNC_STORAGE_KEY = 'mcw-sync-enabled';
+
 // ==============================
 // 2. UTILITY FUNCTIONS
 // ==============================
@@ -112,6 +114,16 @@ const getDeviceType = () => {
   if (width < BREAKPOINTS.mobile) return 'mobile';
   if (width < BREAKPOINTS.tablet) return 'tablet';
   return 'desktop';
+};
+
+const getStoredSyncEnabled = () => {
+  if (typeof window === 'undefined') return true;
+  try {
+    const storedValue = window.localStorage.getItem(SYNC_STORAGE_KEY);
+    return storedValue === null ? true : storedValue !== 'false';
+  } catch {
+    return true;
+  }
 };
 
 // ==============================
@@ -947,21 +959,46 @@ const Header = React.memo(({
   logout, user, fmt, navigate, refetch, isBackgroundSyncing
 }) => {
   const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
-  const [syncEnabled, setSyncEnabled] = useState(true);
+  const [syncEnabled, setSyncEnabled] = useState(getStoredSyncEnabled);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = () => {
+      setIsOnline(true);
+      if (syncEnabled) refetch?.();
+    };
     const handleOffline = () => setIsOnline(false);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine && syncEnabled) {
+        refetch?.();
+      }
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [refetch, syncEnabled]);
 
-  const syncState = isBackgroundSyncing ? 'saving' : (syncEnabled && isOnline ? 'online' : 'offline');
-  const syncCopy = { online: 'Online', offline: 'Offline', saving: 'Saving' }[syncState];
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SYNC_STORAGE_KEY, String(syncEnabled));
+    } catch {
+      // Storage can be unavailable in private browsing; the in-memory state
+      // still keeps the control functional for the current session.
+    }
+  }, [syncEnabled]);
+
+  const syncState = isBackgroundSyncing ? 'saving' : !syncEnabled ? 'disabled' : isOnline ? 'online' : 'offline';
+  const syncCopy = {
+    online: t?.('connection_online') || 'Online',
+    offline: t?.('connection_offline') || 'Offline',
+    saving: 'Saving',
+    disabled: 'Sync off'
+  }[syncState];
   const toggleSync = () => {
     if (isBackgroundSyncing) return;
     setSyncEnabled((enabled) => {
@@ -1003,8 +1040,8 @@ const Header = React.memo(({
             onClick={toggleSync}
             disabled={isBackgroundSyncing}
             aria-pressed={syncEnabled}
-            aria-label={`Sync status: ${syncCopy}. Click to ${syncEnabled ? 'disable' : 'enable'} syncing.`}
-            title={`Sync: ${syncCopy}`}
+            aria-label={`Cloud sync: ${syncCopy}. Click to ${syncEnabled ? 'disable' : 'enable'} syncing.`}
+            title={`Cloud sync: ${syncCopy}`}
           >
             <span className="connection-toggle-dot" aria-hidden="true" />
           </button>
