@@ -6,12 +6,15 @@ import { AppContext } from '../contexts/AppContext';
 import Modal from './Modal';
 
 const CATEGORIES = {
-  income: ['Allowance', 'Job', 'Gift', 'Sale', 'Other'],
-  expense: ['Food', 'Games', 'Clothes', 'Subscriptions', 'Tech', 'Transport', 'Other']
+  income: ['Salary', 'Freelance', 'Allowance', 'Job', 'Gift', 'Sale', 'Investment', 'Other'],
+  expense: ['Food', 'Groceries', 'Games', 'Clothes', 'Subscriptions', 'Tech', 'Transport', 'Shopping', 'Entertainment', 'Health', 'Education', 'Bills', 'Rent', 'Travel', 'Fitness', 'Utilities', 'Insurance', 'Other']
 };
 
 // Helper function to format date for input field
 const formatDateForInput = (dateInput) => {
+  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+    return dateInput;
+  }
   const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
   if (isNaN(date.getTime())) {
     return formatDateForInput(new Date());
@@ -29,8 +32,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   // State management with proper initialization
   const [type, setType] = useState(() => initialData?.type || 'expense');
   const [amount, setAmount] = useState(() => {
-    if (initialData?.amount) {
-      return initialData.amount.toString();
+    if (initialData?.amount !== undefined && initialData?.amount !== null) {
+      return String(initialData.amount);
     }
     return '';
   });
@@ -48,7 +51,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 
   // Phase 1C Enhanced Fields
   const [merchant, setMerchant] = useState(initialData?.merchant || '');
-  const [tags, setTags] = useState(initialData?.tags ? initialData.tags.join(', ') : '');
+  const [tags, setTags] = useState(() => Array.isArray(initialData?.tags) ? initialData.tags.join(', ') : (initialData?.tags || ''));
   const [paymentMethod, setPaymentMethod] = useState(initialData?.payment_method || 'other');
   const [accountId, setAccountId] = useState(initialData?.account_id || '');
   const [isRecurring, setIsRecurring] = useState(initialData?.is_recurring || false);
@@ -59,8 +62,29 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const modalRef = useRef(null);
 
+  // The form stays mounted while the edit modal is closed. Keep its fields in
+  // sync when the selected transaction changes so opening a second edit never
+  // shows the values from the previous transaction.
+  useEffect(() => {
+    const nextType = initialData?.type || 'expense';
+    setType(nextType);
+    setAmount(initialData?.amount !== undefined && initialData?.amount !== null ? String(initialData.amount) : '');
+    setCategory(initialData?.category || CATEGORIES[nextType][0]);
+    setNote(initialData?.note || '');
+    setDate(initialData?.date ? formatDateForInput(initialData.date) : formatDateForInput(new Date()));
+    setMerchant(initialData?.merchant || '');
+    setTags(Array.isArray(initialData?.tags) ? initialData.tags.join(', ') : (initialData?.tags || ''));
+    setPaymentMethod(initialData?.payment_method || 'other');
+    setAccountId(initialData?.account_id || '');
+    setIsRecurring(Boolean(initialData?.is_recurring));
+    setRecurrenceInterval(initialData?.recurrence_interval || 'monthly');
+    setError('');
+    setShowUnsavedModal(false);
+  }, [initialData, isOpen]);
+
   // Focus trap
   useEffect(() => {
+    if (!isOpen) return undefined;
     const focusable = modalRef.current?.querySelectorAll(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
@@ -86,11 +110,12 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       document.addEventListener('keydown', handleTab);
       return () => document.removeEventListener('keydown', handleTab);
     }
-  }, []);
+    return undefined;
+  }, [isOpen]);
 
   // Update categories when type changes
   useEffect(() => {
-    if (initialData && initialData.type === type && CATEGORIES[type].includes(initialData.category)) {
+    if (initialData && initialData.type === type && initialData.category) {
       setCategory(initialData.category);
     } else {
       setCategory(CATEGORIES[type][0]);
@@ -280,7 +305,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
           role="dialog"
           aria-modal="true"
           aria-label={initialData ? (t?.('edit_transaction') || 'Edit Transaction') : (t?.('new_transaction') || 'New Transaction')}
-          className="modal-box glass"
+          className="modal-box glass transaction-modal"
           initial={{ scale: 0.88, y: 24 }}
           animate={{ scale: 1, y: 0 }}
           exit={{ scale: 0.88, y: 24 }}
@@ -291,7 +316,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
             borderTop: `4px solid ${isExpense ? 'var(--danger)' : 'var(--success)'}`
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div className="transaction-modal-header">
             <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>
               {initialData ? `✍️ ${t?.('edit_transaction') || 'Edit Transaction'}` : `✨ ${t?.('new_transaction') || 'New Transaction'}`}
             </h3>
@@ -306,7 +331,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
             </motion.button>
           </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <form onSubmit={handleSubmit} className="transaction-form">
             {/* Error Message */}
             <AnimatePresence>
               {error && (
@@ -369,7 +394,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
               />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="transaction-form-grid transaction-form-grid--amount-date">
               <div className="form-field">
                 <label>{t?.('amount') || 'Amount'} ({currSymbol})</label>
                 <div style={{ position: 'relative' }}>
@@ -430,7 +455,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 style={{ opacity: isSubmitting ? 0.7 : 1 }}
               >
                 <option value="">{t?.('category') || 'Select category'}...</option>
-                {CATEGORIES[type].map(c => (
+                {[...new Set([...CATEGORIES[type], category].filter(Boolean))].map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
@@ -477,7 +502,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
             </div>
 
             {/* Enhanced Fields Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="transaction-form-grid">
               <div className="form-field">
                 <label>{t?.('merchant_optional') || 'Merchant (Optional)'}</label>
                 <input
@@ -501,7 +526,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="transaction-form-grid transaction-form-grid--payment">
               <div className="form-field">
                 <label>{t?.('payment_method') || 'Payment Method'}</label>
                 <select
@@ -545,7 +570,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
               </div>
             </div>
 
-            <div className="modal-actions" style={{ marginTop: 8, display: 'flex', gap: 12 }}>
+            <div className="modal-actions transaction-form-actions">
               <button
                 type="button"
                 className="btn-secondary"

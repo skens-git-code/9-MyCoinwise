@@ -22,6 +22,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [touched, setTouched] = useState({});
+  const [showForgotHelp, setShowForgotHelp] = useState(false);
 
   const emailInputRef = useRef(null);
   const passwordInputRef = useRef(null);
@@ -246,9 +247,14 @@ export default function Login() {
               />
               <span>{t?.('remember_me') || 'Remember me'}</span>
             </label>
-            <Link to="/forgot-password" className="auth-forgot-link">
+            <button
+              type="button"
+              className="auth-forgot-link"
+              onClick={() => setShowForgotHelp(true)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
               {t?.('forgot_password') || 'Forgot password?'}
-            </Link>
+            </button>
           </div>
 
           <motion.button
@@ -289,6 +295,47 @@ export default function Login() {
           <span>{t?.('encryption_badge') || '256-bit encrypted · JWT session tokens'}</span>
         </div>
       </motion.div>
+
+      {/* Forgot Password Help Modal */}
+      <AnimatePresence>
+        {showForgotHelp && (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowForgotHelp(false)}
+            style={{ zIndex: 1000 }}
+          >
+            <motion.div
+              className="modal-box glass"
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: '440px', padding: '24px', textAlign: 'center' }}
+            >
+              <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(5,150,105,0.15)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <KeyRound size={24} />
+              </div>
+              <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem' }}>
+                {t?.('forgot_password_modal_title') || 'Password Reset Help'}
+              </h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.5, margin: '0 0 20px' }}>
+                {t?.('forgot_password_modal_desc') || 'To reset or update your password, log into your account and open Settings > Security, or reach out to your household account administrator.'}
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setShowForgotHelp(false)}
+                style={{ width: '100%' }}
+              >
+                {t?.('close') || 'Got it'}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

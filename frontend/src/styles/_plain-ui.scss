@@ -901,6 +901,367 @@ a,
   .auth-secure-note { margin-top: 0.75rem; }
 }
 
+/* ── Mobile transaction form ────────────────────────────────── */
+.transaction-modal {
+  width: min(680px, calc(100vw - 32px));
+  max-width: 680px;
+  max-height: min(900px, calc(100dvh - 32px));
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: none;
+}
+
+.transaction-modal:hover {
+  transform: none;
+}
+
+.transaction-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.transaction-modal-header h3 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.transaction-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.transaction-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.transaction-form-grid .form-field,
+.transaction-form .form-field {
+  min-width: 0;
+}
+
+.transaction-form input,
+.transaction-form select,
+.transaction-form textarea {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.transaction-form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.transaction-form-actions > * {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+@media (max-width: 640px) {
+  .transaction-modal {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: calc(100dvh - 24px) !important;
+    padding: 18px 14px !important;
+    border-radius: 18px !important;
+  }
+
+  .transaction-modal-header {
+    margin-bottom: 16px;
+  }
+
+  .transaction-form {
+    gap: 14px;
+  }
+
+  .transaction-form-grid,
+  .transaction-form-grid--amount-date,
+  .transaction-form-grid--payment {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .transaction-form-actions {
+    position: sticky;
+    bottom: -18px;
+    z-index: 2;
+    margin: 0 -14px -18px;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface-1);
+    border-top: 1px solid var(--glass-border);
+  }
+
+  .transaction-form-actions > * {
+    min-height: 46px;
+  }
+}
+
+/* ── Mobile calculator layout ───────────────────────────────── */
+.calculator-page,
+.calculator-shell,
+.calculator-main,
+.calculator-history {
+  width: 100%;
+  min-width: 0;
+}
+
+.calculator-page {
+  overflow-x: hidden;
+}
+
+.calculator-main:hover,
+.calculator-history:hover {
+  transform: none;
+}
+
+.calculator-display {
+  min-width: 0;
+}
+
+.calculator-expression,
+.calculator-result-row strong {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.calculator-key,
+.calculator-tool,
+.calculator-angle {
+  touch-action: manipulation;
+  user-select: none;
+}
+
+@media (max-width: 640px) {
+  .calculator-page {
+    padding: 12px 10px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .calculator-page-header {
+    margin-bottom: 12px;
+  }
+
+  .calculator-shell {
+    gap: 12px;
+  }
+
+  .calculator-main,
+  .calculator-history {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .calculator-display {
+    min-height: 146px;
+    padding: 14px;
+    border-radius: 15px;
+  }
+
+  .calculator-display-top {
+    gap: 8px;
+    font-size: 0.7rem;
+  }
+
+  .calculator-display-top span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .calculator-expression {
+    margin-top: 18px;
+    font-size: 1rem;
+  }
+
+  .calculator-result-row {
+    gap: 8px;
+  }
+
+  .calculator-result-row strong {
+    font-size: clamp(1.9rem, 10vw, 2.8rem);
+  }
+
+  .calculator-toolbar {
+    gap: 6px;
+    margin: 12px 0;
+  }
+
+  .calculator-tool,
+  .calculator-angle {
+    min-height: 38px;
+    padding: 8px 9px;
+  }
+
+  .calculator-memory-status {
+    flex: 1 1 100%;
+    order: 3;
+    margin-left: 0;
+    text-align: right;
+  }
+
+  .calculator-angle {
+    order: -1;
+  }
+
+  .calculator-keypad {
+    gap: 12px;
+  }
+
+  .calculator-scientific-grid,
+  .calculator-basic-grid {
+    gap: 7px;
+  }
+
+  .calculator-key {
+    min-height: 48px;
+    padding: 6px 4px;
+    border-radius: 11px;
+  }
+
+  .calculator-key.scientific {
+    min-height: 42px;
+    font-size: 0.72rem;
+  }
+
+  .calculator-hint {
+    line-height: 1.35;
+  }
+
+  .calculator-history {
+    min-height: 0;
+  }
+
+  .calculator-empty-history {
+    min-height: 150px;
+  }
+}
+
+@media (max-width: 375px) {
+  .calculator-page {
+    padding-inline: 8px;
+  }
+
+  .calculator-main,
+  .calculator-history {
+    padding: 11px;
+  }
+
+  .calculator-scientific-grid,
+  .calculator-basic-grid {
+    gap: 5px;
+  }
+
+  .calculator-key {
+    min-height: 44px;
+    font-size: 0.86rem;
+  }
+
+  .calculator-key.scientific {
+    font-size: 0.67rem;
+  }
+}
+
+/* Keep the transaction workspace usable below tablet width. */
+@media (max-width: 640px) {
+  .inbox-layout-page {
+    gap: 14px;
+    min-height: 0;
+  }
+
+  .inbox-header {
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+
+  .inbox-header-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .inbox-header-actions > *,
+  .inbox-header-actions .dropdown-container,
+  .inbox-header-actions .dropdown-container > button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .inbox-header-actions > .btn-primary {
+    grid-column: 1 / -1;
+  }
+
+  .tx-presets-strip {
+    flex-wrap: nowrap;
+    margin: 0 -2px;
+    padding-inline: 2px;
+  }
+
+  .tx-preset-pill {
+    min-height: 40px;
+  }
+
+  .inbox-split-pane {
+    gap: 12px;
+  }
+
+  .inbox-list-pane {
+    height: min(58dvh, 500px) !important;
+    min-height: 360px;
+    margin-bottom: 0 !important;
+  }
+
+  .inbox-detail-pane {
+    min-height: 0 !important;
+  }
+
+  .il-filters {
+    padding: 12px;
+  }
+
+  .il-controls {
+    flex-wrap: wrap;
+  }
+
+  .il-controls select {
+    min-height: 42px;
+  }
+
+  .il-item {
+    gap: 9px;
+    padding: 11px 10px;
+    border-radius: 13px;
+  }
+
+  .il-item .ili-amount span {
+    font-size: 0.88rem;
+  }
+
+  .idp-empty {
+    padding: 28px 14px;
+  }
+
+  .idp-empty .idp-quick-stats {
+    gap: 7px;
+  }
+
+  .idp-empty .iqs-box {
+    padding: 13px 7px;
+    border-radius: 14px;
+  }
+}
+
 @media (max-width: 480px) {
   .auth-page { padding-inline: 10px; }
   .auth-card { width: 100%; padding-inline: 18px; }

@@ -369,6 +369,25 @@ export const TRANSLATIONS = {
     about_hero_desc: 'MyCoinwise delivers intelligent budgeting, wealth forecasting, and instant multi-currency analytics.',
     about_mission_title: 'Our Mission',
     about_mission_desc: 'To make financial clarity effortless, private, and beautiful.',
+
+    // Calendar
+    calendar_hub: 'Calendar Hub',
+    transactions_this_month: 'transactions this month',
+    today: 'Today',
+    month: 'Month',
+    week: 'Week',
+    heatmap: 'Heatmap',
+    monthly_inflow: 'Monthly Inflow',
+    monthly_outflow: 'Monthly Outflow',
+    inflow: 'Inflow',
+    outflow: 'Outflow',
+    net: 'Net',
+    no_entries: 'No entries',
+    metric: 'Metric',
+    records: 'record(s)',
+    new_entry: 'New Entry',
+    forgot_password_modal_title: 'Password Reset Help',
+    forgot_password_modal_desc: 'To reset or update your password, log into your account and open Settings > Security, or reach out to your household account administrator.',
   },
 
   hi: {
@@ -679,6 +698,25 @@ export const TRANSLATIONS = {
     add_account: 'खाता जोड़ें',
     no_accounts_yet: 'अभी तक कोई खाता ट्रैक नहीं किया गया।',
     create_first_account: 'पैसे की स्थिति जानने के लिए अपने बैंक या वॉलेट जोड़ें।',
+
+    // Calendar
+    calendar_hub: 'कैलेंडर हब',
+    transactions_this_month: 'इस महीने के लेनदेन',
+    today: 'आज',
+    month: 'महीना',
+    week: 'सप्ताह',
+    heatmap: 'हीटमैप',
+    monthly_inflow: 'मासिक आवक',
+    monthly_outflow: 'मासिक खर्च',
+    inflow: 'आवक',
+    outflow: 'खर्च',
+    net: 'शुद्ध',
+    no_entries: 'कोई प्रविष्टि नहीं',
+    metric: 'पैमाना',
+    records: 'रिकॉर्ड',
+    new_entry: 'नई प्रविष्टि',
+    forgot_password_modal_title: 'पासवर्ड रीसेट सहायता',
+    forgot_password_modal_desc: 'अपना पासवर्ड बदलने के लिए, कृपया लॉग इन करें और सेटिंग्स > सुरक्षा पर जाएं, या अपने परिवार के एडमिन से संपर्क करें।',
   },
 
   mr: {
@@ -989,6 +1027,25 @@ export const TRANSLATIONS = {
     add_account: 'खाते जोडा',
     no_accounts_yet: 'अद्याप खाती जोडलेली नाहीत.',
     create_first_account: 'पैसे कुठे आहेत हे ट्रॅक करण्यासाठी खाती जोडा.',
+
+    // Calendar
+    calendar_hub: 'कॅलेंडर हब',
+    transactions_this_month: 'या महिन्यातील व्यवहार',
+    today: 'आज',
+    month: 'महिना',
+    week: 'आठवडा',
+    heatmap: 'हीटमॅप',
+    monthly_inflow: 'मासिक जमा',
+    monthly_outflow: 'मासिक खर्च',
+    inflow: 'जमा',
+    outflow: 'खर्च',
+    net: 'निव्वळ',
+    no_entries: 'कोणतीही नोंद नाही',
+    metric: 'प्रकार',
+    records: 'नोंदी',
+    new_entry: 'नवीन नोंद',
+    forgot_password_modal_title: 'पासवर्ड रीसेट मदत',
+    forgot_password_modal_desc: 'पासवर्ड रीसेट करण्यासाठी, कृपया खात्यात लॉग इन करून सेटिंग्ज > सुरक्षा विभागात जा किंवा कुटुंब प्रमुखांशी संपर्क साधा.',
   },
 
   bgc: {
@@ -1299,6 +1356,25 @@ export const TRANSLATIONS = {
     add_account: 'खाता जोड़ो',
     no_accounts_yet: 'कोए खाता कोन्या जोड़्या।',
     create_first_account: 'पैसे की खबर रखण खातर बैंक जोड़ो।',
+
+    // Calendar
+    calendar_hub: 'कैलेंडर हब',
+    transactions_this_month: 'इस महीने के लेन-देन',
+    today: 'आज',
+    month: 'महीना',
+    week: 'हफ्ता',
+    heatmap: 'हीटमैप',
+    monthly_inflow: 'महीने की आवक',
+    monthly_outflow: 'महीने का खर्चा',
+    inflow: 'आवक',
+    outflow: 'खर्चा',
+    net: 'बचत',
+    no_entries: 'कोए लेन-देन कोन्या',
+    metric: 'हिसाब',
+    records: 'रिकॉर्ड',
+    new_entry: 'नया लेन-देन',
+    forgot_password_modal_title: 'पासवर्ड भूल गे?',
+    forgot_password_modal_desc: 'पासवर्ड बदलण खातर लॉग इन करके सेटिंग्स > सुरक्षा म जावो, या फिर अपणे परिवार के एडमिन तै संपर्क करो।',
   },
 
   kn: {
@@ -1609,6 +1685,25 @@ export const TRANSLATIONS = {
     add_account: 'ಖಾತೆ ಸೇರಿಸಿ',
     no_accounts_yet: 'ಯಾವುದೇ ಖಾತೆಗಳು ದಾಖಲಾಗಿಲ್ಲ.',
     create_first_account: 'ಹಣದ ಹರಿವನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಲು ಖಾತೆಗಳನ್ನು ಸೇರಿಸಿ.',
+
+    // Calendar
+    calendar_hub: 'ಕ್ಯಾಲೆಂಡರ್ ಹಬ್',
+    transactions_this_month: 'ಈ ತಿಂಗಳ ವಹಿವಾಟುಗಳು',
+    today: 'ಇಂದು',
+    month: 'ತಿಂಗಳು',
+    week: 'ವಾರ',
+    heatmap: 'ಹೀಟ್‌ಮ್ಯಾಪ್',
+    monthly_inflow: 'ಮಾಸಿಕ ಒಳಹರಿವು',
+    monthly_outflow: 'ಮಾಸಿಕ ವೆಚ್ಚ',
+    inflow: 'ಒಳಹರಿವು',
+    outflow: 'ಹೊರಹರಿವು',
+    net: 'ನಿವ್ವಳ',
+    no_entries: 'ಯಾವುದೇ ದಾಖಲೆಗಳಿಲ್ಲ',
+    metric: 'ಅಳತೆಗೋಲು',
+    records: 'ದಾಖಲೆಗಳು',
+    new_entry: 'ಹೊಸ ದಾಖಲೆ',
+    forgot_password_modal_title: 'ಪಾಸ್‌ವರ್ಡ್ ಮರುಹೊಂದಿಸುವ ನೆರವು',
+    forgot_password_modal_desc: 'ಪಾಸ್‌ವರ್ಡ್ ಬದಲಾಯಿಸಲು, ದಯವಿಟ್ಟು ಲಾಗಿನ್ ಆಗಿ ಸೆಟ್ಟಿಂಗ್‌ಗಳು > ಭದ್ರತೆಗೆ ಹೋಗಿ, ಅಥವಾ ನಿಮ್ಮ ಕುಟುಂಬ ಅಡ್ಮಿನ್ ಅನ್ನು ಸಂಪರ್ಕಿಸಿ.',
   }
 };
 

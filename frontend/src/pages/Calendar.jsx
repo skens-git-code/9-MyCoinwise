@@ -49,9 +49,17 @@ const getWeekDays = (locale = 'en-US') => {
 
 // ---------- Main Component ----------
 export default function Calendar() {
-  const { transactions = [], addTransaction, updateTransaction, deleteTransaction, fmt: contextFmt } = useContext(AppContext);
+  const { transactions = [], addTransaction, updateTransaction, deleteTransaction, fmt: contextFmt, t, lang = 'en' } = useContext(AppContext);
   const { showToast } = useToast();
-  const locale = navigator.language || 'en-US';
+
+  const localeMap = {
+    en: 'en-US',
+    hi: 'hi-IN',
+    mr: 'mr-IN',
+    bgc: 'hi-IN',
+    kn: 'kn-IN',
+  };
+  const locale = localeMap[lang] || navigator.language || 'en-US';
 
   // Fallback formatter
   const fmt = useCallback(
@@ -363,15 +371,15 @@ export default function Calendar() {
               </div>
               <div className="cwc-totals">
                 <div className="cwc-total-row text-success">
-                  <span>Inflow</span>
+                  <span>{t?.('inflow') || 'Inflow'}</span>
                   <strong>+{fmt(dayData.income)}</strong>
                 </div>
                 <div className="cwc-total-row text-danger">
-                  <span>Outflow</span>
+                  <span>{t?.('outflow') || 'Outflow'}</span>
                   <strong>-{fmt(dayData.expense)}</strong>
                 </div>
                 <div className={`cwc-total-row net ${dayData.net >= 0 ? 'text-success' : 'text-danger'}`}>
-                  <span>Net</span>
+                  <span>{t?.('net') || 'Net'}</span>
                   <strong>{fmt(dayData.net)}</strong>
                 </div>
               </div>
@@ -384,7 +392,7 @@ export default function Calendar() {
                     </div>
                   ))
                 ) : (
-                  <p className="cwc-empty">No entries</p>
+                  <p className="cwc-empty">{t?.('no_entries') || 'No entries'}</p>
                 )}
               </div>
             </div>
@@ -392,7 +400,7 @@ export default function Calendar() {
         })}
       </div>
     );
-  }, [year, month, txByDate, fmt, locale, openAddForDate, openDayDetails]);
+  }, [year, month, txByDate, fmt, locale, openAddForDate, openDayDetails, t]);
 
   // Heatmap
   const renderHeatmap = useCallback(() => {
@@ -430,28 +438,28 @@ export default function Calendar() {
     <div className="calendar-page-content">
       <div className="masonry-header">
         <div className="mh-titles">
-          <h2>Calendar Hub</h2>
-          <span className="mh-badge">{currentMonthTransactions.length} transactions this month</span>
+          <h2>{t?.('calendar_hub') || 'Calendar Hub'}</h2>
+          <span className="mh-badge">{currentMonthTransactions.length} {t?.('transactions_this_month') || 'transactions this month'}</span>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn-secondary" onClick={jumpToToday} title="Jump to today" aria-label="Go to today">
-            <Clock size={14} /> Today
+            <Clock size={14} /> {t?.('today') || 'Today'}
           </button>
           {renderMonthYearPicker()}
           <div className="view-toggles glass">
             <button className={`vt-btn ${viewMode === 'monthly' ? 'active' : ''}`} onClick={() => setViewMode('monthly')} aria-label="Monthly view">
-              <CalendarIcon size={15} /> Month
+              <CalendarIcon size={15} /> {t?.('month') || 'Month'}
             </button>
             <button className={`vt-btn ${viewMode === 'weekly' ? 'active' : ''}`} onClick={() => setViewMode('weekly')} aria-label="Weekly view">
-              <CalendarDays size={15} /> Week
+              <CalendarDays size={15} /> {t?.('week') || 'Week'}
             </button>
             <button className={`vt-btn ${viewMode === 'heatmap' ? 'active' : ''}`} onClick={() => setViewMode('heatmap')} aria-label="Heatmap view">
-              <Activity size={15} /> Heatmap
+              <Activity size={15} /> {t?.('heatmap') || 'Heatmap'}
             </button>
           </div>
           {viewMode === 'heatmap' && (
             <div className="heatmap-toggle" style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'var(--bg-color)', padding: '2px 6px', borderRadius: '6px' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Metric:</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t?.('metric') || 'Metric'}:</span>
               {['expense', 'income', 'net'].map(metric => (
                 <button
                   key={metric}
@@ -459,7 +467,7 @@ export default function Calendar() {
                   onClick={() => setHeatmapMetric(metric)}
                   style={{ fontSize: '0.7rem', padding: '2px 8px' }}
                 >
-                  {metric.charAt(0).toUpperCase() + metric.slice(1)}
+                  {t?.(metric) || (metric.charAt(0).toUpperCase() + metric.slice(1))}
                 </button>
               ))}
             </div>
@@ -468,7 +476,7 @@ export default function Calendar() {
             <Download size={14} /> CSV
           </button>
           <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="btn-primary" onClick={() => openAddForDate(normalizeDateKey(new Date()))}>
-            <Plus size={16} /> New Entry
+            <Plus size={16} /> {t?.('new_entry') || 'New Entry'}
           </motion.button>
         </div>
       </div>
@@ -476,15 +484,15 @@ export default function Calendar() {
       {/* Month Metrics */}
       <div className="dashboard-row calendar-stats-row">
         <div className="glass stat-card cal-metric-card">
-          <p className="stat-lbl">Monthly Inflow</p>
+          <p className="stat-lbl">{t?.('monthly_inflow') || 'Monthly Inflow'}</p>
           <h3 className="stat-val text-success">+{fmt(monthlyIncome)}</h3>
         </div>
         <div className="glass stat-card cal-metric-card">
-          <p className="stat-lbl">Monthly Outflow</p>
+          <p className="stat-lbl">{t?.('monthly_outflow') || 'Monthly Outflow'}</p>
           <h3 className="stat-val text-danger">-{fmt(monthlyExpense)}</h3>
         </div>
         <div className="glass stat-card cal-metric-card">
-          <p className="stat-lbl">Net Position</p>
+          <p className="stat-lbl">{t?.('net_position') || 'Net Position'}</p>
           <h3 className={`stat-val ${monthlyNet >= 0 ? 'text-success' : 'text-danger'}`}>
             {monthlyNet >= 0 ? '+' : ''}{fmt(monthlyNet)}
           </h3>
