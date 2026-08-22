@@ -5,7 +5,6 @@ const Transaction = require('../models/Transaction'); // assume you have this
 const checkOwnership = require('../middleware/ownership');
 
 const router = express.Router();
-const ACCOUNT_TYPES = new Set(['bank', 'wallet', 'credit_card', 'investment', 'cash', 'other']);
 const CURRENCY_CODES = new Set(['USD', 'INR', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SGD', 'AED', 'CHF', 'CNY', 'MXN', 'BRL', 'KRW', 'THB']);
 const HEX_COLOR = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/;
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -24,7 +23,7 @@ const validateAccountFields = ({ name, type, currency, color, icon } = {}) => {
   if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.trim().length > 100)) {
     return 'Account name is required and must be 100 characters or fewer.';
   }
-  if (type !== undefined && !ACCOUNT_TYPES.has(type)) return 'Account type is invalid.';
+  if (type !== undefined && (typeof type !== 'string' || type.trim().length > 50)) return 'Account type is invalid.';
   if (currency !== undefined && !CURRENCY_CODES.has(String(currency).trim().toUpperCase())) return 'Currency is invalid.';
   if (color !== undefined && (typeof color !== 'string' || !HEX_COLOR.test(color))) return 'Color must be a valid hex color.';
   if (icon !== undefined && (typeof icon !== 'string' || icon.length > 40)) return 'Icon is invalid.';

@@ -48,6 +48,7 @@ const userSchema = new mongoose.Schema({
   reset_password_expires: { type: Date,   default: null, select: false },
 
   // ── Preferences ────────────────────────────────────────────────────────────
+  custom_account_types: { type: [String], default: [] },
   notification_prefs: {
     type: Object,
     default: {

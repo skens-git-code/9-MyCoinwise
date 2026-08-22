@@ -56,8 +56,6 @@ const toIsoDay = (value) => {
   }
   const [, first, second, yearRaw] = match;
   const year = yearRaw.length === 2 ? `20${yearRaw}` : yearRaw;
-  // Indian bank exports are generally DD/MM/YYYY. Use month-first only when
-  // the first number cannot be a day.
   const day = Number(first) > 12 ? first : second;
   const month = Number(first) > 12 ? second : first;
   const parsed = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`);
@@ -142,7 +140,7 @@ const parseTransactionDate = (value) => {
 };
 
 const validateTransactionPayload = (payload) => {
-  const { type, category, amount, date, note, merchant, tags, payment_method, account_id, is_recurring, recurrence_interval, recurrence_ends_at, is_split, split_details } = payload;
+  const { type, category, amount, date, note, merchant, tags, payment_method, account_id, is_recurring, recurrence_interval, recurrence_ends_at, is_split, split_details, transaction_number } = payload;
   const numericAmount = parseTransactionAmount(amount);
   if (!TRANSACTION_TYPES.has(type)) return { error: 'Type must be income or expense.' };
   if (typeof category !== 'string' || !category.trim() || category.trim().length > 80) {
@@ -163,6 +161,7 @@ const validateTransactionPayload = (payload) => {
   if (tags !== undefined) parsedPayload.tags = Array.isArray(tags) ? tags.map(t => String(t).trim()).filter(Boolean) : [];
   if (payment_method !== undefined) parsedPayload.payment_method = payment_method;
   if (account_id !== undefined) parsedPayload.account_id = account_id || null;
+  if (transaction_number !== undefined) parsedPayload.transaction_number = transaction_number ? String(transaction_number).trim() : null;
   
   if (is_recurring !== undefined) parsedPayload.is_recurring = Boolean(is_recurring);
   if (recurrence_interval !== undefined) parsedPayload.recurrence_interval = recurrence_interval;
@@ -256,9 +255,12 @@ const processRecurringForUser = async (userId) => {
           location: template.location,
           tags: template.tags,
           merchant: template.merchant,
+          transaction_number: template.transaction_number,
           account_id: template.account_id,
           receipt_url: template.receipt_url,
           is_one_time: true,
+          is_recurring: false,
+          recurrence_interval: null,
           parent_transaction_id: template._id,
           recurrence_instance_key: instanceKey,
           audit_logs: [{ action: 'Generated recurring transaction', timestamp: new Date() }]
@@ -276,8 +278,6 @@ const processRecurringForUser = async (userId) => {
   return created;
 };
 
-// The preview endpoint deliberately receives parsed file text rather than
-// persisting a bank statement. Only normalized transaction data is returned.
 router.post('/statement/preview', async (req, res) => {
   try {
     const content = typeof req.body?.content === 'string' ? req.body.content : '';
@@ -389,9 +389,6 @@ router.post('/statement/import', async (req, res) => {
     }
     if (!accepted.length) return res.json({ created: 0, skipped, message: 'All selected transactions were already imported or invalid.' });
 
-    // Fingerprints catch re-imports exactly. This second check catches a
-    // matching manual entry made before statement import, without a query per
-    // transaction.
     const dates = accepted.map(transaction => transaction.date.getTime());
     const existingTransactions = await Transaction.find({
       user_id: req.user.id,
@@ -467,6 +464,7 @@ router.post('/', async (req, res) => {
       merchant: validation.merchant,
       tags: validation.tags,
       payment_method: validation.payment_method,
+      transaction_number: validation.transaction_number,
       account_id: validation.account_id || null,
       is_recurring: validation.is_recurring,
       recurrence_interval: validation.recurrence_interval,
@@ -525,6 +523,7 @@ router.put('/:id', async (req, res) => {
     if (validation.merchant !== undefined) t.merchant = validation.merchant;
     if (validation.tags !== undefined) t.tags = validation.tags;
     if (validation.payment_method !== undefined) t.payment_method = validation.payment_method;
+    if (validation.transaction_number !== undefined) t.transaction_number = validation.transaction_number;
     if (validation.is_recurring !== undefined) t.is_recurring = validation.is_recurring;
     if (validation.recurrence_interval !== undefined) t.recurrence_interval = validation.recurrence_interval;
     if (validation.recurrence_ends_at !== undefined) t.recurrence_ends_at = validation.recurrence_ends_at;

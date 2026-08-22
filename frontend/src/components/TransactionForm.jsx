@@ -54,6 +54,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   const [tags, setTags] = useState(() => Array.isArray(initialData?.tags) ? initialData.tags.join(', ') : (initialData?.tags || ''));
   const [paymentMethod, setPaymentMethod] = useState(initialData?.payment_method || 'other');
   const [accountId, setAccountId] = useState(initialData?.account_id || '');
+  const [transactionNumber, setTransactionNumber] = useState(initialData?.transaction_number || '');
   const [isRecurring, setIsRecurring] = useState(initialData?.is_recurring || false);
   const [recurrenceInterval, setRecurrenceInterval] = useState(initialData?.recurrence_interval || 'monthly');
 
@@ -76,6 +77,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     setTags(Array.isArray(initialData?.tags) ? initialData.tags.join(', ') : (initialData?.tags || ''));
     setPaymentMethod(initialData?.payment_method || 'other');
     setAccountId(initialData?.account_id || '');
+    setTransactionNumber(initialData?.transaction_number || '');
     setIsRecurring(Boolean(initialData?.is_recurring));
     setRecurrenceInterval(initialData?.recurrence_interval || 'monthly');
     setError('');
@@ -212,6 +214,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     setTags('');
     setPaymentMethod('other');
     setAccountId('');
+    setTransactionNumber('');
     setIsRecurring(false);
     setRecurrenceInterval('monthly');
     setError('');
@@ -248,6 +251,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         merchant: merchant.trim(),
         tags: tags.split(',').map(t => t.trim()).filter(Boolean),
         payment_method: paymentMethod,
+        transaction_number: transactionNumber.trim(),
         account_id: accountId || null,
         is_recurring: isRecurring,
         recurrence_interval: isRecurring ? recurrenceInterval : null
@@ -265,7 +269,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     } finally {
       setIsSubmitting(false);
     }
-  }, [validateForm, isSubmitting, amount, initialData, type, category, note, date, merchant, tags, paymentMethod, accountId, isRecurring, recurrenceInterval, onSubmit, resetForm]);
+  }, [validateForm, isSubmitting, amount, initialData, type, category, note, date, merchant, tags, paymentMethod, transactionNumber, accountId, isRecurring, recurrenceInterval, onSubmit, resetForm]);
 
   // Handle cancel with confirmation if form is dirty
   const handleCancel = useCallback(() => {
@@ -526,6 +530,19 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
               </div>
             </div>
 
+            <div className="transaction-form-grid">
+              <div className="form-field">
+                <label>Transaction Number</label>
+                <input
+                  value={transactionNumber}
+                  onChange={e => setTransactionNumber(e.target.value)}
+                  placeholder="Enter transaction number"
+                  disabled={isSubmitting}
+                  style={{ opacity: isSubmitting ? 0.7 : 1 }}
+                />
+              </div>
+            </div>
+
             <div className="transaction-form-grid transaction-form-grid--payment">
               <div className="form-field">
                 <label>{t?.('payment_method') || 'Payment Method'}</label>
@@ -544,15 +561,19 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 </select>
               </div>
               <div className="form-field" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={isRecurring}
-                    onChange={e => setIsRecurring(e.target.checked)}
-                    disabled={isSubmitting}
-                    style={{ width: 'auto' }}
-                  />
-                  {t?.('is_recurring') || 'Is Recurring?'}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                  <div className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={isRecurring}
+                      onChange={e => setIsRecurring(e.target.checked)}
+                      disabled={isSubmitting}
+                    />
+                    <span className="slider"></span>
+                  </div>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {t?.('is_recurring') || 'Is Recurring?'}
+                  </span>
                 </label>
                 {isRecurring && (
                   <select
@@ -594,12 +615,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                  >
-                    <Check size={16} />
-                  </motion.div>
+                  <div className="spinner-dots" />
                 ) : (
                   <Check size={16} />
                 )}

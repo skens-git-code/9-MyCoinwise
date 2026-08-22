@@ -172,6 +172,12 @@ const buildSettingsUpdate = (payload = {}) => {
     }
     updates.advanced_prefs = normalizeAdvancedPrefs(payload.advanced_prefs);
   }
+  if (payload.custom_account_types !== undefined) {
+    if (!Array.isArray(payload.custom_account_types)) {
+      return { error: 'custom_account_types must be an array of strings.' };
+    }
+    updates.custom_account_types = payload.custom_account_types.map(String).map(s => s.trim()).filter(Boolean);
+  }
   return { updates };
 };
 
@@ -251,7 +257,7 @@ router.get('/', async (req, res) => {
 router.get('/me', async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .select('username last_name profession email email_verified created_at balance theme monthly_goal currency profile_avatar profile_color notification_prefs advanced_prefs');
+      .select('username last_name profession email email_verified created_at balance theme monthly_goal currency profile_avatar profile_color notification_prefs advanced_prefs custom_account_types');
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(user);
   } catch (error) {
@@ -350,6 +356,7 @@ router.patch(
     body('profile_color').optional().matches(HEX_COLOR),
     body('notification_prefs').optional().isObject(),
     body('advanced_prefs').optional().isObject(),
+    body('custom_account_types').optional().isArray(),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -397,6 +404,7 @@ router.put(
     body('profile_color').optional().matches(HEX_COLOR),
     body('notification_prefs').optional().isObject(),
     body('advanced_prefs').optional().isObject(),
+    body('custom_account_types').optional().isArray(),
   ],
   async (req, res) => {
     const errors = validationResult(req);
