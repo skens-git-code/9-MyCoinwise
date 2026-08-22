@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const accountSchema = new mongoose.Schema({
   user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   name: { type: String, required: true, maxlength: 100, trim: true },
-  type: { type: String, enum: ['bank', 'wallet', 'credit_card', 'investment', 'cash', 'other'], default: 'bank' },
+  type: { type: String, default: 'bank', trim: true },
   currency: { type: String, required: true, maxlength: 10, default: 'USD' },
   initial_balance: { type: Number, default: 0 },
   current_balance: { type: Number, default: 0 },

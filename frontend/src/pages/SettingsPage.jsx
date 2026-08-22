@@ -221,14 +221,19 @@ const BackupRestore = ({ userId, showMessage }) => {
         />
       </div>
       <div className="form-field">
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={autoBackup}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={autoBackup}
             onChange={toggleAutoBackup}
           />
-          <RefreshCw size={14} /> Enable Automatic Weekly Backups
-        </label>
+              <span className="slider"></span>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <RefreshCw size={14} /> Enable Automatic Weekly Backups
+            </span>
+          </label>
       </div>
       <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 12 }}>
         📦 Universal backup archive contains all your transactions, goals, subscriptions, and security settings.
@@ -289,71 +294,101 @@ const NotificationPreferences = ({ preferences, onChange }) => {
       <div className="idp-body">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <div className="toggle-switch">
               <input
                 type="checkbox"
                 checked={preferences?.emailReports}
                 onChange={(e) => onChange({ ...preferences, emailReports: e.target.checked })}
               />
+              <span className="slider"></span>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Mail size={16} /> Monthly Email Reports
-            </label>
+            </span>
+          </label>
           </div>
 
           <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <div className="toggle-switch">
               <input
                 type="checkbox"
                 checked={preferences?.weeklyDigest}
                 onChange={(e) => onChange({ ...preferences, weeklyDigest: e.target.checked })}
               />
+              <span className="slider"></span>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Calendar size={16} /> Weekly Digest
-            </label>
+            </span>
+          </label>
           </div>
 
           <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <div className="toggle-switch">
               <input
                 type="checkbox"
                 checked={preferences?.budgetAlerts}
                 onChange={(e) => onChange({ ...preferences, budgetAlerts: e.target.checked })}
               />
+              <span className="slider"></span>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <BellIcon size={16} /> Budget Alerts
-            </label>
+            </span>
+          </label>
           </div>
 
           <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <div className="toggle-switch">
               <input
                 type="checkbox"
                 checked={preferences?.goalMilestones}
                 onChange={(e) => onChange({ ...preferences, goalMilestones: e.target.checked })}
               />
+              <span className="slider"></span>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Target size={16} /> Goal Milestone Achievements
-            </label>
+            </span>
+          </label>
           </div>
 
           <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <div className="toggle-switch">
               <input
                 type="checkbox"
                 checked={preferences?.unusualSpending}
                 onChange={(e) => onChange({ ...preferences, unusualSpending: e.target.checked })}
               />
+              <span className="slider"></span>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <AlertTriangle size={16} /> Unusual Spending Alerts
-            </label>
+            </span>
+          </label>
           </div>
 
           <div style={{ height: 1, background: 'var(--glass-border)', margin: '8px 0' }} />
 
           <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <div className="toggle-switch">
               <input
                 type="checkbox"
                 checked={preferences?.quietHoursEnabled}
                 onChange={(e) => onChange({ ...preferences, quietHoursEnabled: e.target.checked })}
               />
+              <span className="slider"></span>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Moon size={16} /> Enable Quiet Hours
-            </label>
+            </span>
+          </label>
           </div>
 
           {preferences?.quietHoursEnabled && (
@@ -721,46 +756,66 @@ const AdvancedPreferences = ({ prefs, onChange }) => {
         </div>
 
         <div className="form-field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={prefs?.compactMode || false}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={prefs?.compactMode || false}
               onChange={(e) => onChange({ ...prefs, compactMode: e.target.checked })}
             />
-            <Zap size={16} /> Compact Mode (Denser Layout)
+              <span className="slider"></span>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Zap size={16} /> Compact Mode (Denser Layout)
+            </span>
           </label>
         </div>
 
         <div className="form-field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={prefs?.autoSave !== false}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={prefs?.autoSave !== false}
               onChange={(e) => onChange({ ...prefs, autoSave: e.target.checked })}
             />
-            <Save size={16} /> Auto-save Changes
+              <span className="slider"></span>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Save size={16} /> Auto-save Changes
+            </span>
           </label>
         </div>
 
         <div className="form-field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={prefs?.animationsEnabled !== false}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={prefs?.animationsEnabled !== false}
               onChange={(e) => onChange({ ...prefs, animationsEnabled: e.target.checked })}
             />
-            <Activity size={16} /> Enable Animations
+              <span className="slider"></span>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Activity size={16} /> Enable Animations
+            </span>
           </label>
         </div>
 
         <div className="form-field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={prefs?.showWeekNumbers || false}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={prefs?.showWeekNumbers || false}
               onChange={(e) => onChange({ ...prefs, showWeekNumbers: e.target.checked })}
             />
-            <Calendar size={16} /> Show Week Numbers in Calendar
+              <span className="slider"></span>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Calendar size={16} /> Show Week Numbers in Calendar
+            </span>
           </label>
         </div>
       </div>
@@ -2117,7 +2172,7 @@ function SettingsInner({ context }) {
                     disabled={loadingStates.save}
                     style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', padding: '8px 16px' }}
                   >
-                    <Save size={14} />
+                    {loadingStates.save ? <div className="spinner-dots" /> : <Save size={14} />}
                     {loadingStates.save ? 'Saving…' : 'Save Changes'}
                   </button>
                 </>

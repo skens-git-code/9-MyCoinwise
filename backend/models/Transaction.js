@@ -4,6 +4,7 @@ const transactionSchema = new mongoose.Schema({
   // ── Core ──────────────────────────────────────────────────────────────────
   user_id:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   type:     { type: String, enum: ['income', 'expense'], required: true },
+
   category: { type: String, required: true, maxlength: 80, trim: true },
   amount:   { type: Number, required: true, min: 0 },
   date:     { type: Date, default: Date.now, index: true },
@@ -11,6 +12,7 @@ const transactionSchema = new mongoose.Schema({
   account_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Account', default: null, index: true },
 
   // ── Enhanced Financial Details ─────────────────────────────────────────────
+  transaction_number: { type: String, default: null, trim: true, maxlength: 100 },
   currency:        { type: String, default: null, maxlength: 10 },
   payment_method:  { type: String, enum: ['cash', 'card', 'upi', 'bank_transfer', 'wallet', 'cheque', 'other'], default: 'other' },
   location:        { type: String, default: null, maxlength: 255, trim: true },

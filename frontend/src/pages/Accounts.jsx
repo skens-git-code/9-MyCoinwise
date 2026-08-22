@@ -34,7 +34,7 @@ const convertToBase = (amount, fromCurrency, baseCurrency = 'USD') => {
 
 // ---------- Component ----------
 export default function Accounts() {
-  const { accounts = [], refetch, fmt, currency: userCurrency = 'USD', loading, t } = useContext(AppContext);
+  const { accounts = [], refetch, fmt, currency: userCurrency = 'USD', loading, t, user } = useContext(AppContext);
   const { showToast } = useToast();
 
   // UI state
@@ -51,7 +51,11 @@ export default function Accounts() {
   const [initialBalance, setInitialBalance] = useState('');
   const [color, setColor] = useState('#3b82f6');
   const [icon, setIcon] = useState('Wallet');
+  const [customType, setCustomType] = useState('');
   const [formError, setFormError] = useState('');
+
+  const customTypes = user?.custom_account_types || [];
+  const allTypes = [...new Set([...ACCOUNT_TYPES.filter(t => t !== 'other'), ...customTypes, 'other'])];
 
   // ---------- Reset form ----------
   const resetForm = () => {
@@ -61,6 +65,7 @@ export default function Accounts() {
     setInitialBalance('');
     setColor('#3b82f6');
     setIcon('Wallet');
+    setCustomType('');
     setEditingAccount(null);
     setFormError('');
   };
@@ -75,6 +80,7 @@ export default function Accounts() {
     setInitialBalance(account.current_balance?.toFixed(2) ?? '0.00');
     setColor(account.color || '#3b82f6');
     setIcon(account.icon || 'Wallet');
+    setCustomType('');
     setFormError('');
     setShowAdd(true);
   };
@@ -84,6 +90,24 @@ export default function Accounts() {
     e.preventDefault();
     const trimmedName = name.trim();
     const balance = Number(initialBalance);
+    
+    let finalType = type;
+    if (type === 'other') {
+      const cType = customType.trim().toLowerCase().replace(/\s+/g, '_');
+      if (!cType) {
+        setFormError('Custom type is required.');
+        return;
+      }
+      finalType = cType;
+      if (!ACCOUNT_TYPES.includes(cType) && !customTypes.includes(cType)) {
+        try {
+          const newCustom = [...customTypes, cType];
+          await api.updateSettings(user.id || user._id, { custom_account_types: newCustom });
+        } catch (err) {
+          console.error('Failed to save custom type:', err);
+        }
+      }
+    }
 
     // Validation
     if (!trimmedName) {
@@ -116,7 +140,7 @@ export default function Accounts() {
         // When editing, we do NOT send initial_balance to avoid overriding.
         await api.updateAccount(editingAccount.id || editingAccount._id, {
           name: trimmedName,
-          type,
+          type: finalType,
           currency, // only allowed if balance is zero (check handled in UI)
           color,
           icon
@@ -125,7 +149,7 @@ export default function Accounts() {
       } else {
         await api.createAccount({
           name: trimmedName,
-          type,
+          type: finalType,
           currency,
           initial_balance: balance,
           color,
@@ -308,14 +332,14 @@ export default function Accounts() {
         </div>
       ) : (
         <>
-          {/* Group by type (optional) - simple implementation */}
-          {['bank', 'credit_card', 'investment', 'wallet', 'cash', 'other'].map(type => {
-            const filtered = displayedAccounts.filter(a => a.type === type);
+          {/* Group by type */}
+          {allTypes.filter(t => t !== 'other').map(tGroup => {
+            const filtered = displayedAccounts.filter(a => a.type === tGroup);
             if (filtered.length === 0) return null;
             return (
-              <div key={type} style={{ marginBottom: '2rem' }}>
+              <div key={tGroup} style={{ marginBottom: '2rem' }}>
                 <h4 style={{ textTransform: 'capitalize', color: 'var(--text-muted)', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-                  {type.replace('_', ' ')}s
+                  {tGroup.replace(/_/g, ' ')}s
                 </h4>
                 <div className="accounts-grid">
                   {filtered.map((account) => {
@@ -428,13 +452,47 @@ export default function Accounts() {
               <div className="account-form-grid">
                 <div className="form-field">
                   <label htmlFor="account-type">Type</label>
-                  <select id="account-type" value={type} onChange={e => setType(e.target.value)}>
-                    {ACCOUNT_TYPES.map(t => (
-                      <option key={t} value={t}>
-                        {t.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      </option>
-                    ))}
-                  </select>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <select id="account-type" value={type} onChange={e => setType(e.target.value)} style={{ flex: 1 }}>
+                      {allTypes.map(t => (
+                        <option key={t} value={t}>
+                          {t === 'other' ? 'Other' : t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </option>
+                      ))}
+                    </select>
+                    {customTypes.includes(type) && (
+                      <button 
+                        type="button" 
+                        onClick={async () => {
+                          if (window.confirm(`Remove custom type "${type.replace(/_/g, ' ')}"?`)) {
+                            const newCustom = customTypes.filter(ct => ct !== type);
+                            try {
+                              await api.updateSettings(user.id || user._id, { custom_account_types: newCustom });
+                              setType('bank');
+                              await refetch();
+                            } catch (e) {
+                              showToast('error', 'Failed to remove custom type.');
+                            }
+                          }
+                        }}
+                        className="btn-secondary"
+                        style={{ padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        title="Remove custom type"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                  {type === 'other' && (
+                    <input
+                      type="text"
+                      placeholder="Enter custom account type"
+                      value={customType}
+                      onChange={e => setCustomType(e.target.value)}
+                      style={{ marginTop: '0.5rem' }}
+                      required={type === 'other'}
+                    />
+                  )}
                 </div>
 
                 <div className="form-field">

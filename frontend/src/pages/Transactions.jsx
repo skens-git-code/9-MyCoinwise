@@ -1,7 +1,7 @@
 import React, { useState, useContext, useMemo, useDeferredValue, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Search, Filter, ArrowUpRight, ArrowDownRight, 
+import {
+  Search, Filter, ArrowUpRight, ArrowDownRight,
   Trash2, Edit3, Plus, Wallet, FileText, X,
   Download, Upload, Copy, CheckSquare, Square,
   FileSpreadsheet, FileCode, CheckCircle2, ChevronDown,
@@ -34,13 +34,13 @@ const CATEGORIES = [
 export default function Transactions() {
   const { transactions = [], deleteTransaction, editTransaction, addTransaction, fmt, user, currencyInfo, USER_ID, refetch, t } = useContext(AppContext);
   const { showToast } = useToast();
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [filterType, setFilterType] = useState('all');
   const [activePreset, setActivePreset] = useState('all');
   const [sortBy, setSortBy] = useState('date-desc');
-  
+
   // Selection & Bulk Actions
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showBulkCategoryModal, setShowBulkCategoryModal] = useState(false);
@@ -109,7 +109,7 @@ export default function Transactions() {
   }, [transactions, deferredSearchTerm, filterType, activePreset, sortBy]);
 
   const [selectedTxId, setSelectedTxId] = useState(null);
-  
+
   const selectedTx = useMemo(() => {
     return transactions.find(t => getTransactionId(t) === String(selectedTxId)) || null;
   }, [selectedTxId, transactions]);
@@ -456,7 +456,7 @@ export default function Transactions() {
       </AnimatePresence>
 
       <div className="inbox-split-pane">
-        
+
         {/* --- LEFT NAVIGATION (List) --- */}
         <div className="inbox-list-pane glass">
           <div className="il-filters">
@@ -521,21 +521,21 @@ export default function Transactions() {
 
           <div className="il-scrollable">
             {transactions.length === 0 ? (
-               <div className="il-empty">
-                 <Wallet size={36} opacity={0.3} />
-                 <p>{t?.('no_transactions') || 'No transactions yet'}</p>
-                 <button className="btn-primary" onClick={() => setIsAdding(true)} style={{ marginTop: 10 }}>
-                   <Plus size={14} /> {t?.('add_transaction') || 'Add First Transaction'}
-                 </button>
-               </div>
+              <div className="il-empty">
+                <Wallet size={36} opacity={0.3} />
+                <p>{t?.('no_transactions') || 'No transactions yet'}</p>
+                <button className="btn-primary" onClick={() => setIsAdding(true)} style={{ marginTop: 10 }}>
+                  <Plus size={14} /> {t?.('add_transaction') || 'Add First Transaction'}
+                </button>
+              </div>
             ) : filtered.length === 0 ? (
-               <div className="il-empty">
-                 <Filter size={36} opacity={0.3} />
-                 <p>{t?.('no_tx_found') || 'No matching transactions'}</p>
-                 <button className="btn-secondary" onClick={() => { setSearchTerm(''); setFilterType('all'); setActivePreset('all'); }}>
-                   {t?.('clear_filters') || 'Reset Filters'}
-                 </button>
-               </div>
+              <div className="il-empty">
+                <Filter size={36} opacity={0.3} />
+                <p>{t?.('no_tx_found') || 'No matching transactions'}</p>
+                <button className="btn-secondary" onClick={() => { setSearchTerm(''); setFilterType('all'); setActivePreset('all'); }}>
+                  {t?.('clear_filters') || 'Reset Filters'}
+                </button>
+              </div>
             ) : (
               <AnimatePresence>
                 {filtered.map((t) => {
@@ -543,52 +543,52 @@ export default function Transactions() {
                   const isSelected = selectedIds.has(transactionId);
                   const isActive = String(selectedTxId) === transactionId;
                   return (
-                  <motion.div
-                    key={transactionId}
-                    variants={ITEM_VARIANTS}
-                    initial="hidden"
-                    animate="show"
-                    exit={{ opacity: 0, height: 0 }}
-                    layout
-                    className={`il-item ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`}
-                    onClick={() => setSelectedTxId(transactionId)}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${t.category}, ${t.type}, ${fmt(t.amount)}`}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedTxId(transactionId);
-                      }
-                    }}
-                  >
-                    {/* Multi-select checkbox */}
-                    <button
-                      className="il-checkbox-btn"
-                      onClick={(e) => toggleSelectOne(transactionId, e)}
-                      aria-label={isSelected ? 'Deselect transaction' : 'Select transaction'}
+                    <motion.div
+                      key={transactionId}
+                      variants={ITEM_VARIANTS}
+                      initial="hidden"
+                      animate="show"
+                      exit={{ opacity: 0, height: 0 }}
+                      layout
+                      className={`il-item ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`}
+                      onClick={() => setSelectedTxId(transactionId)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${t.category}, ${t.type}, ${fmt(t.amount)}`}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedTxId(transactionId);
+                        }
+                      }}
                     >
-                      {isSelected ? (
-                        <CheckSquare size={16} className="text-brand" />
-                      ) : (
-                        <Square size={16} />
-                      )}
-                    </button>
+                      {/* Multi-select checkbox */}
+                      <button
+                        className="il-checkbox-btn"
+                        onClick={(e) => toggleSelectOne(transactionId, e)}
+                        aria-label={isSelected ? 'Deselect transaction' : 'Select transaction'}
+                      >
+                        {isSelected ? (
+                          <CheckSquare size={16} className="text-brand" />
+                        ) : (
+                          <Square size={16} />
+                        )}
+                      </button>
 
-                    <div className={`ili-icon ${t.type}`}>
-                      {t.type === 'income' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
-                    </div>
-                    <div className="ili-info">
-                      <p className="ili-cat">{t.category}</p>
-                      <p className="ili-date">
-                        {new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        {t.note && <span className="ili-note-snip"> · {t.note}</span>}
-                      </p>
-                    </div>
-                    <div className="ili-amount">
-                      <span className={t.type}>{t.type === 'income' ? '+' : '-'}{fmt(t.amount)}</span>
-                    </div>
-                  </motion.div>
+                      <div className={`ili-icon ${t.type}`}>
+                        {t.type === 'income' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                      </div>
+                      <div className="ili-info">
+                        <p className="ili-cat">{t.category}</p>
+                        <p className="ili-date">
+                          {new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {t.note && <span className="ili-note-snip"> · {t.note}</span>}
+                        </p>
+                      </div>
+                      <div className="ili-amount">
+                        <span className={t.type}>{t.type === 'income' ? '+' : '-'}{fmt(t.amount)}</span>
+                      </div>
+                    </motion.div>
                   );
                 })}
               </AnimatePresence>
@@ -636,6 +636,26 @@ export default function Transactions() {
                       <p className="idp-note-empty">No notes provided.</p>
                     )}
                   </div>
+                  {selectedTx.transaction_number && (
+                    <div className="idp-section">
+                      <label>Transaction Number</label>
+                      <p style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
+                        {selectedTx.transaction_number}
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedTx.transaction_number);
+                            showToast('success', 'Transaction number copied');
+                          }}
+                          title="Copy transaction number"
+                          style={{ padding: 4 }}
+                        >
+                          <Copy size={14} />
+                        </button>
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="idp-actions">
@@ -692,137 +712,137 @@ export default function Transactions() {
         onSubmit={async (tx) => { await addTransaction(tx); setDuplicateTxData(null); }}
       />
 
-      <TransactionForm
-        isOpen={!!editingTx}
-        initialData={editingTx}
-        onClose={() => setEditingTx(null)}
-        onSubmit={async (tx) => { await editTransaction(getTransactionId(tx), tx); setEditingTx(null); }}
-      />
-        {/* Single Confirm Delete Modal */}
-        <Modal
-          isOpen={deletingTx !== null}
-          onClose={() => setDeletingTx(null)}
-          title="Delete Transaction?"
-          confirmText="Yes, Delete"
-          onConfirm={confirmDelete}
-          isLoading={isDeleting}
-          danger={true}
-        >
-          {deletingTx && (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
-              Are you sure you want to delete this <strong>{deletingTx.type}</strong> of <strong>{fmt(deletingTx.amount)}</strong> for <strong>{deletingTx.category}</strong>?
-            </p>
-          )}
-        </Modal>
+                          <TransactionForm
+                            isOpen={!!editingTx}
+                            initialData={editingTx}
+                            onClose={() => setEditingTx(null)}
+                            onSubmit={async (tx) => { await editTransaction(getTransactionId(tx), tx); setEditingTx(null); }}
+                          />
+                          {/* Single Confirm Delete Modal */}
+                          <Modal
+                            isOpen={deletingTx !== null}
+                            onClose={() => setDeletingTx(null)}
+                            title="Delete Transaction?"
+                            confirmText="Yes, Delete"
+                            onConfirm={confirmDelete}
+                            isLoading={isDeleting}
+                            danger={true}
+                          >
+                            {deletingTx && (
+                              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
+                                Are you sure you want to delete this <strong>{deletingTx.type}</strong> of <strong>{fmt(deletingTx.amount)}</strong> for <strong>{deletingTx.category}</strong>?
+                              </p>
+                            )}
+                          </Modal>
 
-        {/* Bulk Delete Modal */}
-        <Modal
-          isOpen={showBulkDeleteModal}
-          onClose={() => setShowBulkDeleteModal(false)}
-          title={`Delete ${selectedIds.size} Transactions?`}
-          confirmText={`Delete ${selectedIds.size} Transactions`}
-          onConfirm={handleBulkDelete}
-          isLoading={isBulkOperating}
-          danger={true}
-        >
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
-            This will permanently remove the {selectedIds.size} selected transactions. This action cannot be undone.
-          </p>
-        </Modal>
+                          {/* Bulk Delete Modal */}
+                          <Modal
+                            isOpen={showBulkDeleteModal}
+                            onClose={() => setShowBulkDeleteModal(false)}
+                            title={`Delete ${selectedIds.size} Transactions?`}
+                            confirmText={`Delete ${selectedIds.size} Transactions`}
+                            onConfirm={handleBulkDelete}
+                            isLoading={isBulkOperating}
+                            danger={true}
+                          >
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
+                              This will permanently remove the {selectedIds.size} selected transactions. This action cannot be undone.
+                            </p>
+                          </Modal>
 
-        {/* Bulk Category Change Modal */}
-        <Modal
-          isOpen={showBulkCategoryModal}
-          onClose={() => setShowBulkCategoryModal(false)}
-          title={`Change Category for ${selectedIds.size} Transactions`}
-          confirmText="Update Category"
-          onConfirm={handleBulkCategoryChange}
-          isLoading={isBulkOperating}
-        >
-          <div className="form-group" style={{ marginBottom: 20 }}>
-            <label>Select New Category</label>
-            <select
-              value={bulkCategory}
-              onChange={e => setBulkCategory(e.target.value)}
-              className="filter-select"
-              style={{ width: '100%', marginTop: 8 }}
-            >
-              {CATEGORIES.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
-        </Modal>
+                          {/* Bulk Category Change Modal */}
+                          <Modal
+                            isOpen={showBulkCategoryModal}
+                            onClose={() => setShowBulkCategoryModal(false)}
+                            title={`Change Category for ${selectedIds.size} Transactions`}
+                            confirmText="Update Category"
+                            onConfirm={handleBulkCategoryChange}
+                            isLoading={isBulkOperating}
+                          >
+                            <div className="form-group" style={{ marginBottom: 20 }}>
+                              <label>Select New Category</label>
+                              <select
+                                value={bulkCategory}
+                                onChange={e => setBulkCategory(e.target.value)}
+                                className="filter-select"
+                                style={{ width: '100%', marginTop: 8 }}
+                              >
+                                {CATEGORIES.map(cat => (
+                                  <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </Modal>
 
-        {/* Bank statement review: every detected transaction remains opt-in. */}
-        <Modal
-          isOpen={showImportModal}
-          onClose={() => { if (!isImporting) { setShowImportModal(false); setStatementRows([]); } }}
-          title={`Review ${statementRows.length} detected transactions`}
-          confirmText={`Add ${selectedStatementCount} to Wallet`}
-          onConfirm={handleConfirmImport}
-          isLoading={isImporting}
-          confirmDisabled={selectedStatementCount === 0}
-        >
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
-            We identify payment type, merchant, and likely category. Duplicates are ignored by default; choose <strong>Add to Wallet</strong> or <strong>Ignore</strong> for each item.
-          </p>
-          <div className="statement-review-summary">
-            <span>{selectedStatementCount} selected</span>
-            <button type="button" onClick={() => setStatementRows(rows => rows.map(row => ({ ...row, selected: !row.duplicate })))}>Add all new</button>
-            <button type="button" onClick={() => setStatementRows(rows => rows.map(row => ({ ...row, selected: false })))}>Ignore all</button>
-          </div>
-          <div className="csv-preview-table-wrap statement-review-wrap">
-            <table className="csv-preview-table statement-review-table">
-              <thead>
-                <tr>
-                  <th>Wallet</th>
-                  <th>Date</th>
-                  <th>Merchant & payment</th>
-                  <th>Category</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {statementRows.map((row) => (
-                  <tr key={row.id} className={row.selected ? '' : 'statement-row-ignored'}>
-                    <td>
-                      <button
-                        type="button"
-                        className={`statement-choice ${row.selected ? 'selected' : ''}`}
-                        onClick={() => updateStatementRow(row.id, { selected: !row.selected })}
-                        aria-pressed={row.selected}
-                      >
-                        {row.selected ? 'Add to Wallet' : 'Ignore'}
-                      </button>
-                    </td>
-                    <td>{row.date}</td>
-                    <td>
-                      <strong>{row.merchant || 'Bank transaction'}</strong>
-                      <small>{row.payment_method?.replace('_', ' ') || 'bank transfer'}{row.counterparty_bank ? ` · ${row.counterparty_bank}` : ''}</small>
-                    </td>
-                    <td>
-                      <select
-                        aria-label={`Category for ${row.merchant || 'transaction'}`}
-                        value={row.category}
-                        onChange={(event) => updateStatementRow(row.id, { category: event.target.value })}
-                      >
-                        {CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
-                      </select>
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap', color: row.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
-                      {row.type === 'income' ? '+' : '-'}{fmt(row.amount)}
-                    </td>
-                    <td>
-                      {row.duplicate ? <span className="statement-status duplicate">Possible duplicate</span> : <span className={`statement-status ${row.confidence}`}>{row.confidence || 'detected'} match</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Modal>
-    </div>
-  );
+                          {/* Bank statement review: every detected transaction remains opt-in. */}
+                          <Modal
+                            isOpen={showImportModal}
+                            onClose={() => { if (!isImporting) { setShowImportModal(false); setStatementRows([]); } }}
+                            title={`Review ${statementRows.length} detected transactions`}
+                            confirmText={`Add ${selectedStatementCount} to Wallet`}
+                            onConfirm={handleConfirmImport}
+                            isLoading={isImporting}
+                            confirmDisabled={selectedStatementCount === 0}
+                          >
+                            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
+                              We identify payment type, merchant, and likely category. Duplicates are ignored by default; choose <strong>Add to Wallet</strong> or <strong>Ignore</strong> for each item.
+                            </p>
+                            <div className="statement-review-summary">
+                              <span>{selectedStatementCount} selected</span>
+                              <button type="button" onClick={() => setStatementRows(rows => rows.map(row => ({ ...row, selected: !row.duplicate })))}>Add all new</button>
+                              <button type="button" onClick={() => setStatementRows(rows => rows.map(row => ({ ...row, selected: false })))}>Ignore all</button>
+                            </div>
+                            <div className="csv-preview-table-wrap statement-review-wrap">
+                              <table className="csv-preview-table statement-review-table">
+                                <thead>
+                                  <tr>
+                                    <th>Wallet</th>
+                                    <th>Date</th>
+                                    <th>Merchant & payment</th>
+                                    <th>Category</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {statementRows.map((row) => (
+                                    <tr key={row.id} className={row.selected ? '' : 'statement-row-ignored'}>
+                                      <td>
+                                        <button
+                                          type="button"
+                                          className={`statement-choice ${row.selected ? 'selected' : ''}`}
+                                          onClick={() => updateStatementRow(row.id, { selected: !row.selected })}
+                                          aria-pressed={row.selected}
+                                        >
+                                          {row.selected ? 'Add to Wallet' : 'Ignore'}
+                                        </button>
+                                      </td>
+                                      <td>{row.date}</td>
+                                      <td>
+                                        <strong>{row.merchant || 'Bank transaction'}</strong>
+                                        <small>{row.payment_method?.replace('_', ' ') || 'bank transfer'}{row.counterparty_bank ? ` · ${row.counterparty_bank}` : ''}</small>
+                                      </td>
+                                      <td>
+                                        <select
+                                          aria-label={`Category for ${row.merchant || 'transaction'}`}
+                                          value={row.category}
+                                          onChange={(event) => updateStatementRow(row.id, { category: event.target.value })}
+                                        >
+                                          {CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
+                                        </select>
+                                      </td>
+                                      <td style={{ whiteSpace: 'nowrap', color: row.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
+                                        {row.type === 'income' ? '+' : '-'}{fmt(row.amount)}
+                                      </td>
+                                      <td>
+                                        {row.duplicate ? <span className="statement-status duplicate">Possible duplicate</span> : <span className={`statement-status ${row.confidence}`}>{row.confidence || 'detected'} match</span>}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </Modal>
+                      </div>
+                      );
 }
