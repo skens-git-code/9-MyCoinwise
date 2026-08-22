@@ -122,6 +122,14 @@ export const api = {
     const res = await axios.post(`${API_URL}/transactions/bulk-delete`, { ids });
     return res.data;
   },
+  previewBankStatement: async (content, filename = 'statement.csv') => {
+    const res = await axios.post(`${API_URL}/transactions/statement/preview`, { content, filename });
+    return res.data;
+  },
+  importBankStatement: async (transactions) => {
+    const res = await axios.post(`${API_URL}/transactions/statement/import`, { transactions });
+    return res.data;
+  },
 
   // Goals
   getGoals: async (userId) => {

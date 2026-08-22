@@ -28,7 +28,7 @@ const CATEGORIES = [
   'Food', 'Groceries', 'Transport', 'Shopping', 'Entertainment',
   'Health', 'Education', 'Bills', 'Salary', 'Freelance', 'Gift',
   'Rent', 'Travel', 'Fitness', 'Subscriptions', 'Utilities',
-  'Insurance', 'Investment', 'Other', 'Allowance'
+  'Insurance', 'Investment', 'Transfer', 'Other', 'Allowance'
 ];
 
 export default function Transactions() {
@@ -57,8 +57,9 @@ export default function Transactions() {
 
   // Import Modal & State
   const [showImportModal, setShowImportModal] = useState(false);
-  const [importRows, setImportRows] = useState([]);
+  const [statementRows, setStatementRows] = useState([]);
   const [isImporting, setIsImporting] = useState(false);
+  const [isAnalyzingStatement, setIsAnalyzingStatement] = useState(false);
   const fileInputRef = useRef(null);
 
   // Export Dropdown
@@ -259,68 +260,53 @@ export default function Transactions() {
     }
   };
 
-  // CSV Import Parsing
-  const handleFileUpload = (e) => {
+  // Statement analysis is performed server-side so the same categorization and
+  // duplicate rules apply to every device. Raw statement content is not saved.
+  const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target?.result;
-      if (typeof text !== 'string') return;
-
-      const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
-      if (lines.length < 2) {
-        showToast('error', 'CSV file is empty or has no header.');
-        return;
-      }
-
-      const rows = [];
-      // Skip header, parse up to 100 rows
-      for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].split(',').map(s => s.trim().replace(/^"|"$/g, ''));
-        if (parts.length >= 3) {
-          const date = parts[0] || new Date().toISOString().split('T')[0];
-          let type = parts[1]?.toLowerCase() === 'income' ? 'income' : 'expense';
-          let category = parts[2] || 'Other';
-          let note = parts[3] || '';
-          let amount = parseFloat(parts[4] || parts[3] || parts[1] || '0');
-
-          if (!isNaN(amount) && amount > 0) {
-            rows.push({ date, type, category, note, amount });
-          }
-        }
-      }
-
-      if (rows.length === 0) {
-        showToast('error', 'Could not parse any valid transaction rows from CSV.');
-        return;
-      }
-
-      setImportRows(rows);
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('error', 'Please choose a CSV statement smaller than 5 MB.');
+      e.target.value = '';
+      return;
+    }
+    setIsAnalyzingStatement(true);
+    try {
+      const analysis = await api.previewBankStatement(await file.text(), file.name);
+      const rows = (analysis.transactions || []).map(row => ({ ...row, selected: !row.duplicate }));
+      setStatementRows(rows);
       setShowImportModal(true);
-    };
-
-    reader.readAsText(file);
-    e.target.value = '';
+      showToast('success', `${analysis.summary?.detected || rows.length} transactions detected. Review before adding.`);
+    } catch (error) {
+      showToast('error', error.response?.data?.error || 'Could not analyze this statement. Please export it as a CSV from your bank.');
+    } finally {
+      setIsAnalyzingStatement(false);
+      e.target.value = '';
+    }
   };
 
   const handleConfirmImport = async () => {
-    if (importRows.length === 0) return;
+    const selections = statementRows.filter(row => row.selected);
+    if (selections.length === 0) return;
     setIsImporting(true);
     try {
-      for (const row of importRows) {
-        await addTransaction(row);
-      }
-      showToast('success', `Imported ${importRows.length} transactions successfully!`);
+      const result = await api.importBankStatement(selections);
+      showToast('success', `${result.created} transaction${result.created === 1 ? '' : 's'} added to your wallet${result.skipped ? `; ${result.skipped} skipped as duplicates.` : '.'}`);
       setShowImportModal(false);
-      setImportRows([]);
-    } catch {
-      showToast('error', 'Failed to import some rows.');
+      setStatementRows([]);
+      await refetch();
+    } catch (error) {
+      showToast('error', error.response?.data?.error || 'Could not add the selected transactions.');
     } finally {
       setIsImporting(false);
     }
   };
+
+  const updateStatementRow = (id, patch) => {
+    setStatementRows(rows => rows.map(row => row.id === id ? { ...row, ...patch } : row));
+  };
+
+  const selectedStatementCount = statementRows.filter(row => row.selected).length;
 
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((a, c) => a + Number(c.amount), 0);
   const totalExpense = transactions.filter(t => t.type === 'expense').reduce((a, c) => a + Number(c.amount), 0);
@@ -328,11 +314,11 @@ export default function Transactions() {
 
   return (
     <div className="inbox-layout-page">
-      {/* Hidden file input for CSV Import */}
+      {/* Raw CSV is analyzed in-memory and is never retained by the app. */}
       <input
         type="file"
         ref={fileInputRef}
-        accept=".csv"
+        accept=".csv,.txt,text/csv"
         style={{ display: 'none' }}
         onChange={handleFileUpload}
       />
@@ -344,15 +330,16 @@ export default function Transactions() {
         </div>
 
         <div className="inbox-header-actions">
-          {/* Import CSV */}
+          {/* Import bank statement */}
           <motion.button
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             className="btn-secondary tx-import-btn"
             onClick={() => fileInputRef.current?.click()}
-            title="Import bank statement or CSV"
+            title="Import and review a bank statement CSV"
+            disabled={isAnalyzingStatement}
           >
-            <Upload size={15} /> {t?.('import_csv') || 'Import CSV'}
+            <Upload size={15} /> {isAnalyzingStatement ? 'Analyzing…' : 'Import Statement'}
           </motion.button>
 
           {/* Export Dropdown */}
@@ -767,46 +754,73 @@ export default function Transactions() {
           </div>
         </Modal>
 
-        {/* CSV Import Preview Modal */}
+        {/* Bank statement review: every detected transaction remains opt-in. */}
         <Modal
           isOpen={showImportModal}
-          onClose={() => setShowImportModal(false)}
-          title={`Import ${importRows.length} Transactions`}
-          confirmText={`Confirm & Import ${importRows.length} Items`}
+          onClose={() => { if (!isImporting) { setShowImportModal(false); setStatementRows([]); } }}
+          title={`Review ${statementRows.length} detected transactions`}
+          confirmText={`Add ${selectedStatementCount} to Wallet`}
           onConfirm={handleConfirmImport}
           isLoading={isImporting}
+          confirmDisabled={selectedStatementCount === 0}
         >
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
-            Review the parsed transactions from your CSV file before importing:
+            We identify payment type, merchant, and likely category. Duplicates are ignored by default; choose <strong>Add to Wallet</strong> or <strong>Ignore</strong> for each item.
           </p>
-          <div className="csv-preview-table-wrap">
-            <table className="csv-preview-table">
+          <div className="statement-review-summary">
+            <span>{selectedStatementCount} selected</span>
+            <button type="button" onClick={() => setStatementRows(rows => rows.map(row => ({ ...row, selected: !row.duplicate })))}>Add all new</button>
+            <button type="button" onClick={() => setStatementRows(rows => rows.map(row => ({ ...row, selected: false })))}>Ignore all</button>
+          </div>
+          <div className="csv-preview-table-wrap statement-review-wrap">
+            <table className="csv-preview-table statement-review-table">
               <thead>
                 <tr>
+                  <th>Wallet</th>
                   <th>Date</th>
-                  <th>Type</th>
+                  <th>Merchant & payment</th>
                   <th>Category</th>
                   <th>Amount</th>
-                  <th>Note</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {importRows.slice(0, 15).map((row, idx) => (
-                  <tr key={idx}>
+                {statementRows.map((row) => (
+                  <tr key={row.id} className={row.selected ? '' : 'statement-row-ignored'}>
+                    <td>
+                      <button
+                        type="button"
+                        className={`statement-choice ${row.selected ? 'selected' : ''}`}
+                        onClick={() => updateStatementRow(row.id, { selected: !row.selected })}
+                        aria-pressed={row.selected}
+                      >
+                        {row.selected ? 'Add to Wallet' : 'Ignore'}
+                      </button>
+                    </td>
                     <td>{row.date}</td>
-                    <td style={{ textTransform: 'capitalize', color: row.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>{row.type}</td>
-                    <td>{row.category}</td>
-                    <td>{fmt(row.amount)}</td>
-                    <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.note || '—'}</td>
+                    <td>
+                      <strong>{row.merchant || 'Bank transaction'}</strong>
+                      <small>{row.payment_method?.replace('_', ' ') || 'bank transfer'}{row.counterparty_bank ? ` · ${row.counterparty_bank}` : ''}</small>
+                    </td>
+                    <td>
+                      <select
+                        aria-label={`Category for ${row.merchant || 'transaction'}`}
+                        value={row.category}
+                        onChange={(event) => updateStatementRow(row.id, { category: event.target.value })}
+                      >
+                        {CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap', color: row.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
+                      {row.type === 'income' ? '+' : '-'}{fmt(row.amount)}
+                    </td>
+                    <td>
+                      {row.duplicate ? <span className="statement-status duplicate">Possible duplicate</span> : <span className={`statement-status ${row.confidence}`}>{row.confidence || 'detected'} match</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {importRows.length > 15 && (
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: 8 }}>
-                + {importRows.length - 15} more items will be imported.
-              </p>
-            )}
           </div>
         </Modal>
     </div>

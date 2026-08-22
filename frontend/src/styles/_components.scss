@@ -7151,6 +7151,98 @@ select {
   }
 }
 
+.statement-review-wrap {
+  max-height: min(52vh, 470px);
+}
+
+.statement-review-table {
+  min-width: 800px;
+
+  td {
+    vertical-align: middle;
+  }
+
+  strong,
+  small {
+    display: block;
+  }
+
+  small {
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    text-transform: capitalize;
+  }
+
+  select {
+    min-width: 112px;
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    background: var(--input-bg, var(--glass-2));
+    color: var(--text-primary);
+    padding: 5px 7px;
+  }
+}
+
+.statement-review-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+
+  span { margin-right: auto; font-weight: 700; }
+
+  button {
+    border: 0;
+    background: transparent;
+    color: var(--brand-primary);
+    cursor: pointer;
+    font: inherit;
+    padding: 3px;
+
+    &:hover { text-decoration: underline; }
+  }
+}
+
+.statement-choice {
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 5px 8px;
+  white-space: nowrap;
+
+  &.selected {
+    background: rgba(5, 150, 105, 0.12);
+    border-color: rgba(5, 150, 105, 0.4);
+    color: var(--success);
+  }
+}
+
+.statement-row-ignored { opacity: 0.5; }
+
+.statement-status {
+  display: inline-flex;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 4px 6px;
+  text-transform: capitalize;
+  white-space: nowrap;
+  background: var(--glass-2);
+  color: var(--text-secondary);
+
+  &.high { background: rgba(5, 150, 105, 0.12); color: var(--success); }
+  &.medium { background: rgba(14, 165, 233, 0.12); color: var(--brand-primary); }
+  &.low { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+  &.duplicate { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
+}
+
 // Calendar Enhancements
 .cal-day {
   position: relative;
