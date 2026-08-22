@@ -17,8 +17,17 @@ const transactionSchema = new mongoose.Schema({
   tags:            { type: [String], default: [] },
   merchant:        { type: String, default: null, maxlength: 150, trim: true },
 
+  // ── Bank statement import metadata ───────────────────────────────────────
+  // The original statement file is never retained. These normalized fields let
+  // us explain an imported item and safely identify it on a later import.
+  import_source:       { type: String, default: null, maxlength: 40 },
+  import_fingerprint:  { type: String, default: null, maxlength: 64, index: true },
+  external_reference:  { type: String, default: null, maxlength: 150, trim: true },
+  counterparty_bank:   { type: String, default: null, maxlength: 200, trim: true },
+
   // ── Split Details ────────────────────────────────────────────────────────
   is_split:        { type: Boolean, default: false },
+
   split_details:   [{
     person: { type: String, maxlength: 100 },
     amount: { type: Number, min: 0 },
@@ -41,7 +50,7 @@ const transactionSchema = new mongoose.Schema({
   recurrence_interval:   { type: String, enum: ['daily', 'weekly', 'monthly', 'yearly', null], default: null },
   recurrence_ends_at:    { type: Date, default: null },
   parent_transaction_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', default: null },
-  recurrence_instance_key: { type: String, default: null, select: false },
+  recurrence_instance_key: { type: String, select: false },
 
   // ── Metadata ──────────────────────────────────────────────────────────────
   is_deleted: { type: Boolean, default: false }   // Soft delete
@@ -57,10 +66,11 @@ transactionSchema.index({ user_id: 1, date: -1 });
 transactionSchema.index({ user_id: 1, type: 1 });
 transactionSchema.index({ user_id: 1, category: 1 });
 transactionSchema.index({ user_id: 1, account_id: 1, is_deleted: 1 });
+transactionSchema.index({ user_id: 1, import_fingerprint: 1 }, { sparse: true });
 transactionSchema.index({ tags: 1 });
 transactionSchema.index(
   { user_id: 1, recurrence_instance_key: 1 },
-  { unique: true, sparse: true }
+  { unique: true, partialFilterExpression: { recurrence_instance_key: { $exists: true, $type: 'string' } } }
 );
 
 // ── Virtual ───────────────────────────────────────────────────────────────────
