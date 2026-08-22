@@ -68,6 +68,7 @@ export default function Login() {
   // ---------- Submit ----------
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     setError('');
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {

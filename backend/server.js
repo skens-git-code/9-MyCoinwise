@@ -10,7 +10,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const { v4: uuidv4 } = require('uuid'); // Install with: npm install uuid
 const { logger } = require('./utils/logger');
-const mongoose = require('./db');
+const { mongoose, connectToMongo } = require('./db');
 
 // ─── Middleware ─────────────────────────────────────────────────────────────
 const auth = require('./middleware/auth');
@@ -169,15 +169,32 @@ app.use((err, req, res, next) => {
 
 // ─── Start server ────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5001;
-const server = app.listen(PORT, () => {
-  logger.info(`🚀 MyCoinwise API running on port ${PORT}`);
+let server;
+
+connectToMongo().then(() => {
+  server = app.listen(PORT, () => {
+    logger.info(`🚀 MyCoinwise API running on port ${PORT}`);
+  });
+}).catch(err => {
+  logger.error(`Failed to start server due to DB connection error: ${err.message}`);
+  process.exit(1);
 });
 
 // ─── Graceful Shutdown ───────────────────────────────────────────────────────
 const shutdown = (signal) => {
   console.log(`${signal} received: closing HTTP server`);
-  server.close(() => {
-    console.log('HTTP server closed');
+  if (server) {
+    server.close(() => {
+      console.log('HTTP server closed');
+      mongoose.connection.close(false).then(() => {
+        console.log('MongoDB connection closed');
+        process.exit(0);
+      }).catch((err) => {
+        console.error('Error closing MongoDB:', err);
+        process.exit(1);
+      });
+    });
+  } else {
     mongoose.connection.close(false).then(() => {
       console.log('MongoDB connection closed');
       process.exit(0);
@@ -185,7 +202,7 @@ const shutdown = (signal) => {
       console.error('Error closing MongoDB:', err);
       process.exit(1);
     });
-  });
+  }
 };
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
