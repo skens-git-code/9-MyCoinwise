@@ -259,6 +259,14 @@
   gap: 4px;
   overflow-y: auto;
   overflow-x: hidden;
+
+  /* Hide scrollbar when sidebar is collapsed */
+  .island-sidebar.collapsed & {
+    scrollbar-width: none; /* Firefox */
+    &::-webkit-scrollbar {
+      display: none; /* Chrome, Safari, Opera */
+    }
+  }
 }
 
 .inav-item {
@@ -293,19 +301,11 @@
   &:hover:not(.active) {
     background: var(--nav-hover-bg);
     color: var(--text-primary);
-
-    .inav-icon {
-      transform: scale(1.1);
-    }
   }
 
   &.active {
     color: var(--nav-active-text, var(--brand-primary));
     background: var(--nav-active-bg);
-
-    .inav-icon {
-      transform: scale(1.12);
-    }
   }
 
   /* Active indicator pill */
@@ -1099,10 +1099,6 @@
 
   &.active {
     color: var(--brand-primary);
-
-    .dock-icon {
-      transform: scale(1.15) translateY(-2px);
-    }
 
     .dock-label {
       color: var(--brand-primary);

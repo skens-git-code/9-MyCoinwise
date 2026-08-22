@@ -812,7 +812,7 @@ const DesktopSidebar = React.memo(({
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="island-brand">
-        <motion.div className="brand-icon" whileHover={{ rotate: 15, scale: 1.1 }}>
+        <motion.div className="brand-icon">
           <Zap size={22} />
         </motion.div>
         <AnimatePresence>

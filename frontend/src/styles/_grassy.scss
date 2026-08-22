@@ -544,7 +544,6 @@ select:focus,
   color: var(--nav-primary);
   background: linear-gradient(100deg, var(--nav-hover-bg), rgba(var(--nav-primary-rgb), 0.025));
   border-color: rgba(var(--nav-primary-rgb), 0.12);
-  transform: translateX(2px);
 }
 
 .inav-item.active {

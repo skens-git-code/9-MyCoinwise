@@ -16,6 +16,9 @@ html {
   scroll-behavior: smooth;
   scroll-padding-top: 80px;
   font-size: 16px;
+  @media (min-width: 1024px) {
+    font-size: 15.2px;
+  }
   overflow: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--brand-primary-rgb), 0.35) transparent;

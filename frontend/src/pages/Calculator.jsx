@@ -198,17 +198,20 @@ const formatResult = (value) => {
 // ---------- Button Layout ----------
 const buttonGroups = {
   scientific: [
-    ['sin(', 'sin'], ['cos(', 'cos'], ['tan(', 'tan'], ['log(', 'log'], ['ln(', 'ln'],
-    ['asin(', 'asin'], ['acos(', 'acos'], ['atan(', 'atan'], ['sqrt(', '√'], ['cbrt(', '∛'],
-    ['abs(', 'abs'], ['exp(', 'exp'], ['floor(', 'floor'], ['ceil(', 'ceil'], ['round(', 'round'],
-    ['pow(', 'pow'], ['min(', 'min'], ['max(', 'max'], ['!', '!'], ['π', 'π'], ['e', 'e']
+    ['sin(', 'sin'], ['cos(', 'cos'], ['tan(', 'tan'], ['log(', 'log'],
+    ['asin(', 'asin'], ['acos(', 'acos'], ['atan(', 'atan'], ['ln(', 'ln'],
+    ['sqrt(', '√'], ['cbrt(', '∛'], ['abs(', 'abs'], ['exp(', 'exp'],
+    ['floor(', 'floor'], ['ceil(', 'ceil'], ['round(', 'round'], ['pow(', 'pow'],
+    ['min(', 'min'], ['max(', 'max'], ['sinh(', 'sinh'], ['cosh(', 'cosh'],
+    ['!', '!'], [',', ','], ['π', 'π'], ['e', 'e']
   ],
   basic: [
-    ['7', '7'], ['8', '8'], ['9', '9'], ['/', '÷'],
-    ['4', '4'], ['5', '5'], ['6', '6'], ['*', '×'],
-    ['1', '1'], ['2', '2'], ['3', '3'], ['-', '−'],
-    ['0', '0'], ['.', '.'], ['ans', 'Ans'], ['+', '+'],
-    ['%', '%'], ['^', 'xʸ']
+    ['CE', 'CE', 'clearEntry'], ['C', 'C', 'clear'], ['%', '%'], ['Delete', 'Delete', 'backspace'],
+    ['(', '('], [')', ')'], ['^', 'xʸ'], ['/', '÷'],
+    ['7', '7'], ['8', '8'], ['9', '9'], ['*', '×'],
+    ['4', '4'], ['5', '5'], ['6', '6'], ['-', '−'],
+    ['1', '1'], ['2', '2'], ['3', '3'], ['+', '+'],
+    ['0', '0'], ['.', '.'], ['ans', 'Ans'], ['=', '=', 'calculate']
   ]
 };
 
@@ -502,7 +505,6 @@ export default function Calculator() {
             <button type="button" className="calculator-angle" onClick={() => setAngleMode((mode) => mode === 'DEG' ? 'RAD' : 'DEG')}>{angleMode}</button>
           </div>
 
-          {/* Keypad */}
           <div className="calculator-keypad">
             <button
               type="button"
@@ -524,27 +526,30 @@ export default function Calculator() {
             </div>
             <div className="calculator-basic-panel">
               <div className="calculator-basic-grid">
-              {/* CE and C buttons */}
-              <button type="button" className="calculator-key utility" onClick={clearEntry} aria-label="Clear entry">CE</button>
-              <button type="button" className="calculator-key utility" onClick={clear} aria-label="Clear all">C</button>
-              <button type="button" className="calculator-key utility" onClick={() => setExpression((current) => current.slice(0, -1))} aria-label="Backspace">
-                <Delete size={18} />
-              </button>
-              <button type="button" className="calculator-key utility" onClick={() => append('(')} aria-label="Open parenthesis">(</button>
-              <button type="button" className="calculator-key utility" onClick={() => append(')')} aria-label="Close parenthesis">)</button>
-              <button type="button" className="calculator-key utility" onClick={() => append(',')} aria-label="Function argument separator">,</button>
-              {buttonGroups.basic.map(([value, label]) => (
-                <button
-                  type="button"
-                  key={`${value}-${label}`}
-                  className={`calculator-key ${['/', '*', '-', '+', '^'].includes(value) ? 'operator' : ''}`}
-                  onClick={() => append(value)}
-                  aria-label={label}
-                >
-                  {label}
-                </button>
-              ))}
-              <button type="button" className="calculator-key equals" onClick={calculate} aria-label="Calculate">=</button>
+              {buttonGroups.basic.map(([value, label, action]) => {
+                let clickHandler = () => append(value);
+                if (action === 'clearEntry') clickHandler = clearEntry;
+                else if (action === 'clear') clickHandler = clear;
+                else if (action === 'backspace') clickHandler = () => setExpression((current) => current.slice(0, -1));
+                else if (action === 'calculate') clickHandler = calculate;
+
+                let className = 'calculator-key';
+                if (['/', '*', '-', '+', '^'].includes(value)) className += ' operator';
+                else if (['CE', 'C', 'Delete'].includes(value)) className += ' utility';
+                else if (value === '=') className += ' equals';
+
+                return (
+                  <button
+                    type="button"
+                    key={`${value}-${label}`}
+                    className={className}
+                    onClick={clickHandler}
+                    aria-label={label}
+                  >
+                    {value === 'Delete' ? <Delete size={18} /> : label}
+                  </button>
+                );
+              })}
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-const mongoose = require('./db');
+const { mongoose, connectToMongo } = require('./db');
 const Goal = require('./models/Goal');
 
 async function migrate() {
@@ -54,4 +54,6 @@ async function migrate() {
   }
 }
 
-mongoose.connection.once('open', migrate);
+connectToMongo().then(() => {
+  migrate();
+});
