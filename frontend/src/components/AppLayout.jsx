@@ -66,8 +66,7 @@ const BREAKPOINTS = {
 
 const ANIMATION_DURATIONS = {
   fast: 0.1,
-  /* [AUDIT] Increased from 0.2 to 0.25 for smoother page transitions */
-  normal: 0.25,
+  normal: 0.2,
   slow: 0.35
 };
 
@@ -613,33 +612,41 @@ export default function AppLayout({ children }) {
   return (
     <ErrorBoundary>
       <div className="app-island-layout" data-theme={theme}>
-        {/* Ambient AMOLED Background */}
-        <div className="animated-bg" aria-hidden="true">
-          <div className="gradient-bg"></div>
-          <div className="gradients-container">
-            <div className="gradient gradient-1"></div>
-            <div className="gradient gradient-2"></div>
-            <div className="gradient gradient-3"></div>
-          </div>
-          <div className="minimal-pattern"></div>
-        </div>
+        {/* Clean Flat/Subtle Gradient Background (Reference: portfolioskens.vercel.app - No 3D) */}
+        <div className="portfolio-bg-layer" aria-hidden="true" />
 
-        {/* Desktop Sidebar */}
+        {/* Desktop Sidebar (Floating Cyber Control Drawer) */}
         {deviceType === 'desktop' && (
-          <DesktopSidebar
-            sidebarOpen={sidebarOpen}
-            onToggle={handleSidebarToggle}
-            userInfo={userInfo}
-            currencyInfo={currencyInfo}
-            lang={lang}
-            t={t}
-            logout={logout}
-          />
+          <>
+            <AnimatePresence>
+              {sidebarOpen && (
+                <motion.div
+                  className="sidebar-backdrop-overlay"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={handleSidebarToggle}
+                  aria-hidden="true"
+                />
+              )}
+            </AnimatePresence>
+            <DesktopSidebar
+              sidebarOpen={sidebarOpen}
+              onToggle={handleSidebarToggle}
+              userInfo={userInfo}
+              currencyInfo={currencyInfo}
+              lang={lang}
+              t={t}
+              logout={logout}
+            />
+          </>
         )}
 
         {/* Main Content */}
         <main className="island-main">
           <Header
+            sidebarOpen={sidebarOpen}
+            onToggleSidebar={handleSidebarToggle}
             pageTitle={pageTitle}
             userInfo={userInfo}
             activeDropdown={activeDropdown}
@@ -679,7 +686,7 @@ export default function AppLayout({ children }) {
                 className="island-page"
                 initial={{ opacity: 0, y: 14, scale: 0.99 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -14 }} /* [AUDIT] Fixed exit y to match initial */
+                exit={{ opacity: 0, y: -8 }}
                 transition={{
                   duration: ANIMATION_DURATIONS.normal,
                   ease: [0.16, 1, 0.3, 1]
@@ -800,15 +807,46 @@ const DesktopSidebar = React.memo(({
   sidebarOpen, onToggle,
   userInfo, t, logout
 }) => {
-  /* [AUDIT] Keep isOpen strictly bound to sidebarOpen to eliminate oscillating hover loops that shake the navbar and sidebar */
-  const isOpen = sidebarOpen;
+  const [isHovered, setIsHovered] = useState(false);
+  const hoverTimeoutRef = useRef(null);
+
+  const handleMouseEnter = useCallback(() => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setIsHovered(true);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    // 180ms hysteresis ensures seamless transition across internal gaps without flickering
+    hoverTimeoutRef.current = setTimeout(() => {
+      setIsHovered(false);
+      hoverTimeoutRef.current = null;
+    }, 180);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const isOpen = sidebarOpen || isHovered;
 
   return (
     <aside
-      className={`island-sidebar glass ${isOpen ? 'open' : 'collapsed'}`}
+      className={`island-sidebar glass ${isOpen ? 'open' : 'collapsed'} ${isHovered ? 'hover-expanded' : ''}`}
       aria-label="Main navigation sidebar"
       aria-expanded={isOpen}
       id="desktop-navigation"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       <div className="island-brand">
         <motion.div className="brand-icon">
@@ -833,7 +871,6 @@ const DesktopSidebar = React.memo(({
           aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           aria-expanded={sidebarOpen}
           aria-controls="desktop-navigation"
-          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           <motion.span animate={{ rotate: isOpen ? 180 : 0 }}>
             <ChevronRight size={16} />
@@ -841,23 +878,28 @@ const DesktopSidebar = React.memo(({
         </button>
       </div>
 
-      {/* User Info (Read-only now) */}
+      {/* User Info (Read-only) */}
       <div className="island-user dropdown-container">
-        <div
-          className="user-trigger"
-          style={{ ...styles.userTrigger, cursor: 'default', position: 'relative' }}
-        >
-          <div className="ambient-glow" style={{ position: 'absolute', top: -5, left: -5, right: -5, bottom: -5, background: userInfo.avatarColor, filter: 'blur(15px)', opacity: 0.4, borderRadius: '50%' }}></div>
-          <div className="user-avatar" style={{ background: userInfo.avatarColor, overflow: 'hidden', position: 'relative', zIndex: 1 }}>
-            {userInfo.isBase64Avatar ? (
-              <img src={userInfo.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              userInfo.avatar
-            )}
+        <div className="user-trigger">
+          <div className="user-avatar-wrapper">
+            <div className="ambient-glow" style={{ background: userInfo.avatarColor }} />
+            <div className="user-avatar" style={{ background: userInfo.avatarColor }}>
+              {userInfo.isBase64Avatar ? (
+                <img src={userInfo.avatar} alt="Avatar" />
+              ) : (
+                userInfo.avatar
+              )}
+            </div>
           </div>
           <AnimatePresence>
             {isOpen && (
-              <motion.div className="user-info" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ minWidth: 0, marginLeft: '12px' }}>
+              <motion.div
+                className="user-info"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
                 <p className="u-name" title={userInfo.displayName}>{userInfo.displayName}</p>
                 <p className="u-role">{userInfo.role}</p>
               </motion.div>
@@ -874,7 +916,6 @@ const DesktopSidebar = React.memo(({
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) => `inav-item ${isActive ? 'active' : ''}`}
-            title={!isOpen ? t(item.labelKey) : undefined}
           >
             {({ isActive }) => (
               <>
@@ -892,8 +933,16 @@ const DesktopSidebar = React.memo(({
                   )}
                 </AnimatePresence>
                 {isActive && (
-                  /* [AUDIT] Replaced layoutId spring with CSS active pill to eliminate coordinate jitter */
-                  <div className="inav-active-pill" />
+                  <motion.div
+                    className="inav-active-pill"
+                    layoutId="islandActive"
+                    transition={{
+                      type: 'spring',
+                      stiffness: 300,
+                      damping: 25,
+                      layout: { duration: ANIMATION_DURATIONS.fast }
+                    }}
+                  />
                 )}
               </>
             )}
@@ -902,11 +951,7 @@ const DesktopSidebar = React.memo(({
       </nav>
 
       <div className="island-footer">
-        <NavLink
-          to="/settings"
-          className={({ isActive }) => `inav-item ${isActive ? 'active' : ''}`}
-          title={!isOpen ? t('settings') : undefined}
-        >
+        <NavLink to="/settings" className={({ isActive }) => `inav-item ${isActive ? 'active' : ''}`}>
           <Settings size={20} className="inav-icon nav-icon-settings" />
           <AnimatePresence>
             {isOpen && (
@@ -921,13 +966,7 @@ const DesktopSidebar = React.memo(({
             )}
           </AnimatePresence>
         </NavLink>
-        <button
-          onClick={logout}
-          className="inav-item text-danger"
-          style={{ marginTop: '5px' }}
-          aria-label={t?.('logout') || 'Log Out'}
-          title={!isOpen ? (t?.('logout') || 'Log Out') : undefined}
-        >
+        <button onClick={logout} className="inav-item text-danger" aria-label={t?.('logout') || 'Log Out'}>
           <LogOut size={20} className="inav-icon nav-icon-logout" />
           <AnimatePresence>
             {isOpen && (
@@ -949,7 +988,34 @@ const DesktopSidebar = React.memo(({
 
 DesktopSidebar.displayName = 'DesktopSidebar';
 
+const BrandLogo = ({ size = 20, className = 'brand-logo-svg' }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={className}
+    style={{ display: 'inline-block', verticalAlign: 'middle' }}
+  >
+    <defs>
+      <linearGradient id="brandLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#00d4ff" />
+        <stop offset="100%" stopColor="#6f00ff" />
+      </linearGradient>
+    </defs>
+    <polygon
+      points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5"
+      stroke="url(#brandLogoGrad)"
+      strokeWidth="2"
+      fill="rgba(0, 212, 255, 0.12)"
+    />
+    <circle cx="12" cy="12" r="3.5" fill="url(#brandLogoGrad)" />
+  </svg>
+);
+
 const Header = React.memo(({
+  sidebarOpen, onToggleSidebar,
   pageTitle, userInfo,
   activeDropdown, onDropdownToggle, onCloseDropdowns,
   onShowConverter, onShowAlerts, onShowAI, urgentAlertsCount,
@@ -1012,349 +1078,270 @@ const Header = React.memo(({
   };
 
   return (
-    <header className="island-header glass">
-      <div className="ih-left">
-        <div className="ih-titles">
-          <h1>{pageTitle}</h1>
-        </div>
-      </div>
+    <header className="portfolio-header" aria-label={`Coinwise Navigation - ${pageTitle}`}>
+      <div className="nav-container">
+        {/* Brand Logo (Minimalist icon, no name text or title tooltip) */}
+        <NavLink to="/" className="port" aria-label="Coinwise Home">
+          <BrandLogo size={28} className="brand-logo-svg" />
+        </NavLink>
 
-      <div className="ih-center">
-        {/* Global Search trigger bar */}
-        <button
-          className="header-search-bar glass"
-          onClick={onOpenCmdPalette}
-          aria-label="Search transactions, goals, pages (Ctrl+K)"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '12px' }}
-        >
-          <Search size={15} className="hsb-icon" style={{ flexShrink: 0 }} />
-          <span className="hsb-placeholder" style={{ flexGrow: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {t?.('search_anything_placeholder') || 'Search anything...'}
-          </span>
-          <kbd className="hsb-kbd" style={{ flexShrink: 0 }}>⌘K</kbd>
-        </button>
-      </div>
+        {/* Navigation Links with Gliding Active Pill */}
+        <nav className="nav-links" aria-label="Main Navigation">
+          <NavLink to="/" end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            Dashboard
+          </NavLink>
+          <NavLink to="/transactions" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            Transactions
+          </NavLink>
+          <NavLink to="/analytics" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            Analytics
+          </NavLink>
+          <NavLink to="/budgets" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            Budgets
+          </NavLink>
+          <NavLink to="/goals" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            Goals
+          </NavLink>
+          <NavLink to="/wealth" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            Wealth
+          </NavLink>
+          <NavLink to="/about" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            About
+          </NavLink>
+        </nav>
 
-      <div className="ih-right">
-        <div className="ih-btn-group">
+        {/* Header Action Buttons & Toggles (Matching Reference) */}
+        <div className="nav-actions">
+          {/* Cloud Sync Indicator */}
           <button
             type="button"
             className={`connection-toggle connection-toggle-${syncState}`}
             onClick={toggleSync}
             disabled={isBackgroundSyncing}
             aria-pressed={syncEnabled}
-            aria-label={`Cloud sync: ${syncCopy}. Click to ${syncEnabled ? 'disable' : 'enable'} syncing.`}
+            aria-label={`Cloud sync: ${syncCopy}`}
             title={`Cloud sync: ${syncCopy}`}
           >
             <span className="connection-toggle-dot" aria-hidden="true" />
           </button>
 
-          {/* Search icon button for mobile/compact screens */}
+          {/* Quick Search */}
           <button
-            className="ibtn header-search-mobile-btn"
+            className="theme-toggle"
             onClick={onOpenCmdPalette}
             title="Search (Cmd+K)"
             aria-label="Search"
           >
-            <Search size={18} className="header-icon header-icon-search" />
+            <Search size={16} />
           </button>
 
-          {/* Keyboard Shortcuts Button */}
+          {/* Currency Converter */}
           <button
-            className="ibtn"
-            onClick={onOpenShortcuts}
-            title="Keyboard Shortcuts (?)"
-            aria-label="Keyboard Shortcuts"
-          >
-            <Keyboard size={18} className="header-icon header-icon-keyboard" />
-          </button>
-
-          {/* Language Dropdown */}
-          <div className="dropdown-container" style={{ position: 'relative' }}>
-            <button
-              className="ibtn"
-              id="language-btn"
-              onClick={() => onDropdownToggle('language')}
-              aria-expanded={activeDropdown === 'language'}
-              aria-haspopup="listbox"
-              aria-controls="language-dropdown"
-              aria-label="Change language"
-            >
-              <Languages size={18} className="header-icon header-icon-language" aria-hidden="true" />
-            </button>
-            <AnimatePresence>
-              {activeDropdown === 'language' && (
-                <LanguageDropdown
-                  currentLang={lang}
-                  t={t}
-                  onLanguageChange={onLanguageChange}
-                  onClose={onCloseDropdowns}
-                />
-              )}
-            </AnimatePresence>
-          </div>
-
-          <button
-            className="ibtn"
+            className="theme-toggle"
             onClick={onShowConverter}
             title="Currency Converter"
             aria-label="Currency converter"
           >
-            <Coins size={18} className="header-icon header-icon-currency" aria-hidden="true" />
+            <Coins size={16} />
           </button>
 
+          {/* AI Assistant */}
           <button
-            className="ibtn"
+            className="theme-toggle"
+            onClick={onShowAI}
+            title="AI Financial Assistant"
+            aria-label="AI Assistant"
+          >
+            <Sparkles size={16} />
+          </button>
+
+          {/* Theme Toggle (Exact Circular Pill from Reference) */}
+          <button
+            className="theme-toggle"
+            id="themeToggle"
             onClick={onToggleTheme}
-            title={`Switch to ${theme === 'amoled' ? 'Light' : 'AMOLED'} theme`}
-            aria-label={`Switch to ${theme === 'amoled' ? 'Light' : 'AMOLED'} theme`}
+            title={`Switch to ${theme === 'dark' || theme === 'amoled' ? 'Light' : 'Dark'} theme`}
+            aria-label="Toggle theme"
           >
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={theme}
-                initial={{ rotate: -90, opacity: 0 }}
-                animate={{ rotate: 0, opacity: 1 }}
-                exit={{ rotate: 90, opacity: 0 }}
-              >
-                {theme === 'amoled' ? <Sun size={18} className="header-icon header-icon-theme" /> : <Moon size={18} className="header-icon header-icon-theme" />}
-              </motion.span>
-            </AnimatePresence>
+            {theme === 'dark' || theme === 'amoled' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-        </div>
 
-        <div className="ih-separator" />
+          {/* Notification Bell with Dropdown */}
+          <div className="dropdown-container" style={{ position: 'relative' }}>
+            <button
+              className="theme-toggle"
+              onClick={() => onDropdownToggle('notifications')}
+              aria-expanded={activeDropdown === 'notifications'}
+              aria-label={`Alerts${urgentAlertsCount > 0 ? `, ${urgentAlertsCount} urgent` : ''}`}
+              title="Alerts"
+            >
+              <Bell size={16} />
+              {urgentAlertsCount > 0 && <span className="nav-unread-dot" />}
+            </button>
 
-        {/* Notification Bell with Preview Dropdown */}
-        <div className="dropdown-container" style={{ position: 'relative' }}>
-          <button
-            className="ibtn alert-btn"
-            onClick={() => onDropdownToggle('notifications')}
-            aria-expanded={activeDropdown === 'notifications'}
-            aria-haspopup="true"
-            aria-label={`Alerts${urgentAlertsCount > 0 ? `, ${urgentAlertsCount} urgent` : ''}`}
-          >
-            <Bell size={20} className="header-icon header-icon-alerts" />
-            <span role="status" aria-live="polite">
-              {urgentAlertsCount > 0 && (
-                <motion.span
-                  className="alert-badge"
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0 }}
+            <AnimatePresence>
+              {activeDropdown === 'notifications' && (
+                <motion.div
+                  className="header-alerts-dropdown"
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                  onClick={e => e.stopPropagation()}
                 >
-                  {urgentAlertsCount}
-                </motion.span>
-              )}
-            </span>
-          </button>
-
-          <AnimatePresence>
-            {activeDropdown === 'notifications' && (
-              <motion.div
-                className="header-alerts-dropdown"
-                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                onClick={e => e.stopPropagation()}
-              >
-                <div className="had-header">
-                  <span className="had-title">Smart Alerts</span>
-                  {activeAlerts.length > 0 && (
-                    <button className="had-mark-read" onClick={onDismissAllAlerts}>
-                      <Check size={13} /> Clear
-                    </button>
-                  )}
-                </div>
-
-                <div className="had-list">
-                  {activeAlerts.length > 0 ? (
-                    activeAlerts.slice(0, 3).map((a, idx) => (
-                      <div key={idx} className={`had-item ${a.type || 'info'}`}>
-                        <span className="had-item-icon">{a.icon || '🔔'}</span>
-                        <div className="had-item-body">
-                          <p className="had-item-title">{a.title}</p>
-                          <p className="had-item-msg">{a.message}</p>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="had-empty">
-                      <CheckCircle2 size={24} className="text-success" />
-                      <p>All caught up!</p>
-                      <span>No urgent alerts right now.</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="had-footer">
-                  <button className="had-view-all-btn" onClick={onShowAlerts}>
-                    Open Alerts Center <ExternalLink size={13} />
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* AI Assistant Button */}
-        <button
-          className="ibtn ai-btn"
-          onClick={onShowAI}
-          title="AI Financial Assistant"
-          aria-label="AI Assistant"
-        >
-          <Sparkles size={20} className="header-icon header-icon-ai" />
-        </button>
-
-        {/* Interactive Balance with Quick-Stats Popover */}
-        <div className="dropdown-container" style={{ position: 'relative' }}>
-          <button
-            className="ih-balance-btn ih-balance"
-            onClick={() => onDropdownToggle('balanceStats')}
-            aria-expanded={activeDropdown === 'balanceStats'}
-            title="Click for financial summary"
-            aria-label={`Balance: ${formattedBalance}. Click for quick stats.`}
-          >
-            <TrendingUp size={16} className="header-icon header-icon-balance" />
-            <span>{formattedBalance}</span>
-          </button>
-
-          <AnimatePresence>
-            {activeDropdown === 'balanceStats' && (
-              <motion.div
-                className="header-stats-dropdown"
-                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                onClick={e => e.stopPropagation()}
-              >
-                <p className="hsd-title">Financial Position</p>
-                <div className="hsd-grid">
-                  <div className="hsd-stat">
-                    <span className="hsd-label">Net Balance</span>
-                    <span className={`hsd-val ${financialSummary.net >= 0 ? 'text-success' : 'text-danger'}`}>
-                      {fmt ? fmt(financialSummary.net) : `${currencySymbol}${financialSummary.net.toFixed(2)}`}
-                    </span>
-                  </div>
-                  <div className="hsd-stat">
-                    <span className="hsd-label">Total Inflow</span>
-                    <span className="hsd-val text-success">
-                      +{fmt ? fmt(financialSummary.income) : `${currencySymbol}${financialSummary.income.toFixed(2)}`}
-                    </span>
-                  </div>
-                  <div className="hsd-stat">
-                    <span className="hsd-label">Total Outflow</span>
-                    <span className="hsd-val text-danger">
-                      -{fmt ? fmt(financialSummary.expense) : `${currencySymbol}${financialSummary.expense.toFixed(2)}`}
-                    </span>
-                  </div>
-                  <div className="hsd-stat">
-                    <span className="hsd-label">Savings Rate</span>
-                    <span className="hsd-val text-brand">
-                      {financialSummary.rate}%
-                    </span>
-                  </div>
-                </div>
-                <div className="hsd-footer">
-                  <button className="hsd-link" onClick={() => { onCloseDropdowns(); navigate('/analytics'); }}>
-                    View Full Analytics →
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* User Profile Dropdown */}
-        <div className="dropdown-container" style={{ position: 'relative' }}>
-          <button
-            className="ih-avatar-btn"
-            onClick={onOpenProfile}
-            title="Open user profile menu"
-            aria-expanded={activeDropdown === 'profile'}
-            aria-haspopup="true"
-            aria-label="Open profile menu"
-            style={{
-              ...styles.avatarButton,
-              background: userInfo.avatarColor,
-              boxShadow: `0 4px 12px ${userInfo.avatarColor}44`,
-              cursor: 'pointer',
-              overflow: 'hidden',
-              padding: userInfo.isBase64Avatar ? 0 : undefined
-            }}
-          >
-            {userInfo.isBase64Avatar ? (
-              <img src={userInfo.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
-            ) : (
-              userInfo.avatar
-            )}
-          </button>
-
-          <AnimatePresence>
-            {activeDropdown === 'profile' && (
-              <motion.div
-                className="header-profile-dropdown"
-                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                onClick={e => e.stopPropagation()}
-              >
-                <div className="hpd-user-card">
-                  <div className="hpd-avatar" style={{ background: userInfo.avatarColor }}>
-                    {userInfo.isBase64Avatar ? (
-                      <img src={userInfo.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
-                    ) : (
-                      userInfo.avatar
+                  <div className="had-header">
+                    <span className="had-title">Smart Alerts</span>
+                    {activeAlerts.length > 0 && (
+                      <button className="had-mark-read" onClick={onDismissAllAlerts}>
+                        <Check size={13} /> Clear
+                      </button>
                     )}
                   </div>
-                  <div className="hpd-info">
-                    <p className="hpd-name">{userInfo.displayName}</p>
-                    <p className="hpd-email">{user?.email || 'Logged in user'}</p>
+                  <div className="had-list">
+                    {activeAlerts.length > 0 ? (
+                      activeAlerts.slice(0, 3).map((a, idx) => (
+                        <div key={idx} className={`had-item ${a.type || 'info'}`}>
+                          <span>{a.message || a.title}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="had-empty">No unread alerts</div>
+                    )}
                   </div>
-                </div>
+                  <div className="had-footer">
+                    <button className="had-view-all-btn" onClick={onShowAlerts}>
+                      Open Alerts Center <ExternalLink size={13} />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
-                <div className="hpd-actions">
-                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); navigate('/settings'); }}>
-                    <Settings size={16} />
-                    <span>{t?.('settings') || 'Settings & Preferences'}</span>
-                  </button>
-                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); navigate('/settings?tab=users'); }}>
-                    <Users size={16} />
-                    <span>{t?.('manage_users') || 'Manage Users'}</span>
-                  </button>
-                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenShortcuts(); }}>
-                    <Keyboard size={16} />
-                    <span>{t?.('shortcuts') || 'Keyboard Shortcuts'}</span>
-                    <kbd className="hpd-kbd">?</kbd>
-                  </button>
-                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenCmdPalette(); }}>
-                    <Search size={16} />
-                    <span>{t?.('global_search') || 'Global Search'}</span>
-                    <kbd className="hpd-kbd">⌘K</kbd>
-                  </button>
-                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenHelp(); }}>
-                    <HelpCircle size={16} />
-                    <span>{t?.('help_center') || 'Help & Knowledge Base'}</span>
-                  </button>
-                  <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenTour(); }}>
-                    <Sparkles size={16} />
-                    <span>{t?.('onboarding_tour') || 'Platform Onboarding Tour'}</span>
-                  </button>
-                  <button className="hpd-action-btn" onClick={() => { onToggleTheme(); }}>
-                    {theme === 'amoled' ? <Sun size={16} /> : <Moon size={16} />}
-                    <span>{t?.('theme') || 'Theme'}: {theme === 'amoled' ? 'AMOLED' : 'Light'}</span>
-                  </button>
-                </div>
+          {/* User Profile Avatar Dropdown */}
+          <div className="dropdown-container" style={{ position: 'relative' }}>
+            <button
+              className="theme-toggle nav-avatar-btn"
+              onClick={onOpenProfile}
+              title="User profile"
+              aria-expanded={activeDropdown === 'profile'}
+              aria-label="User profile"
+              style={{
+                background: userInfo.avatarColor,
+                overflow: 'hidden',
+                padding: 0,
+                border: '1px solid rgba(0, 212, 255, 0.35)'
+              }}
+            >
+              {userInfo.isBase64Avatar ? (
+                <img src={userInfo.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                userInfo.avatar
+              )}
+            </button>
 
-                <div className="hpd-footer">
-                  <button className="hpd-logout-btn text-danger" onClick={() => { onCloseDropdowns(); logout(); }}>
-                    <LogOut size={16} />
-                    <span>{t?.('logout') || 'Log Out'}</span>
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            <AnimatePresence>
+              {activeDropdown === 'profile' && (
+                <motion.div
+                  className="header-profile-dropdown"
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="hpd-user-card">
+                    <div className="hpd-avatar" style={{ background: userInfo.avatarColor }}>
+                      {userInfo.isBase64Avatar ? (
+                        <img src={userInfo.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                      ) : (
+                        userInfo.avatar
+                      )}
+                    </div>
+                    <div className="hpd-info">
+                      <p className="hpd-name">{userInfo.displayName}</p>
+                      <p className="hpd-email">{user?.email || 'Logged in user'}</p>
+                      {formattedBalance && (
+                        <div className="hpd-balance-tag">
+                          <span>Balance:</span> <strong>{formattedBalance}</strong>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {financialSummary && (
+                    <div className="hpd-quick-summary" style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      margin: '4px 12px 8px',
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem'
+                    }}>
+                      <div>
+                        <span style={{ color: 'var(--text-secondary)' }}>Net: </span>
+                        <span style={{ color: financialSummary.net >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                          {fmt ? fmt(financialSummary.net) : `${currencySymbol}${financialSummary.net.toFixed(2)}`}
+                        </span>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-secondary)' }}>Savings: </span>
+                        <span style={{ color: '#00d4ff', fontWeight: 600 }}>{financialSummary.rate}%</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="hpd-actions">
+                    <button className="hpd-action-btn" onClick={() => { onLanguageChange?.(lang === 'en' ? 'hi' : 'en'); }}>
+                      <Languages size={16} />
+                      <span>Language: {lang === 'en' ? 'English (Switch to हिन्दी)' : 'हिन्दी (Switch to English)'}</span>
+                    </button>
+                    <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); navigate('/settings'); }}>
+                      <Settings size={16} />
+                      <span>{t?.('settings') || 'Settings & Preferences'}</span>
+                    </button>
+                    <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); navigate('/settings?tab=users'); }}>
+                      <Users size={16} />
+                      <span>{t?.('manage_users') || 'Manage Users'}</span>
+                    </button>
+                    <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenShortcuts(); }}>
+                      <Keyboard size={16} />
+                      <span>{t?.('shortcuts') || 'Keyboard Shortcuts'}</span>
+                      <kbd className="hpd-kbd">?</kbd>
+                    </button>
+                    <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenCmdPalette(); }}>
+                      <Search size={16} />
+                      <span>{t?.('global_search') || 'Global Search'}</span>
+                      <kbd className="hpd-kbd">⌘K</kbd>
+                    </button>
+                    <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenHelp(); }}>
+                      <HelpCircle size={16} />
+                      <span>{t?.('help_center') || 'Help & Knowledge Base'}</span>
+                    </button>
+                    <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onOpenTour(); }}>
+                      <Sparkles size={16} />
+                      <span>{t?.('onboarding_tour') || 'Platform Onboarding Tour'}</span>
+                    </button>
+                    <button className="hpd-action-btn" onClick={() => { onCloseDropdowns(); onToggleSidebar?.(); }}>
+                      <Menu size={16} />
+                      <span>{sidebarOpen ? 'Collapse Sidebar' : 'Expand Sidebar'}</span>
+                      <kbd className="hpd-kbd">⌘B</kbd>
+                    </button>
+                    <button className="hpd-action-btn" onClick={() => { onToggleTheme(); }}>
+                      {theme === 'dark' || theme === 'amoled' ? <Sun size={16} /> : <Moon size={16} />}
+                      <span>{t?.('theme') || 'Theme'}: {theme === 'dark' || theme === 'amoled' ? 'Dark' : 'Light'}</span>
+                    </button>
+                  </div>
+
+                  <div className="hpd-footer">
+                    <button className="hpd-logout-btn text-danger" onClick={() => { onCloseDropdowns(); logout(); }}>
+                      <LogOut size={16} />
+                      <span>{t?.('logout') || 'Log Out'}</span>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </header>

@@ -4,23 +4,22 @@
    Palette: Neutral blacks + Emerald/Teal primary + Violet secondary
    ================================================================ */
 
-/* [AUDIT] Commented out duplicate font @import — fonts already preloaded in index.html
-   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
-*/
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* ================================================================
    DESIGN TOKENS — Default (Dark, AMOLED-leaning)
    ================================================================ */
 :root {
-  /* ► Brand Palette RGB for rgba() usage */
-  --brand-primary-rgb:   16, 185, 129;
-  --brand-secondary-rgb: 139, 92, 246;
-  --danger-rgb:          239, 68, 68;
-  --success-rgb:         34, 197, 94;
-  --warning-rgb:         245, 158, 11;
-  --info-rgb:            6, 182, 212;   /* was missing — added */
+   /* ► Brand Palette RGB for rgba() usage */
+   --brand-primary-rgb: 16, 185, 129;
+   --brand-secondary-rgb: 139, 92, 246;
+   --danger-rgb: 239, 68, 68;
+   --success-rgb: 34, 197, 94;
+   --warning-rgb: 245, 158, 11;
+   --info-rgb: 6, 182, 212;
+   /* was missing — added */
 
-  /* ► Z-Index System (layered stack)
+   /* ► Z-Index System (layered stack)
      100   sticky headers / floating elements
      200   dropdowns / tooltips within page
      1000  modals / overlays (currency converter, AI panel)
@@ -29,171 +28,177 @@
      1300  alerts center overlay  (.ac-overlay)
      2000  global tooltips        (always on top)
   */
-  --z-negative: -1;
-  --z-base:     1;
-  --z-sticky:   100;
-  --z-dropdown: 200;
-  --z-modal:    999999;
-  --z-drawer:   1200;
-  --z-alerts:   1300;
-  --z-tooltip:  2000;
+   --z-negative: -1;
+   --z-base: 1;
+   --z-sticky: 100;
+   --z-dropdown: 200;
+   --z-modal: 999999;
+   --z-drawer: 1200;
+   --z-alerts: 1300;
+   --z-tooltip: 2000;
 
-  /* ► Typography Scale (Major Second) */
-  --text-xs:   0.75rem;    /* 12px */
-  --text-sm:   0.875rem;   /* 14px */
-  --text-base: 1rem;       /* 16px */
-  --text-lg:   1.125rem;   /* 18px */
-  --text-xl:   1.25rem;    /* 20px */
-  --text-2xl:  1.5rem;     /* 24px */
-  --text-3xl:  1.875rem;   /* 30px */
-  --text-4xl:  2.25rem;    /* 36px */
-  --text-5xl:  3rem;       /* 48px */
+   /* ► Typography Scale (Major Second) */
+   --text-xs: 0.75rem;
+   /* 12px */
+   --text-sm: 0.875rem;
+   /* 14px */
+   --text-base: 1rem;
+   /* 16px */
+   --text-lg: 1.125rem;
+   /* 18px */
+   --text-xl: 1.25rem;
+   /* 20px */
+   --text-2xl: 1.5rem;
+   /* 24px */
+   --text-3xl: 1.875rem;
+   /* 30px */
+   --text-4xl: 2.25rem;
+   /* 36px */
+   --text-5xl: 3rem;
+   /* 48px */
 
-  /* ► Spacing Scale (8px base) */
-  --space-1:  0.25rem;
-  --space-2:  0.5rem;
-  --space-3:  0.75rem;
-  --space-4:  1rem;
-  --space-5:  1.25rem;
-  --space-6:  1.5rem;
-  /* [AUDIT] Slightly tightened spacing for compact layout (original: 2rem, 2.5rem, 3rem, 4rem) */
-  --space-8:  1.75rem;
-  --space-10: 2.25rem;
-  --space-12: 2.75rem;
-  --space-16: 3.75rem;
+   /* ► Spacing Scale (8px base) */
+   --space-1: 0.25rem;
+   --space-2: 0.5rem;
+   --space-3: 0.75rem;
+   --space-4: 1rem;
+   --space-5: 1.25rem;
+   --space-6: 1.5rem;
+   --space-8: 2rem;
+   --space-10: 2.5rem;
+   --space-12: 3rem;
+   --space-16: 4rem;
 
-  /* ► Primary Brand — Emerald + Teal */
-  --brand-primary:   #10b981;
-  --brand-secondary: #8b5cf6;
-  --brand-accent:    #06b6d4;
-  --brand-tertiary:  #f59e0b;
-  --brand-glow:      rgba(16, 185, 129, 0.35);
-  --brand-glow-cyan: rgba(6, 182, 212, 0.25);
+   /* ► Primary Brand — Emerald + Teal */
+   --brand-primary: #10b981;
+   --brand-secondary: #8b5cf6;
+   --brand-accent: #06b6d4;
+   --brand-tertiary: #f59e0b;
+   --brand-glow: rgba(16, 185, 129, 0.35);
+   --brand-glow-cyan: rgba(6, 182, 212, 0.25);
 
-  /* ► Gradients */
-  --brand-gradient:         linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #8b5cf6 100%);
-  --brand-gradient-vibrant: linear-gradient(135deg, #34d399 0%, #10b981 40%, #06b6d4 100%);
-  --brand-gradient-warm:    linear-gradient(135deg, #10b981 0%, #f59e0b 100%);
-  --accent-separator:       rgba(16, 185, 129, 0.2);
+   /* ► Gradients */
+   --brand-gradient: linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #8b5cf6 100%);
+   --brand-gradient-vibrant: linear-gradient(135deg, #34d399 0%, #10b981 40%, #06b6d4 100%);
+   --brand-gradient-warm: linear-gradient(135deg, #10b981 0%, #f59e0b 100%);
+   --accent-separator: rgba(16, 185, 129, 0.2);
 
-  /* ► Semantic Colors */
-  --success: #10b981;
-  --danger:  #ef4444;
-  --warning: #f59e0b;
-  --info:    #06b6d4;
+   /* ► Semantic Colors */
+   --success: #10b981;
+   --danger: #ef4444;
+   --warning: #f59e0b;
+   --info: #06b6d4;
 
-  /* ► Deep Surfaces — Neutral Black (no blue tint) */
-  --surface-0: #080a0a;
-  --surface-1: #0f1010;
-  --surface-2: #161818;
-  --surface-3: #1e2020;
+   /* ► Deep Surfaces — Neutral Black (no blue tint) */
+   --surface-0: #080a0a;
+   --surface-1: #0f1010;
+   --surface-2: #161818;
+   --surface-3: #1e2020;
 
-  /* ► Glassmorphism Tokens */
-  --glass-1:            rgba(255, 255, 255, 0.028);
-  --glass-2:            rgba(255, 255, 255, 0.055);
-  --glass-3:            rgba(255, 255, 255, 0.090);
-  --glass-border:       rgba(255, 255, 255, 0.07);
-  --glass-border-hover: rgba(255, 255, 255, 0.18);
-  --glass-border-active:rgba(16, 185, 129, 0.55);
-  --glass-blur:         0px;
-  --glass-blur-sm:      0px;
-  --glass-blur-lg:      0px;
-  --glass-saturation:   100%;
-  --glass-brightness:   1.0;
-  /* [AUDIT] Reduced glass-radius from 20px to 16px for compact feel */
-  --glass-radius:       16px;
+   /* ► Glassmorphism Tokens */
+   --glass-1: rgba(255, 255, 255, 0.028);
+   --glass-2: rgba(255, 255, 255, 0.055);
+   --glass-3: rgba(255, 255, 255, 0.090);
+   --glass-border: rgba(255, 255, 255, 0.07);
+   --glass-border-hover: rgba(255, 255, 255, 0.18);
+   --glass-border-active: rgba(16, 185, 129, 0.55);
+   --glass-blur: 0px;
+   --glass-blur-sm: 0px;
+   --glass-blur-lg: 0px;
+   --glass-saturation: 100%;
+   --glass-brightness: 1.0;
+   --glass-radius: 20px;
 
-  /* ► Text */
-  --text-primary:   #ffffff;
-  --text-secondary: #9ca3af;
-  --text-muted:     #6b7280;
-  --text-dim:       #374151;
+   /* ► Text */
+   --text-primary: #ffffff;
+   --text-secondary: #9ca3af;
+   --text-muted: #6b7280;
+   --text-dim: #374151;
 
-  /* ► Sidebar */
-  --sidebar-bg: rgba(10, 11, 11, 0.88);
+   /* ► Sidebar */
+   --sidebar-bg: rgba(10, 11, 11, 0.88);
 
-  /* ► Navigation */
-  --nav-active-bg:   rgba(16, 185, 129, 0.12);
-  --nav-active-text: #34d399;
-  --nav-hover-bg:    rgba(255, 255, 255, 0.12);
+   /* ► Navigation */
+   --nav-active-bg: rgba(16, 185, 129, 0.12);
+   --nav-active-text: #34d399;
+   --nav-hover-bg: rgba(255, 255, 255, 0.12);
 
-  /* ► Ambient Background */
-  --ambient-base:   rgba(8, 10, 10, 1);
-  --ambient-mid:    rgba(12, 14, 14, 0.95);
-  --ambient-accent: rgba(18, 20, 20, 0.9);
-  --orb-ai-color:   rgba(139, 92, 246, 0.18);
-  --orb-goal-color: rgba(16, 185, 129, 0.18);
-  --orb-chart-color:rgba(6, 182, 212, 0.10);
+   /* ► Ambient Background */
+   --ambient-base: rgba(8, 10, 10, 1);
+   --ambient-mid: rgba(12, 14, 14, 0.95);
+   --ambient-accent: rgba(18, 20, 20, 0.9);
+   --orb-ai-color: rgba(139, 92, 246, 0.18);
+   --orb-goal-color: rgba(16, 185, 129, 0.18);
+   --orb-chart-color: rgba(6, 182, 212, 0.10);
 
-  /* ► Page Background Gradient */
-  --bg-gradient:
-    radial-gradient(circle at 15% 10%, rgba(16, 185, 129, 0.10) 0%, transparent 40%),
-    radial-gradient(circle at 85% 20%, rgba(139, 92, 246, 0.08) 0%, transparent 45%),
-    radial-gradient(circle at 50% 90%, rgba(6, 182, 212, 0.07) 0%, transparent 50%),
-    linear-gradient(160deg, #080a0a 0%, #0c0e0e 50%, #060808 100%);
+   /* ► Page Background Gradient */
+   --bg-gradient:
+      radial-gradient(circle at 15% 10%, rgba(16, 185, 129, 0.10) 0%, transparent 40%),
+      radial-gradient(circle at 85% 20%, rgba(139, 92, 246, 0.08) 0%, transparent 45%),
+      radial-gradient(circle at 50% 90%, rgba(6, 182, 212, 0.07) 0%, transparent 50%),
+      linear-gradient(160deg, #080a0a 0%, #0c0e0e 50%, #060808 100%);
 
-  /* ► Layout */
-  /* [AUDIT] Reduced sidebar-width 270→256, header-height 70→64, border-radius-2xl 26→22 for compact layout */
-  --sidebar-width:     256px;
-  --sidebar-collapsed: 76px;
-  --header-height:     64px;
-  --border-radius-xs:  6px;
-  --border-radius-sm:  10px;
-  --border-radius-md:  14px;
-  --border-radius-lg:  18px;
-  --border-radius-xl:  22px;
-  --border-radius-2xl: 22px;
-  --border-radius-pill:999px;
+   /* ► Layout */
+   --sidebar-width: 270px;
+   --sidebar-collapsed: 80px;
+   --header-height: 70px;
+   --border-radius-xs: 6px;
+   --border-radius-sm: 10px;
+   --border-radius-md: 14px;
+   --border-radius-lg: 18px;
+   --border-radius-xl: 22px;
+   --border-radius-2xl: 26px;
+   --border-radius-pill: 999px;
 
-  /* ► Shadows */
-  --shadow-xs:    0 1px 3px rgba(0, 0, 0, 0.25);
-  --shadow-sm:    0 4px 8px rgba(0, 0, 0, 0.35);
-  --shadow-md:    0 8px 20px rgba(0, 0, 0, 0.45);
-  --shadow-lg:    0 16px 36px rgba(0, 0, 0, 0.55);
-  --shadow-xl:    0 28px 56px rgba(0, 0, 0, 0.65);
-  --shadow-2xl:   0 48px 96px rgba(0, 0, 0, 0.80);
-  --shadow-glow:  0 0 28px rgba(16, 185, 129, 0.25), 0 0 60px rgba(16, 185, 129, 0.10);
-  --shadow-glow-sm: 0 0 16px rgba(16, 185, 129, 0.20);
-  --shadow-brand: 0 8px 28px rgba(16, 185, 129, 0.30);
-  --shadow-inner: inset 0 1px 1px rgba(255, 255, 255, 0.06);
-  --glass-shadow: 0 16px 48px rgba(0, 0, 0, 0.60);
-  --glass-shadow-hover: 0 24px 64px rgba(0, 0, 0, 0.70);
+   /* ► Shadows */
+   --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.25);
+   --shadow-sm: 0 4px 8px rgba(0, 0, 0, 0.35);
+   --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.45);
+   --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.55);
+   --shadow-xl: 0 28px 56px rgba(0, 0, 0, 0.65);
+   --shadow-2xl: 0 48px 96px rgba(0, 0, 0, 0.80);
+   --shadow-glow: 0 0 28px rgba(16, 185, 129, 0.25), 0 0 60px rgba(16, 185, 129, 0.10);
+   --shadow-glow-sm: 0 0 16px rgba(16, 185, 129, 0.20);
+   --shadow-brand: 0 8px 28px rgba(16, 185, 129, 0.30);
+   --shadow-inner: inset 0 1px 1px rgba(255, 255, 255, 0.06);
+   --glass-shadow: 0 16px 48px rgba(0, 0, 0, 0.60);
+   --glass-shadow-hover: 0 24px 64px rgba(0, 0, 0, 0.70);
 
-  /* ► Transitions */
-  --transition-instant: 0.1s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-fast:    0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-base:    0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow:    0.55s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-spring:  0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+   /* ► Transitions */
+   --transition-instant: 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+   --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+   --transition-base: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+   --transition-slow: 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+   --transition-spring: 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* ► Typography */
-  --font-body:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-head:   'Space Grotesk', 'Inter', sans-serif;
-  --font-accent: 'Space Grotesk', sans-serif;
-  --font-mono:   'JetBrains Mono', 'Fira Code', monospace;
-  --font-round:  'Space Grotesk', sans-serif;
+   /* ► Typography */
+   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+   --font-head: 'Space Grotesk', 'Inter', sans-serif;
+   --font-accent: 'Space Grotesk', sans-serif;
+   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+   --font-round: 'Space Grotesk', sans-serif;
 
-  /* ► Font Weights */
-  --weight-regular: 400;
-  --weight-medium:  500;
-  --weight-semibold:600;
-  --weight-bold:    700;
-  --weight-black:   800;
+   /* ► Font Weights */
+   --weight-regular: 400;
+   --weight-medium: 500;
+   --weight-semibold: 600;
+   --weight-bold: 700;
+   --weight-black: 800;
 
-  /* ► Animation Durations */
-  --duration-slow:    var(--transition-slow);
-  --duration-base:    var(--transition-base);
-  --duration-fast:    var(--transition-fast);
-  --duration-instant: var(--transition-instant);
-  --duration-spring:  var(--transition-spring);
+   /* ► Animation Durations */
+   --duration-slow: var(--transition-slow);
+   --duration-base: var(--transition-base);
+   --duration-fast: var(--transition-fast);
+   --duration-instant: var(--transition-instant);
+   --duration-spring: var(--transition-spring);
 
-  /* ► Semantic Shadow Tokens */
-  --shadow-soft:     0 4px 20px rgba(0, 0, 0, 0.12);
-  --shadow-elevated: 0 16px 40px rgba(0, 0, 0, 0.20);
+   /* ► Semantic Shadow Tokens */
+   --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.12);
+   --shadow-elevated: 0 16px 40px rgba(0, 0, 0, 0.20);
 
-  /* ► Container Queries */
-  --container-sm: 640px;
-  --container-md: 768px;
-  --container-lg: 1024px;
-  --container-xl: 1280px;
+   /* ► Container Queries */
+   --container-sm: 640px;
+   --container-md: 768px;
+   --container-lg: 1024px;
+   --container-xl: 1280px;
 }
