@@ -131,6 +131,8 @@ export default function Subscriptions() {
 
   const togglePauseStatus = async (sub) => {
     const subId = sub.id || sub._id;
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     const nextPaused = !sub.is_paused;
     try {
       await api.updateSubscription(subId, { is_paused: nextPaused });
@@ -138,11 +140,13 @@ export default function Subscriptions() {
       showToast('success', nextPaused ? `Paused ${sub.name}` : `Resumed ${sub.name}`);
     } catch {
       showToast('error', 'Failed to update status');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const confirmDelete = async () => {
-    if (!subToDelete) return;
+    if (!subToDelete || isSubmitting) return;
     setIsSubmitting(true);
     try {
       await api.deleteSubscription(subToDelete);

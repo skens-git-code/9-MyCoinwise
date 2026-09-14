@@ -13,8 +13,9 @@
   background: var(--surface-0);
   position: relative;
   box-sizing: border-box;
-  padding: 14px;
-  gap: 14px;
+  /* [AUDIT] Reduced padding 14→12, gap 14→10 for compact layout */
+  padding: 12px;
+  gap: 10px;
 }
 
 @keyframes pan-pattern {
@@ -51,10 +52,11 @@
 .island-brand {
   display: flex;
   align-items: center;
-  padding: 22px 14px;
+  /* [AUDIT] Reduced brand padding 22→18, min-height 74→66 for compact layout */
+  padding: 18px 14px;
   position: relative;
   gap: 16px;
-  min-height: 74px;
+  min-height: 66px;
 
   .brand-icon {
     width: 40px;
@@ -108,13 +110,20 @@
     }
   }
 
-  /* Collapsed: center the icon, hide toggle inside brand */
+  /* Collapsed: center the icon and stack toggle cleanly */
   .island-sidebar.collapsed & {
+    flex-direction: column;
     justify-content: center;
-    padding: 22px 0;
+    padding: 14px 0;
+    gap: 8px;
 
+    /* [AUDIT] Keep toggle button visible in collapsed state so it can be toggled without hover jitter */
     .collapse-toggle {
-      display: none;
+      margin-left: 0;
+      width: 24px;
+      height: 24px;
+      min-width: 24px !important;
+      min-height: 24px !important;
     }
   }
 }
@@ -274,7 +283,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 11px 12px;
+  /* [AUDIT] Reduced inav-item padding 11→9 for compact layout */
+  padding: 9px 12px;
   border-radius: 12px;
   color: var(--text-secondary);
   text-decoration: none;
@@ -393,13 +403,14 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  /* [AUDIT] Reduced header padding 16→14, min-height 68→62 for compact layout */
+  padding: 14px 22px;
   border-bottom: 1px solid var(--glass-border);
   background: rgba(255, 255, 255, 0.02);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
   z-index: 50;
-  min-height: 68px;
+  min-height: 62px;
   flex-shrink: 0;
   gap: 16px;
 
@@ -549,12 +560,13 @@
     background: color-mix(in srgb, var(--surface-1) 94%, rgba(255, 255, 255, 0.14));
     color: var(--text-primary);
     border-color: rgba(var(--brand-primary-rgb), 0.45);
-    transform: translateY(-3px) scale(1.04);
-    box-shadow: 0 10px 24px -2px rgba(0, 0, 0, 0.22), 0 0 16px rgba(var(--brand-primary-rgb), 0.25);
+    /* [AUDIT] Stable hover without scale to prevent button-group shaking */
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.18), 0 0 12px rgba(var(--brand-primary-rgb), 0.20);
   }
 
   &:active {
-    transform: translateY(0px) scale(0.95);
+    transform: translateY(0px) scale(0.97);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
   }
 }
@@ -604,10 +616,10 @@
 
   &:hover,
   &[aria-expanded="true"] {
-    transform: translateY(-3px);
+    transform: translateY(-1px);
     background: color-mix(in srgb, var(--surface-1) 92%, rgba(16, 185, 129, 0.15));
     border-color: var(--success);
-    box-shadow: 0 10px 24px -2px rgba(0, 0, 0, 0.20), 0 0 20px rgba(16, 185, 129, 0.28);
+    box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.16), 0 0 16px rgba(16, 185, 129, 0.24);
   }
 
   &:active {
@@ -632,13 +644,13 @@
 
   &:hover,
   &[aria-expanded="true"] {
-    transform: translateY(-3px) scale(1.08);
+    transform: translateY(-1px);
     border-color: var(--brand-primary);
-    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25), 0 0 0 3px rgba(var(--brand-primary-rgb), 0.35);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22), 0 0 0 2px rgba(var(--brand-primary-rgb), 0.35);
   }
 
   &:active {
-    transform: translateY(0px) scale(0.95);
+    transform: translateY(0px) scale(0.97);
   }
 }
 
@@ -650,6 +662,8 @@
   position: relative;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   scroll-behavior: smooth;
+  /* [AUDIT] Added scrollbar-gutter: stable to prevent layout shifts during navigation and scrolling */
+  scrollbar-gutter: stable;
 
   &::-webkit-scrollbar { width: 3px; }
   &::-webkit-scrollbar-track { background: transparent; }
@@ -663,7 +677,8 @@
 }
 
 .island-page {
-  padding: 26px 28px;
+  /* [AUDIT] Reduced padding 26/28 → 22/24 for compact layout */
+  padding: 22px 24px;
   max-width: 1560px;
   margin: 0 auto;
 }
@@ -734,6 +749,8 @@
   overflow-x: hidden;
   gap: 12px;
   box-sizing: border-box;
+  /* [AUDIT] Added max-height safety for small phones */
+  max-height: 100dvh;
 
   &::-webkit-scrollbar { width: 3px; }
   &::-webkit-scrollbar-thumb {
@@ -1379,9 +1396,11 @@
     overflow-x: hidden;
   }
 
+  /* [AUDIT] Commented out conflicting padding-bottom (duplicate with rule at ~line 1408)
   .island-content-wrapper {
     padding-bottom: 100px;
   }
+  */
 
   .island-header {
     padding: 10px 14px;

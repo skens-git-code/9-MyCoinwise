@@ -65,7 +65,14 @@ export default function QuickActionFAB({ onAddTransaction }) {
                     exit={{ opacity: 0, y: 10, scale: 0.8 }}
                     transition={{ delay: idx * 0.04 }}
                   >
-                    <span className="fab-option-label">{act.label}</span>
+                    {/* [AUDIT] Made label clickable to prevent unresponsive click behavior when clicking text */}
+                    <span
+                      className="fab-option-label"
+                      onClick={act.onClick}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {act.label}
+                    </span>
                     <button
                       className="fab-option-btn"
                       style={{ background: act.color }}

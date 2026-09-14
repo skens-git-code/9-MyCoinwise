@@ -3,13 +3,22 @@
 // Uses statistical models + trend analysis on transaction data
 // =============================================
 
+// Helper for safe YYYY-MM extraction without throwing Invalid time value RangeErrors
+function safeYearMonth(dateVal) {
+  if (!dateVal) return '';
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().substring(0, 7);
+}
+
 // ── Spending Prediction ──────────────────────────────────────────────────────
 export function predictNextMonthSpending(transactions) {
   if (!transactions || transactions.length < 2) return null;
 
   const monthlyExpenses = {};
   transactions.filter(t => t.type === 'expense').forEach(t => {
-    const key = new Date(t.date).toISOString().substring(0, 7); // YYYY-MM
+    const key = safeYearMonth(t.date); // YYYY-MM
+    if (!key) return;
     monthlyExpenses[key] = (monthlyExpenses[key] || 0) + Number(t.amount);
   });
 
@@ -76,7 +85,8 @@ export function predictTimeToGoal(goal, transactions) {
   const monthlyIncome = {};
   const monthlyExpense = {};
   transactions.forEach(t => {
-    const key = new Date(t.date).toISOString().substring(0, 7);
+    const key = safeYearMonth(t.date);
+    if (!key) return;
     if (t.type === 'income') monthlyIncome[key] = (monthlyIncome[key] || 0) + Number(t.amount);
     else monthlyExpense[key] = (monthlyExpense[key] || 0) + Number(t.amount);
   });
@@ -104,11 +114,11 @@ export function generateAlerts(transactions, user, goals = []) {
   const thisMonth = now.toISOString().substring(0, 7);
 
   const thisMonthExpenses = transactions.filter(t => {
-    const m = new Date(t.date).toISOString().substring(0, 7);
+    const m = safeYearMonth(t.date);
     return t.type === 'expense' && m === thisMonth;
   });
   const thisMonthIncome = transactions.filter(t => {
-    const m = new Date(t.date).toISOString().substring(0, 7);
+    const m = safeYearMonth(t.date);
     return t.type === 'income' && m === thisMonth;
   });
 

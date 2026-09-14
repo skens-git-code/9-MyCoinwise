@@ -242,7 +242,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     try {
       const amt = parseFloat(amount);
       const transactionData = {
-        id: initialData?.id, // include ID if editing
+        /* [AUDIT] Support both id and MongoDB _id for reliable transaction editing */
+        id: initialData?.id || initialData?._id,
+        _id: initialData?._id || initialData?.id,
         type,
         amount: amt,
         category,

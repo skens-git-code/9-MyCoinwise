@@ -115,6 +115,8 @@
   --shadow-lg:    0 16px 40px rgba(0, 0, 0, 0.95);
   --shadow-xl:    0 24px 48px rgba(0, 0, 0, 0.98);
   --shadow-2xl:   0 32px 64px rgba(0, 0, 0, 0.99);
+  // [AUDIT] Added missing shadow-inner override for AMOLED
+  --shadow-inner: inset 0 1px 1px rgba(255, 255, 255, 0.03);
 
   // ── Ambient Orbs ──
   --ambient-base:    rgba(0, 0, 0, 1);
@@ -171,6 +173,11 @@
 
   .island-main {
     background: var(--surface-0);
+
+    // [AUDIT] Reduce dot pattern visibility on true black
+    &::before {
+      opacity: 0.02;
+    }
   }
 
   .island-header {
