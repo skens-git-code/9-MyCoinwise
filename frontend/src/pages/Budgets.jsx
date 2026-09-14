@@ -18,6 +18,7 @@ export default function Budgets() {
   const [editingBudget, setEditingBudget] = useState(null);
   const [budgetToDelete, setBudgetToDelete] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form fields
   const [name, setName] = useState('');
@@ -123,7 +124,8 @@ export default function Budgets() {
 
   // Delete handler
   const handleDelete = async () => {
-    if (!budgetToDelete) return;
+    if (!budgetToDelete || isDeleting) return;
+    setIsDeleting(true);
     try {
       await api.deleteBudget(budgetToDelete.id || budgetToDelete._id);
       showToast('success', 'Budget deleted.');
@@ -131,6 +133,8 @@ export default function Budgets() {
       await refetch();
     } catch {
       showToast('error', 'Failed to delete budget.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -335,8 +339,10 @@ export default function Budgets() {
               <p>Are you sure you want to delete the budget <strong>{budgetToDelete.name}</strong>?</p>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.5rem' }}>This action cannot be undone, but your transactions will not be deleted.</p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
-                <button className="btn-secondary" onClick={() => setBudgetToDelete(null)}>Cancel</button>
-                <button className="btn-primary" style={{ background: 'var(--danger-color)' }} onClick={handleDelete}>Delete</button>
+                <button className="btn-secondary" disabled={isDeleting} onClick={() => setBudgetToDelete(null)}>Cancel</button>
+                <button className="btn-primary" style={{ background: 'var(--danger-color)' }} disabled={isDeleting} onClick={handleDelete}>
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </button>
               </div>
             </div>
           </Modal>

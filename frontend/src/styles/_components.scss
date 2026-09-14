@@ -26,7 +26,8 @@
 
   &:focus {
     border-color: var(--brand-primary);
-    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+    /* [AUDIT] Fixed iOS blue to brand primary */
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb), 0.15);
   }
 
   option {
@@ -94,6 +95,8 @@
   gap: 24px;
   position: relative;
   z-index: 1;
+  /* [AUDIT] Prevent horizontal scroll from particle pseudo-elements */
+  overflow: hidden;
 
   /* Ambient Gradient Breath */
   &::before {
@@ -130,6 +133,9 @@
     animation: particleDrift 45s linear infinite;
     filter: blur(1px);
     opacity: 0.6;
+    /* [AUDIT] Contain particle overlay to prevent layout thrashing */
+    contain: strict;
+    will-change: transform;
   }
 }
 
@@ -219,7 +225,8 @@
   transition: all 0.3s ease;
 
   &:hover {
-    animation: none;
+    /* [AUDIT] Use animation-play-state instead of animation:none to avoid layout jump */
+    animation-play-state: paused;
     transform: scale(1.05) !important;
     box-shadow: 0 0 25px 8px rgba(var(--brand-primary-rgb), 0.35) !important;
   }
@@ -289,7 +296,8 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
-  margin-bottom: 24px;
+  /* [AUDIT] Reduced header margin 24→18 for compact layout */
+  margin-bottom: 18px;
 
   .bento-insight-pill {
     display: inline-flex;
@@ -326,19 +334,21 @@
     position: relative;
     overflow: hidden;
 
+    /* [AUDIT] Changed shine from left→translateX for GPU acceleration */
     &::before {
       content: '';
       position: absolute;
       top: 0;
-      left: -100%;
+      left: 0;
       width: 70%;
       height: 100%;
       background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-      transition: left 0.5s ease;
+      transform: translateX(-100%);
+      transition: transform 0.5s ease;
     }
 
     &:hover::before {
-      left: 150%;
+      transform: translateX(250%);
     }
   }
 
@@ -429,9 +439,9 @@
 .bento-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  /* Phase 2: wider gap for breathing room */
   grid-auto-rows: minmax(130px, auto);
-  gap: 22px;
+  /* [AUDIT] Reduced gap 22→18 for compact layout */
+  gap: 18px;
 }
 
 @mixin bento-tile-base {
@@ -457,7 +467,8 @@
 
   &:hover {
     background: var(--surface-1);
-    transform: translateY(-4px) scale(1.005);
+    /* [AUDIT] Reduced hover transform slightly for subtlety */
+    transform: translateY(-3px) scale(1.003);
     border-color: rgba(var(--brand-primary-rgb), 0.5);
     box-shadow:
       0 12px 30px rgba(var(--brand-primary-rgb), 0.15),
@@ -466,6 +477,13 @@
 
   &:active {
     transform: scale(0.97);
+  }
+
+  /* [AUDIT] Reduce hover transform on mobile to prevent jitter */
+  @media (max-width: 640px) {
+    &:hover {
+      transform: translateY(-1px);
+    }
   }
 }
 
@@ -558,9 +576,9 @@
 @media (max-width: 900px) {
   .bento-grid {
     display: grid;
-    /* 2-column base: Balance spans both, Income+Expense side-by-side */
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
+    /* [AUDIT] Reduced mobile gap for compact layout */
+    gap: 14px;
   }
 
   /* Balance card — full width hero */
@@ -574,6 +592,8 @@
   .bento-expense {
     grid-column: span 1;
     min-height: 140px;
+    /* [AUDIT] Prevent overflow on narrow phones */
+    min-width: 0;
 
     /* Compact inner layout for side-by-side */
     .bh-mid h2 {
@@ -602,18 +622,19 @@
 /* Smallest phones — still side-by-side but compact */
 @media (max-width: 480px) {
   .bento-grid {
-    gap: 12px;
+    gap: 10px;
   }
 
   .bento-hero {
     min-height: 140px;
-    padding: 18px !important;
+    /* [AUDIT] Removed !important for better specificity management */
+    padding: 16px;
   }
 
   .bento-income,
   .bento-expense {
     min-height: 120px;
-    padding: 16px !important;
+    padding: 14px;
   }
 }
 
@@ -659,7 +680,7 @@
     margin-top: 16px;
 
     h2 {
-      font-size: 3rem;
+      font-size: clamp(2rem, 8vw, 3rem);
       font-weight: 900;
       font-family: var(--font-head);
       letter-spacing: -2px;
@@ -872,7 +893,9 @@
     background: var(--glass-2);
     border-color: rgba(var(--brand-primary-rgb), 0.35);
     transform: translateX(3px);
-    box-shadow: 0 4px 20px rgba(var(--brand-primary-rgb), 0.08), -2px 0 0 var(--brand-primary);
+    /* [AUDIT] Replaced box-shadow left-edge artifact with clean shadow */
+    box-shadow: 0 4px 20px rgba(var(--brand-primary-rgb), 0.08);
+    border-left: 2px solid var(--brand-primary);
   }
 
   .bt-icn {
@@ -1178,7 +1201,8 @@
   }
 
   @media (max-width: 640px) {
-    padding: 16px !important;
+    /* [AUDIT] Removed !important for better cascade management */
+    padding: 16px;
     gap: 8px;
   }
 }
@@ -1191,7 +1215,8 @@
 .shared-page {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  /* [AUDIT] Reduced gap 22→18 for compact layout */
+  gap: 18px;
   animation: fadeUp 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
@@ -3840,6 +3865,13 @@ textarea:focus-visible {
   flex-direction: column;
   gap: 0;
   box-shadow: var(--shadow-2xl), 0 0 0 1px var(--glass-border);
+
+  /* [AUDIT] Mobile auth card — reduce padding for small screens */
+  @media (max-width: 480px) {
+    padding: var(--space-6) var(--space-5);
+    max-width: 100%;
+    border-radius: var(--border-radius-lg);
+  }
 }
 
 /* Logo row */

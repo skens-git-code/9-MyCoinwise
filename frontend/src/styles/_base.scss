@@ -103,6 +103,7 @@ body::before {
   z-index: -2;
   animation: orbDrift1 22s ease-in-out infinite alternate;
   will-change: transform;
+  contain: layout style;
 }
 
 body::after {
@@ -121,6 +122,7 @@ body::after {
   z-index: -2;
   animation: orbDrift2 28s ease-in-out infinite alternate;
   will-change: transform;
+  contain: layout style;
 }
 
 .orb-3 {
@@ -137,7 +139,8 @@ body::after {
   pointer-events: none;
   z-index: -2;
   animation: orbDrift3 36s ease-in-out infinite alternate;
-  will-change: transform;
+  will-change: transform, opacity;
+  contain: layout style;
 }
 
 @keyframes orbDrift1 {
@@ -179,17 +182,28 @@ body::after {
 @keyframes orbDrift3 {
   0% {
     transform: translate(-50%, -50%) scale(1);
-    opacity: 1;
+    /* [AUDIT] Stabilized opacity range to prevent flicker (was 1→0.75→0.90) */
+    opacity: 0.9;
   }
 
   50% {
     transform: translate(-54%, -46%) scale(1.25);
-    opacity: 0.75;
+    opacity: 0.8;
   }
 
   100% {
     transform: translate(-46%, -54%) scale(0.82);
-    opacity: 0.90;
+    opacity: 0.85;
+  }
+}
+
+/* [AUDIT] Reduced-motion guard for background orbs */
+@media (prefers-reduced-motion: reduce) {
+  body::before,
+  body::after,
+  .orb-3 {
+    animation: none !important;
+    opacity: 0.08;
   }
 }
 
@@ -621,7 +635,8 @@ body::after {
 }
 
 .section-title {
-  font-size: 0.68rem;
+  /* [AUDIT] Increased font-size from 0.68rem to 0.72rem for readability */
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;

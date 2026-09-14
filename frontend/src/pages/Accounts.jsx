@@ -42,6 +42,8 @@ export default function Accounts() {
   const [editingAccount, setEditingAccount] = useState(null);
   const [accountToDelete, setAccountToDelete] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isArchivingId, setIsArchivingId] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
 
   // Form fields
@@ -169,7 +171,7 @@ export default function Accounts() {
 
   // ---------- Handle delete ----------
   const handleDelete = async () => {
-    if (!accountToDelete) return;
+    if (!accountToDelete || isDeleting) return;
     // Check if account has transactions (backend may provide a `transaction_count`)
     const transactionCount = accountToDelete.transaction_count || 0;
     if (transactionCount > 0) {
@@ -180,6 +182,7 @@ export default function Accounts() {
       setAccountToDelete(null);
       return;
     }
+    setIsDeleting(true);
     try {
       await api.deleteAccount(accountToDelete.id || accountToDelete._id);
       showToast('success', 'Account deleted.');
@@ -188,20 +191,27 @@ export default function Accounts() {
     } catch (err) {
       console.error(err);
       showToast('error', 'Failed to delete account.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   // ---------- Archive / Unarchive ----------
   const toggleArchive = async (account) => {
+    const accId = account.id || account._id;
+    if (isArchivingId) return;
+    setIsArchivingId(accId);
     try {
       const newStatus = account.is_active === false;
-      await api.updateAccount(account.id || account._id, {
+      await api.updateAccount(accId, {
         is_active: newStatus
       });
       showToast('success', `Account ${newStatus ? 'restored' : 'archived'}.`);
       await refetch();
     } catch {
       showToast('error', 'Failed to update archive status.');
+    } finally {
+      setIsArchivingId(null);
     }
   };
 
@@ -470,7 +480,7 @@ export default function Accounts() {
                               await api.updateSettings(user.id || user._id, { custom_account_types: newCustom });
                               setType('bank');
                               await refetch();
-                            } catch (e) {
+                            } catch {
                               showToast('error', 'Failed to remove custom type.');
                             }
                           }
@@ -618,16 +628,16 @@ export default function Accounts() {
                 This action cannot be undone.
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
-                <button className="btn-secondary" onClick={() => setAccountToDelete(null)}>
+                <button className="btn-secondary" disabled={isDeleting} onClick={() => setAccountToDelete(null)}>
                   Cancel
                 </button>
                 <button
                   className="btn-primary"
                   style={{ background: 'var(--danger-color)' }}
                   onClick={handleDelete}
-                  disabled={accountToDelete.transaction_count > 0}
+                  disabled={isDeleting || accountToDelete.transaction_count > 0}
                 >
-                  Delete
+                  {isDeleting ? 'Deleting...' : 'Delete'}
                 </button>
               </div>
             </div>

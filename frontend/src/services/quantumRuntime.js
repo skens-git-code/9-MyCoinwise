@@ -93,7 +93,8 @@ const QuantumRuntime = (() => {
     }
 
     initMagneticLinks() {
-      this.root.querySelectorAll('[data-magnetic], .inav-item').forEach((element) => {
+      /* [AUDIT] Removed .inav-item from magnetic mouse listeners to prevent sidebar layout thrashing and jitter */
+      this.root.querySelectorAll('[data-magnetic]').forEach((element) => {
         const onMove = Utils.throttle((event) => {
           const rect = element.getBoundingClientRect();
           const x = (event.clientX - (rect.left + rect.width / 2)) * CONFIG.magneticStrength;

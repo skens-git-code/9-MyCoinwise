@@ -2,7 +2,7 @@
   "name": "9-budgettracker",
   "version": "1.0.0",
   "description": "Budget Tracker Full Stack App",
-  "main": "clean.js",
+  "main": "backend/server.js",
   "type": "commonjs",
   "repository": {
     "type": "git",

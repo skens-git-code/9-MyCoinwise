@@ -4,7 +4,9 @@
    Palette: Neutral blacks + Emerald/Teal primary + Violet secondary
    ================================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+/* [AUDIT] Commented out duplicate font @import — fonts already preloaded in index.html
+   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+*/
 
 /* ================================================================
    DESIGN TOKENS — Default (Dark, AMOLED-leaning)
@@ -54,10 +56,11 @@
   --space-4:  1rem;
   --space-5:  1.25rem;
   --space-6:  1.5rem;
-  --space-8:  2rem;
-  --space-10: 2.5rem;
-  --space-12: 3rem;
-  --space-16: 4rem;
+  /* [AUDIT] Slightly tightened spacing for compact layout (original: 2rem, 2.5rem, 3rem, 4rem) */
+  --space-8:  1.75rem;
+  --space-10: 2.25rem;
+  --space-12: 2.75rem;
+  --space-16: 3.75rem;
 
   /* ► Primary Brand — Emerald + Teal */
   --brand-primary:   #10b981;
@@ -97,7 +100,8 @@
   --glass-blur-lg:      0px;
   --glass-saturation:   100%;
   --glass-brightness:   1.0;
-  --glass-radius:       20px;
+  /* [AUDIT] Reduced glass-radius from 20px to 16px for compact feel */
+  --glass-radius:       16px;
 
   /* ► Text */
   --text-primary:   #ffffff;
@@ -129,15 +133,16 @@
     linear-gradient(160deg, #080a0a 0%, #0c0e0e 50%, #060808 100%);
 
   /* ► Layout */
-  --sidebar-width:     270px;
-  --sidebar-collapsed: 80px;
-  --header-height:     70px;
+  /* [AUDIT] Reduced sidebar-width 270→256, header-height 70→64, border-radius-2xl 26→22 for compact layout */
+  --sidebar-width:     256px;
+  --sidebar-collapsed: 76px;
+  --header-height:     64px;
   --border-radius-xs:  6px;
   --border-radius-sm:  10px;
   --border-radius-md:  14px;
   --border-radius-lg:  18px;
   --border-radius-xl:  22px;
-  --border-radius-2xl: 26px;
+  --border-radius-2xl: 22px;
   --border-radius-pill:999px;
 
   /* ► Shadows */

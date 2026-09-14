@@ -66,7 +66,8 @@ const BREAKPOINTS = {
 
 const ANIMATION_DURATIONS = {
   fast: 0.1,
-  normal: 0.2,
+  /* [AUDIT] Increased from 0.2 to 0.25 for smoother page transitions */
+  normal: 0.25,
   slow: 0.35
 };
 
@@ -678,7 +679,7 @@ export default function AppLayout({ children }) {
                 className="island-page"
                 initial={{ opacity: 0, y: 14, scale: 0.99 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -8 }}
+                exit={{ opacity: 0, y: -14 }} /* [AUDIT] Fixed exit y to match initial */
                 transition={{
                   duration: ANIMATION_DURATIONS.normal,
                   ease: [0.16, 1, 0.3, 1]
@@ -799,8 +800,8 @@ const DesktopSidebar = React.memo(({
   sidebarOpen, onToggle,
   userInfo, t, logout
 }) => {
-  const [isHovered, setIsHovered] = React.useState(false);
-  const isOpen = sidebarOpen || isHovered;
+  /* [AUDIT] Keep isOpen strictly bound to sidebarOpen to eliminate oscillating hover loops that shake the navbar and sidebar */
+  const isOpen = sidebarOpen;
 
   return (
     <aside
@@ -808,8 +809,6 @@ const DesktopSidebar = React.memo(({
       aria-label="Main navigation sidebar"
       aria-expanded={isOpen}
       id="desktop-navigation"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <div className="island-brand">
         <motion.div className="brand-icon">
@@ -834,6 +833,7 @@ const DesktopSidebar = React.memo(({
           aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           aria-expanded={sidebarOpen}
           aria-controls="desktop-navigation"
+          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           <motion.span animate={{ rotate: isOpen ? 180 : 0 }}>
             <ChevronRight size={16} />
@@ -874,6 +874,7 @@ const DesktopSidebar = React.memo(({
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) => `inav-item ${isActive ? 'active' : ''}`}
+            title={!isOpen ? t(item.labelKey) : undefined}
           >
             {({ isActive }) => (
               <>
@@ -891,16 +892,8 @@ const DesktopSidebar = React.memo(({
                   )}
                 </AnimatePresence>
                 {isActive && (
-                  <motion.div
-                    className="inav-active-pill"
-                    layoutId="islandActive"
-                    transition={{
-                      type: 'spring',
-                      stiffness: 300,
-                      damping: 25,
-                      layout: { duration: ANIMATION_DURATIONS.fast }
-                    }}
-                  />
+                  /* [AUDIT] Replaced layoutId spring with CSS active pill to eliminate coordinate jitter */
+                  <div className="inav-active-pill" />
                 )}
               </>
             )}
@@ -909,7 +902,11 @@ const DesktopSidebar = React.memo(({
       </nav>
 
       <div className="island-footer">
-        <NavLink to="/settings" className={({ isActive }) => `inav-item ${isActive ? 'active' : ''}`}>
+        <NavLink
+          to="/settings"
+          className={({ isActive }) => `inav-item ${isActive ? 'active' : ''}`}
+          title={!isOpen ? t('settings') : undefined}
+        >
           <Settings size={20} className="inav-icon nav-icon-settings" />
           <AnimatePresence>
             {isOpen && (
@@ -924,7 +921,13 @@ const DesktopSidebar = React.memo(({
             )}
           </AnimatePresence>
         </NavLink>
-        <button onClick={logout} className="inav-item text-danger" style={{ marginTop: '5px' }} aria-label={t?.('logout') || 'Log Out'}>
+        <button
+          onClick={logout}
+          className="inav-item text-danger"
+          style={{ marginTop: '5px' }}
+          aria-label={t?.('logout') || 'Log Out'}
+          title={!isOpen ? (t?.('logout') || 'Log Out') : undefined}
+        >
           <LogOut size={20} className="inav-icon nav-icon-logout" />
           <AnimatePresence>
             {isOpen && (
