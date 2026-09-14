@@ -51,7 +51,7 @@ body {
 }
 
 .auth-card {
-  max-width: 520px;
+  max-width: clamp(340px, 92vw, 410px);
 }
 
 /* ── Layout compaction ────────────────────────────────────────── */
@@ -796,13 +796,14 @@ a,
   }
 
   .auth-card {
-    max-width: 520px;
-    padding: 32px 28px;
+    max-width: clamp(340px, 92vw, 410px);
+    padding: 22px 18px;
   }
 
   .auth-extra-row {
-    align-items: flex-start;
-    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: nowrap;
   }
 }
 

@@ -1009,7 +1009,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
             <strong>{memberSince}</strong>
             <span className="profile-summary-detail">{t?.('personal_workspace') || 'Your personal workspace'}</span>
           </div>
-          <div className="profile-summary-card">
+          <div className="profile-summary-card email-status-card">
             <span className="profile-summary-label">{t?.('email_status') || 'Email status'}</span>
             <strong className={user?.email_verified ? 'status-good' : 'status-pending'}>
               {user?.email_verified ? (t?.('verified') || 'Verified') : (t?.('unverified') || 'Unverified')}

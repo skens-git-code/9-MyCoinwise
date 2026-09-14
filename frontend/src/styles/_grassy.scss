@@ -333,6 +333,25 @@ select:focus,
   box-shadow: 0 0 0 4px rgba(var(--brand-primary-rgb), 0.13), 0 8px 22px rgba(var(--brand-primary-rgb), 0.08), inset 0 1px 0 rgba(255,255,255,.26);
 }
 
+/* Reset composite search inputs so inner inputs do not inherit outer borders, background or shadows */
+.il-search input,
+.header-search-bar input,
+.hsb-input-wrapper input,
+.search-box input,
+.cmd-input {
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+
+  &:focus {
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+}
+
 /* Transactions: make income/expense states feel intentional, not alarming. */
 .il-item.active {
   background: linear-gradient(110deg, rgba(var(--brand-primary-rgb), .14), rgba(var(--brand-secondary-rgb), .07));
