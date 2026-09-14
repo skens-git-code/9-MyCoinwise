@@ -269,7 +269,7 @@ export default function App() {
   };
 
   const logout = () => {
-    api.logout().catch(() => {});
+    api.logout().catch(() => { });
     localStorage.removeItem('mcw-token');
     sessionStorage.removeItem('mcw-token');
     setToken(null);
@@ -312,7 +312,7 @@ export default function App() {
       if (!user) setIsInitialAuthLoad(true);
       else setIsBackgroundSyncing(true);
       setGlobalError(null);
-      
+
       const me = await api.getMe();
       const activeId = me._id || me.id;
 
@@ -459,7 +459,7 @@ export default function App() {
         user, allUsers, transactions, theme, toggleTheme, setThemeDirect,
         addTransaction, deleteTransaction, editTransaction,
         updateTransaction: editTransaction,
-        resetAccount, createUser, switchUser, login, logout, 
+        resetAccount, createUser, switchUser, login, logout,
         isInitialAuthLoad, isBackgroundSyncing, globalError,
         fetchTransactions: fetchData,
         refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
@@ -469,36 +469,36 @@ export default function App() {
         <ToastProvider>
           <Router>
             <Suspense fallback={<Loader />}>
-            <Routes>
-              <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-              <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
-              <Route path="/*" element={
-                <ProtectedRoute>
-                  <AppLayout>
-                    <Suspense fallback={<Loader />}>
-                      <Routes>
-                        <Route path="/" element={<Dashboard />} />
-                        <Route path="/transactions" element={<Transactions />} />
-                        <Route path="/analytics" element={<Analytics />} />
-                        <Route path="/accounts" element={<Accounts />} />
-                        <Route path="/budgets" element={<Budgets />} />
-                        <Route path="/goals" element={<Goals />} />
-                        <Route path="/subscriptions" element={<Subscriptions />} />
-                        <Route path="/cashflow" element={<Cashflow />} />
-                        <Route path="/wealth" element={<Wealth />} />
-                        <Route path="/calendar" element={<Calendar />} />
-                        <Route path="/settings" element={<SettingsPage />} />
-                        <Route path="/about" element={<About />} />
-                        <Route path="/calculator" element={<Calculator />} />
-                        <Route path="*" element={<Navigate to="/" />} />
-                      </Routes>
-                    </Suspense>
-                  </AppLayout>
-                </ProtectedRoute>
-              } />
-            </Routes>
-          </Suspense>
-        </Router>
+              <Routes>
+                <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+                <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+                <Route path="/*" element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <Suspense fallback={<Loader />}>
+                        <Routes>
+                          <Route path="/" element={<Dashboard />} />
+                          <Route path="/transactions" element={<Transactions />} />
+                          <Route path="/analytics" element={<Analytics />} />
+                          <Route path="/accounts" element={<Accounts />} />
+                          <Route path="/budgets" element={<Budgets />} />
+                          <Route path="/goals" element={<Goals />} />
+                          <Route path="/subscriptions" element={<Subscriptions />} />
+                          <Route path="/cashflow" element={<Cashflow />} />
+                          <Route path="/wealth" element={<Wealth />} />
+                          <Route path="/calendar" element={<Calendar />} />
+                          <Route path="/settings" element={<SettingsPage />} />
+                          <Route path="/about" element={<About />} />
+                          <Route path="/calculator" element={<Calculator />} />
+                          <Route path="*" element={<Navigate to="/" />} />
+                        </Routes>
+                      </Suspense>
+                    </AppLayout>
+                  </ProtectedRoute>
+                } />
+              </Routes>
+            </Suspense>
+          </Router>
         </ToastProvider>
       </AppContext.Provider>
     </ErrorBoundary>
