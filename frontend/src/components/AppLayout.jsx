@@ -1080,10 +1080,15 @@ const Header = React.memo(({
   return (
     <header className="portfolio-header" aria-label={`Coinwise Navigation - ${pageTitle}`}>
       <div className="nav-container">
-        {/* Brand Logo (Minimalist icon, no name text or title tooltip) */}
-        <NavLink to="/" className="port" aria-label="Coinwise Home">
-          <BrandLogo size={28} className="brand-logo-svg" />
-        </NavLink>
+        {/* Brand Logo & Dynamic Mobile Page Title Anchor */}
+        <div className="nav-brand-group">
+          <NavLink to="/" className="port" aria-label="Coinwise Home">
+            <BrandLogo size={28} className="brand-logo-svg" />
+          </NavLink>
+          <span className="mobile-header-title" aria-current="page">
+            {pageTitle || 'MyCoinwise'}
+          </span>
+        </div>
 
         {/* Navigation Links with Gliding Active Pill */}
         <nav className="nav-links" aria-label="Main Navigation">
