@@ -3,12 +3,15 @@
 // Uses statistical models + trend analysis on transaction data
 // =============================================
 
-// Helper for safe YYYY-MM extraction without throwing Invalid time value RangeErrors
+// Helper for safe YYYY-MM extraction using local calendar components
 function safeYearMonth(dateVal) {
   if (!dateVal) return '';
+  if (typeof dateVal === 'string' && /^\d{4}-\d{2}/.test(dateVal)) {
+    return dateVal.substring(0, 7);
+  }
   const d = new Date(dateVal);
   if (isNaN(d.getTime())) return '';
-  return d.toISOString().substring(0, 7);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 // ── Spending Prediction ──────────────────────────────────────────────────────
@@ -19,7 +22,10 @@ export function predictNextMonthSpending(transactions) {
   transactions.filter(t => t.type === 'expense').forEach(t => {
     const key = safeYearMonth(t.date); // YYYY-MM
     if (!key) return;
-    monthlyExpenses[key] = (monthlyExpenses[key] || 0) + Number(t.amount);
+    const amount = Number(t.amount);
+    if (Number.isFinite(amount)) {
+      monthlyExpenses[key] = (monthlyExpenses[key] || 0) + amount;
+    }
   });
 
   const values = Object.values(monthlyExpenses);
@@ -87,8 +93,10 @@ export function predictTimeToGoal(goal, transactions) {
   transactions.forEach(t => {
     const key = safeYearMonth(t.date);
     if (!key) return;
-    if (t.type === 'income') monthlyIncome[key] = (monthlyIncome[key] || 0) + Number(t.amount);
-    else monthlyExpense[key] = (monthlyExpense[key] || 0) + Number(t.amount);
+    const amt = Number(t.amount);
+    if (!Number.isFinite(amt)) return;
+    if (t.type === 'income') monthlyIncome[key] = (monthlyIncome[key] || 0) + amt;
+    else monthlyExpense[key] = (monthlyExpense[key] || 0) + amt;
   });
 
   const months = [...new Set([...Object.keys(monthlyIncome), ...Object.keys(monthlyExpense)])];
@@ -111,7 +119,7 @@ export function generateAlerts(transactions, user, goals = []) {
   const alerts = [];
   const monthlyGoal = Number(user?.monthly_goal || 0);
   const now = new Date();
-  const thisMonth = now.toISOString().substring(0, 7);
+  const thisMonth = safeYearMonth(now);
 
   const thisMonthExpenses = transactions.filter(t => {
     const m = safeYearMonth(t.date);
@@ -122,8 +130,14 @@ export function generateAlerts(transactions, user, goals = []) {
     return t.type === 'income' && m === thisMonth;
   });
 
-  const totalExpense = thisMonthExpenses.reduce((a, c) => a + Number(c.amount), 0);
-  const totalIncome = thisMonthIncome.reduce((a, c) => a + Number(c.amount), 0);
+  const totalExpense = thisMonthExpenses.reduce((a, c) => {
+    const val = Number(c.amount);
+    return a + (Number.isFinite(val) ? val : 0);
+  }, 0);
+  const totalIncome = thisMonthIncome.reduce((a, c) => {
+    const val = Number(c.amount);
+    return a + (Number.isFinite(val) ? val : 0);
+  }, 0);
   const currentSavings = totalIncome - totalExpense;
 
   // 1. Prompt to set a monthly goal if none is set (always visible, encourages engagement)

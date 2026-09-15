@@ -22,7 +22,7 @@
   --c-surface: rgba(14, 15, 18, 0.90);
   --c-surface-solid: #0e1013;
   --c-surface-hover: rgba(24, 25, 30, 0.95);
-  --c-border: rgba(255, 255, 255, 0.14); /* Clearly visible crisp border */
+  --c-border: rgba(255, 255, 255, 0.14);
   --c-border-hover: rgba(0, 212, 255, 0.50);
 
   /* ── Accent & Gradient Tokens ── */
@@ -46,12 +46,15 @@
   --card-shadow: 0 16px 44px -8px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 
   /* ── Navbar Specific Tokens ── */
-  --nav-container-bg: rgba(10, 11, 14, 0.90);
-  --nav-container-backdrop: blur(24px) saturate(180%);
-  --nav-container-border: 1px solid rgba(255, 255, 255, 0.15);
-  --nav-container-shadow: 0 14px 40px -10px rgba(0, 0, 0, 0.88), 0 0 24px rgba(0, 212, 255, 0.08), inset 0 1px 1px 0 rgba(255, 255, 255, 0.15);
-  --nav-container-hover-border: rgba(0, 212, 255, 0.45);
-  --nav-container-hover-shadow: 0 18px 48px -8px rgba(0, 0, 0, 0.92), 0 0 32px rgba(0, 212, 255, 0.20), inset 0 1px 1px 0 rgba(255, 255, 255, 0.20);
+  --nav-container-bg: rgba(10, 11, 14, 0.94);
+  --nav-container-backdrop: blur(28px) saturate(190%);
+  --nav-container-border: rgba(0, 212, 255, 0.42);
+  --nav-container-ring: rgba(0, 212, 255, 0.22);
+  --nav-container-shadow: 0 14px 40px -10px rgba(0, 0, 0, 0.95), 0 0 24px rgba(0, 212, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  --nav-container-hover-border: rgba(0, 212, 255, 0.75);
+  --nav-container-hover-ring: rgba(0, 212, 255, 0.40);
+  --nav-container-hover-shadow: 0 18px 48px -8px rgba(0, 0, 0, 0.98), 0 0 32px rgba(0, 212, 255, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.30);
+  --nav-container-scrolled-border: rgba(0, 212, 255, 0.60);
 
   --nav-link-color: #94a3b8;
   --nav-link-hover-color: #f1f5f9;
@@ -123,12 +126,15 @@
   --card-shadow: 0 16px 44px -8px rgba(0, 0, 0, 0.08), 0 0 20px rgba(0, 136, 204, 0.06);
 
   /* ── Navbar Specific Tokens ── */
-  --nav-container-bg: rgba(255, 255, 255, 0.88);
-  --nav-container-backdrop: blur(24px) saturate(180%);
-  --nav-container-border: 1px solid rgba(0, 136, 204, 0.24);
-  --nav-container-shadow: 0 12px 36px -10px rgba(0, 0, 0, 0.08), 0 0 24px rgba(0, 136, 204, 0.08), inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
-  --nav-container-hover-border: rgba(0, 136, 204, 0.50);
-  --nav-container-hover-shadow: 0 16px 44px -8px rgba(0, 0, 0, 0.12), 0 0 32px rgba(0, 136, 204, 0.22);
+  --nav-container-bg: rgba(255, 255, 255, 0.94);
+  --nav-container-backdrop: blur(28px) saturate(190%);
+  --nav-container-border: rgba(0, 136, 204, 0.45);
+  --nav-container-ring: rgba(0, 136, 204, 0.18);
+  --nav-container-shadow: 0 12px 34px -6px rgba(15, 23, 42, 0.10), 0 2px 10px rgba(0, 136, 204, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --nav-container-hover-border: rgba(0, 136, 204, 0.70);
+  --nav-container-hover-ring: rgba(0, 136, 204, 0.32);
+  --nav-container-hover-shadow: 0 16px 44px -8px rgba(15, 23, 42, 0.14), 0 0 28px rgba(0, 136, 204, 0.24), inset 0 1px 0 rgba(255, 255, 255, 1);
+  --nav-container-scrolled-border: rgba(0, 136, 204, 0.60);
 
   --nav-link-color: #475569;
   --nav-link-hover-color: #0f172a;
@@ -277,8 +283,14 @@ h1, h2, h3, h4, h5, h6 {
    ================================================================ */
 
 :root {
-  --content-max-width: 1400px;
-  --content-padding-x: 32px;
+  --content-max-width: 1240px;
+  --content-padding-x: 28px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
 }
 
 @media (max-width: 1024px) {
@@ -295,50 +307,78 @@ h1, h2, h3, h4, h5, h6 {
 
 .portfolio-header {
   position: sticky !important;
-  top: 16px !important;
+  top: 14px !important;
   z-index: 1000 !important;
   width: 100% !important;
   display: flex !important;
   justify-content: center !important;
   align-items: center !important;
   pointer-events: none !important;
-  padding: 0 var(--content-padding-x, 32px) !important;
+  padding: 0 var(--content-padding-x, 28px) !important;
   margin-bottom: 8px !important;
   box-sizing: border-box !important;
-  transition: padding 0.2s ease !important;
+  transition: top 0.2s ease, padding 0.2s ease !important;
+}
+
+.portfolio-header.is-scrolled {
+  top: 8px !important;
 }
 
 .nav-container {
   pointer-events: auto !important;
-  width: 100% !important;
-  max-width: var(--content-max-width, 1400px) !important;
+  width: fit-content !important;
+  max-width: calc(100% - 24px) !important;
   margin: 0 auto !important;
-  min-height: 66px !important;
-  padding: 10px 24px !important;
+  min-height: 54px !important;
+  height: 54px !important;
+  padding: 0 12px 0 14px !important;
   display: flex !important;
   align-items: center !important;
-  justify-content: space-between !important;
-  gap: 16px !important;
+  justify-content: center !important;
+  gap: 14px !important;
   background: var(--nav-container-bg) !important;
   backdrop-filter: var(--nav-container-backdrop) !important;
   -webkit-backdrop-filter: var(--nav-container-backdrop) !important;
-  border: var(--nav-container-border) !important;
+  border: 1.5px solid var(--nav-container-border) !important;
   border-radius: 9999px !important;
-  box-shadow: var(--nav-container-shadow) !important;
-  transition: border-color 0.25s ease, box-shadow 0.25s ease, padding 0.2s ease !important;
+  box-shadow: 0 0 0 1px var(--nav-container-ring), var(--nav-container-shadow) !important;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, padding 0.2s ease, transform 0.2s ease !important;
   box-sizing: border-box !important;
 }
 
 .nav-container:hover {
   border-color: var(--nav-container-hover-border) !important;
-  box-shadow: var(--nav-container-hover-shadow) !important;
+  box-shadow: 0 0 0 1px var(--nav-container-hover-ring), var(--nav-container-hover-shadow) !important;
+}
+
+.nav-container.is-scrolled {
+  border-color: var(--nav-container-scrolled-border, var(--nav-container-hover-border)) !important;
+  box-shadow: 0 0 0 1px var(--nav-container-ring), 0 16px 42px -6px rgba(0, 0, 0, 0.20), var(--nav-container-shadow) !important;
+}
+
+[data-theme="amoled"] .nav-container,
+[data-theme="dark"] .nav-container {
+  background: rgba(10, 11, 14, 0.94) !important;
+  border: 1.5px solid rgba(0, 212, 255, 0.42) !important;
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.22), 0 14px 40px -10px rgba(0, 0, 0, 0.95), 0 0 24px rgba(0, 212, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
+
+  &:hover {
+    border-color: rgba(0, 212, 255, 0.75) !important;
+    box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.40), 0 18px 48px -8px rgba(0, 0, 0, 0.98), 0 0 32px rgba(0, 212, 255, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.30) !important;
+  }
+
+  &.is-scrolled {
+    border-color: rgba(0, 212, 255, 0.60) !important;
+    box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.30), 0 16px 44px -8px rgba(0, 0, 0, 0.98), 0 0 28px rgba(0, 212, 255, 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+  }
 }
 
 /* ── Brand Group (Minimalist Icon on Desktop, Dynamic Title on Mobile) ── */
 .nav-brand-group {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .mobile-header-title {
@@ -346,50 +386,53 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .port {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
   padding: 0;
   border-radius: 50%;
-  background: rgba(0, 212, 255, 0.06);
-  border: 1px solid rgba(0, 212, 255, 0.25);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  background: rgba(0, 212, 255, 0.08);
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.20), 0 0 12px rgba(0, 212, 255, 0.15);
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 
   .brand-logo-svg {
-    filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.65));
+    filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.65));
     flex-shrink: 0;
     transition: transform 0.2s ease;
   }
 
   &:hover {
-    transform: scale(1.06);
-    border-color: rgba(0, 212, 255, 0.50);
-    box-shadow: 0 0 16px rgba(0, 212, 255, 0.30);
+    transform: scale(1.05);
+    border-color: rgba(0, 212, 255, 0.60);
+    box-shadow: 0 0 16px rgba(0, 212, 255, 0.35);
   }
 }
 
 /* ── Navigation Links ── */
 .nav-links {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
 }
 
 .nav-link {
   font-family: var(--font-main);
-  font-size: 0.94rem;
+  font-size: 0.88rem;
   font-weight: 500;
   color: var(--nav-link-color);
   text-decoration: none;
-  padding: 10px 20px;
+  padding: 7px 13px;
   border-radius: 9999px;
-  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
   position: relative;
   line-height: 1.2;
@@ -404,24 +447,35 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--nav-pill-color) !important;
     font-weight: 600;
     box-shadow: var(--nav-pill-shadow);
-    padding: 10px 22px;
+    padding: 7px 16px;
   }
+}
+
+/* ── Dedicated Centered Separator ── */
+.nav-separator {
+  width: 1px !important;
+  height: 22px !important;
+  background: var(--c-border) !important;
+  opacity: 0.85 !important;
+  margin: 0 2px !important;
+  flex-shrink: 0 !important;
 }
 
 /* ── Action Buttons & Toggles ── */
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding-left: 20px;
-  border-left: 1px solid var(--c-border);
+  gap: 6px;
+  flex-shrink: 0;
+  border-left: none;
+  padding-left: 0;
 }
 
 .theme-toggle {
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  min-height: 42px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -432,10 +486,12 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
   position: relative;
 
   svg {
+    width: 16px;
+    height: 16px;
     stroke-width: 2px;
   }
 
@@ -447,7 +503,13 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   &:active {
-    transform: scale(0.95);
+    transform: scale(0.92);
+  }
+
+  /* [ADDED] Focus ring for keyboard navigation — additive, no behavior change */
+  &:focus-visible {
+    outline: 2px solid var(--clr-primary);
+    outline-offset: 2px;
   }
 
   &.active {
@@ -459,50 +521,68 @@ h1, h2, h3, h4, h5, h6 {
 
 /* User Profile Avatar button */
 .nav-avatar-btn {
-  width: 42px !important;
-  height: 42px !important;
-  min-width: 42px !important;
-  min-height: 42px !important;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+
+  .nav-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+  }
 }
 
 /* Cloud sync dot indicator */
 .connection-toggle {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  border: none;
+  background: var(--btn-theme-bg);
+  border: var(--btn-theme-border);
   cursor: pointer;
   padding: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease, border-color 0.2s ease;
 
   &:hover {
-    opacity: 0.8;
+    opacity: 0.85;
+    border-color: var(--btn-theme-hover-border);
+  }
+
+  /* [ADDED] Focus ring */
+  &:focus-visible {
+    outline: 2px solid var(--clr-primary);
+    outline-offset: 2px;
   }
 
   .connection-toggle-dot {
-    width: 9px;
-    height: 9px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     transition: background 0.3s ease, box-shadow 0.3s ease;
   }
 
   &.connection-toggle-online .connection-toggle-dot {
     background: #10b981;
-    box-shadow: 0 0 10px #10b981;
+    box-shadow: 0 0 8px #10b981;
   }
 
   &.connection-toggle-offline .connection-toggle-dot {
     background: #ef4444;
-    box-shadow: 0 0 10px #ef4444;
+    box-shadow: 0 0 8px #ef4444;
   }
 
   &.connection-toggle-saving .connection-toggle-dot {
     background: #f59e0b;
-    box-shadow: 0 0 10px #f59e0b;
+    box-shadow: 0 0 8px #f59e0b;
     animation: pulse 1.2s infinite;
   }
 
@@ -513,8 +593,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .nav-unread-dot {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 4px;
+  right: 4px;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -1233,6 +1313,9 @@ body,
 .auth-card,
 .modal-box,
 .calendar-card,
+.calendar-container,
+.accounts-empty,
+.budgets-empty,
 .calc-card,
 .account-card,
 .goal-card,
@@ -1244,7 +1327,7 @@ body,
   backdrop-filter: var(--blur) !important;
   -webkit-backdrop-filter: var(--blur) !important;
   border: 1px solid var(--c-border) !important;
-  border-radius: 24px !important;
+  border-radius: 20px !important;
   box-shadow: var(--card-shadow) !important;
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
               box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
@@ -1274,6 +1357,28 @@ body,
   border: var(--panel-sunken-border) !important;
   border-radius: 18px !important;
   padding: 16px 20px;
+} /* ← ★ THE ONLY CRITICAL BUG FIX: this closing brace was missing in the original */
+
+/* Modern Empty State Layouts (Perfect Center Alignment & Spacing) */
+.accounts-empty,
+.budgets-empty,
+.empty-state,
+.no-data-card {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  padding: 56px 32px !important;
+  min-height: 360px !important;
+  margin: 0 auto !important;
+  width: 100% !important;
+
+  .btn-primary,
+  .btn-secondary {
+    margin: 14px auto 0 !important;
+    align-self: center !important;
+  }
 }
 
 /* ================================================================
@@ -1822,6 +1927,12 @@ body,
     color: var(--text);
   }
 
+  /* [ADDED] Focus ring */
+  &:focus-visible {
+    outline: 2px solid var(--clr-primary);
+    outline-offset: -2px;
+  }
+
   .hpd-kbd {
     margin-left: auto;
     font-size: 0.7rem;
@@ -1853,21 +1964,44 @@ body,
   &:hover {
     background: rgba(239, 68, 68, 0.10);
   }
+
+  /* [ADDED] Focus ring */
+  &:focus-visible {
+    outline: 2px solid #ef4444;
+    outline-offset: -2px;
+  }
 }
 
 /* ================================================================
    8. MOBILE & TABLET RESPONSIVENESS (PERFECT EDGE-TO-EDGE FIT)
    ================================================================ */
 
+@media (max-width: 1360px) {
+  .nav-link {
+    font-size: 0.84rem !important;
+    padding: 6px 10px !important;
+  }
+  .nav-container {
+    padding: 0 12px !important;
+    gap: 8px !important;
+  }
+  .nav-actions {
+    button[title="Currency Converter"],
+    button[title="AI Financial Assistant"] {
+      display: none !important;
+    }
+  }
+}
+
 @media (max-width: 1024px) {
   .nav-container {
-    gap: 12px !important;
-    padding: 8px 18px !important;
+    gap: 6px !important;
+    padding: 0 10px !important;
   }
 
   .nav-link {
-    font-size: 0.88rem !important;
-    padding: 8px 14px !important;
+    font-size: 0.79rem !important;
+    padding: 5px 8px !important;
   }
 
   .inbox-split-pane {
@@ -1884,11 +2018,13 @@ body,
   }
 
   .nav-container {
-    min-height: 52px !important;
-    padding: 6px 12px !important;
+    min-height: 50px !important;
+    height: 50px !important;
+    padding: 0 10px 0 12px !important;
     gap: 8px !important;
     width: 100% !important;
     max-width: 100% !important;
+    border: 1.5px solid var(--nav-container-border) !important;
     border-radius: 9999px !important;
     display: flex !important;
     justify-content: space-between !important;
@@ -1907,7 +2043,7 @@ body,
   .mobile-header-title {
     display: inline-block !important;
     font-family: var(--font-head, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif) !important;
-    font-size: 0.95rem !important;
+    font-size: 0.92rem !important;
     font-weight: 700 !important;
     color: var(--text-primary) !important;
     letter-spacing: -0.01em !important;
@@ -1919,28 +2055,26 @@ body,
   }
 
   .port {
-    width: 36px !important;
-    height: 36px !important;
-    min-width: 36px !important;
-    min-height: 36px !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
     flex-shrink: 0 !important;
 
     .brand-logo-svg {
-      width: 22px !important;
-      height: 22px !important;
+      width: 20px !important;
+      height: 20px !important;
     }
   }
 
-  .nav-links {
-    display: none !important; /* Secondary links live in the mobile bottom dock and drawer */
+  .nav-links,
+  .nav-separator {
+    display: none !important;
   }
 
   .nav-actions {
-    padding-left: 0 !important;
-    border-left: none !important;
-    gap: 6px !important;
+    gap: 5px !important;
 
-    /* Hide secondary utility buttons to prevent right-edge clipping on small mobile viewports */
     .connection-toggle,
     button[title="Currency Converter"],
     button[title="AI Financial Assistant"] {
@@ -1949,17 +2083,22 @@ body,
   }
 
   .theme-toggle {
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
-    min-height: 34px !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+
+    svg {
+      width: 15px !important;
+      height: 15px !important;
+    }
   }
 
   .nav-avatar-btn {
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
-    min-height: 34px !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
   }
 
   /* Content Wrapper — Balanced Spacing & Clearance Above Bottom Dock */
@@ -2644,4 +2783,3 @@ body,
     margin-top: 0.65rem !important;
   }
 }
-

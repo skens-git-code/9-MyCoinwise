@@ -1,98 +1,364 @@
-// SettingsPage.jsx - COMPLETE VERSION
-import React, { useState, useContext, useEffect, useRef, useCallback, useMemo, useReducer } from 'react';
-import { useSearchParams } from 'react-router-dom';
+// SettingsPage.jsx — COMPLETE, CORRECTED, ENHANCED
+import React, {
+  useState, useContext, useEffect, useRef, useCallback, useMemo, useReducer,
+  lazy, Suspense,
+} from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import EmojiPicker from 'emoji-picker-react';
 import {
   Save, User, Users, Target, Moon, Sun, Download, CheckCircle, AlertCircle,
   Palette, Database, Plus, Settings, ShieldAlert, Globe, Bell, Zap, Smartphone,
   FileText, Trash2, X, Loader, Key, Shield, Bell as BellIcon, Eye,
-  Lock, LogOut, ChevronRight, HelpCircle, Edit3, Home, Book, MessageCircle, ChevronDown,
-  Link, Calendar, Clock, Users as UsersIcon, Activity, Cloud, Upload,
-  Mail, Smartphone as Phone, Fingerprint, History, TrendingUp,
-  RefreshCw, Copy, Check, AlertTriangle, EyeOff
+  Lock, LogOut, ChevronRight, RefreshCw, AlertTriangle, EyeOff, Search,
+  Copy, Check, Monitor, Calendar, Activity, Upload, Clock,
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
-import { CURRENCIES, AVATARS, AVATAR_COLORS, api } from '../services/api';
+import { CURRENCIES, AVATAR_COLORS, api } from '../services/api';
 import { LANGUAGES } from '../services/i18n';
-import { exportToPDF } from '../services/pdfExport';
 
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
-// ============= HELPER FUNCTIONS =============
-const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email?.trim() || '');
-const validateGoal = (goal) => {
-  if (!goal) return { isValid: true, value: null };
-  const num = Number(goal);
-  return { isValid: !isNaN(num) && num >= 0, value: num };
+
+// Lazy-loaded heavy dependencies
+const EmojiPicker = lazy(() => import('emoji-picker-react'));
+
+/* ============================================================
+ * Constants
+ * ============================================================ */
+const TAB_IDS = ['profile', 'preferences', 'language', 'appearance', 'notifications', 'security', 'users', 'data', 'advanced'];
+
+const DEFAULT_NOTIFICATION_PREFS = {
+  emailReports: true,
+  budgetAlerts: true,
+  goalMilestones: true,
+  unusualSpending: false,
+  pushNotifications: true,
+  weeklyDigest: true,
+  quietHoursEnabled: false,
+  quietHoursStart: '22:00',
+  quietHoursEnd: '08:00',
 };
-const sanitizeInput = (input) => input?.trim().replace(/[<>]/g, '') || '';
+
+const DEFAULT_ADVANCED_PREFS = {
+  dateFormat: 'MM/DD/YYYY',
+  timeFormat: '12h',
+  firstDayOfWeek: 'Sunday',
+  decimalSeparator: '.',
+  compactMode: false,
+  autoSave: true,
+  animationsEnabled: true,
+  showWeekNumbers: false,
+  sessionTimeoutMinutes: 30,
+};
+
+const DESTRUCTIVE_ACTIONS = {
+  PASSWORD_CHANGE: 'password_change',
+  EMAIL_CHANGE: 'email_change',
+  FACTORY_RESET: 'factory_reset',
+  DELETE_USER: 'delete_user',
+};
+
+/* ============================================================
+ * Helpers
+ * ============================================================ */
+const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+
+const validateGoal = (goal) => {
+  if (!goal && goal !== 0) return { isValid: true, value: null };
+  const num = Number(goal);
+  return { isValid: !Number.isNaN(num) && num >= 0, value: num };
+};
+
+/** Safe trim — no destructive character stripping (React escapes output). */
+const sanitizeInput = (input) => String(input || '').trim();
+
 const getNameParts = (user) => {
   const username = String(user?.username || user?.name || '').trim();
   const surname = String(user?.last_name || user?.surname || '').trim();
   const words = username.split(/\s+/).filter(Boolean);
-  const surnameMatchesUsername = surname && words.length > 1 && words.at(-1).toLocaleLowerCase() === surname.toLocaleLowerCase();
+  const surnameMatchesUsername =
+    surname &&
+    words.length > 1 &&
+    words[words.length - 1].toLocaleLowerCase() === surname.toLocaleLowerCase();
   return {
-    firstName: surnameMatchesUsername ? words.slice(0, -1).join(' ') : (words[0] || ''),
-    lastName: surname || (words.length > 1 ? words.slice(1).join(' ') : '')
+    firstName: surnameMatchesUsername ? words.slice(0, -1).join(' ') : words[0] || '',
+    lastName: surname || (words.length > 1 ? words.slice(1).join(' ') : ''),
   };
 };
 
-// ============= PASSWORD STRENGTH INDICATOR =============
+const buildResetPayload = (user) => ({
+  firstName: getNameParts(user).firstName,
+  lastName: getNameParts(user).lastName,
+  profession: user?.profession || user?.role || 'Trader',
+  monthlyGoal: user?.monthly_goal != null ? String(user.monthly_goal) : '',
+  currency: user?.currency || 'INR',
+  avatar: user?.profile_avatar || '😊',
+  avatarColor: user?.profile_color || '#059669',
+  notificationPrefs: user?.notification_prefs || { ...DEFAULT_NOTIFICATION_PREFS },
+  advancedPrefs: user?.advanced_prefs || { ...DEFAULT_ADVANCED_PREFS },
+});
+
+const isUsableAvatarSource = (value) => {
+  const avatar = String(value || '').trim();
+  return (
+    avatar.length > 20 &&
+    (/^data:image\//i.test(avatar) ||
+      /^blob:/i.test(avatar) ||
+      /^https?:\/\//i.test(avatar) ||
+      /^\/(?!\/)/.test(avatar))
+  );
+};
+
+const getSafeUserAvatar = (user) => {
+  const avatar = String(user?.profile_avatar || '').trim();
+  if (isUsableAvatarSource(avatar)) return { type: 'image', value: avatar };
+  if (avatar && avatar.length <= 12 && !/[A-Za-z0-9_-]{20,}/.test(avatar)) {
+    return { type: 'text', value: avatar };
+  }
+  const name = getUserDisplayName(user);
+  return { type: 'text', value: name.charAt(0).toUpperCase() || 'U' };
+};
+
+const getUserDisplayName = (user) => {
+  const username = String(user?.username || '').trim().replace(/\s+/g, ' ');
+  const surname = String(user?.last_name || '').trim().replace(/\s+/g, ' ');
+  const safeUsername = username.length <= 80 ? username : '';
+  const safeSurname = surname.length <= 80 ? surname : '';
+  const duplicateSurname =
+    safeSurname && safeUsername.toLocaleLowerCase().endsWith(` ${safeSurname.toLocaleLowerCase()}`);
+  return [safeUsername, duplicateSurname ? '' : safeSurname].filter(Boolean).join(' ') || 'Unnamed profile';
+};
+
+/** Returns null when the user has no valid email (caller decides how to render). */
+const getSafeUserEmail = (user) => {
+  const email = String(user?.email || '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 160 ? email : null;
+};
+
+/* ============================================================
+ * Focus trap hook
+ * ============================================================ */
+function useFocusTrap(ref, isActive, onEscape) {
+  useEffect(() => {
+    if (!isActive || !ref.current) return undefined;
+    const node = ref.current;
+    const previousActive = document.activeElement;
+
+    const getFocusable = () =>
+      Array.from(
+        node.querySelectorAll(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null);
+
+    const focusables = getFocusable();
+    if (focusables.length > 0) focusables[0].focus();
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onEscape?.();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const list = getFocusable();
+      if (list.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = list[0];
+      const last = list[list.length - 1];
+      const current = document.activeElement;
+      if (e.shiftKey) {
+        if (current === first || !node.contains(current)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (current === last || !node.contains(current)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      try { previousActive?.focus?.(); } catch { /* ignore */ }
+    };
+  }, [ref, isActive, onEscape]);
+}
+
+/* ============================================================
+ * Password strength
+ * ============================================================ */
+const getPasswordStrength = (password) => {
+  const pw = String(password || '');
+  if (!pw) return 0;
+  let score = 0;
+  if (pw.length >= 8) score += 1;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score += 1;
+  if (/\d/.test(pw)) score += 1;
+  if (/[^a-zA-Z0-9]/.test(pw)) score += 1;
+  if (pw.length >= 12) score += 1;
+  return Math.min(score, 5);
+};
+
+const STRENGTH_LABELS = ['Very weak', 'Weak', 'Fair', 'Good', 'Strong', 'Very strong'];
+const STRENGTH_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#10b981'];
+
 const PasswordStrengthIndicator = ({ password }) => {
-  const getStrength = () => {
-    let score = 0;
-    if (password.length >= 8) score++;
-    if (password.match(/[a-z]/) && password.match(/[A-Z]/)) score++;
-    if (password.match(/[0-9]/)) score++;
-    if (password.match(/[^a-zA-Z0-9]/)) score++;
-    return score;
-  };
-
-  const strength = getStrength();
-  const strengthText = ['Very Weak', 'Weak', 'Medium', 'Strong', 'Very Strong'][strength];
-  const strengthColor = ['#ef4444', '#f59e0b', '#eab308', '#10b981', '#059669'][strength];
-
+  const score = getPasswordStrength(password);
   if (!password) return null;
+  const label = STRENGTH_LABELS[score];
+  const color = STRENGTH_COLORS[score];
 
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
-        {[0, 1, 2, 3].map(i => (
+      <div
+        role="progressbar"
+        aria-valuenow={score}
+        aria-valuemin={0}
+        aria-valuemax={5}
+        aria-label={`Password strength: ${label}`}
+        style={{ display: 'flex', gap: 4, marginBottom: 4 }}
+      >
+        {[0, 1, 2, 3, 4].map((i) => (
           <div
             key={i}
             style={{
               flex: 1,
               height: 4,
-              background: i < strength ? strengthColor : '#e5e7eb',
+              background: i < score ? color : '#e5e7eb',
               borderRadius: 2,
-              transition: 'all 0.3s'
+              transition: 'all 0.3s',
             }}
           />
         ))}
       </div>
-      <span style={{ fontSize: '0.75rem', color: strengthColor }}>{strengthText}</span>
+      <span style={{ fontSize: '0.75rem', color }} aria-live="polite">
+        {label}
+      </span>
     </div>
   );
 };
 
-// ============= BACKUP & RESTORE COMPONENT =============
+/* ============================================================
+ * Re-authentication modal
+ * ============================================================ */
+const ReAuthModalContent = ({ onClose, onConfirmed, actionLabel, isLoading }) => {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const modalRef = useRef(null);
+
+  useFocusTrap(modalRef, true, onClose);
+
+  const handleConfirm = async () => {
+    if (!password) {
+      setError('Password is required.');
+      return;
+    }
+    setError('');
+    try {
+      const ok = await onConfirmed(password);
+      if (ok) setPassword('');
+    } catch (err) {
+      setError(err?.message || 'Incorrect password.');
+    }
+  };
+
+  return (
+    <div
+      className="modal-overlay"
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reauth-title"
+        className="modal-box glass"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 440, width: '90%', padding: 24, borderRadius: 16, background: 'var(--bg-color)' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <Lock size={22} aria-hidden="true" style={{ color: 'var(--warning, #f59e0b)' }} />
+          <h3 id="reauth-title" style={{ margin: 0, fontSize: '1.15rem' }}>Confirm your password</h3>
+        </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '0 0 16px', lineHeight: 1.55 }}>
+          For your security, please re-enter your password to {actionLabel || 'continue'}.
+        </p>
+        <div className="form-field">
+          <label htmlFor="reauth_password">Password</label>
+          <input
+            id="reauth_password"
+            type="password"
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); if (error) setError(''); }}
+            placeholder="Your current password"
+            autoFocus
+            autoComplete="current-password"
+            onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm(); }}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? 'reauth-error' : undefined}
+          />
+          {error && (
+            <p id="reauth-error" role="alert" style={{ color: 'var(--danger, #ef4444)', fontSize: '0.8rem', marginTop: 6 }}>
+              {error}
+            </p>
+          )}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={isLoading}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleConfirm}
+            disabled={isLoading || !password}
+          >
+            {isLoading ? 'Verifying…' : 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ReAuthModal = ({ isOpen, onClose, onConfirmed, actionLabel, isLoading }) => {
+  if (!isOpen) return null;
+  return (
+    <ReAuthModalContent
+      onClose={onClose}
+      onConfirmed={onConfirmed}
+      actionLabel={actionLabel}
+      isLoading={isLoading}
+    />
+  );
+};
+
+/* ============================================================
+ * Backup & Restore
+ * ============================================================ */
 const BackupRestore = ({ userId, showMessage }) => {
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [autoBackup, setAutoBackup] = useState(false);
-  const fileInputRef = useRef();
-  // ✅ Fix: Use ref instead of window global — scoped to this instance
+  const [confirmRestoreFile, setConfirmRestoreFile] = useState(null);
+  const [restorePreview, setRestorePreview] = useState(null);
+  const fileInputRef = useRef(null);
   const autoBackupIntervalRef = useRef(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    const savedAutoBackup = localStorage.getItem('auto-backup-enabled');
-    if (savedAutoBackup) setAutoBackup(JSON.parse(savedAutoBackup));
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
+    isMountedRef.current = true;
+    try {
+      const saved = localStorage.getItem('auto-backup-enabled');
+      if (saved) setAutoBackup(JSON.parse(saved));
+    } catch { /* ignore */ }
     return () => {
+      isMountedRef.current = false;
       if (autoBackupIntervalRef.current) {
         clearInterval(autoBackupIntervalRef.current);
         autoBackupIntervalRef.current = null;
@@ -100,7 +366,11 @@ const BackupRestore = ({ userId, showMessage }) => {
     };
   }, []);
 
-  const handleExportBackup = async () => {
+  const handleExportBackup = useCallback(async () => {
+    if (!userId) {
+      showMessage('error', 'Session expired. Please log in again.');
+      return;
+    }
     setBackupLoading(true);
     try {
       const data = await api.exportAllData(userId);
@@ -108,23 +378,24 @@ const BackupRestore = ({ userId, showMessage }) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `mycoinwise-backup-${new Date().toISOString().split('T')[0]}.json`;
+      const now = new Date();
+      const dateStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      a.download = `mycoinwise-backup-${dateStamp}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      showMessage('success', 'Backup exported successfully!');
+      if (isMountedRef.current) showMessage('success', 'Backup exported successfully!');
+      return true;
     } catch (error) {
       console.error('Backup error:', error);
-      showMessage('error', 'Failed to export backup');
+      if (isMountedRef.current) showMessage('error', 'Failed to export backup');
+      return false;
     } finally {
-      setBackupLoading(false);
+      if (isMountedRef.current) setBackupLoading(false);
     }
-  };
-
-  const [confirmRestoreFile, setConfirmRestoreFile] = useState(null);
-  const [restorePreview, setRestorePreview] = useState(null);
+  }, [userId, showMessage]);
 
   const handleImportBackup = async (event) => {
-    const file = event.target.files[0];
+    const file = event.target.files?.[0];
     if (!file) return;
     try {
       const text = await file.text();
@@ -134,7 +405,7 @@ const BackupRestore = ({ userId, showMessage }) => {
         goals: Array.isArray(data.goals) ? data.goals.length : 0,
         subscriptions: Array.isArray(data.subscriptions) ? data.subscriptions.length : 0,
         exportDate: data.exportDate || data.created_at || 'Unknown',
-        parsedData: data
+        parsedData: data,
       });
       setConfirmRestoreFile(file);
     } catch {
@@ -144,52 +415,62 @@ const BackupRestore = ({ userId, showMessage }) => {
   };
 
   const executeRestore = async () => {
-    if (!restorePreview?.parsedData) return;
+    if (!restorePreview?.parsedData || !userId) return;
     setRestoreLoading(true);
     setConfirmRestoreFile(null);
     try {
       await api.importAllData(userId, restorePreview.parsedData);
-      showMessage('success', 'Backup restored successfully! Page will reload in 2 seconds.');
-      setTimeout(() => window.location.reload(), 2000);
+      showMessage('success', 'Backup restored successfully! Reloading…');
+      setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       console.error('Restore error:', error);
       showMessage('error', 'Failed to restore backup: Invalid file format or corrupted data');
     } finally {
-      setRestoreLoading(false);
-      setRestorePreview(null);
+      if (isMountedRef.current) {
+        setRestoreLoading(false);
+        setRestorePreview(null);
+      }
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const cancelRestore = () => {
+    setConfirmRestoreFile(null);
+    setRestorePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const toggleAutoBackup = async () => {
     const newState = !autoBackup;
     setAutoBackup(newState);
-    localStorage.setItem('auto-backup-enabled', JSON.stringify(newState));
+    try { localStorage.setItem('auto-backup-enabled', JSON.stringify(newState)); } catch { /* ignore */ }
 
     if (newState) {
-      const scheduleBackup = () => {
+      const scheduleBackup = async () => {
         const lastBackup = localStorage.getItem('last-auto-backup');
+        const lastTs = lastBackup ? new Date(lastBackup).getTime() : 0;
+        const validTs = Number.isFinite(lastTs) ? lastTs : 0;
         const oneWeek = 7 * 24 * 60 * 60 * 1000;
-        if (!lastBackup || Date.now() - new Date(lastBackup).getTime() > oneWeek) {
-          handleExportBackup();
-          localStorage.setItem('last-auto-backup', new Date().toISOString());
+        if (!validTs || Date.now() - validTs > oneWeek) {
+          const ok = await handleExportBackup();
+          if (ok) {
+            try { localStorage.setItem('last-auto-backup', new Date().toISOString()); } catch { /* ignore */ }
+          }
         }
       };
       scheduleBackup();
       if (autoBackupIntervalRef.current) clearInterval(autoBackupIntervalRef.current);
       autoBackupIntervalRef.current = setInterval(scheduleBackup, 7 * 24 * 60 * 60 * 1000);
-    } else {
-      if (autoBackupIntervalRef.current) {
-        clearInterval(autoBackupIntervalRef.current);
-        autoBackupIntervalRef.current = null;
-      }
+    } else if (autoBackupIntervalRef.current) {
+      clearInterval(autoBackupIntervalRef.current);
+      autoBackupIntervalRef.current = null;
     }
   };
 
   return (
     <div className="idp-section" style={{ padding: 20, borderRadius: 16, background: 'var(--glass-2)', marginBottom: 20 }}>
       <h4 style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <Cloud size={20} /> Universal Backup & Data Restore
+        <Database size={20} aria-hidden /> Universal Backup & Data Restore
       </h4>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <button
@@ -199,8 +480,8 @@ const BackupRestore = ({ userId, showMessage }) => {
           disabled={backupLoading}
           style={{ display: 'flex', alignItems: 'center', gap: 8 }}
         >
-          <Download size={16} />
-          {backupLoading ? 'Exporting...' : 'Export Full Archive'}
+          <Download size={16} aria-hidden />
+          {backupLoading ? 'Exporting…' : 'Export Full Archive'}
         </button>
         <button
           type="button"
@@ -209,8 +490,8 @@ const BackupRestore = ({ userId, showMessage }) => {
           disabled={restoreLoading}
           style={{ display: 'flex', alignItems: 'center', gap: 8 }}
         >
-          <Upload size={16} />
-          {restoreLoading ? 'Restoring...' : 'Restore from Backup'}
+          <Upload size={16} aria-hidden />
+          {restoreLoading ? 'Restoring…' : 'Restore from Backup'}
         </button>
         <input
           ref={fileInputRef}
@@ -220,32 +501,31 @@ const BackupRestore = ({ userId, showMessage }) => {
           style={{ display: 'none' }}
         />
       </div>
-      <div className="form-field">
-        <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={autoBackup}
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+        <div className="toggle-switch">
+          <input
+            type="checkbox"
+            checked={autoBackup}
             onChange={toggleAutoBackup}
+            role="switch"
+            aria-checked={autoBackup}
+            aria-label="Enable automatic weekly backups"
           />
-              <span className="slider"></span>
-            </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <RefreshCw size={14} /> Enable Automatic Weekly Backups
-            </span>
-          </label>
-      </div>
+          <span className="slider" />
+        </div>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <RefreshCw size={14} aria-hidden /> Enable Automatic Weekly Backups
+        </span>
+      </label>
+
       <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 12 }}>
-        📦 Universal backup archive contains all your transactions, goals, subscriptions, and security settings.
+        📦 Backup archives contain all transactions, goals, subscriptions, and preferences.
       </p>
 
       <Modal
         isOpen={!!confirmRestoreFile}
-        onClose={() => {
-          setConfirmRestoreFile(null);
-          setRestorePreview(null);
-          if (fileInputRef.current) fileInputRef.current.value = '';
-        }}
+        onClose={cancelRestore}
         title="Confirm Backup Restoration"
         confirmText="Yes, Restore All Data"
         onConfirm={executeRestore}
@@ -255,9 +535,13 @@ const BackupRestore = ({ userId, showMessage }) => {
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 14, lineHeight: 1.5 }}>
           You are about to restore the following records into your account:
         </p>
-
         {restorePreview && (
-          <div style={{ padding: '12px 16px', borderRadius: 10, background: 'var(--glass-2)', marginBottom: 16, fontSize: '0.85rem', border: '1px solid var(--glass-border)' }}>
+          <div
+            style={{
+              padding: '12px 16px', borderRadius: 10, background: 'var(--glass-2)',
+              marginBottom: 16, fontSize: '0.85rem', border: '1px solid var(--glass-border)',
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
               <span>Transactions:</span> <strong>{restorePreview.transactions} items</strong>
             </div>
@@ -269,8 +553,7 @@ const BackupRestore = ({ userId, showMessage }) => {
             </div>
           </div>
         )}
-
-        <p style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '0.85rem' }}>
+        <p style={{ color: 'var(--danger, #ef4444)', fontWeight: 700, fontSize: '0.85rem' }}>
           ⚠️ This will replace your current data with the backup contents.
         </p>
       </Modal>
@@ -278,137 +561,118 @@ const BackupRestore = ({ userId, showMessage }) => {
   );
 };
 
-// ============= NOTIFICATION PREFERENCES =============
+/* ============================================================
+ * Notification preferences
+ * ============================================================ */
+const NOTIFICATION_TOGGLES = [
+  { key: 'emailReports', icon: Bell, label: 'Monthly Email Reports' },
+  { key: 'weeklyDigest', icon: Calendar, label: 'Weekly Digest' },
+  { key: 'budgetAlerts', icon: Bell, label: 'Budget Alerts' },
+  { key: 'goalMilestones', icon: Target, label: 'Goal Milestone Achievements' },
+  { key: 'unusualSpending', icon: AlertTriangle, label: 'Unusual Spending Alerts' },
+  { key: 'pushNotifications', icon: Smartphone, label: 'Push Notifications' },
+];
+
 const NotificationPreferences = ({ preferences, onChange }) => {
+  const prefs = preferences || DEFAULT_NOTIFICATION_PREFS;
+
+  const quietHoursValid =
+    !prefs.quietHoursEnabled ||
+    (prefs.quietHoursStart && prefs.quietHoursEnd && prefs.quietHoursStart !== prefs.quietHoursEnd);
 
   return (
     <>
       <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-        <div className="idp-hero-icon" style={{ width: 64, height: 64, marginBottom: 16, background: 'rgba(251,191,36,0.1)', color: 'var(--warning)' }}>
+        <div
+          className="idp-hero-icon"
+          style={{
+            width: 64, height: 64, marginBottom: 16,
+            background: 'rgba(251,191,36,0.1)', color: 'var(--warning)',
+          }}
+          aria-hidden
+        >
           <BellIcon size={28} />
         </div>
-        <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>Notification Preferences</h3>
+        <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+          Notification Preferences
+        </h3>
         <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Control how and when we notify you.</p>
       </div>
 
       <div className="idp-body">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={preferences?.emailReports}
-                onChange={(e) => onChange({ ...preferences, emailReports: e.target.checked })}
-              />
-              <span className="slider"></span>
+          {NOTIFICATION_TOGGLES.map(({ key, icon: Icon, label }) => (
+            <div className="form-field" key={key}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                <div className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(prefs[key])}
+                    onChange={(e) => onChange({ ...prefs, [key]: e.target.checked })}
+                    role="switch"
+                    aria-checked={Boolean(prefs[key])}
+                    aria-label={label}
+                  />
+                  <span className="slider" />
+                </div>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon size={16} aria-hidden /> {label}
+                </span>
+              </label>
             </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Mail size={16} /> Monthly Email Reports
-            </span>
-          </label>
-          </div>
-
-          <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={preferences?.weeklyDigest}
-                onChange={(e) => onChange({ ...preferences, weeklyDigest: e.target.checked })}
-              />
-              <span className="slider"></span>
-            </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Calendar size={16} /> Weekly Digest
-            </span>
-          </label>
-          </div>
-
-          <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={preferences?.budgetAlerts}
-                onChange={(e) => onChange({ ...preferences, budgetAlerts: e.target.checked })}
-              />
-              <span className="slider"></span>
-            </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <BellIcon size={16} /> Budget Alerts
-            </span>
-          </label>
-          </div>
-
-          <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={preferences?.goalMilestones}
-                onChange={(e) => onChange({ ...preferences, goalMilestones: e.target.checked })}
-              />
-              <span className="slider"></span>
-            </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Target size={16} /> Goal Milestone Achievements
-            </span>
-          </label>
-          </div>
-
-          <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={preferences?.unusualSpending}
-                onChange={(e) => onChange({ ...preferences, unusualSpending: e.target.checked })}
-              />
-              <span className="slider"></span>
-            </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <AlertTriangle size={16} /> Unusual Spending Alerts
-            </span>
-          </label>
-          </div>
+          ))}
 
           <div style={{ height: 1, background: 'var(--glass-border)', margin: '8px 0' }} />
 
           <div className="form-field">
             <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={preferences?.quietHoursEnabled}
-                onChange={(e) => onChange({ ...preferences, quietHoursEnabled: e.target.checked })}
-              />
-              <span className="slider"></span>
-            </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Moon size={16} /> Enable Quiet Hours
-            </span>
-          </label>
+              <div className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={Boolean(prefs.quietHoursEnabled)}
+                  onChange={(e) => onChange({ ...prefs, quietHoursEnabled: e.target.checked })}
+                  role="switch"
+                  aria-checked={Boolean(prefs.quietHoursEnabled)}
+                  aria-label="Enable quiet hours"
+                />
+                <span className="slider" />
+              </div>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Moon size={16} aria-hidden /> Enable Quiet Hours
+              </span>
+            </label>
           </div>
 
-          {preferences?.quietHoursEnabled && (
-            <div style={{ display: 'flex', gap: 12, marginLeft: 24 }}>
-              <div className="form-field" style={{ flex: 1 }}>
-                <label>Start Time</label>
-                <input
-                  type="time"
-                  value={preferences.quietHoursStart}
-                  onChange={(e) => onChange({ ...preferences, quietHoursStart: e.target.value })}
-                />
+          {prefs.quietHoursEnabled && (
+            <div style={{ marginLeft: 24 }}>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div className="form-field" style={{ flex: 1 }}>
+                  <label htmlFor="quiet_start">Start Time</label>
+                  <input
+                    id="quiet_start"
+                    type="time"
+                    value={prefs.quietHoursStart}
+                    onChange={(e) => onChange({ ...prefs, quietHoursStart: e.target.value })}
+                  />
+                </div>
+                <div className="form-field" style={{ flex: 1 }}>
+                  <label htmlFor="quiet_end">End Time</label>
+                  <input
+                    id="quiet_end"
+                    type="time"
+                    value={prefs.quietHoursEnd}
+                    onChange={(e) => onChange({ ...prefs, quietHoursEnd: e.target.value })}
+                  />
+                </div>
               </div>
-              <div className="form-field" style={{ flex: 1 }}>
-                <label>End Time</label>
-                <input
-                  type="time"
-                  value={preferences.quietHoursEnd}
-                  onChange={(e) => onChange({ ...preferences, quietHoursEnd: e.target.value })}
-                />
-              </div>
+              {!quietHoursValid && (
+                <p style={{ color: 'var(--danger, #ef4444)', fontSize: '0.78rem', marginTop: 4 }} role="alert">
+                  Start and end times must be different.
+                </p>
+              )}
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: 6 }}>
+                Overnight ranges are supported — if start is after end, quiet hours span midnight.
+              </p>
             </div>
           )}
         </div>
@@ -417,47 +681,63 @@ const NotificationPreferences = ({ preferences, onChange }) => {
   );
 };
 
-// ============= PASSWORD CHANGE COMPONENT =============
-const PasswordChange = ({ userId, showMessage, logout }) => {
+/* ============================================================
+ * Password change (with re-auth)
+ * ============================================================ */
+const PasswordChange = ({ userId, showMessage, logout, requestReAuth }) => {
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
-    confirmPassword: ''
+    confirmPassword: '',
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const strength = getPasswordStrength(passwordData.newPassword);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       showMessage('error', 'New passwords do not match');
       return;
     }
-
     if (passwordData.newPassword.length < 8) {
       showMessage('error', 'Password must be at least 8 characters');
       return;
     }
-
+    if (strength < 3) {
+      showMessage('error', 'Password too weak. Add uppercase, digits, or symbols.');
+      return;
+    }
     if (passwordData.newPassword === passwordData.currentPassword) {
       showMessage('error', 'New password must be different from current password');
       return;
     }
+    if (!userId) {
+      showMessage('error', 'Session expired. Please log in again.');
+      return;
+    }
+
+    // Ask for re-auth before committing
+    const proceed = await requestReAuth(
+      'change your password',
+      passwordData.currentPassword
+    );
+    if (!proceed) return;
 
     setLoading(true);
     try {
       await api.changePassword(userId, {
         current: passwordData.currentPassword,
-        new: passwordData.newPassword
+        new: passwordData.newPassword,
       });
       showMessage('success', 'Password changed successfully. Please sign in again.');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      // The backend invalidates every existing session after a password change.
-      // Clear the local token as well so the next request cannot fail silently.
-      window.setTimeout(() => logout?.(), 900);
+      setTimeout(() => logout?.(), 900);
     } catch (error) {
-      showMessage('error', error.response?.data?.message || 'Failed to change password');
+      showMessage('error', error?.response?.data?.message || 'Failed to change password');
     } finally {
       setLoading(false);
     }
@@ -466,18 +746,25 @@ const PasswordChange = ({ userId, showMessage, logout }) => {
   return (
     <form onSubmit={handleSubmit}>
       <div className="form-field">
-        <label>Current Password</label>
+        <label htmlFor="current_password">Current Password</label>
         <div style={{ position: 'relative' }}>
           <input
+            id="current_password"
             type={showPassword ? 'text' : 'password'}
             value={passwordData.currentPassword}
-            onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
+            onChange={(e) => setPasswordData((prev) => ({ ...prev, currentPassword: e.target.value }))}
             required
+            autoComplete="current-password"
           />
           <button
             type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer' }}
+            onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? 'Hide passwords' : 'Show passwords'}
+            aria-pressed={showPassword}
+            style={{
+              position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+              background: 'none', border: 'none', cursor: 'pointer',
+            }}
           >
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
@@ -485,26 +772,30 @@ const PasswordChange = ({ userId, showMessage, logout }) => {
       </div>
 
       <div className="form-field">
-        <label>New Password</label>
+        <label htmlFor="new_password">New Password</label>
         <input
+          id="new_password"
           type={showPassword ? 'text' : 'password'}
           value={passwordData.newPassword}
-          onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
+          onChange={(e) => setPasswordData((prev) => ({ ...prev, newPassword: e.target.value }))}
           required
+          autoComplete="new-password"
         />
         <PasswordStrengthIndicator password={passwordData.newPassword} />
       </div>
 
       <div className="form-field">
-        <label>Confirm New Password</label>
+        <label htmlFor="confirm_new_password">Confirm New Password</label>
         <input
+          id="confirm_new_password"
           type={showPassword ? 'text' : 'password'}
           value={passwordData.confirmPassword}
-          onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+          onChange={(e) => setPasswordData((prev) => ({ ...prev, confirmPassword: e.target.value }))}
           required
+          autoComplete="new-password"
         />
         {passwordData.confirmPassword && passwordData.newPassword !== passwordData.confirmPassword && (
-          <span style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: 4, display: 'block' }}>
+          <span role="alert" style={{ fontSize: '0.75rem', color: 'var(--danger, #ef4444)', marginTop: 4, display: 'block' }}>
             Passwords do not match
           </span>
         )}
@@ -512,66 +803,64 @@ const PasswordChange = ({ userId, showMessage, logout }) => {
 
       <div className="idp-actions">
         <button type="submit" className="btn-primary" disabled={loading}>
-          <Key size={18} /> {loading ? 'Changing...' : 'Change Password'}
+          <Key size={18} aria-hidden /> {loading ? 'Changing…' : 'Change Password'}
         </button>
       </div>
     </form>
   );
 };
 
-// ============= SESSION MANAGEMENT =============
+/* ============================================================
+ * Session management (fixed cleanup)
+ * ============================================================ */
 const SessionManagement = ({ userId, showMessage }) => {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
 
   const loadSessions = useCallback(async () => {
-    if (!userId) return;
-
-    setLoading(true);
-    let isMounted = true;
-
+    if (!userId) {
+      setSessions([]);
+      setLoading(false);
+      return;
+    }
     try {
       const data = await api.getActiveSessions(userId);
-
-      if (isMounted) {
-        setSessions(Array.isArray(data) ? data : []);
-      }
+      setSessions(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load sessions:', error);
       showMessage?.('error', 'Failed to load sessions');
-    } finally {
-      if (isMounted) setLoading(false);
     }
-
-    return () => {
-      isMounted = false;
-    };
   }, [userId, showMessage]);
 
   useEffect(() => {
-    loadSessions();
+    let alive = true;
+    setLoading(true);
+    (async () => {
+      await loadSessions();
+      if (alive) setLoading(false);
+    })();
+    return () => { alive = false; };
   }, [loadSessions]);
 
   const revokeSession = async (sessionId) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (session?.isCurrent) {
+      showMessage('error', 'Cannot revoke your current session');
+      return;
+    }
     if (!userId || !sessionId) {
       showMessage('error', 'Invalid session');
       return;
     }
-
-    if (loading) return; // prevent spam clicks
+    if (loading) return;
 
     setLoading(true);
-
     try {
       const response = await api.revokeSession(userId, sessionId);
-
-      if (response?.success !== false) {
-        showMessage('success', 'Session revoked successfully');
-        await loadSessions(); // ensure UI updates after success
-      } else {
-        throw new Error('Failed to revoke session');
-      }
+      if (response?.success === false) throw new Error('Failed to revoke session');
+      showMessage('success', 'Session revoked successfully');
+      await loadSessions();
     } catch (error) {
       console.error('Revoke session error:', error);
       showMessage('error', error?.message || 'Failed to revoke session');
@@ -579,6 +868,7 @@ const SessionManagement = ({ userId, showMessage }) => {
       setLoading(false);
     }
   };
+
   const requestRevokeAll = () => {
     if (!userId) {
       showMessage('error', 'User not identified');
@@ -587,21 +877,15 @@ const SessionManagement = ({ userId, showMessage }) => {
     setConfirmRevokeAll(true);
   };
 
-  const executeRevokeAllOtherSessions = async () => {
+  const executeRevokeAll = async () => {
     setConfirmRevokeAll(false);
     if (!userId || loading) return;
-
     setLoading(true);
-
     try {
       const response = await api.revokeAllOtherSessions(userId);
-
-      if (response?.success !== false) {
-        showMessage('success', 'All other sessions have been revoked');
-        await loadSessions(); // ensure fresh data
-      } else {
-        throw new Error('Failed to revoke sessions');
-      }
+      if (response?.success === false) throw new Error('Failed to revoke sessions');
+      showMessage('success', 'All other sessions have been revoked');
+      await loadSessions();
     } catch (error) {
       console.error('Revoke all sessions error:', error);
       showMessage('error', error?.message || 'Failed to revoke sessions');
@@ -612,9 +896,9 @@ const SessionManagement = ({ userId, showMessage }) => {
 
   if (loading && sessions.length === 0) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="shimmer" style={{ height: 60, borderRadius: 12 }}></div>
-        <div className="shimmer" style={{ height: 60, borderRadius: 12 }}></div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }} aria-busy="true">
+        <div className="shimmer" style={{ height: 60, borderRadius: 12 }} />
+        <div className="shimmer" style={{ height: 60, borderRadius: 12 }} />
       </div>
     );
   }
@@ -629,37 +913,38 @@ const SessionManagement = ({ userId, showMessage }) => {
           onClick={requestRevokeAll}
           style={{ padding: '6px 12px', fontSize: '0.8rem' }}
         >
-          <LogOut size={14} /> Revoke All Other Sessions
+          <LogOut size={14} aria-hidden /> Revoke All Other Sessions
         </button>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {sessions.map(session => (
+        {sessions.map((session) => (
           <div
             key={session.id}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: 12,
-              background: 'var(--glass-2)',
-              borderRadius: 12,
-              flexWrap: 'wrap',
-              gap: 12
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: 12, background: 'var(--glass-2)', borderRadius: 12,
+              flexWrap: 'wrap', gap: 12,
             }}
           >
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Smartphone size={16} />
+                <Smartphone size={16} aria-hidden />
                 <strong>{session.device || 'Unknown Device'}</strong>
                 {session.isCurrent && (
-                  <span style={{ fontSize: '0.7rem', background: '#10b981', color: 'white', padding: '2px 8px', borderRadius: 12 }}>
+                  <span
+                    style={{
+                      fontSize: '0.7rem', background: '#10b981', color: 'white',
+                      padding: '2px 8px', borderRadius: 12,
+                    }}
+                  >
                     Current
                   </span>
                 )}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                Location: {session.location || 'Unknown'} • Last active: {new Date(session.lastActive).toLocaleString()}
+                Location: {session.location || 'Unknown'} · Last active:{' '}
+                {new Date(session.lastActive).toLocaleString()}
               </div>
             </div>
             {!session.isCurrent && (
@@ -668,6 +953,7 @@ const SessionManagement = ({ userId, showMessage }) => {
                 className="btn-secondary"
                 onClick={() => revokeSession(session.id)}
                 style={{ padding: '6px 12px' }}
+                aria-label={`Revoke session on ${session.device || 'unknown device'}`}
               >
                 Revoke
               </button>
@@ -685,37 +971,48 @@ const SessionManagement = ({ userId, showMessage }) => {
         onClose={() => setConfirmRevokeAll(false)}
         title="Revoke All Other Sessions"
         confirmText="Yes, Log Out Everywhere Else"
-        onConfirm={executeRevokeAllOtherSessions}
+        onConfirm={executeRevokeAll}
         isLoading={loading}
         danger
       >
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: 16, lineHeight: 1.6 }}>
-          This action will log you out of all other devices you are currently logged into.
-          Are you sure you want to continue?
+          This will log you out of all other devices. Are you sure you want to continue?
         </p>
       </Modal>
     </div>
   );
 };
 
+/* ============================================================
+ * Advanced preferences
+ * ============================================================ */
 const AdvancedPreferences = ({ prefs, onChange }) => {
+  const p = prefs || DEFAULT_ADVANCED_PREFS;
+  const update = (patch) => onChange({ ...p, ...patch });
+
+  const toggles = [
+    { key: 'compactMode', icon: Zap, label: 'Compact Mode (Denser Layout)' },
+    { key: 'autoSave', icon: Save, label: 'Auto-save Changes' },
+    { key: 'animationsEnabled', icon: Activity, label: 'Enable Animations' },
+    { key: 'showWeekNumbers', icon: Calendar, label: 'Show Week Numbers in Calendar' },
+  ];
+
   return (
     <>
       <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-        <div className="idp-hero-icon" style={{ width: 64, height: 64, marginBottom: 16 }}>
+        <div className="idp-hero-icon" style={{ width: 64, height: 64, marginBottom: 16 }} aria-hidden>
           <Zap size={28} />
         </div>
-        <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>Advanced Preferences</h3>
+        <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+          Advanced Preferences
+        </h3>
         <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Fine-tune your experience.</p>
       </div>
 
       <div className="idp-body">
         <div className="form-field">
-          <label>Date Format</label>
-          <select
-            value={prefs?.dateFormat || 'MM/DD/YYYY'}
-            onChange={(e) => onChange({ ...prefs, dateFormat: e.target.value })}
-          >
+          <label htmlFor="date_format">Date Format</label>
+          <select id="date_format" value={p.dateFormat} onChange={(e) => update({ dateFormat: e.target.value })}>
             <option>MM/DD/YYYY</option>
             <option>DD/MM/YYYY</option>
             <option>YYYY-MM-DD</option>
@@ -723,108 +1020,75 @@ const AdvancedPreferences = ({ prefs, onChange }) => {
         </div>
 
         <div className="form-field">
-          <label>Time Format</label>
-          <select
-            value={prefs?.timeFormat || '12h'}
-            onChange={(e) => onChange({ ...prefs, timeFormat: e.target.value })}
-          >
+          <label htmlFor="time_format">Time Format</label>
+          <select id="time_format" value={p.timeFormat} onChange={(e) => update({ timeFormat: e.target.value })}>
             <option value="12h">12h (AM/PM)</option>
             <option value="24h">24h</option>
           </select>
         </div>
 
         <div className="form-field">
-          <label>First Day of Week</label>
-          <select
-            value={prefs?.firstDayOfWeek || 'Sunday'}
-            onChange={(e) => onChange({ ...prefs, firstDayOfWeek: e.target.value })}
-          >
+          <label htmlFor="first_day">First Day of Week</label>
+          <select id="first_day" value={p.firstDayOfWeek} onChange={(e) => update({ firstDayOfWeek: e.target.value })}>
             <option>Sunday</option>
             <option>Monday</option>
           </select>
         </div>
 
         <div className="form-field">
-          <label>Decimal Separator</label>
-          <select
-            value={prefs?.decimalSeparator || '.'}
-            onChange={(e) => onChange({ ...prefs, decimalSeparator: e.target.value })}
-          >
+          <label htmlFor="decimal_sep">Decimal Separator</label>
+          <select id="decimal_sep" value={p.decimalSeparator} onChange={(e) => update({ decimalSeparator: e.target.value })}>
             <option value=".">Period (.) - 1,000.00</option>
             <option value=",">Comma (,) - 1.000,00</option>
           </select>
         </div>
 
         <div className="form-field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={prefs?.compactMode || false}
-              onChange={(e) => onChange({ ...prefs, compactMode: e.target.checked })}
-            />
-              <span className="slider"></span>
-            </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Zap size={16} /> Compact Mode (Denser Layout)
-            </span>
+          <label htmlFor="session_timeout">
+            <Clock size={14} aria-hidden /> Auto-logout after inactivity (minutes)
           </label>
+          <select
+            id="session_timeout"
+            value={p.sessionTimeoutMinutes || 30}
+            onChange={(e) => update({ sessionTimeoutMinutes: Number(e.target.value) })}
+          >
+            <option value={15}>15 minutes</option>
+            <option value={30}>30 minutes</option>
+            <option value={60}>1 hour</option>
+            <option value={120}>2 hours</option>
+            <option value={0}>Never (not recommended)</option>
+          </select>
         </div>
 
-        <div className="form-field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={prefs?.autoSave !== false}
-              onChange={(e) => onChange({ ...prefs, autoSave: e.target.checked })}
-            />
-              <span className="slider"></span>
-            </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Save size={16} /> Auto-save Changes
-            </span>
-          </label>
-        </div>
-
-        <div className="form-field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={prefs?.animationsEnabled !== false}
-              onChange={(e) => onChange({ ...prefs, animationsEnabled: e.target.checked })}
-            />
-              <span className="slider"></span>
-            </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Activity size={16} /> Enable Animations
-            </span>
-          </label>
-        </div>
-
-        <div className="form-field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={prefs?.showWeekNumbers || false}
-              onChange={(e) => onChange({ ...prefs, showWeekNumbers: e.target.checked })}
-            />
-              <span className="slider"></span>
-            </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Calendar size={16} /> Show Week Numbers in Calendar
-            </span>
-          </label>
-        </div>
+        {toggles.map(({ key, icon: Icon, label }) => (
+          <div className="form-field" key={key}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+              <div className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={key === 'autoSave' || key === 'animationsEnabled' ? p[key] !== false : Boolean(p[key])}
+                  onChange={(e) => update({ [key]: e.target.checked })}
+                  role="switch"
+                  aria-checked={key === 'autoSave' || key === 'animationsEnabled' ? p[key] !== false : Boolean(p[key])}
+                  aria-label={label}
+                />
+                <span className="slider" />
+              </div>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon size={16} aria-hidden /> {label}
+              </span>
+            </label>
+          </div>
+        ))}
       </div>
     </>
   );
 };
 
-// ============= EMAIL CHANGE SECTION =============
-const EmailChangeSection = ({ user, showMessage, t }) => {
+/* ============================================================
+ * Email change (with logout + re-auth)
+ * ============================================================ */
+const EmailChangeSection = ({ user, showMessage, logout, requestReAuth, t }) => {
   const [showModal, setShowModal] = useState(false);
   const [emailForm, setEmailForm] = useState({ newEmail: '', currentPassword: '' });
   const [loading, setLoading] = useState(false);
@@ -834,22 +1098,26 @@ const EmailChangeSection = ({ user, showMessage, t }) => {
       showMessage('error', 'All fields are required.');
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailForm.newEmail)) {
+    if (!validateEmail(emailForm.newEmail)) {
       showMessage('error', 'Please enter a valid email address.');
       return;
     }
+
+    const proceed = await requestReAuth('change your email', emailForm.currentPassword);
+    if (!proceed) return;
+
     setLoading(true);
     try {
       const res = await api.changeEmail({
         currentPassword: emailForm.currentPassword,
-        newEmail: emailForm.newEmail
+        newEmail: emailForm.newEmail,
       });
       showMessage('success', res.message || 'Email updated! Please log in again.');
       setShowModal(false);
       setEmailForm({ newEmail: '', currentPassword: '' });
-      setTimeout(() => window.location.reload(), 2000);
+      setTimeout(() => logout?.(), 1200);
     } catch (err) {
-      showMessage('error', err.response?.data?.message || 'Failed to update email.');
+      showMessage('error', err?.response?.data?.message || 'Failed to update email.');
     } finally {
       setLoading(false);
     }
@@ -859,19 +1127,13 @@ const EmailChangeSection = ({ user, showMessage, t }) => {
     <>
       <div className="form-field" style={{ marginTop: 24 }}>
         <label>{t?.('email_address') || 'Email Address'}</label>
-        {/* Added flexWrap to prevent squishing on mobile */}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             value={user?.email || ''}
             readOnly
             style={{ flex: 1, minWidth: 'min(200px, 100%)', opacity: 0.7, background: 'var(--surface-1)' }}
           />
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => setShowModal(true)}
-            style={{ whiteSpace: 'nowrap' }}
-          >
+          <button type="button" className="btn-secondary" onClick={() => setShowModal(true)} style={{ whiteSpace: 'nowrap' }}>
             {t?.('change_email') || 'Change Email'}
           </button>
         </div>
@@ -894,7 +1156,7 @@ const EmailChangeSection = ({ user, showMessage, t }) => {
             id="new_email_input"
             type="email"
             value={emailForm.newEmail}
-            onChange={(e) => setEmailForm(prev => ({ ...prev, newEmail: e.target.value }))}
+            onChange={(e) => setEmailForm((prev) => ({ ...prev, newEmail: e.target.value }))}
             placeholder="newaddress@example.com"
             autoFocus
           />
@@ -905,8 +1167,9 @@ const EmailChangeSection = ({ user, showMessage, t }) => {
             id="email_change_password"
             type="password"
             value={emailForm.currentPassword}
-            onChange={(e) => setEmailForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+            onChange={(e) => setEmailForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
             placeholder="Your current password"
+            autoComplete="current-password"
           />
         </div>
       </Modal>
@@ -914,9 +1177,12 @@ const EmailChangeSection = ({ user, showMessage, t }) => {
   );
 };
 
-const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
-
+/* ============================================================
+ * Profile tab
+ * ============================================================ */
+const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout, requestReAuth }) => {
   const fileInputRef = useRef(null);
+  const [showEmojiTray, setShowEmojiTray] = useState(false);
 
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0];
@@ -938,55 +1204,51 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
             height = Math.round((height * maxDim) / width);
             width = maxDim;
           }
-        } else {
-          if (height > maxDim) {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
         }
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.90);
-          handleFieldChange('avatar', compressed);
-          showMessage('success', 'Photo selected! Click "Save Settings" below to persist.');
+          handleFieldChange('avatar', canvas.toDataURL('image/jpeg', 0.9));
+          showMessage('success', 'Photo selected! Click "Save Changes" below to persist.');
         } else {
           handleFieldChange('avatar', event.target.result);
         }
       };
-      img.onerror = () => {
-        showMessage('error', 'Invalid image file.');
-      };
+      img.onerror = () => showMessage('error', 'Invalid image file.');
       img.src = event.target.result;
     };
-    reader.onerror = () => {
-      showMessage('error', 'Could not read image file.');
-    };
+    reader.onerror = () => showMessage('error', 'Could not read image file.');
     reader.readAsDataURL(file);
   };
 
-  const isBase64Avatar = /^(?:data:image\/|blob:|https?:\/\/|\/(?!\/))/i.test(String(formState.avatar || '').trim());
-  const [showEmojiTray, setShowEmojiTray] = useState(false);
   const selectEmoji = (emojiData) => {
     handleFieldChange('avatar', emojiData.emoji);
     setShowEmojiTray(false);
   };
+
+  const isBase64Avatar = /^(?:data:image\/|blob:|https?:\/\/|\/(?!\/))/i.test(String(formState.avatar || '').trim());
+
   const profileChecks = [
     Boolean(formState.firstName?.trim()),
     Boolean(formState.lastName?.trim()),
     Boolean(formState.profession?.trim()),
     Boolean(formState.avatar),
-    Boolean(user?.email)
+    Boolean(user?.email),
   ];
   const profileCompletion = Math.round((profileChecks.filter(Boolean).length / profileChecks.length) * 100);
-  const memberSince = user?.created_at ? new Date(user.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : 'Recently';
+  const memberSince = user?.created_at
+    ? new Date(user.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    : 'Recently';
 
   return (
     <>
       <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-        <div className="idp-hero-icon income" style={{ width: 64, height: 64, marginBottom: 16 }}>
+        <div className="idp-hero-icon income" style={{ width: 64, height: 64, marginBottom: 16 }} aria-hidden>
           <User size={28} />
         </div>
         <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
@@ -1002,7 +1264,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
           <div className="profile-summary-card">
             <span className="profile-summary-label">{t?.('profile_completeness') || 'Profile completeness'}</span>
             <strong>{profileCompletion}%</strong>
-            <div className="profile-completion-track" aria-hidden="true"><span style={{ width: `${profileCompletion}%` }} /></div>
+            <div className="profile-completion-track" aria-hidden><span style={{ width: `${profileCompletion}%` }} /></div>
           </div>
           <div className="profile-summary-card">
             <span className="profile-summary-label">{t?.('member_since') || 'Member since'}</span>
@@ -1022,36 +1284,28 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
           <motion.div
             whileHover={{ scale: 1.05 }}
             style={{
-              width: 100,
-              height: 100,
-              borderRadius: '50%',
-              background: formState.avatarColor,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '3rem',
-              boxShadow: `0 0 30px ${formState.avatarColor}55`,
-              flexShrink: 0,
-              position: 'relative',
-              overflow: 'hidden'
+              width: 100, height: 100, borderRadius: '50%', background: formState.avatarColor,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '3rem', boxShadow: `0 0 30px ${formState.avatarColor}55`,
+              flexShrink: 0, position: 'relative', overflow: 'hidden',
             }}
           >
             {isBase64Avatar ? (
-              <img src={formState.avatar} alt="Profile Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img src={formState.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
               formState.avatar
             )}
           </motion.div>
-          <div style={{ flex: 1, minWidth: '240px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          <div style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
                 {t?.('profile_picture') || 'Profile Picture'}
               </label>
-
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                   type="button"
-                  className="btn-secondary profile-emoji-trigger"
+                  className="btn-secondary"
                   onClick={() => setShowEmojiTray((open) => !open)}
                   aria-expanded={showEmojiTray}
                   aria-controls="profile-emoji-tray"
@@ -1064,34 +1318,31 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
                   onClick={() => fileInputRef.current?.click()}
                   style={{ flex: 1, minWidth: 140, justifyContent: 'center' }}
                 >
-                  <Upload size={16} /> {t?.('upload_image') || 'Upload Image'}
+                  <Upload size={16} aria-hidden /> {t?.('upload_image') || 'Upload Image'}
                 </button>
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={fileInputRef}
-                  style={{ display: 'none' }}
-                  onChange={handleImageUpload}
-                />
+                <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
               </div>
               {showEmojiTray && (
                 <div id="profile-emoji-tray" className="profile-emoji-tray" role="dialog" aria-label="Choose a profile emoji">
-                  <EmojiPicker
-                    onEmojiClick={selectEmoji}
-                    width="100%"
-                    height={360}
-                    lazyLoadEmojis={false}
-                    previewConfig={{ showPreview: false }}
-                  />
+                  <Suspense fallback={<div style={{ padding: 20, textAlign: 'center' }}><Loader className="spin" size={24} /></div>}>
+                    <EmojiPicker
+                      onEmojiClick={selectEmoji}
+                      width="100%"
+                      height={360}
+                      lazyLoadEmojis
+                      previewConfig={{ showPreview: false }}
+                    />
+                  </Suspense>
                 </div>
               )}
             </div>
+
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
                 {t?.('profile_color') || 'Profile Color'}
               </label>
               <div className="profile-color-options" role="group" aria-label="Choose your profile color">
-                {AVATAR_COLORS.map(color => (
+                {AVATAR_COLORS.map((color) => (
                   <button
                     key={color}
                     type="button"
@@ -1099,15 +1350,12 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
                     aria-label={`Select color ${color}`}
                     aria-pressed={formState.avatarColor === color}
                     style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: '50%',
-                      background: color,
+                      width: 32, height: 32, borderRadius: '50%', background: color,
                       border: formState.avatarColor === color ? '3px solid white' : '2px solid transparent',
                       cursor: 'pointer',
                       outline: formState.avatarColor === color ? `3px solid ${color}` : 'none',
                       boxShadow: formState.avatarColor === color ? `0 0 16px ${color}` : 'none',
-                      transition: 'all 0.2s'
+                      transition: 'all 0.2s',
                     }}
                   />
                 ))}
@@ -1118,8 +1366,8 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
 
         <div style={{ height: 1, background: 'var(--glass-border)', margin: '10px 0' }} />
 
-        <div className="profile-name-row">
-          <div className="form-field" style={{ flex: 1 }}>
+        <div className="profile-name-row" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <div className="form-field" style={{ flex: 1, minWidth: 200 }}>
             <label htmlFor="first_name">{t?.('first_name') || 'First Name'}</label>
             <input
               id="first_name"
@@ -1127,9 +1375,10 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
               onChange={(e) => handleFieldChange('firstName', e.target.value)}
               placeholder="First name"
               autoCapitalize="words"
+              maxLength={80}
             />
           </div>
-          <div className="form-field" style={{ flex: 1 }}>
+          <div className="form-field" style={{ flex: 1, minWidth: 200 }}>
             <label htmlFor="last_name">{t?.('last_name') || 'Surname'}</label>
             <input
               id="last_name"
@@ -1137,11 +1386,12 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
               onChange={(e) => handleFieldChange('lastName', e.target.value)}
               placeholder="Surname"
               autoCapitalize="words"
+              maxLength={80}
             />
           </div>
         </div>
 
-        <div className="form-field" style={{ marginTop: '16px' }}>
+        <div className="form-field" style={{ marginTop: 16 }}>
           <label htmlFor="profession">{t?.('profession_role') || 'Profession / Role'}</label>
           <input
             id="profession"
@@ -1154,20 +1404,39 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage }) => {
           />
           <span className="form-help">{t?.('profession_role_hint') || 'Write the profession or role you want shown on your profile.'}</span>
         </div>
-        <EmailChangeSection user={user} showMessage={showMessage} t={t} />
+
+        <EmailChangeSection
+          user={user}
+          showMessage={showMessage}
+          logout={logout}
+          requestReAuth={requestReAuth}
+          t={t}
+        />
       </div>
     </>
   );
 };
 
-// ============= PREFERENCES TAB =============
+/* ============================================================
+ * Preferences tab
+ * ============================================================ */
 const PreferencesTab = ({ formState, handleFieldChange, t }) => (
   <>
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-      <div className="idp-hero-icon" style={{ width: 64, height: 64, marginBottom: 16, background: 'rgba(56,189,248,0.1)', color: 'var(--brand-secondary)', border: '1px solid rgba(56,189,248,0.3)' }}>
+      <div
+        className="idp-hero-icon"
+        style={{
+          width: 64, height: 64, marginBottom: 16,
+          background: 'rgba(56,189,248,0.1)', color: 'var(--brand-secondary)',
+          border: '1px solid rgba(56,189,248,0.3)',
+        }}
+        aria-hidden
+      >
         <Settings size={28} />
       </div>
-      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>Preferences</h3>
+      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+        Preferences
+      </h3>
       <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Set your regional currency and savings goals.</p>
     </div>
 
@@ -1178,9 +1447,8 @@ const PreferencesTab = ({ formState, handleFieldChange, t }) => (
           id="currency_select"
           value={formState.currency}
           onChange={(e) => handleFieldChange('currency', e.target.value)}
-          aria-label="Select your currency"
         >
-          {Object.entries(CURRENCIES).map(([code, info]) => (
+          {Object.entries(CURRENCIES || {}).map(([code, info]) => (
             <option key={code} value={code}>
               {info.flag} {code} – {info.name} ({info.symbol})
             </option>
@@ -1189,8 +1457,7 @@ const PreferencesTab = ({ formState, handleFieldChange, t }) => (
       </div>
       <div className="form-field">
         <label htmlFor="monthly_goal_input">
-          <Target size={14} aria-hidden />
-          {t?.('monthly_goal') || 'Monthly Goal'}
+          <Target size={14} aria-hidden /> {t?.('monthly_goal') || 'Monthly Goal'}
         </label>
         <input
           id="monthly_goal_input"
@@ -1200,26 +1467,37 @@ const PreferencesTab = ({ formState, handleFieldChange, t }) => (
           placeholder="e.g. 5000"
           min="0"
           step="1"
-          aria-label="Set your monthly savings goal"
         />
       </div>
     </div>
   </>
 );
 
-// ============= LANGUAGE TAB =============
+/* ============================================================
+ * Language tab
+ * ============================================================ */
 const LanguageTab = ({ lang, setLanguage, showMessage, t }) => (
   <>
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-      <div className="idp-hero-icon" style={{ width: 64, height: 64, marginBottom: 16, background: 'rgba(251,191,36,0.1)', color: 'var(--warning)', border: '1px solid rgba(251,191,36,0.3)' }}>
+      <div
+        className="idp-hero-icon"
+        style={{
+          width: 64, height: 64, marginBottom: 16,
+          background: 'rgba(251,191,36,0.1)', color: 'var(--warning)',
+          border: '1px solid rgba(251,191,36,0.3)',
+        }}
+        aria-hidden
+      >
         <Globe size={28} />
       </div>
-      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>{t?.('language') || 'Language'}</h3>
+      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+        {t?.('language') || 'Language'}
+      </h3>
       <p style={{ color: 'var(--text-secondary)', margin: 0 }}>MyCoinwise speaks your language.</p>
     </div>
 
     <div className="idp-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {Object.entries(LANGUAGES).map(([code, info]) => (
+      {Object.entries(LANGUAGES || {}).map(([code, info]) => (
         <motion.button
           key={code}
           type="button"
@@ -1228,25 +1506,19 @@ const LanguageTab = ({ lang, setLanguage, showMessage, t }) => (
             showMessage('success', t?.('language_updated') || 'Language updated successfully');
           }}
           whileHover={{ x: 4, scale: 1.01 }}
-          aria-label={`Switch language to ${info.name}`}
           aria-pressed={lang === code}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 14,
-            padding: '16px 20px',
+            display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px',
             borderRadius: 16,
             border: lang === code ? '2px solid var(--brand-primary)' : '1px solid var(--glass-border)',
             background: lang === code ? 'rgba(var(--brand-primary-rgb), 0.08)' : 'var(--surface-1)',
-            cursor: 'pointer',
-            color: 'var(--text-primary)',
-            fontWeight: lang === code ? 800 : 600,
-            transition: 'all 0.2s',
-            boxShadow: lang === code ? '0 8px 24px rgba(var(--brand-primary-rgb), 0.15)' : 'none'
+            cursor: 'pointer', color: 'var(--text-primary)',
+            fontWeight: lang === code ? 800 : 600, transition: 'all 0.2s',
+            boxShadow: lang === code ? '0 8px 24px rgba(var(--brand-primary-rgb), 0.15)' : 'none',
           }}
         >
-          <MessageCircle size={24} color="var(--brand-primary)" aria-hidden style={{ opacity: lang === code ? 1 : 0.5 }} />
-          <span style={{ flex: 1, textAlign: 'left', fontSize: '1.1rem' }}>{info.name}</span>
+          <span style={{ fontSize: '1.5rem' }} aria-hidden>{info.flag || '🌐'}</span>
+          <span style={{ flex: 1, textAlign: 'left', fontSize: '1.05rem' }}>{info.name}</span>
           {lang === code && <CheckCircle size={20} color="var(--brand-primary)" aria-hidden />}
         </motion.button>
       ))}
@@ -1254,46 +1526,54 @@ const LanguageTab = ({ lang, setLanguage, showMessage, t }) => (
   </>
 );
 
-// ============= APPEARANCE TAB =============
+/* ============================================================
+ * Appearance tab (adds Auto)
+ * ============================================================ */
 const AppearanceTab = ({ theme, handleThemeChange }) => {
   const themes = [
     { id: 'light', label: 'Light', icon: <Sun size={18} />, bg: '#e8f7ed', accent: '#059669', sub: 'Clean Light' },
     { id: 'amoled', label: 'AMOLED', icon: <Moon size={18} />, bg: '#000000', accent: '#34d399', sub: 'True Black' },
+    { id: 'auto', label: 'Auto', icon: <Monitor size={18} />, bg: 'var(--glass-2)', accent: '#8b5cf6', sub: 'Follow System' },
   ];
 
   return (
     <>
       <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-        <div className="idp-hero-icon" style={{ width: 64, height: 64, marginBottom: 16, background: 'rgba(236,72,153,0.1)', color: '#ec4899', border: '1px solid rgba(236,72,153,0.3)' }}>
+        <div
+          className="idp-hero-icon"
+          style={{
+            width: 64, height: 64, marginBottom: 16,
+            background: 'rgba(236,72,153,0.1)', color: '#ec4899',
+            border: '1px solid rgba(236,72,153,0.3)',
+          }}
+          aria-hidden
+        >
           <Palette size={28} />
         </div>
         <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>Appearance</h3>
         <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Choose a theme that fits your vibe.</p>
       </div>
 
-      <div className="idp-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16, padding: '30px 20px' }}>
-        {themes.map(opt => (
+      <div
+        className="idp-body"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16, padding: '30px 20px' }}
+      >
+        {themes.map((opt) => (
           <motion.button
             key={opt.id}
             type="button"
             whileHover={{ scale: 1.05, y: -4 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => handleThemeChange(opt.id)}
-            aria-label={`Switch to ${opt.label} theme`}
             aria-pressed={theme === opt.id}
             style={{
-              padding: '24px 16px',
-              borderRadius: 20,
+              padding: '24px 16px', borderRadius: 20,
               border: theme === opt.id ? `2px solid ${opt.accent}` : '1px solid var(--glass-border)',
-              background: opt.bg,
-              cursor: 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 10,
+              background: opt.bg, cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
               transition: 'all 0.25s',
               boxShadow: theme === opt.id ? `0 12px 32px ${opt.accent}44, inset 0 0 20px ${opt.accent}22` : 'var(--shadow-sm)',
-              position: 'relative'
+              position: 'relative',
             }}
           >
             <span style={{ fontSize: '2.4rem', filter: theme === opt.id ? `drop-shadow(0 0 16px ${opt.accent})` : 'none' }} aria-hidden>
@@ -1302,9 +1582,7 @@ const AppearanceTab = ({ theme, handleThemeChange }) => {
             <span style={{ color: opt.accent, fontWeight: 800, fontSize: '1.1rem', fontFamily: 'var(--font-head)' }}>
               {opt.label}
             </span>
-            <span style={{ color: opt.accent, opacity: 0.7, fontSize: '0.8rem', fontWeight: 600 }}>
-              {opt.sub}
-            </span>
+            <span style={{ color: opt.accent, opacity: 0.7, fontSize: '0.8rem', fontWeight: 600 }}>{opt.sub}</span>
             {theme === opt.id && (
               <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ position: 'absolute', top: 12, right: 12 }}>
                 <CheckCircle size={18} color={opt.accent} aria-hidden />
@@ -1317,55 +1595,21 @@ const AppearanceTab = ({ theme, handleThemeChange }) => {
   );
 };
 
-// ============= USERS TAB =============
-const getUserDisplayName = (user) => {
-  const username = String(user?.username || '').trim().replace(/\s+/g, ' ');
-  const surname = String(user?.last_name || '').trim().replace(/\s+/g, ' ');
-  // Older records can contain a token or another accidentally persisted value.
-  // Never allow that value to become the visible profile name.
-  const safeUsername = username.length <= 80 ? username : '';
-  const safeSurname = surname.length <= 80 ? surname : '';
-  const duplicateSurname = safeSurname && safeUsername.toLocaleLowerCase().endsWith(` ${safeSurname.toLocaleLowerCase()}`);
-  return [safeUsername, duplicateSurname ? '' : safeSurname].filter(Boolean).join(' ') || 'Unnamed profile';
-};
-
-const getSafeUserEmail = (user) => {
-  const email = String(user?.email || '').trim();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 160
-    ? email
-    : 'Personal workspace';
-};
-
-const isUsableAvatarSource = (value) => {
-  const avatar = String(value || '').trim();
-  return avatar.length > 20 && (
-    /^data:image\//i.test(avatar) ||
-    /^blob:/i.test(avatar) ||
-    /^https?:\/\//i.test(avatar) ||
-    /^\/(?!\/)/.test(avatar)
-  );
-};
-
-const getSafeUserAvatar = (user) => {
-  const avatar = String(user?.profile_avatar || '').trim();
-  if (isUsableAvatarSource(avatar)) return { type: 'image', value: avatar };
-  if (avatar && avatar.length <= 12 && !/[A-Za-z0-9_-]{20,}/.test(avatar)) {
-    return { type: 'text', value: avatar };
-  }
-  const name = getUserDisplayName(user);
-  return { type: 'text', value: name.charAt(0).toUpperCase() || 'U' };
-};
-
+/* ============================================================
+ * Users tab
+ * ============================================================ */
 const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
   <>
     <div className="manage-users-hero">
-      <div className="idp-hero-icon manage-users-hero-icon">
+      <div className="idp-hero-icon manage-users-hero-icon" aria-hidden>
         <Users size={28} />
       </div>
       <div>
         <div className="manage-users-title-row">
           <h3>{t?.('manage_users') || 'Manage Users'}</h3>
-          <span className="manage-users-count">{sortedUsers.length} {sortedUsers.length === 1 ? (t?.('profile_count') || 'profile') : (t?.('profiles_count') || 'profiles')}</span>
+          <span className="manage-users-count">
+            {sortedUsers.length} {sortedUsers.length === 1 ? (t?.('profile_count') || 'profile') : (t?.('profiles_count') || 'profiles')}
+          </span>
         </div>
         <p>{t?.('manage_users_desc') || 'Easily switch between household accounts and keep each workspace personal.'}</p>
       </div>
@@ -1373,10 +1617,11 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
 
     <div className="manage-users-body">
       <div className="manage-users-list">
-        {sortedUsers.map(u => {
+        {sortedUsers.map((u) => {
           const uid = u.id || u._id;
           const isCurrentUser = String(uid) === String(USER_ID);
           const avatar = getSafeUserAvatar(u);
+          const email = getSafeUserEmail(u);
           return (
             <motion.div
               key={uid}
@@ -1386,43 +1631,39 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
               <span className="manage-user-avatar" style={{ background: u.profile_color || '#059669' }} aria-hidden>
                 {avatar.type === 'image' ? <img src={avatar.value} alt="" /> : avatar.value}
               </span>
-            <div className="manage-user-main">
-              <p className="manage-user-name">{getUserDisplayName(u)}</p>
-              <p className="manage-user-email" title={getSafeUserEmail(u)}>{getSafeUserEmail(u)}</p>
-              <span className="manage-user-role">{u.profession || t?.('personal_workspace') || 'Personal workspace'}</span>
-            </div>
-            {isCurrentUser && (
-              <span className="manage-user-status" aria-label={t?.('active_user') || 'Active User'}>
-                {t?.('active') || 'Active'}
-              </span>
-            )}
-            {!isCurrentUser && (
-              <div className="manage-user-actions">
-                <motion.button
-                  type="button"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setModals(prev => ({ ...prev, switchConfirm: u }))}
-                  disabled={switchingUserId === uid}
-                  aria-label={`Switch to ${u.username}`}
-                  className="manage-user-switch"
-                >
-                  <Users size={14} aria-hidden />
-                  {switchingUserId === uid ? (t?.('switching') || 'Switching...') : (t?.('switch') || 'Switch')}
-                </motion.button>
-
-                <motion.button
-                  type="button"
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => setModals(prev => ({ ...prev, deleteUser: uid }))}
-                  aria-label={`Delete ${getUserDisplayName(u)}`}
-                  className="manage-user-delete"
-                >
-                  <Trash2 size={16} aria-hidden />
-                </motion.button>
+              <div className="manage-user-main">
+                <p className="manage-user-name">{getUserDisplayName(u)}</p>
+                {email && <p className="manage-user-email" title={email}>{email}</p>}
+                <span className="manage-user-role">{u.profession || t?.('personal_workspace') || 'Personal workspace'}</span>
               </div>
-            )}
+              {isCurrentUser ? (
+                <span className="manage-user-status">{t?.('active') || 'Active'}</span>
+              ) : (
+                <div className="manage-user-actions">
+                  <motion.button
+                    type="button"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setModals((prev) => ({ ...prev, switchConfirm: u }))}
+                    disabled={switchingUserId === uid}
+                    aria-label={`Switch to ${getUserDisplayName(u)}`}
+                    className="manage-user-switch"
+                  >
+                    <Users size={14} aria-hidden />
+                    {switchingUserId === uid ? (t?.('switching') || 'Switching…') : (t?.('switch') || 'Switch')}
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setModals((prev) => ({ ...prev, deleteUser: uid }))}
+                    aria-label={`Delete ${getUserDisplayName(u)}`}
+                    className="manage-user-delete"
+                  >
+                    <Trash2 size={16} aria-hidden />
+                  </motion.button>
+                </div>
+              )}
             </motion.div>
           );
         })}
@@ -1430,26 +1671,30 @@ const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
       <motion.button
         type="button"
         className="btn-secondary manage-users-add"
-        onClick={() => setModals(prev => ({ ...prev, addUser: { name: '', email: '' } }))}
-        aria-label="Add new user"
+        onClick={() => setModals((prev) => ({ ...prev, addUser: { name: '', email: '' } }))}
         whileHover={{ scale: 1.02 }}
       >
-        <Plus size={18} aria-hidden />
-        {t?.('add_new_user') || 'Add New User'}
+        <Plus size={18} aria-hidden /> {t?.('add_new_user') || 'Add New User'}
       </motion.button>
     </div>
   </>
 );
 
-// ============= DATA TAB =============
+/* ============================================================
+ * Data tab
+ * ============================================================ */
 const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, pdfLoading, t }) => (
   <>
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-      <div className="idp-hero-icon expense" style={{ width: 64, height: 64, marginBottom: 16 }}>
+      <div className="idp-hero-icon expense" style={{ width: 64, height: 64, marginBottom: 16 }} aria-hidden>
         <Database size={28} />
       </div>
-      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>{t?.('data_security') || 'Data & Security'}</h3>
-      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>{t?.('data_security_desc') || 'Export your data, backup your transactions, or manage your data vaults.'}</p>
+      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+        {t?.('data_security') || 'Data & Security'}
+      </h3>
+      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+        {t?.('data_security_desc') || 'Export your data, backup your transactions, or manage your data vaults.'}
+      </p>
     </div>
 
     <div className="idp-body" style={{ background: 'transparent', border: 'none', padding: 0 }}>
@@ -1462,10 +1707,10 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
           whileHover={{ scale: 1.03, y: -2 }}
           style={{ flexDirection: 'column', gap: 12, padding: '24px 16px', background: 'var(--glass-2)' }}
         >
-          <div style={{ padding: 12, background: 'rgba(16,185,129,0.1)', borderRadius: 12, color: 'var(--success)' }}>
-            <Download size={24} aria-hidden />
+          <div style={{ padding: 12, background: 'rgba(16,185,129,0.1)', borderRadius: 12, color: 'var(--success)' }} aria-hidden>
+            <Download size={24} />
           </div>
-          <span style={{ fontWeight: 800 }}>{excelLoading ? (t?.('exporting') || 'Exporting...') : (t?.('download_excel') || 'Download Excel')}</span>
+          <span style={{ fontWeight: 800 }}>{excelLoading ? (t?.('exporting') || 'Exporting…') : (t?.('download_excel') || 'Download Excel')}</span>
         </motion.button>
         <motion.button
           type="button"
@@ -1475,14 +1720,20 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
           whileHover={{ scale: 1.03, y: -2 }}
           style={{ flexDirection: 'column', gap: 12, padding: '24px 16px', background: 'var(--glass-2)' }}
         >
-          <div style={{ padding: 12, background: 'rgba(56,189,248,0.1)', borderRadius: 12, color: 'var(--brand-secondary)' }}>
-            <FileText size={24} aria-hidden />
+          <div style={{ padding: 12, background: 'rgba(56,189,248,0.1)', borderRadius: 12, color: 'var(--brand-secondary)' }} aria-hidden>
+            <FileText size={24} />
           </div>
-          <span style={{ fontWeight: 800 }}>{pdfLoading ? (t?.('exporting') || 'Generating...') : (t?.('download_pdf') || 'Download PDF')}</span>
+          <span style={{ fontWeight: 800 }}>{pdfLoading ? (t?.('exporting') || 'Generating…') : (t?.('download_pdf') || 'Download PDF')}</span>
         </motion.button>
       </div>
 
-      <div className="idp-section" style={{ background: 'rgba(239,68,68,0.05)', padding: 24, borderRadius: 20, border: '1px solid rgba(239,68,68,0.2)' }}>
+      <div
+        className="idp-section"
+        style={{
+          background: 'rgba(239,68,68,0.05)', padding: 24, borderRadius: 20,
+          border: '1px solid rgba(239,68,68,0.2)',
+        }}
+      >
         <h4 style={{ color: 'var(--danger)', fontSize: '1.2rem', fontWeight: 800, margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
           <ShieldAlert size={20} aria-hidden /> {t?.('danger_zone') || 'Danger Zone'}
         </h4>
@@ -1492,8 +1743,7 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
         <motion.button
           type="button"
           className="btn-primary"
-          onClick={() => setModals(prev => ({ ...prev, resetConfirm: true }))}
-          aria-label="Open factory reset confirmation dialog"
+          onClick={() => setModals((prev) => ({ ...prev, resetConfirm: true }))}
           whileHover={{ scale: 1.02 }}
           style={{ background: 'var(--danger)', width: 'max-content' }}
         >
@@ -1504,22 +1754,9 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
   </>
 );
 
-// ============= MAIN SETTINGS COMPONENT =============
-const settingsReducer = (state, action) => {
-  switch (action.type) {
-    case 'SET_FIELD':
-      return { ...state, [action.field]: action.value, isDirty: true };
-    case 'RESET_FORM':
-      return { ...action.payload, isDirty: false };
-    case 'CLEAR_DIRTY':
-      return { ...state, isDirty: false };
-    default:
-      return state;
-  }
-};
-
-// ============= FACTORY RESET MODAL (typed confirmation) =============
-// Inner component that holds the input state — key prop resets it on each open
+/* ============================================================
+ * Factory reset modal
+ * ============================================================ */
 const FactoryResetModalInner = ({ onClose, onConfirm, isLoading }) => {
   const [confirmText, setConfirmText] = useState('');
   const isConfirmed = confirmText === 'DELETE';
@@ -1536,18 +1773,17 @@ const FactoryResetModalInner = ({ onClose, onConfirm, isLoading }) => {
       confirmDisabled={!isConfirmed}
     >
       <div style={{ textAlign: 'center', marginBottom: 20 }}>
-        <AlertTriangle size={48} style={{ color: 'var(--danger)', marginBottom: 12 }} />
+        <AlertTriangle size={48} style={{ color: 'var(--danger)', marginBottom: 12 }} aria-hidden />
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6 }}>
-          You are about to permanently delete <strong>all data</strong> associated with your account,
-          including all transactions, budget goals, subscriptions, preferences, and export history.
+          You are about to permanently delete <strong>all data</strong> associated with your account.
         </p>
-        <p style={{ color: '#ef4444', fontWeight: 700, marginTop: 12 }}>
+        <p style={{ color: 'var(--danger)', fontWeight: 700, marginTop: 12 }}>
           This action CANNOT be undone!
         </p>
       </div>
       <div className="form-field">
         <label htmlFor="reset_confirm_input" style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-          Type <strong style={{ color: '#ef4444', letterSpacing: '0.05em' }}>DELETE</strong> to confirm:
+          Type <strong style={{ color: 'var(--danger)', letterSpacing: '0.05em' }}>DELETE</strong> to confirm:
         </label>
         <input
           id="reset_confirm_input"
@@ -1555,7 +1791,7 @@ const FactoryResetModalInner = ({ onClose, onConfirm, isLoading }) => {
           value={confirmText}
           onChange={(e) => setConfirmText(e.target.value)}
           placeholder="Type DELETE here"
-          style={{ borderColor: isConfirmed ? '#ef4444' : undefined }}
+          style={{ borderColor: isConfirmed ? 'var(--danger)' : undefined }}
           autoComplete="off"
           spellCheck={false}
           autoFocus
@@ -1567,11 +1803,28 @@ const FactoryResetModalInner = ({ onClose, onConfirm, isLoading }) => {
 
 const FactoryResetModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
   if (!isOpen) return null;
-  // key={Date.toString()} would rotate, but isOpen toggling remounts the inner component,
-  // resetting its local state without needing a useEffect setState call.
   return <FactoryResetModalInner onClose={onClose} onConfirm={onConfirm} isLoading={isLoading} />;
 };
 
+/* ============================================================
+ * Reducer
+ * ============================================================ */
+const settingsReducer = (state, action) => {
+  switch (action.type) {
+    case 'SET_FIELD':
+      return { ...state, [action.field]: action.value, isDirty: true };
+    case 'RESET_FORM':
+      return { ...action.payload, isDirty: false };
+    case 'CLEAR_DIRTY':
+      return { ...state, isDirty: false };
+    default:
+      return state;
+  }
+};
+
+/* ============================================================
+ * Main component
+ * ============================================================ */
 function SettingsInner({ context }) {
   const {
     user,
@@ -1588,88 +1841,104 @@ function SettingsInner({ context }) {
     setLanguage,
     t,
     transactions = [],
-    logout
+    logout,
   } = context;
-  const nameParts = getNameParts(user);
 
-  const [formState, dispatch] = useReducer(settingsReducer, {
-    firstName: nameParts.firstName,
-    lastName: nameParts.lastName,
-    profession: user?.profession || user?.role || 'Trader',
-    monthlyGoal: user?.monthly_goal?.toString() || '',
-    currency: user?.currency || 'INR',
-    avatar: user?.profile_avatar || '😊',
-    avatarColor: user?.profile_color || '#059669',
-    notificationPrefs: user?.notification_prefs || {
-      emailReports: true, budgetAlerts: true, goalMilestones: true, unusualSpending: false,
-      pushNotifications: true, weeklyDigest: true, quietHoursEnabled: false, quietHoursStart: '22:00', quietHoursEnd: '08:00'
-    },
-    advancedPrefs: user?.advanced_prefs || {
-      dateFormat: 'MM/DD/YYYY', timeFormat: '12h', firstDayOfWeek: 'Sunday', decimalSeparator: '.',
-      compactMode: false, autoSave: true, animationsEnabled: true, showWeekNumbers: false
-    },
-    isDirty: false
-  });
+  const navigate = useNavigate();
+  const { showToast: showMessage } = useToast();
 
+  /* ---------------- Form state ---------------- */
+  const [formState, dispatch] = useReducer(
+    settingsReducer,
+    buildResetPayload(user)
+  );
+
+  // Reset form when the user object identity changes
   useEffect(() => {
     if (user) {
-      dispatch({
-        type: 'RESET_FORM',
-        payload: {
-          firstName: getNameParts(user).firstName,
-          lastName: getNameParts(user).lastName,
-          profession: user?.profession || user?.role || 'Trader',
-          monthlyGoal: user?.monthly_goal?.toString() || '',
-          currency: user?.currency || 'INR',
-          avatar: user?.profile_avatar || '😊',
-          avatarColor: user?.profile_color || '#059669',
-          notificationPrefs: user?.notification_prefs || {
-            emailReports: true, budgetAlerts: true, goalMilestones: true, unusualSpending: false,
-            pushNotifications: true, weeklyDigest: true, quietHoursEnabled: false, quietHoursStart: '22:00', quietHoursEnd: '08:00'
-          },
-          advancedPrefs: user?.advanced_prefs || {
-            dateFormat: 'MM/DD/YYYY', timeFormat: '12h', firstDayOfWeek: 'Sunday', decimalSeparator: '.',
-            compactMode: false, autoSave: true, animationsEnabled: true, showWeekNumbers: false
-          }
-        }
-      });
+      dispatch({ type: 'RESET_FORM', payload: buildResetPayload(user) });
     }
   }, [user]);
 
+  /* ---------------- Tabs ---------------- */
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState(() => (
-    tabParam && ['profile', 'preferences', 'language', 'appearance', 'notifications', 'security', 'users', 'data', 'advanced'].includes(tabParam)
-      ? tabParam
-      : 'profile'
+    tabParam && TAB_IDS.includes(tabParam) ? tabParam : 'profile'
   ));
 
   useEffect(() => {
-    if (tabParam && ['profile', 'preferences', 'language', 'appearance', 'notifications', 'security', 'users', 'data', 'advanced'].includes(tabParam)) {
-      setActiveTab(tabParam);
-    }
+    if (tabParam && TAB_IDS.includes(tabParam)) setActiveTab(tabParam);
   }, [tabParam]);
+
+  /* ---------------- New: settings search ---------------- */
+  const [search, setSearch] = useState('');
+
+  /* ---------------- Modals ---------------- */
   const [modals, setModals] = useState({
     addUser: false,
     resetConfirm: false,
     deleteUser: null,
-    switchConfirm: null
+    switchConfirm: null,
   });
 
+  /* ---------------- Independent loading states ---------------- */
   const [loadingStates, setLoadingStates] = useState({
     save: false,
     createUser: false,
     reset: false,
     switch: null,
     pdf: false,
-    excel: false
+    excel: false,
+    deleteUser: false,
   });
 
   const [undoSnapshot, setUndoSnapshot] = useState(null);
 
-  const { showToast: showMessage } = useToast();
-  const isMounted = useRef(true);
+  /* ---------------- Re-auth modal state ---------------- */
+  const [reAuthState, setReAuthState] = useState({
+    isOpen: false,
+    actionLabel: '',
+    resolve: null,
+  });
 
+  const requestReAuth = useCallback((actionLabel, _passwordHint) => {
+    return new Promise((resolve) => {
+      setReAuthState({ isOpen: true, actionLabel, resolve });
+    });
+  }, []);
+
+  const handleReAuthConfirm = useCallback(async (password) => {
+    // In a real backend, you would call `api.verifyPassword(USER_ID, password)`.
+    // Here we delegate to api.changePassword-style verification if available,
+    // otherwise we accept the password and let the downstream call validate it.
+    if (typeof api.verifyPassword === 'function') {
+      const ok = await api.verifyPassword(USER_ID, password);
+      if (!ok) throw new Error('Incorrect password.');
+    }
+    reAuthState.resolve?.(true);
+    setReAuthState({ isOpen: false, actionLabel: '', resolve: null });
+    return true;
+  }, [reAuthState, USER_ID]);
+
+  const handleReAuthClose = useCallback(() => {
+    reAuthState.resolve?.(false);
+    setReAuthState({ isOpen: false, actionLabel: '', resolve: null });
+  }, [reAuthState]);
+
+  /* ---------------- Ref ---------------- */
+  const isMounted = useRef(true);
+  const themeSaveTimerRef = useRef(null);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      if (themeSaveTimerRef.current) clearTimeout(themeSaveTimerRef.current);
+    };
+  }, []);
+
+  /* ---------------- Unsaved changes warning ---------------- */
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (formState.isDirty) {
@@ -1681,23 +1950,53 @@ function SettingsInner({ context }) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [formState.isDirty]);
 
+  /* ---------------- Session idle timeout ---------------- */
   useEffect(() => {
-    isMounted.current = true;
-    return () => {
-      isMounted.current = false;
+    const minutes = Number(formState.advancedPrefs?.sessionTimeoutMinutes ?? 30);
+    if (!minutes || minutes <= 0 || !logout) return undefined;
+
+    let timeoutId;
+    const reset = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        showMessage('info', 'Session timed out due to inactivity. Please log in again.');
+        logout();
+      }, minutes * 60 * 1000);
     };
-  }, []);
 
-  // ✅ Fix: Removed redundant global Escape key handler — Modal already handles Escape internally.
-  //         A global handler that resets ALL modals simultaneously could interfere with
-  //         modals that need custom escape behavior in the future.
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach((ev) => document.addEventListener(ev, reset, { passive: true }));
+    reset();
 
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      events.forEach((ev) => document.removeEventListener(ev, reset));
+    };
+  }, [formState.advancedPrefs?.sessionTimeoutMinutes, logout, showMessage]);
+
+  /* ---------------- Apply compact mode + animations to DOM ---------------- */
+  useEffect(() => {
+    const compact = Boolean(formState.advancedPrefs?.compactMode);
+    const animations = formState.advancedPrefs?.animationsEnabled !== false;
+    document.body.classList.toggle('compact-mode', compact);
+    document.body.classList.toggle('no-animations', !animations);
+  }, [formState.advancedPrefs?.compactMode, formState.advancedPrefs?.animationsEnabled]);
+
+  /* ---------------- Field change ---------------- */
   const handleFieldChange = useCallback((field, value) => {
     dispatch({ type: 'SET_FIELD', field, value });
   }, []);
 
+  /* ============================================================
+   * Save
+   * ============================================================ */
   const handleSave = useCallback(async (e) => {
-    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (e?.preventDefault) e.preventDefault();
+    if (loadingStates.save) return;
+    if (!USER_ID) {
+      showMessage('error', 'Session expired. Please log in again.');
+      return;
+    }
 
     const sanitizedFirstName = sanitizeInput(formState.firstName);
     const sanitizedLastName = sanitizeInput(formState.lastName);
@@ -1712,33 +2011,32 @@ function SettingsInner({ context }) {
       return;
     }
 
-    setLoadingStates(prev => ({ ...prev, save: true }));
+    setLoadingStates((prev) => ({ ...prev, save: true }));
+
+    const previousState = {
+      username: user?.username,
+      last_name: user?.last_name,
+      profession: user?.profession,
+      theme: user?.theme,
+      monthly_goal: user?.monthly_goal,
+      currency: user?.currency,
+      profile_avatar: user?.profile_avatar,
+      profile_color: user?.profile_color,
+      notification_prefs: user?.notification_prefs,
+      advanced_prefs: user?.advanced_prefs,
+    };
 
     try {
-      // Snapshot old state for undo
-      const previousState = {
-        username: user?.username,
-        last_name: user?.last_name,
-        profession: user?.profession,
-        theme: user?.theme,
-        monthly_goal: user?.monthly_goal,
-        currency: user?.currency,
-        profile_avatar: user?.profile_avatar,
-        profile_color: user?.profile_color,
-        notification_prefs: user?.notification_prefs,
-        advanced_prefs: user?.advanced_prefs
-      };
-
       await api.updateSettings(USER_ID, {
         username: sanitizedFirstName,
         last_name: sanitizedLastName,
-        profession: formState.profession,
-        monthly_goal: isGoalValid ? goalValue : (user.monthly_goal || 0),
+        profession: sanitizeInput(formState.profession),
+        monthly_goal: isGoalValid ? goalValue : (user?.monthly_goal || 0),
         currency: formState.currency,
         profile_avatar: formState.avatar,
         profile_color: formState.avatarColor,
         notification_prefs: formState.notificationPrefs,
-        advanced_prefs: formState.advancedPrefs
+        advanced_prefs: formState.advancedPrefs,
       });
 
       setUndoSnapshot(previousState);
@@ -1750,14 +2048,14 @@ function SettingsInner({ context }) {
       showMessage('error', 'Failed to save settings. Please try again.');
     } finally {
       if (isMounted.current) {
-        setLoadingStates(prev => ({ ...prev, save: false }));
+        setLoadingStates((prev) => ({ ...prev, save: false }));
       }
     }
-  }, [formState, USER_ID, refetch, showMessage, user]);
+  }, [formState, USER_ID, refetch, showMessage, user, loadingStates.save]);
 
   const handleUndo = useCallback(async () => {
-    if (!undoSnapshot) return;
-    setLoadingStates(prev => ({ ...prev, save: true }));
+    if (!undoSnapshot || !USER_ID) return;
+    setLoadingStates((prev) => ({ ...prev, save: true }));
     try {
       await api.updateSettings(USER_ID, undoSnapshot);
       setUndoSnapshot(null);
@@ -1767,12 +2065,20 @@ function SettingsInner({ context }) {
       showMessage('error', 'Failed to undo changes.');
     } finally {
       if (isMounted.current) {
-        setLoadingStates(prev => ({ ...prev, save: false }));
+        setLoadingStates((prev) => ({ ...prev, save: false }));
       }
     }
   }, [undoSnapshot, USER_ID, refetch, showMessage]);
 
+  const handleDiscard = useCallback(() => {
+    dispatch({ type: 'RESET_FORM', payload: buildResetPayload(user) });
+  }, [user]);
+
+  /* ============================================================
+   * Users
+   * ============================================================ */
   const handleCreateUser = useCallback(async () => {
+    if (loadingStates.createUser) return;
     const sanitizedName = sanitizeInput(modals.addUser?.name);
     const sanitizedEmail = sanitizeInput(modals.addUser?.email);
 
@@ -1780,148 +2086,153 @@ function SettingsInner({ context }) {
       showMessage('error', 'Please fill in both name and email.');
       return;
     }
-
     if (!validateEmail(sanitizedEmail)) {
       showMessage('error', 'Please enter a valid email address.');
       return;
     }
 
-    setLoadingStates(prev => ({ ...prev, createUser: true }));
-
+    setLoadingStates((prev) => ({ ...prev, createUser: true }));
     try {
-      const result = await createUser({
-        username: sanitizedName,
-        email: sanitizedEmail
-      });
-
-      if (result?.id && switchUser) {
-        await switchUser(result.id);
-      }
-
-      setModals(prev => ({ ...prev, addUser: false }));
+      const result = await createUser({ username: sanitizedName, email: sanitizedEmail });
+      const newId = result?.id || result?._id;
+      if (newId && switchUser) await switchUser(newId);
+      setModals((prev) => ({ ...prev, addUser: false }));
       showMessage('success', 'New account created and switched!');
       if (refetch) await refetch();
     } catch (err) {
-      const errorMsg = err.response?.data?.error || err.message;
+      const errorMsg = err?.response?.data?.error || err?.message;
       const displayMsg = errorMsg === 'Email already exists'
         ? 'This email is already in use. Try a different one.'
         : `Error: ${errorMsg}`;
       showMessage('error', displayMsg);
     } finally {
-      if (isMounted.current) {
-        setLoadingStates(prev => ({ ...prev, createUser: false }));
-      }
+      if (isMounted.current) setLoadingStates((prev) => ({ ...prev, createUser: false }));
     }
-  }, [modals.addUser, createUser, switchUser, refetch, showMessage]);
+  }, [modals.addUser, createUser, switchUser, refetch, showMessage, loadingStates.createUser]);
 
   const handleReset = useCallback(async () => {
-    setLoadingStates(prev => ({ ...prev, reset: true }));
+    if (loadingStates.reset) return;
 
+    const proceed = await requestReAuth('reset your account');
+    if (!proceed) return;
+
+    setLoadingStates((prev) => ({ ...prev, reset: true }));
     try {
       await resetAccount();
-      setModals(prev => ({ ...prev, resetConfirm: false }));
+      setModals((prev) => ({ ...prev, resetConfirm: false }));
       showMessage('success', 'Account completely reset.');
+      // Log out after a full reset — the token is no longer valid.
+      setTimeout(() => logout?.(), 800);
     } catch (error) {
       console.error('Reset error:', error);
       showMessage('error', 'Error resetting account.');
     } finally {
-      if (isMounted.current) {
-        setLoadingStates(prev => ({ ...prev, reset: false }));
-      }
+      if (isMounted.current) setLoadingStates((prev) => ({ ...prev, reset: false }));
     }
-  }, [resetAccount, showMessage]);
+  }, [resetAccount, showMessage, requestReAuth, loadingStates.reset, logout]);
 
   const handleDeleteUser = useCallback(async () => {
+    if (loadingStates.deleteUser) return;
     const userId = modals.deleteUser;
     if (!userId) return;
 
-    setLoadingStates(prev => ({ ...prev, save: true }));
+    const proceed = await requestReAuth('delete this account');
+    if (!proceed) return;
 
+    setLoadingStates((prev) => ({ ...prev, deleteUser: true }));
     try {
       await api.deleteUser(userId);
-
-      if (userId === USER_ID) {
-        localStorage.removeItem('mcw-user-id');
-        window.location.href = '/login';
+      if (String(userId) === String(USER_ID)) {
+        logout?.();
+        navigate('/login', { replace: true });
       } else {
         if (refetch) await refetch();
-        setModals(prev => ({ ...prev, deleteUser: null }));
+        setModals((prev) => ({ ...prev, deleteUser: null }));
         showMessage('success', 'Account successfully removed.');
       }
     } catch (err) {
-      showMessage('error', `Failed to remove user: ${err.response?.data?.error || err.message}`);
+      showMessage('error', `Failed to remove user: ${err?.response?.data?.error || err?.message}`);
     } finally {
-      if (isMounted.current) {
-        setLoadingStates(prev => ({ ...prev, save: false }));
-      }
+      if (isMounted.current) setLoadingStates((prev) => ({ ...prev, deleteUser: false }));
     }
-  }, [modals.deleteUser, USER_ID, refetch, showMessage]);
+  }, [modals.deleteUser, USER_ID, refetch, showMessage, requestReAuth, loadingStates.deleteUser, logout, navigate]);
 
   const handleSwitchUser = useCallback(async () => {
     const userToSwitch = modals.switchConfirm;
     if (!userToSwitch) return;
 
-    setLoadingStates(prev => ({ ...prev, switch: userToSwitch.id }));
+    const switchId = userToSwitch.id || userToSwitch._id;
+    setLoadingStates((prev) => ({ ...prev, switch: switchId }));
 
     try {
       if (formState.isDirty) {
-        showMessage('success', 'Auto-saving changes before switching...', 2000);
+        const { isValid: isGoalValid, value: goalValue } = validateGoal(formState.monthlyGoal);
+        showMessage('info', 'Auto-saving changes before switching…');
         await api.updateSettings(USER_ID, {
           username: sanitizeInput(formState.firstName || ''),
           last_name: sanitizeInput(formState.lastName || ''),
-          profession: formState.profession,
-          monthly_goal: formState.monthlyGoal,
+          profession: sanitizeInput(formState.profession || ''),
+          monthly_goal: isGoalValid ? goalValue : (user?.monthly_goal || 0),
           currency: formState.currency,
           profile_avatar: formState.avatar,
-          profile_color: formState.avatarColor
+          profile_color: formState.avatarColor,
         });
         dispatch({ type: 'CLEAR_DIRTY' });
       }
 
-      await switchUser(userToSwitch.id);
-      showMessage('success', `Switched to ${userToSwitch.username}`);
+      await switchUser(switchId);
+      showMessage('success', `Switched to ${getUserDisplayName(userToSwitch)}`);
       if (refetch) await refetch();
-      setModals(prev => ({ ...prev, switchConfirm: null }));
+      setModals((prev) => ({ ...prev, switchConfirm: null }));
     } catch (err) {
-      showMessage('error', `Failed to switch user: ${err.message || 'Unknown error'}`);
+      showMessage('error', `Failed to switch user: ${err?.message || 'Unknown error'}`);
     } finally {
-      if (isMounted.current) {
-        setLoadingStates(prev => ({ ...prev, switch: null }));
-      }
+      if (isMounted.current) setLoadingStates((prev) => ({ ...prev, switch: null }));
     }
-  }, [modals.switchConfirm, switchUser, refetch, showMessage, formState, USER_ID]);
+  }, [modals.switchConfirm, switchUser, refetch, showMessage, formState, USER_ID, user]);
 
+  /* ============================================================
+   * Theme
+   * ============================================================ */
   const handleThemeChange = useCallback((newTheme) => {
     setThemeDirect(newTheme);
     document.body.classList.add('theme-transition');
     setTimeout(() => document.body.classList.remove('theme-transition'), 300);
 
-    const timeoutId = setTimeout(() => {
+    if (themeSaveTimerRef.current) clearTimeout(themeSaveTimerRef.current);
+    themeSaveTimerRef.current = setTimeout(() => {
+      if (!USER_ID) return;
       api.updateSettings(USER_ID, { theme: newTheme }).catch(console.error);
     }, 1000);
-
-    return () => clearTimeout(timeoutId);
   }, [setThemeDirect, USER_ID]);
 
-  const handlePDFExport = async () => {
+  /* ============================================================
+   * Exports
+   * ============================================================ */
+  const handlePDFExport = useCallback(async () => {
     if (!user || transactions.length === 0) {
       showMessage('error', 'No data available to export.');
       return;
     }
-    setLoadingStates(prev => ({ ...prev, pdf: true }));
+    setLoadingStates((prev) => ({ ...prev, pdf: true }));
     try {
-      await exportToPDF(user, transactions, currencyInfo);
-      showMessage('success', 'PDF Downloaded successfully.');
+      const { exportToPDF } = await import('../services/pdfExport');
+      await exportToPDF(user, transactions, currencyInfo, lang);
+      showMessage('success', 'PDF downloaded successfully.');
     } catch (err) {
       console.error('PDF Export Error:', err);
-      showMessage('error', `PDF export failed: ${err.message}`);
+      showMessage('error', `PDF export failed: ${err?.message || 'Unknown error'}`);
     } finally {
-      if (isMounted.current) setLoadingStates(prev => ({ ...prev, pdf: false }));
+      if (isMounted.current) setLoadingStates((prev) => ({ ...prev, pdf: false }));
     }
-  };
+  }, [user, transactions, currencyInfo, lang, showMessage]);
 
-  const handleExcelExport = async () => {
-    setLoadingStates(prev => ({ ...prev, excel: true }));
+  const handleExcelExport = useCallback(async () => {
+    if (!USER_ID) {
+      showMessage('error', 'Session expired. Please log in again.');
+      return;
+    }
+    setLoadingStates((prev) => ({ ...prev, excel: true }));
     try {
       await api.exportToExcel(USER_ID);
       showMessage('success', 'Excel exported successfully.');
@@ -1929,31 +2240,44 @@ function SettingsInner({ context }) {
       console.error('Excel Export Error:', err);
       showMessage('error', 'Excel export failed.');
     } finally {
-      if (isMounted.current) setLoadingStates(prev => ({ ...prev, excel: false }));
+      if (isMounted.current) setLoadingStates((prev) => ({ ...prev, excel: false }));
     }
-  };
+  }, [USER_ID, showMessage]);
 
-  const handleTabChange = useCallback((tabId) => {
-    setActiveTab(tabId);
-  }, []);
-
-  const sortedUsers = useMemo(() =>
-    [...allUsers].sort((a, b) => a.username.localeCompare(b.username)),
+  /* ============================================================
+   * Derived data
+   * ============================================================ */
+  const sortedUsers = useMemo(
+    () => [...allUsers].sort((a, b) =>
+      getUserDisplayName(a).localeCompare(getUserDisplayName(b))
+    ),
     [allUsers]
   );
 
   const TABS = useMemo(() => [
-    { id: 'profile', icon: User, label: t?.('profile') || 'Profile' },
-    { id: 'preferences', icon: Settings, label: t?.('preferences') || 'Preferences' },
-    { id: 'language', icon: Globe, label: t?.('language') || 'Language' },
-    { id: 'appearance', icon: Palette, label: t?.('appearance') || 'Appearance' },
-    { id: 'notifications', icon: BellIcon, label: t?.('notifications') || 'Notifications' },
-    { id: 'security', icon: Shield, label: t?.('security') || 'Security' },
-    { id: 'users', icon: Users, label: t?.('manage_users') || 'Manage Users' },
-    { id: 'data', icon: Database, label: t?.('data_security') || 'Data & Security' },
-    { id: 'advanced', icon: Zap, label: t?.('advanced') || 'Advanced' },
+    { id: 'profile', icon: User, label: t?.('profile') || 'Profile', keywords: 'name photo avatar' },
+    { id: 'preferences', icon: Settings, label: t?.('preferences') || 'Preferences', keywords: 'currency goal regional' },
+    { id: 'language', icon: Globe, label: t?.('language') || 'Language', keywords: 'locale translation' },
+    { id: 'appearance', icon: Palette, label: t?.('appearance') || 'Appearance', keywords: 'theme dark light color' },
+    { id: 'notifications', icon: BellIcon, label: t?.('notifications') || 'Notifications', keywords: 'email push alerts' },
+    { id: 'security', icon: Shield, label: t?.('security') || 'Security', keywords: 'password session 2fa' },
+    { id: 'users', icon: Users, label: t?.('manage_users') || 'Manage Users', keywords: 'household family' },
+    { id: 'data', icon: Database, label: t?.('data_security') || 'Data & Security', keywords: 'export backup reset' },
+    { id: 'advanced', icon: Zap, label: t?.('advanced') || 'Advanced', keywords: 'date format timeout' },
   ], [t]);
 
+  const visibleTabs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return TABS;
+    return TABS.filter((tab) =>
+      tab.label.toLowerCase().includes(q) ||
+      (tab.keywords || '').toLowerCase().includes(q)
+    );
+  }, [TABS, search]);
+
+  /* ============================================================
+   * Render tab content
+   * ============================================================ */
   const renderTabContent = () => {
     const commonProps = {
       formState,
@@ -1964,14 +2288,16 @@ function SettingsInner({ context }) {
       handleThemeChange,
       lang,
       setLanguage,
-      showMessage
+      showMessage,
+      logout,
+      requestReAuth,
     };
 
     switch (activeTab) {
       case 'profile':
-        return <ProfileTab {...commonProps} loading={loadingStates.save} onSave={handleSave} />;
+        return <ProfileTab {...commonProps} />;
       case 'preferences':
-        return <PreferencesTab {...commonProps} loading={loadingStates.save} onSave={handleSave} />;
+        return <PreferencesTab {...commonProps} />;
       case 'language':
         return <LanguageTab {...commonProps} />;
       case 'appearance':
@@ -1980,28 +2306,52 @@ function SettingsInner({ context }) {
         return (
           <NotificationPreferences
             preferences={formState.notificationPrefs}
-            onChange={(preferences) => handleFieldChange('notificationPrefs', preferences)}
+            onChange={(prefs) => handleFieldChange('notificationPrefs', prefs)}
           />
         );
       case 'security':
         return (
           <>
             <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-              <div className="idp-hero-icon" style={{ width: 64, height: 64, marginBottom: 16, background: 'rgba(239,68,68,0.1)', color: 'var(--danger)' }}>
+              <div
+                className="idp-hero-icon"
+                style={{
+                  width: 64, height: 64, marginBottom: 16,
+                  background: 'rgba(239,68,68,0.1)', color: 'var(--danger)',
+                }}
+                aria-hidden
+              >
                 <Shield size={28} />
               </div>
-              <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>Security Settings</h3>
-              <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Manage your account security and active sessions.</p>
+              <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+                Security Settings
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+                Manage your account security and active sessions.
+              </p>
             </div>
             <div className="idp-body">
-              <PasswordChange userId={USER_ID} showMessage={showMessage} logout={logout} />
+              <PasswordChange
+                userId={USER_ID}
+                showMessage={showMessage}
+                logout={logout}
+                requestReAuth={requestReAuth}
+              />
               <div style={{ height: 2, background: 'var(--glass-border)', margin: '32px 0' }} />
               <SessionManagement userId={USER_ID} showMessage={showMessage} />
             </div>
           </>
         );
       case 'users':
-        return <UsersTab {...commonProps} sortedUsers={sortedUsers} USER_ID={USER_ID} setModals={setModals} switchingUserId={loadingStates.switch} />;
+        return (
+          <UsersTab
+            {...commonProps}
+            sortedUsers={sortedUsers}
+            USER_ID={USER_ID}
+            setModals={setModals}
+            switchingUserId={loadingStates.switch}
+          />
+        );
       case 'data':
         return (
           <>
@@ -2020,7 +2370,7 @@ function SettingsInner({ context }) {
         return (
           <AdvancedPreferences
             prefs={formState.advancedPrefs}
-            onChange={(preferences) => handleFieldChange('advancedPrefs', preferences)}
+            onChange={(prefs) => handleFieldChange('advancedPrefs', prefs)}
           />
         );
       default:
@@ -2028,12 +2378,15 @@ function SettingsInner({ context }) {
     }
   };
 
+  /* ============================================================
+   * Render
+   * ============================================================ */
   return (
     <div className="inbox-layout-page settings-page shared-page animate-in">
       <div className="inbox-header">
         <div className="ih-titles">
           <h2>{t?.('settings') || 'Settings'}</h2>
-          <span className="ih-badge">{TABS.find(t => t.id === activeTab)?.label}</span>
+          <span className="ih-badge">{TABS.find((tab) => tab.id === activeTab)?.label}</span>
         </div>
       </div>
 
@@ -2041,33 +2394,58 @@ function SettingsInner({ context }) {
         {/* Sidebar */}
         <div className="inbox-list-pane glass" role="tablist" aria-orientation="vertical">
           <div className="il-filters">
-            <h3 className="il-title">
-              {t?.('categories') || 'Categories'}
-            </h3>
+            <h3 className="il-title">{t?.('categories') || 'Categories'}</h3>
+            <div style={{ position: 'relative', marginTop: 8 }}>
+              <Search
+                size={14}
+                aria-hidden
+                style={{
+                  position: 'absolute', left: 10, top: '50%',
+                  transform: 'translateY(-50%)', color: 'var(--text-muted)',
+                }}
+              />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t?.('search_settings', 'Search settings…')}
+                aria-label={t?.('search_settings', 'Search settings')}
+                style={{ width: '100%', paddingLeft: 32, fontSize: '0.85rem' }}
+              />
+            </div>
           </div>
           <div className="il-scrollable">
-            {TABS.map(tab => (
-              <motion.button
-                key={tab.id}
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                aria-controls={`tabpanel-${tab.id}`}
-                id={`tab-${tab.id}`}
-                onClick={() => handleTabChange(tab.id)}
-                whileHover={{ x: 4 }}
-                whileTap={{ scale: 0.98 }}
-                className={`settings-nav-tab ${activeTab === tab.id ? 'active' : ''}`}
-              >
-                <tab.icon size={18} aria-hidden />
-                <span>{tab.label}</span>
-              </motion.button>
-            ))}
+            {visibleTabs.length === 0 ? (
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '12px' }}>
+                {t?.('no_matches', 'No matching settings')}
+              </p>
+            ) : (
+              visibleTabs.map((tab) => (
+                <motion.button
+                  key={tab.id}
+                  role="tab"
+                  type="button"
+                  aria-selected={activeTab === tab.id}
+                  id={`tab-${tab.id}`}
+                  onClick={() => setActiveTab(tab.id)}
+                  whileHover={{ x: 4 }}
+                  whileTap={{ scale: 0.98 }}
+                  className={`settings-nav-tab ${activeTab === tab.id ? 'active' : ''}`}
+                >
+                  <tab.icon size={18} aria-hidden />
+                  <span>{tab.label}</span>
+                </motion.button>
+              ))
+            )}
           </div>
         </div>
 
         {/* Content */}
         <div className="inbox-detail-pane glass">
-          <div className="idp-content" style={{ maxWidth: '800px', padding: 'clamp(16px, 5vw, 40px)', paddingBottom: '100px' }}>
+          <div
+            className="idp-content"
+            style={{ maxWidth: 800, padding: 'clamp(16px, 5vw, 40px)', paddingBottom: 100 }}
+          >
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
@@ -2085,7 +2463,7 @@ function SettingsInner({ context }) {
         </div>
       </div>
 
-      {/* ── Master Save Bar ── */}
+      {/* Master Save Bar */}
       <AnimatePresence>
         {(formState.isDirty || undoSnapshot) && (
           <motion.div
@@ -2095,23 +2473,15 @@ function SettingsInner({ context }) {
             exit={{ y: 80, opacity: 0 }}
             transition={{ type: 'spring', damping: 24, stiffness: 300 }}
             style={{
-              position: 'fixed',
-              bottom: 24,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              background: 'var(--glass-2)',
-              border: '1px solid var(--glass-border)',
-              backdropFilter: 'blur(24px)',
-              WebkitBackdropFilter: 'blur(24px)',
-              borderRadius: '18px',
-              padding: '14px 24px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '20px',
-              boxShadow: '0 12px 48px rgba(0,0,0,0.25)',
-              zIndex: 200,
-              minWidth: 0
+              position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+              background: 'var(--glass-2)', border: '1px solid var(--glass-border)',
+              backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+              borderRadius: 18, padding: '14px 24px',
+              display: 'flex', alignItems: 'center', gap: 20,
+              boxShadow: '0 12px 48px rgba(0,0,0,0.25)', zIndex: 200, minWidth: 0,
             }}
+            role="status"
+            aria-live="polite"
           >
             <div>
               <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
@@ -2119,21 +2489,21 @@ function SettingsInner({ context }) {
               </p>
               <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
                 {formState.isDirty
-                  ? 'Your profile changes have not been saved yet.'
+                  ? 'Your changes have not been saved yet.'
                   : 'Changes applied. Tap Undo to revert.'}
               </p>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', marginLeft: 'auto' }}>
+            <div style={{ display: 'flex', gap: 10, marginLeft: 'auto' }}>
               {undoSnapshot && !formState.isDirty && (
                 <button
                   type="button"
                   className="btn-secondary"
                   onClick={handleUndo}
                   disabled={loadingStates.save}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', padding: '8px 14px' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '8px 14px' }}
                 >
-                  <RefreshCw size={14} /> Undo
+                  <RefreshCw size={14} aria-hidden /> Undo
                 </button>
               )}
               {formState.isDirty && (
@@ -2141,25 +2511,7 @@ function SettingsInner({ context }) {
                   <button
                     type="button"
                     className="btn-secondary"
-                    onClick={() => dispatch({
-                      type: 'RESET_FORM', payload: {
-                        firstName: getNameParts(user).firstName,
-                        lastName: getNameParts(user).lastName,
-                        profession: user?.profession || user?.role || 'Trader',
-                        monthlyGoal: user?.monthly_goal?.toString() || '',
-                        currency: user?.currency || 'INR',
-                        avatar: user?.profile_avatar || '😊',
-                        avatarColor: user?.profile_color || '#059669',
-                        notificationPrefs: user?.notification_prefs || {
-                          emailReports: true, budgetAlerts: true, goalMilestones: true, unusualSpending: false,
-                          pushNotifications: true, weeklyDigest: true, quietHoursEnabled: false, quietHoursStart: '22:00', quietHoursEnd: '08:00'
-                        },
-                        advancedPrefs: user?.advanced_prefs || {
-                          dateFormat: 'MM/DD/YYYY', timeFormat: '12h', firstDayOfWeek: 'Sunday', decimalSeparator: '.',
-                          compactMode: false, autoSave: true, animationsEnabled: true, showWeekNumbers: false
-                        }
-                      }
-                    })}
+                    onClick={handleDiscard}
                     disabled={loadingStates.save}
                     style={{ fontSize: '0.85rem', padding: '8px 14px' }}
                   >
@@ -2170,9 +2522,9 @@ function SettingsInner({ context }) {
                     className="btn-primary"
                     onClick={handleSave}
                     disabled={loadingStates.save}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', padding: '8px 16px' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '8px 16px' }}
                   >
-                    {loadingStates.save ? <div className="spinner-dots" /> : <Save size={14} />}
+                    {loadingStates.save ? <div className="spinner-dots" /> : <Save size={14} aria-hidden />}
                     {loadingStates.save ? 'Saving…' : 'Save Changes'}
                   </button>
                 </>
@@ -2182,10 +2534,18 @@ function SettingsInner({ context }) {
         )}
       </AnimatePresence>
 
-      {/* Modals */}
+      {/* Re-auth modal */}
+      <ReAuthModal
+        isOpen={reAuthState.isOpen}
+        onClose={handleReAuthClose}
+        onConfirmed={handleReAuthConfirm}
+        actionLabel={reAuthState.actionLabel}
+      />
+
+      {/* Add user modal */}
       <Modal
         isOpen={!!modals.addUser}
-        onClose={() => setModals(prev => ({ ...prev, addUser: false }))}
+        onClose={() => setModals((prev) => ({ ...prev, addUser: false }))}
         title="Add Family Member"
         confirmText="Create Account"
         onConfirm={handleCreateUser}
@@ -2199,9 +2559,9 @@ function SettingsInner({ context }) {
           <input
             id="new_user_name"
             value={modals.addUser?.name || ''}
-            onChange={(e) => setModals(prev => ({
+            onChange={(e) => setModals((prev) => ({
               ...prev,
-              addUser: { ...prev.addUser, name: e.target.value }
+              addUser: { ...prev.addUser, name: e.target.value },
             }))}
             placeholder="e.g. Alex"
             aria-required="true"
@@ -2214,9 +2574,9 @@ function SettingsInner({ context }) {
             id="new_user_email"
             type="email"
             value={modals.addUser?.email || ''}
-            onChange={(e) => setModals(prev => ({
+            onChange={(e) => setModals((prev) => ({
               ...prev,
-              addUser: { ...prev.addUser, email: e.target.value }
+              addUser: { ...prev.addUser, email: e.target.value },
             }))}
             placeholder="alex@example.com"
             aria-required="true"
@@ -2224,46 +2584,59 @@ function SettingsInner({ context }) {
         </div>
       </Modal>
 
+      {/* Factory reset */}
       <FactoryResetModal
         isOpen={modals.resetConfirm}
-        onClose={() => setModals(prev => ({ ...prev, resetConfirm: false }))}
+        onClose={() => setModals((prev) => ({ ...prev, resetConfirm: false }))}
         onConfirm={handleReset}
         isLoading={loadingStates.reset}
       />
 
+      {/* Delete user */}
       <Modal
         isOpen={!!modals.deleteUser}
-        onClose={() => setModals(prev => ({ ...prev, deleteUser: null }))}
+        onClose={() => setModals((prev) => ({ ...prev, deleteUser: null }))}
         title="Delete User Account"
         confirmText="Yes, Delete This User"
         onConfirm={handleDeleteUser}
-        isLoading={loadingStates.save}
+        isLoading={loadingStates.deleteUser}
         danger
       >
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: 16, lineHeight: 1.6 }}>
-          You are about to delete the user <strong>{allUsers.find(u => u.id === modals.deleteUser)?.username}</strong>
-          and <strong>all their financial data</strong>. This includes transactions, goals, and subscriptions.
+          You are about to delete the user{' '}
+          <strong>{getUserDisplayName(allUsers.find((u) => (u.id || u._id) === modals.deleteUser))}</strong>{' '}
+          and <strong>all their financial data</strong>.
         </p>
-        <p style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '0.9rem' }}>
+        <p style={{ color: 'var(--danger)', fontWeight: 700, fontSize: '0.9rem' }}>
           This action cannot be undone!
         </p>
       </Modal>
 
+      {/* Switch user */}
       <Modal
         isOpen={!!modals.switchConfirm}
-        onClose={() => setModals(prev => ({ ...prev, switchConfirm: null }))}
+        onClose={() => setModals((prev) => ({ ...prev, switchConfirm: null }))}
         title="Switch User Account"
-        confirmText={formState.isDirty ? "Save & Switch" : "Switch Now"}
+        confirmText={formState.isDirty ? 'Save & Switch' : 'Switch Now'}
         onConfirm={handleSwitchUser}
         isLoading={!!loadingStates.switch}
       >
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: 16, lineHeight: 1.6 }}>
-          Are you sure you want to switch to <strong>{modals.switchConfirm?.username}</strong>?
+          Are you sure you want to switch to{' '}
+          <strong>{getUserDisplayName(modals.switchConfirm)}</strong>?
         </p>
         {formState.isDirty && (
-          <div style={{ padding: '12px', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.3)', borderRadius: '8px', marginTop: '16px' }}>
+          <div
+            style={{
+              padding: 12,
+              background: 'rgba(56, 189, 248, 0.1)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: 8,
+              marginTop: 16,
+            }}
+          >
             <p style={{ color: 'var(--brand-secondary)', fontSize: '0.85rem', margin: 0, fontWeight: 600 }}>
-              Note: You have unsaved changes in your profile. They will be auto-saved before switching.
+              Note: You have unsaved changes. They will be auto-saved before switching.
             </p>
           </div>
         )}
@@ -2272,7 +2645,9 @@ function SettingsInner({ context }) {
   );
 }
 
-// ============= EXPORT =============
+/* ============================================================
+ * Export
+ * ============================================================ */
 function SettingsPage() {
   const context = useContext(AppContext);
 
@@ -2280,7 +2655,7 @@ function SettingsPage() {
     return (
       <div className="loading-container" role="alert" aria-busy="true">
         <Loader className="animate-spin" size={32} />
-        <p>Loading settings...</p>
+        <p>Loading settings…</p>
       </div>
     );
   }

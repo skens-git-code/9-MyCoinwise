@@ -1,46 +1,82 @@
-import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback, useContext, useEffect, useMemo, useRef, useState,
+} from 'react';
 import { motion } from 'framer-motion';
 import {
   Calculator as CalculatorIcon, Check, Clock3, Copy, Delete,
-  ChevronDown, History, Keyboard, MemoryStick, Sparkles, Trash2, X
+  ChevronDown, History, Keyboard, Sparkles, Trash2, X,
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { api } from '../services/api';
 
+/* ============================================================
+ * Constants & storage keys
+ * ============================================================ */
 const HISTORY_KEY = 'mycoinwise-calculator-history';
 const PENDING_KEY = 'mycoinwise-calculator-pending';
 const MEMORY_KEY = 'mycoinwise-calculator-memory';
+const ANGLE_KEY = 'mycoinwise-calculator-angle';
+const MAX_HISTORY = 30;
+
 const getMemoryKey = (userId) => `${MEMORY_KEY}:${userId || 'guest'}`;
+const getHistoryKey = (userId) => `${HISTORY_KEY}:${userId || 'guest'}`;
+const getPendingKey = (userId) => `${PENDING_KEY}:${userId || 'guest'}`;
+const getAngleKey = (userId) => `${ANGLE_KEY}:${userId || 'guest'}`;
+
 const FUNCTIONS = new Set([
   'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh',
-  'log', 'ln', 'sqrt', 'cbrt', 'abs', 'exp', 'floor', 'ceil', 'round', 'pow', 'min', 'max'
+  'log', 'ln', 'sqrt', 'cbrt', 'abs', 'exp', 'floor', 'ceil', 'round',
+  'pow', 'min', 'max',
 ]);
 
 const isFiniteNumber = (value) => Number.isFinite(value);
-const getHistoryKey = (userId) => `${HISTORY_KEY}:${userId || 'guest'}`;
-const getPendingKey = (userId) => `${PENDING_KEY}:${userId || 'guest'}`;
-const newClientId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const normalizeHistoryItem = (item) => ({
-  id: item.id || item._id || item.client_id || item.clientId,
-  clientId: item.clientId || item.client_id || item.id || item._id,
-  expression: item.expression,
-  result: item.result,
-  numericResult: item.numericResult ?? item.numeric_result,
-  angleMode: item.angleMode || item.angle_mode || 'DEG',
-  timestamp: item.timestamp || item.created_at || Date.now(),
-  synced: item.synced ?? true, // NEW: track sync status
-});
 
-// ---------- Tokenizer & Parser (unchanged, but added implicit multiplication) ----------
+const newClientId = () =>
+  globalThis.crypto?.randomUUID?.() ||
+  `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const safeReadJson = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+};
+
+const safeWriteJson = (key, value) => {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota */ }
+};
+
+const normalizeHistoryItem = (item) => {
+  if (!item || typeof item !== 'object') return null;
+  const clientId =
+    item.clientId || item.client_id || item.id || item._id || newClientId();
+  const numericRaw = item.numericResult ?? item.numeric_result;
+  const numericResult = Number(numericRaw);
+  return {
+    id: item.id || item._id || clientId,
+    clientId,
+    expression: String(item.expression ?? ''),
+    result: String(item.result ?? ''),
+    numericResult: Number.isFinite(numericResult) ? numericResult : 0,
+    angleMode: item.angleMode || item.angle_mode || 'DEG',
+    timestamp: item.timestamp || item.created_at || Date.now(),
+    synced: item.synced ?? true,
+  };
+};
+
+/* ============================================================
+ * Tokenizer & Parser
+ * ============================================================ */
 function tokenize(expression) {
   const tokens = [];
   let index = 0;
   while (index < expression.length) {
     const char = expression[index];
-    if (/\s/.test(char)) {
-      index += 1;
-      continue;
-    }
+    if (/\s/.test(char)) { index += 1; continue; }
+
     if (/[0-9.]/.test(char)) {
       const match = expression.slice(index).match(/^(?:(?:\d+\.?\d*)|(?:\.\d+))(?:e[+-]?\d+)?/i);
       if (!match) throw new Error('Invalid number');
@@ -50,6 +86,7 @@ function tokenize(expression) {
       index += match[0].length;
       continue;
     }
+
     if (/[a-zA-Zπ]/.test(char)) {
       const match = expression.slice(index).match(/^(?:[a-zA-Z]+|π)/);
       const value = match[0].toLowerCase() === 'π' ? 'pi' : match[0].toLowerCase();
@@ -57,49 +94,63 @@ function tokenize(expression) {
       index += match[0].length;
       continue;
     }
+
     if ('+-*/^%!(),'.includes(char)) {
-      tokens.push({ type: char === '(' || char === ')' || char === ',' ? char : 'operator', value: char });
+      tokens.push({
+        type: char === '(' || char === ')' || char === ',' ? char : 'operator',
+        value: char,
+      });
       index += 1;
       continue;
     }
+
     throw new Error(`Unsupported character: ${char}`);
   }
   return tokens;
 }
 
 function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) {
-  // Replace display symbols with parser-friendly ones
-  const cleaned = expression
+  const cleaned = String(expression)
     .replaceAll('×', '*')
     .replaceAll('÷', '/')
     .replaceAll('−', '-')
     .replaceAll('√', 'sqrt')
-    // Implicit multiplication: number followed by '(' -> number*(
     .replace(/(\d)\(/g, '$1*(')
-    // Also handle ')(' -> ')*('
     .replace(/\)\(/g, ')*(');
 
   const tokens = tokenize(cleaned);
   let position = 0;
   const peek = () => tokens[position];
   const take = () => tokens[position++];
-  const isPrimaryStart = (token) => token && (token.type === 'number' || token.type === 'identifier' || token.type === '(');
-  const toRadians = (value) => angleMode === 'DEG' ? value * Math.PI / 180 : value;
-  const fromRadians = (value) => angleMode === 'DEG' ? value * 180 / Math.PI : value;
+  const isPrimaryStart = (token) =>
+    token && (token.type === 'number' || token.type === 'identifier' || token.type === '(');
+
+  const toRadians = (v) => (angleMode === 'DEG' ? (v * Math.PI) / 180 : v);
+  const fromRadians = (v) => (angleMode === 'DEG' ? (v * 180) / Math.PI : v);
+
   const constants = { pi: Math.PI, e: Math.E, ans: answer };
+
   const functions = {
-    sin: (value) => Math.sin(toRadians(value)), cos: (value) => Math.cos(toRadians(value)), tan: (value) => Math.tan(toRadians(value)),
-    asin: (value) => fromRadians(Math.asin(value)), acos: (value) => fromRadians(Math.acos(value)), atan: (value) => fromRadians(Math.atan(value)),
-    sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh, log: Math.log10, ln: Math.log,
-    sqrt: Math.sqrt, cbrt: Math.cbrt, abs: Math.abs, exp: Math.exp, floor: Math.floor, ceil: Math.ceil, round: Math.round,
-    pow: Math.pow, min: Math.min, max: Math.max
+    sin: (v) => Math.sin(toRadians(v)),
+    cos: (v) => Math.cos(toRadians(v)),
+    tan: (v) => Math.tan(toRadians(v)),
+    asin: (v) => fromRadians(Math.asin(v)),
+    acos: (v) => fromRadians(Math.acos(v)),
+    atan: (v) => fromRadians(Math.atan(v)),
+    sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh,
+    log: Math.log10, ln: Math.log,
+    sqrt: Math.sqrt, cbrt: Math.cbrt, abs: Math.abs, exp: Math.exp,
+    floor: Math.floor, ceil: Math.ceil, round: Math.round,
+    pow: Math.pow, min: Math.min, max: Math.max,
   };
 
   const assertFinite = (value) => {
     if (!isFiniteNumber(value)) throw new Error('Result is not a real number');
     return value;
   };
+
   const parseExpression = () => parseAddSub();
+
   const parseAddSub = () => {
     let value = parseMulDiv();
     while (peek()?.value === '+' || peek()?.value === '-') {
@@ -109,6 +160,7 @@ function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) 
     }
     return value;
   };
+
   const parseMulDiv = () => {
     let value = parseUnary();
     while (true) {
@@ -117,7 +169,9 @@ function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) 
         const operator = take().value;
         const right = parseUnary();
         if (operator === '/' && right === 0) throw new Error('Cannot divide by zero');
-        value = assertFinite(operator === '*' ? value * right : operator === '/' ? value / right : value % right);
+        if (operator === '*') value = assertFinite(value * right);
+        else if (operator === '/') value = assertFinite(value / right);
+        else value = assertFinite(value % right);
       } else if (isPrimaryStart(token)) {
         value = assertFinite(value * parseUnary());
       } else {
@@ -125,26 +179,43 @@ function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) 
       }
     }
   };
+
   const parseUnary = () => {
     if (peek()?.value === '+' || peek()?.value === '-') {
       const operator = take().value;
       const value = parseUnary();
       return operator === '-' ? -value : value;
     }
+
     let value = parsePower();
+
     while (peek()?.value === '!') {
       take();
-      if (!Number.isInteger(value) || value < 0 || value > 170) throw new Error('Factorial needs an integer from 0 to 170');
+      if (!Number.isInteger(value) || value < 0 || value > 170) {
+        throw new Error('Factorial needs an integer from 0 to 170');
+      }
       let factorial = 1;
       for (let i = 2; i <= value; i += 1) factorial *= i;
       value = factorial;
     }
-    if (peek()?.value === '%' && ['%', ')', ',', '+', '-', '*', '/', '^'].includes(tokens[position + 1]?.value) || (peek()?.value === '%' && !tokens[position + 1])) {
-      take();
-      value /= 100;
+
+    // Percentage postfix — applies only when the following token isn't a number
+    // (in which case '%' is treated as modulo in parseMulDiv).
+    if (peek()?.value === '%') {
+      const next = tokens[position + 1]?.value;
+      const nextIsPctContext =
+        next === undefined ||
+        next === '%' || next === ')' || next === ',' ||
+        next === '+' || next === '-' || next === '*' || next === '/' || next === '^';
+      if (nextIsPctContext) {
+        take();
+        value /= 100;
+      }
     }
+
     return assertFinite(value);
   };
+
   const parsePower = () => {
     let value = parsePrimary();
     if (peek()?.value === '^') {
@@ -153,6 +224,7 @@ function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) 
     }
     return value;
   };
+
   const parsePrimary = () => {
     const token = take();
     if (!token) throw new Error('Incomplete expression');
@@ -164,7 +236,9 @@ function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) 
     }
     if (token.type === 'identifier') {
       if (Object.hasOwn(constants, token.value)) return constants[token.value];
-      if (!FUNCTIONS.has(token.value) || peek()?.type !== '(') throw new Error(`Unknown function: ${token.value}`);
+      if (!FUNCTIONS.has(token.value) || peek()?.type !== '(') {
+        throw new Error(`Unknown function: ${token.value}`);
+      }
       take();
       const args = [];
       if (peek()?.type !== ')') {
@@ -175,7 +249,10 @@ function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) 
         }
       }
       if (take()?.type !== ')') throw new Error('Missing closing parenthesis');
-      if ((token.value === 'pow' && args.length !== 2) || (['min', 'max'].includes(token.value) && args.length < 1) || (!['pow', 'min', 'max'].includes(token.value) && args.length !== 1)) {
+
+      const isVarArg = token.value === 'min' || token.value === 'max';
+      const expected = token.value === 'pow' ? 2 : 1;
+      if (isVarArg ? args.length < 1 : args.length !== expected) {
         throw new Error(`${token.value} has the wrong number of arguments`);
       }
       return assertFinite(functions[token.value](...args));
@@ -191,11 +268,15 @@ function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) 
 
 const formatResult = (value) => {
   if (!isFiniteNumber(value)) return 'Error';
-  if (Math.abs(value) >= 1e12 || (Math.abs(value) > 0 && Math.abs(value) < 1e-9)) return value.toExponential(8);
+  if (Math.abs(value) >= 1e12 || (Math.abs(value) > 0 && Math.abs(value) < 1e-9)) {
+    return value.toExponential(8);
+  }
   return Number(value.toPrecision(12)).toString();
 };
 
-// ---------- Button Layout ----------
+/* ============================================================
+ * Button layout
+ * ============================================================ */
 const buttonGroups = {
   scientific: [
     ['sin(', 'sin'], ['cos(', 'cos'], ['tan(', 'tan'], ['log(', 'log'],
@@ -203,7 +284,7 @@ const buttonGroups = {
     ['sqrt(', '√'], ['cbrt(', '∛'], ['abs(', 'abs'], ['exp(', 'exp'],
     ['floor(', 'floor'], ['ceil(', 'ceil'], ['round(', 'round'], ['pow(', 'pow'],
     ['min(', 'min'], ['max(', 'max'], ['sinh(', 'sinh'], ['cosh(', 'cosh'],
-    ['!', '!'], [',', ','], ['π', 'π'], ['e', 'e']
+    ['!', '!'], [',', ','], ['π', 'π'], ['e', 'e'],
   ],
   basic: [
     ['CE', 'CE', 'clearEntry'], ['C', 'C', 'clear'], ['%', '%'], ['Delete', 'Delete', 'backspace'],
@@ -211,113 +292,176 @@ const buttonGroups = {
     ['7', '7'], ['8', '8'], ['9', '9'], ['*', '×'],
     ['4', '4'], ['5', '5'], ['6', '6'], ['-', '−'],
     ['1', '1'], ['2', '2'], ['3', '3'], ['+', '+'],
-    ['0', '0'], ['.', '.'], ['ans', 'Ans'], ['=', '=', 'calculate']
-  ]
+    ['0', '0'], ['.', '.'], ['ans', 'Ans'], ['=', '=', 'calculate'],
+  ],
 };
 
+/* ============================================================
+ * Component
+ * ============================================================ */
 export default function Calculator() {
   const { USER_ID, t } = useContext(AppContext);
+
   const [expression, setExpression] = useState('');
   const [result, setResult] = useState('0');
-  const [angleMode, setAngleMode] = useState('DEG');
-  const [memory, setMemory] = useState(() => Number(localStorage.getItem(getMemoryKey(USER_ID))) || 0);
+  const [angleMode, setAngleMode] = useState(
+    () => localStorage.getItem(getAngleKey(USER_ID)) || 'DEG'
+  );
+  const [memory, setMemory] = useState(() => {
+    const raw = Number(localStorage.getItem(getMemoryKey(USER_ID)));
+    return Number.isFinite(raw) ? raw : 0;
+  });
   const [answer, setAnswer] = useState(0);
   const [history, setHistory] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(getHistoryKey(USER_ID)) || '[]').map(normalizeHistoryItem); } catch { return []; }
+    const stored = safeReadJson(getHistoryKey(USER_ID), []);
+    return Array.isArray(stored) ? stored.map(normalizeHistoryItem).filter(Boolean) : [];
   });
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
+  const [isClearing, setIsClearing] = useState(false);
   const [showScientific, setShowScientific] = useState(() => (
     typeof window === 'undefined' ? true : window.matchMedia('(min-width: 641px)').matches
   ));
 
+  const copyTimeoutRef = useRef(null);
+
+  /* ---------------- Responsive scientific panel ---------------- */
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(min-width: 641px)');
-    const syncToViewport = () => setShowScientific(mediaQuery.matches);
-    mediaQuery.addEventListener?.('change', syncToViewport);
-    return () => mediaQuery.removeEventListener?.('change', syncToViewport);
+    const mq = window.matchMedia('(min-width: 641px)');
+    const sync = () => setShowScientific(mq.matches);
+    mq.addEventListener?.('change', sync);
+    return () => mq.removeEventListener?.('change', sync);
   }, []);
 
-  // ---------- Sync with server ----------
+  /* ---------------- Reload history / memory / angle on USER_ID change ---------------- */
+  const syncUserScopedStorage = useCallback(() => {
+    const stored = safeReadJson(getHistoryKey(USER_ID), []);
+    setHistory(Array.isArray(stored) ? stored.map(normalizeHistoryItem).filter(Boolean) : []);
+
+    const rawMem = Number(localStorage.getItem(getMemoryKey(USER_ID)));
+    setMemory(Number.isFinite(rawMem) ? rawMem : 0);
+
+    const storedAngle = localStorage.getItem(getAngleKey(USER_ID));
+    if (storedAngle === 'DEG' || storedAngle === 'RAD') setAngleMode(storedAngle);
+  }, [USER_ID]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(syncUserScopedStorage);
+    return () => cancelAnimationFrame(frame);
+  }, [syncUserScopedStorage]);
+
+  /* ---------------- Persist angle mode ---------------- */
+  useEffect(() => {
+    localStorage.setItem(getAngleKey(USER_ID), angleMode);
+  }, [USER_ID, angleMode]);
+
+  /* ---------------- Sync pending + fetch remote ---------------- */
   useEffect(() => {
     if (!USER_ID) return undefined;
     let active = true;
-    const syncAndLoadHistory = async () => {
-      const pendingKey = getPendingKey(USER_ID);
-      let pending = [];
-      try { pending = JSON.parse(localStorage.getItem(pendingKey) || '[]'); } catch { pending = []; }
 
-      // Attempt to send all pending items
+    const run = async () => {
+      const pendingKey = getPendingKey(USER_ID);
+      const pending = safeReadJson(pendingKey, []);
       const remaining = [];
+
       for (const item of pending) {
         try {
           await api.saveCalculation({
-            userId: USER_ID, // FIX: added userId
+            userId: USER_ID,
             client_id: item.clientId,
             expression: item.expression,
             result: item.result,
             numeric_result: item.numericResult,
-            angle_mode: item.angleMode
+            angle_mode: item.angleMode,
           });
         } catch {
           remaining.push(item);
         }
       }
-      if (remaining.length) {
-        localStorage.setItem(pendingKey, JSON.stringify(remaining));
-      } else {
-        localStorage.removeItem(pendingKey);
+
+      if (!active) return;
+
+      if (remaining.length) safeWriteJson(pendingKey, remaining);
+      else localStorage.removeItem(pendingKey);
+
+      // Mark any uploaded items as synced in history
+      if (remaining.length !== pending.length) {
+        const uploadedIds = new Set(
+          pending.filter((p) => !remaining.some((r) => r.clientId === p.clientId))
+            .map((p) => p.clientId)
+        );
+        setHistory((current) => {
+          const next = current.map((h) =>
+            uploadedIds.has(h.clientId) ? { ...h, synced: true } : h
+          );
+          safeWriteJson(getHistoryKey(USER_ID), next);
+          return next;
+        });
       }
 
-      // Fetch remote history
       try {
-        const remoteHistory = (await api.getCalculations(USER_ID)).map(normalizeHistoryItem);
+        const remote = (await api.getCalculations(USER_ID))
+          .map(normalizeHistoryItem)
+          .filter(Boolean);
         if (!active) return;
 
-        // Merge: remote items + pending items that are not already in remote (compare by expression+result+timestamp)
-        const remoteIds = new Set(remoteHistory.map(item => item.clientId));
-        const merged = [
-          ...remoteHistory,
-          ...remaining
-            .filter(item => !remoteIds.has(item.clientId))
-            .map(item => ({ ...item, synced: false }))
-        ];
-        // Sort by timestamp descending
-        merged.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        const remoteIds = new Set(remote.map((r) => r.clientId));
+        const stillPending = remaining
+          .filter((r) => !remoteIds.has(r.clientId))
+          .map((r) => ({ ...r, synced: false }));
+
+        const merged = [...remote, ...stillPending]
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+          .slice(0, MAX_HISTORY);
+
         setHistory(merged);
-        localStorage.setItem(getHistoryKey(USER_ID), JSON.stringify(merged));
+        safeWriteJson(getHistoryKey(USER_ID), merged);
       } catch {
-        // On error, at least keep pending items in history
-        if (active && remaining.length) {
-          setHistory(remaining.map(item => ({ ...item, synced: false })));
+        // Merge, don't replace — keep previously synced items visible.
+        if (!active) return;
+        setHistory((current) => {
+          const ids = new Set(current.map((h) => h.clientId));
+          const extra = remaining
+            .filter((r) => !ids.has(r.clientId))
+            .map((r) => ({ ...r, synced: false }));
+          const next = [...current, ...extra]
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+            .slice(0, MAX_HISTORY);
+          safeWriteJson(getHistoryKey(USER_ID), next);
+          return next;
+        });
+        if (remaining.length) {
           setError('Some calculations are waiting to sync with the database.');
         }
       }
     };
-    syncAndLoadHistory();
+
+    run();
     return () => { active = false; };
   }, [USER_ID]);
 
-  // ---------- Preview ----------
+  /* ---------------- Preview ---------------- */
   const preview = useMemo(() => {
     if (!expression.trim()) return '';
-    try { return formatResult(evaluateExpression(expression, { angleMode, answer })); } catch { return ''; }
+    try { return formatResult(evaluateExpression(expression, { angleMode, answer })); }
+    catch { return ''; }
   }, [angleMode, answer, expression]);
 
-  // ---------- Append / Input ----------
+  /* ---------------- Append ---------------- */
   const append = useCallback((value) => {
     setExpression((current) => {
       if (value === ')') {
-        const openCount = (current.match(/\(/g) || []).length;
-        const closeCount = (current.match(/\)/g) || []).length;
-        if (closeCount >= openCount) return current;
+        const open = (current.match(/\(/g) || []).length;
+        const close = (current.match(/\)/g) || []).length;
+        if (close >= open) return current;
       }
       return current === '0' ? value : current + value;
     });
     setError('');
   }, []);
 
-  // ---------- Calculate ----------
+  /* ---------------- Calculate ---------------- */
   const calculate = useCallback(() => {
     if (!expression.trim()) return;
     try {
@@ -326,6 +470,7 @@ export default function Calculator() {
       setResult(formatted);
       setAnswer(numericResult);
       setError('');
+
       const entry = normalizeHistoryItem({
         clientId: newClientId(),
         expression,
@@ -333,17 +478,15 @@ export default function Calculator() {
         numericResult,
         angleMode,
         timestamp: new Date().toISOString(),
-        synced: false, // will be set to true after successful API call
+        synced: false,
       });
 
-      // Update history locally
       setHistory((current) => {
-        const next = [entry, ...current].slice(0, 30);
-        localStorage.setItem(getHistoryKey(USER_ID), JSON.stringify(next));
+        const next = [entry, ...current].slice(0, MAX_HISTORY);
+        safeWriteJson(getHistoryKey(USER_ID), next);
         return next;
       });
 
-      // Save to server
       if (USER_ID) {
         api.saveCalculation({
           userId: USER_ID,
@@ -351,74 +494,77 @@ export default function Calculator() {
           expression: entry.expression,
           result: entry.result,
           numeric_result: entry.numericResult,
-          angle_mode: entry.angleMode
+          angle_mode: entry.angleMode,
         })
           .then(() => {
-            // Mark as synced in history
-            setHistory((current) =>
-              current.map((item) =>
-                item.clientId === entry.clientId ? { ...item, synced: true } : item
-              )
-            );
-            // Update localStorage
-            const stored = JSON.parse(localStorage.getItem(getHistoryKey(USER_ID)) || '[]');
-            const updated = stored.map((item) =>
-              item.clientId === entry.clientId ? { ...item, synced: true } : item
-            );
-            localStorage.setItem(getHistoryKey(USER_ID), JSON.stringify(updated));
+            setHistory((current) => {
+              const next = current.map((h) =>
+                h.clientId === entry.clientId ? { ...h, synced: true } : h
+              );
+              safeWriteJson(getHistoryKey(USER_ID), next);
+              return next;
+            });
           })
           .catch(() => {
-            // Add to pending queue
             const pendingKey = getPendingKey(USER_ID);
-            let pending = [];
-            try { pending = JSON.parse(localStorage.getItem(pendingKey) || '[]'); } catch { pending = []; }
-            // Avoid duplicates (shouldn't happen)
-            if (!pending.some(item => item.clientId === entry.clientId)) {
-              pending.push(entry);
+            const pending = safeReadJson(pendingKey, []);
+            if (!pending.some((p) => p.clientId === entry.clientId)) {
+              const next = [...pending, entry].slice(-MAX_HISTORY);
+              safeWriteJson(pendingKey, next);
             }
-            localStorage.setItem(pendingKey, JSON.stringify(pending.slice(-30)));
             setError('Calculation saved locally and queued for database sync.');
           });
       }
-    } catch (calculationError) {
-      setError(calculationError.message || 'Unable to calculate');
+    } catch (err) {
+      setError(err.message || 'Unable to calculate');
       setResult('Error');
     }
   }, [USER_ID, angleMode, answer, expression]);
 
-  // ---------- Keyboard handler ----------
+  /* ---------------- Keyboard ---------------- */
   useEffect(() => {
     const onKeyDown = (event) => {
-      if (event.target instanceof HTMLInputElement) return;
+      const target = event.target;
+      const isInput =
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      if (isInput) return;
+
       if (/^[0-9.+*/^%(),-]$/.test(event.key)) append(event.key);
       else if (event.key === 'Enter' || event.key === '=') calculate();
-      else if (event.key === 'Backspace') setExpression((current) => current.slice(0, -1));
+      else if (event.key === 'Backspace') setExpression((c) => c.slice(0, -1));
       else if (event.key === 'Escape') { setExpression(''); setResult('0'); setError(''); }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [append, calculate]);
 
-  // ---------- Clear functions ----------
+  /* ---------------- Clear ---------------- */
   const clear = () => { setExpression(''); setResult('0'); setError(''); };
-  const clearEntry = () => { setExpression(''); setError(''); }; // CE only clears expression
+  const clearEntry = () => { setExpression(''); setError(''); };
 
-  const clearHistory = async () => {
+  const clearHistory = useCallback(async () => {
+    if (isClearing) return;
+    setIsClearing(true);
     if (USER_ID) {
       try {
         await api.clearCalculations(USER_ID);
       } catch {
         setError('Could not clear database history. Please try again.');
+        setIsClearing(false);
         return;
       }
       localStorage.removeItem(getPendingKey(USER_ID));
     }
     setHistory([]);
     localStorage.removeItem(getHistoryKey(USER_ID));
-    setError(''); // clear error on success
-  };
+    setError('');
+    setIsClearing(false);
+  }, [USER_ID, isClearing]);
 
-  // ---------- Memory ----------
+  /* ---------------- Memory ---------------- */
   const handleMemory = useCallback((action) => {
     const numericValue = Number(result);
     if (!isFiniteNumber(numericValue) && action !== 'clear') {
@@ -430,7 +576,7 @@ export default function Calculator() {
       case 'clear': next = 0; break;
       case 'store': next = numericValue; break;
       case 'add': next = memory + numericValue; break;
-      case 'subtract': next = memory - numericValue; break; // NEW
+      case 'subtract': next = memory - numericValue; break;
       default: next = memory;
     }
     setMemory(next);
@@ -438,71 +584,103 @@ export default function Calculator() {
     setError('');
   }, [USER_ID, memory, result]);
 
-  // ---------- Copy result ----------
-  const copyResult = async () => {
-    try { await navigator.clipboard.writeText(result); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch { setError('Clipboard access is unavailable'); }
-  };
+  /* ---------------- Copy ---------------- */
+  const copyResult = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(result);
+      setCopied(true);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setError('Clipboard access is unavailable');
+    }
+  }, [result]);
 
-  // ---------- Delete individual history item ----------
+  useEffect(() => () => {
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+  }, []);
+
+  /* ---------------- Delete history entry ---------------- */
   const deleteHistoryItem = useCallback(async (item) => {
-    // Remove from local state
     setHistory((current) => {
       const filtered = current.filter((h) => h.clientId !== item.clientId);
-      localStorage.setItem(getHistoryKey(USER_ID), JSON.stringify(filtered));
+      safeWriteJson(getHistoryKey(USER_ID), filtered);
       return filtered;
     });
-    // Remove from server if synced
+
     if (item.synced && USER_ID) {
       try {
         await api.deleteCalculation(USER_ID, item.clientId);
       } catch {
         setError('Failed to delete from server, but removed locally.');
       }
-    }
-    // Also remove from pending if present
-    if (!item.synced) {
+    } else {
       const pendingKey = getPendingKey(USER_ID);
-      let pending = [];
-      try { pending = JSON.parse(localStorage.getItem(pendingKey) || '[]'); } catch { pending = []; }
-      const updated = pending.filter((p) => p.clientId !== item.clientId);
-      localStorage.setItem(pendingKey, JSON.stringify(updated));
+      const pending = safeReadJson(pendingKey, []);
+      const filtered = pending.filter((p) => p.clientId !== item.clientId);
+      safeWriteJson(pendingKey, filtered);
     }
   }, [USER_ID]);
 
-  // ---------- Render ----------
+  /* ============================================================
+   * Render
+   * ============================================================ */
   return (
     <div className="island-page calculator-page">
       <header className="island-header glass-sm calculator-page-header">
         <div className="ih-left">
-          <div className="ih-titles"><h1>{t('calculator_title') || 'Scientific Calculator'}</h1><p>{t('calculator_subtitle') || 'Fast, precise calculations for everyday decisions.'}</p></div>
+          <div className="ih-titles">
+            <h1>{t?.('calculator_title') || 'Scientific Calculator'}</h1>
+            <p>{t?.('calculator_subtitle') || 'Fast, precise calculations for everyday decisions.'}</p>
+          </div>
         </div>
-        <div className="calculator-header-badge"><Sparkles size={15} /> {t('precision_tools') || 'Precision tools'}</div>
+        <div className="calculator-header-badge">
+          <Sparkles size={15} /> {t?.('precision_tools') || 'Precision tools'}
+        </div>
       </header>
 
       <div className="calculator-shell">
         <section className="calculator-main glass" aria-label="Scientific calculator">
           <div className="calculator-display">
-            <div className="calculator-display-top"><span>{angleMode} {t('mode') || 'mode'}</span><span><Keyboard size={13} /> {t('keyboard_ready') || 'Keyboard ready'}</span></div>
-            <div className="calculator-expression" aria-label="Current expression">{expression || '0'}</div>
+            <div className="calculator-display-top">
+              <span>{angleMode} {t?.('mode') || 'mode'}</span>
+              <span><Keyboard size={13} /> {t?.('keyboard_ready') || 'Keyboard ready'}</span>
+            </div>
+            <div className="calculator-expression" aria-label="Current expression">
+              {expression || '0'}
+            </div>
             <div className="calculator-result-row">
-              <strong>{result}</strong>
-              <button type="button" className="calculator-copy" onClick={copyResult} aria-label="Copy result" title="Copy result">
+              <strong aria-live="polite" aria-atomic="true">{result}</strong>
+              <button
+                type="button"
+                className="calculator-copy"
+                onClick={copyResult}
+                aria-label="Copy result"
+                title="Copy result"
+              >
                 {copied ? <Check size={16} /> : <Copy size={16} />}
               </button>
             </div>
-            {preview && preview !== result && <div className="calculator-preview">= {preview}</div>}
+            {preview && preview !== result && (
+              <div className="calculator-preview">= {preview}</div>
+            )}
             {error && <p className="calculator-error" role="alert">{error}</p>}
           </div>
 
-          {/* Toolbar with memory and angle */}
           <div className="calculator-toolbar">
             <button type="button" className="calculator-tool" onClick={() => handleMemory('clear')} aria-label="Memory clear">MC</button>
             <button type="button" className="calculator-tool" onClick={() => append(String(memory))} aria-label="Memory recall">MR</button>
             <button type="button" className="calculator-tool" onClick={() => handleMemory('add')} aria-label="Memory add">M+</button>
-            <button type="button" className="calculator-tool" onClick={() => handleMemory('subtract')} aria-label="Memory subtract">M−</button> {/* NEW */}
+            <button type="button" className="calculator-tool" onClick={() => handleMemory('subtract')} aria-label="Memory subtract">M−</button>
             <button type="button" className="calculator-tool" onClick={() => handleMemory('store')} aria-label="Memory store">MS</button>
             <span className="calculator-memory-status">M {formatResult(memory)}</span>
-            <button type="button" className="calculator-angle" onClick={() => setAngleMode((mode) => mode === 'DEG' ? 'RAD' : 'DEG')}>{angleMode}</button>
+            <button
+              type="button"
+              className="calculator-angle"
+              onClick={() => setAngleMode((m) => (m === 'DEG' ? 'RAD' : 'DEG'))}
+            >
+              {angleMode}
+            </button>
           </div>
 
           <div className="calculator-keypad">
@@ -510,73 +688,96 @@ export default function Calculator() {
               type="button"
               className="calculator-functions-toggle"
               aria-expanded={showScientific}
-              onClick={() => setShowScientific((visible) => !visible)}
+              aria-controls="scientific-panel"
+              onClick={() => setShowScientific((v) => !v)}
             >
               <span><Sparkles size={14} /> Scientific functions</span>
               <ChevronDown size={16} />
             </button>
-            <div className={`calculator-scientific-panel ${showScientific ? 'is-open' : ''}`}>
+            <div
+              id="scientific-panel"
+              className={`calculator-scientific-panel ${showScientific ? 'is-open' : ''}`}
+            >
               <div className="calculator-scientific-grid">
                 {buttonGroups.scientific.map(([value, label]) => (
-                  <button type="button" key={label} className="calculator-key scientific" onClick={() => append(value)} aria-label={label}>
+                  <button
+                    type="button"
+                    key={label}
+                    className="calculator-key scientific"
+                    onClick={() => append(value)}
+                    aria-label={label}
+                  >
                     {label}
                   </button>
                 ))}
               </div>
             </div>
+
             <div className="calculator-basic-panel">
               <div className="calculator-basic-grid">
-              {buttonGroups.basic.map(([value, label, action]) => {
-                let clickHandler = () => append(value);
-                if (action === 'clearEntry') clickHandler = clearEntry;
-                else if (action === 'clear') clickHandler = clear;
-                else if (action === 'backspace') clickHandler = () => setExpression((current) => current.slice(0, -1));
-                else if (action === 'calculate') clickHandler = calculate;
+                {buttonGroups.basic.map(([value, label, action]) => {
+                  let clickHandler = () => append(value);
+                  if (action === 'clearEntry') clickHandler = clearEntry;
+                  else if (action === 'clear') clickHandler = clear;
+                  else if (action === 'backspace') clickHandler = () => setExpression((c) => c.slice(0, -1));
+                  else if (action === 'calculate') clickHandler = calculate;
 
-                let className = 'calculator-key';
-                if (['/', '*', '-', '+', '^'].includes(value)) className += ' operator';
-                else if (['CE', 'C', 'Delete'].includes(value)) className += ' utility';
-                else if (value === '=') className += ' equals';
+                  let className = 'calculator-key';
+                  if (['/', '*', '-', '+', '^'].includes(value)) className += ' operator';
+                  else if (['CE', 'C', 'Delete'].includes(value)) className += ' utility';
+                  else if (value === '=') className += ' equals';
 
-                return (
-                  <button
-                    type="button"
-                    key={`${value}-${label}`}
-                    className={className}
-                    onClick={clickHandler}
-                    aria-label={label}
-                  >
-                    {value === 'Delete' ? <Delete size={18} /> : label}
-                  </button>
-                );
-              })}
+                  return (
+                    <button
+                      type="button"
+                      key={`${value}-${label}`}
+                      className={className}
+                      onClick={clickHandler}
+                      aria-label={label}
+                    >
+                      {value === 'Delete' ? <Delete size={18} /> : label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
-          <p className="calculator-hint"><Clock3 size={14} /> {t('calculator_hint') || 'Use parentheses for clarity, and press Enter to calculate.'}</p>
+
+          <p className="calculator-hint">
+            <Clock3 size={14} /> {t?.('calculator_hint') || 'Use parentheses for clarity, and press Enter to calculate.'}
+          </p>
         </section>
 
-        {/* History Panel */}
         <aside className="calculator-history glass" aria-label="Calculation history">
           <div className="calculator-history-heading">
             <div>
-              <span className="calculator-eyebrow"><History size={14} /> {t('recent_work') || 'Recent work'}</span>
-              <h2>{t('history') || 'History'}</h2>
+              <span className="calculator-eyebrow">
+                <History size={14} /> {t?.('recent_work') || 'Recent work'}
+              </span>
+              <h2>{t?.('history') || 'History'}</h2>
             </div>
-            <button type="button" className="calculator-icon-button" onClick={clearHistory} aria-label="Clear calculation history" title="Clear history">
-              <Trash2 size={16} />
+            <button
+              type="button"
+              className="calculator-icon-button"
+              onClick={clearHistory}
+              disabled={isClearing || history.length === 0}
+              aria-label="Clear calculation history"
+              title="Clear history"
+            >
+              {isClearing ? <Clock3 size={16} /> : <Trash2 size={16} />}
             </button>
           </div>
+
           {history.length === 0 ? (
             <div className="calculator-empty-history">
               <CalculatorIcon size={28} />
-              <p>{t('calculator_empty') || 'Your calculations will appear here.'}</p>
-              <span>{t('calculator_stored') || 'Results are securely stored for your account.'}</span>
+              <p>{t?.('calculator_empty') || 'Your calculations will appear here.'}</p>
+              <span>{t?.('calculator_stored') || 'Results are securely stored for your account.'}</span>
             </div>
           ) : (
             <div className="calculator-history-list">
               {history.map((item, index) => (
-                <div key={`${item.clientId || item.timestamp}-${index}`} className="calculator-history-item-wrapper">
+                <div key={`${item.clientId}-${index}`} className="calculator-history-item-wrapper">
                   <button
                     type="button"
                     className="calculator-history-item"
@@ -584,15 +785,22 @@ export default function Calculator() {
                       setExpression(item.expression);
                       setResult(item.result);
                       setAngleMode(item.angleMode || 'DEG');
-                      const restoredAnswer = Number(item.numericResult);
-                      setAnswer(isFiniteNumber(restoredAnswer) ? restoredAnswer : 0);
+                      setAnswer(isFiniteNumber(item.numericResult) ? item.numericResult : 0);
                       setError('');
                     }}
                     aria-label={`Restore calculation: ${item.expression} = ${item.result}`}
                   >
-                    <span>{item.expression} {!item.synced && <Clock3 size={12} style={{ marginLeft: 4 }} title="Not synced" />}</span>
+                    <span>
+                      {item.expression}{' '}
+                      {!item.synced && (
+                        <Clock3 size={12} style={{ marginLeft: 4 }} title="Not synced" />
+                      )}
+                    </span>
                     <strong>= {item.result}</strong>
-                    <small>{item.angleMode} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
+                    <small>
+                      {item.angleMode} ·{' '}
+                      {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </small>
                   </button>
                   <button
                     type="button"

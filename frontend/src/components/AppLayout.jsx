@@ -95,11 +95,14 @@ const sanitizeUserInput = (input) => {
   return null;
 };
 
-const formatBalance = (balance, currencySymbol = '₹') => {
-  const numBalance = parseFloat(balance || 0);
-  if (isNaN(numBalance)) return `${currencySymbol}0.00`;
-  // Use user's locale preference, fallback to en-IN for Indian Rupee formatting
-  const locale = navigator.language || 'en-IN';
+const LOCALE_MAP = {
+  en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
+};
+
+const formatBalance = (balance, currencySymbol = '$', localeOrLang = 'en-US') => {
+  const numBalance = Number(balance);
+  if (!Number.isFinite(numBalance)) return `${currencySymbol}0.00`;
+  const locale = LOCALE_MAP[localeOrLang] || localeOrLang || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
   return `${currencySymbol}${numBalance.toLocaleString(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -511,15 +514,27 @@ export default function AppLayout({ children }) {
     return translated && translated !== key ? translated : fallbackLabels[key];
   }, [location.pathname, t, pageTitleKey]);
 
-  const formattedBalance = useMemo(() =>
-    formatBalance(user?.balance, currencyInfo?.symbol),
-    [user?.balance, currencyInfo?.symbol]
-  );
+  const formattedBalance = useMemo(() => {
+    if (fmt && user?.balance !== undefined && user?.balance !== null) {
+      return fmt(user.balance);
+    }
+    return formatBalance(user?.balance, currencyInfo?.symbol, lang);
+  }, [user, currencyInfo?.symbol, fmt, lang]);
 
   // Financial summary metrics for quick-stats dropdown
   const financialSummary = useMemo(() => {
-    const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
-    const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    const income = transactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => {
+        const val = Number(t.amount);
+        return sum + (Number.isFinite(val) ? val : 0);
+      }, 0);
+    const expense = transactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => {
+        const val = Number(t.amount);
+        return sum + (Number.isFinite(val) ? val : 0);
+      }, 0);
     const net = income - expense;
     const rate = income > 0 ? ((net / income) * 100).toFixed(0) : '0';
     return { income, expense, net, rate };
@@ -1077,13 +1092,24 @@ const Header = React.memo(({
     });
   };
 
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 8);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
-    <header className="portfolio-header" aria-label={`Coinwise Navigation - ${pageTitle}`}>
-      <div className="nav-container">
+    <header className={`portfolio-header ${isScrolled ? 'is-scrolled' : ''}`} aria-label={`Coinwise Navigation - ${pageTitle}`}>
+      <div className={`nav-container ${isScrolled ? 'is-scrolled' : ''}`}>
         {/* Brand Logo & Dynamic Mobile Page Title Anchor */}
         <div className="nav-brand-group">
           <NavLink to="/" className="port" aria-label="Coinwise Home">
-            <BrandLogo size={28} className="brand-logo-svg" />
+            <BrandLogo size={22} className="brand-logo-svg" />
           </NavLink>
           <span className="mobile-header-title" aria-current="page">
             {pageTitle || 'MyCoinwise'}
@@ -1114,6 +1140,9 @@ const Header = React.memo(({
             About
           </NavLink>
         </nav>
+
+        {/* Visual Centered Separator */}
+        <div className="nav-separator" aria-hidden="true" />
 
         {/* Header Action Buttons & Toggles (Matching Reference) */}
         <div className="nav-actions">

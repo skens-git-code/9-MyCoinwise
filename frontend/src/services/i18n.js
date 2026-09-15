@@ -101,6 +101,12 @@ export const TRANSLATIONS = {
     switch_to_amoled: 'Switch to AMOLED Theme',
     save: 'Save',
     cancel: 'Cancel',
+    processing: 'Processing…',
+    transaction_number: 'Transaction Number',
+    discard_changes: 'Discard Changes?',
+    discard: 'Discard',
+    unsaved_changes_warning: 'You have unsaved changes. Are you sure you want to close without saving?',
+    quick_actions: 'Quick Actions Menu',
     delete: 'Delete',
     edit: 'Edit',
     duplicate: 'Duplicate',
@@ -339,6 +345,17 @@ export const TRANSLATIONS = {
     add_account: 'Add Account',
     no_accounts_yet: 'No accounts tracked yet.',
     create_first_account: 'Add your bank, credit, or cash accounts to track where your money lives.',
+    accounts_count: 'Accounts',
+    positive_balances: 'Positive Balances',
+    negative_balances: 'Negative Balances',
+    net_cashflow: 'Net Cashflow',
+    sort_newest: 'Newest first',
+    sort_least_progress: 'Least progress',
+    sort_most_progress: 'Most progress',
+    sort_deadline: 'Deadline soonest',
+    sort_target: 'Largest target',
+    sort_name: 'Name (A–Z)',
+    completed: 'Completed',
 
     // Forecasting & Wealth & Calculator & About
     what_if_simulator: 'What-If Simulator',
@@ -474,6 +491,12 @@ export const TRANSLATIONS = {
     switch_to_amoled: 'AMOLED थीम',
     save: 'सहेजें',
     cancel: 'रद्द करें',
+    processing: 'प्रक्रिया जारी है…',
+    transaction_number: 'लेनदेन संख्या',
+    discard_changes: 'बदलाव छोड़ें?',
+    discard: 'छोड़ें',
+    unsaved_changes_warning: 'आपके पास बिना सहेजे बदलाव हैं। क्या आप वाकई बिना सहेजे बंद करना चाहते हैं?',
+    quick_actions: 'त्वरित कार्रवाई मेनू',
     delete: 'हटाएं',
     edit: 'संपादित करें',
     duplicate: 'नकल करें',
@@ -803,6 +826,12 @@ export const TRANSLATIONS = {
     switch_to_amoled: 'AMOLED थीम',
     save: 'जतन करा',
     cancel: 'रद्द करा',
+    processing: 'प्रक्रिया सुरू आहे…',
+    transaction_number: 'व्यवहार क्रमांक',
+    discard_changes: 'बदल रद्द करायचे?',
+    discard: 'रद्द करा',
+    unsaved_changes_warning: 'आपल्याकडे न जतन केलेले बदल आहेत. आपण जतन न करता बंद करू इच्छिता?',
+    quick_actions: 'जलद कृती मेनू',
     delete: 'हटवा',
     edit: 'संपादित करा',
     duplicate: 'नकल करा',
@@ -1132,6 +1161,12 @@ export const TRANSLATIONS = {
     switch_to_amoled: 'AMOLED थीम',
     save: 'संजोओ',
     cancel: 'काटो',
+    processing: 'काम चाल रह्या सै…',
+    transaction_number: 'लेन-देन नंबर',
+    discard_changes: 'फेरबदल छोड़ो?',
+    discard: 'छोड़ो',
+    unsaved_changes_warning: 'थारे बिना संजोए बदलाव पड़े सैं। के सच में बिना संजोए बंद करना चाहो सो?',
+    quick_actions: 'झटपट काम मेनू',
     delete: 'मिटाओ',
     edit: 'बदलो',
     duplicate: 'नकल करो',
@@ -1461,6 +1496,12 @@ export const TRANSLATIONS = {
     switch_to_amoled: 'AMOLED ಥೀಮ್',
     save: 'ಉಳಿಸಿ',
     cancel: 'ರದ್ದುಮಾಡಿ',
+    processing: 'ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲಾಗುತ್ತಿದೆ…',
+    transaction_number: 'ವಹಿವಾಟು ಸಂಖ್ಯೆ',
+    discard_changes: 'ಬದಲಾವಣೆಗಳನ್ನು ತಿರಸ್ಕರಿಸಬೇಕೇ?',
+    discard: 'ತಿರಸ್ಕರಿಸಿ',
+    unsaved_changes_warning: 'ನಿಮ್ಮಲ್ಲಿ ಉಳಿಸದ ಬದಲಾವಣೆಗಳಿವೆ. ಉಳಿಸದೆ ಮುಚ್ಚಲು ನೀವು ಖಚಿತವಾಗಿ ಬಯಸುವಿರಾ?',
+    quick_actions: 'ತ್ವರಿತ ಕ್ರಿಯೆಗಳ ಮೆನು',
     delete: 'ಅಳಿಸಿ',
     edit: 'ತಿದ್ದುಪಡಿ',
     duplicate: 'ನಕಲು ಮಾಡಿ',
@@ -1710,5 +1751,10 @@ export const TRANSLATIONS = {
 // Helper hook function to get translations
 export function getT(lang = 'en') {
   const translations = TRANSLATIONS[lang] || TRANSLATIONS.en;
-  return (key) => translations[key] || TRANSLATIONS.en[key] || key;
+  return (key, fallback) => {
+    if (!key) return fallback !== undefined ? fallback : '';
+    if (translations && typeof translations[key] === 'string') return translations[key];
+    if (TRANSLATIONS.en && typeof TRANSLATIONS.en[key] === 'string') return TRANSLATIONS.en[key];
+    return fallback !== undefined ? fallback : undefined;
+  };
 }

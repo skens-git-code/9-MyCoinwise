@@ -1,10 +1,16 @@
 // CurrencyConverter.jsx
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { ArrowLeftRight, RefreshCw, X, TrendingUp, AlertCircle } from 'lucide-react';
+import { AppContext } from '../contexts/AppContext';
 
 // ==================== CONSTANTS ====================
+const LOCALE_MAP = {
+  en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
+};
+const resolveLocale = (lang) => LOCALE_MAP[lang] || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+
 const ALL_CURRENCIES = {
   USD: { symbol: '$', name: 'US Dollar', flag: '🇺🇸' },
   EUR: { symbol: '€', name: 'Euro', flag: '🇪🇺' },
@@ -173,6 +179,9 @@ const useDebounce = (value, delay) => {
 
 // ==================== MAIN COMPONENT ====================
 export default function CurrencyConverter({ isOpen = true, onClose, initialFrom = 'USD', initialTo = 'INR', initialAmount = '1' }) {
+  const context = useContext(AppContext);
+  const locale = useMemo(() => resolveLocale(context?.lang), [context?.lang]);
+
   // State
   const [amount, setAmount] = useState(initialAmount);
   const [from, setFrom] = useState(initialFrom);
@@ -505,14 +514,14 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
             aria-live="polite"
           >
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 6 }}>
-              {ALL_CURRENCIES[from]?.flag} {formatNumber(validateAmount(amount))} {from} equals
+              {ALL_CURRENCIES[from]?.flag} {formatNumber(validateAmount(amount), null, locale)} {from} equals
             </p>
             <p style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--brand-secondary)', fontFamily: "'Space Grotesk'" }}>
-              {result === null ? <span style={{ fontSize: '1.2rem', color: 'var(--danger)' }}>Rates unavailable</span> : `${ALL_CURRENCIES[to]?.symbol}${formatNumber(result, to)}`}
+              {result === null ? <span style={{ fontSize: '1.2rem', color: 'var(--danger)' }}>Rates unavailable</span> : `${ALL_CURRENCIES[to]?.symbol}${formatNumber(result, to, locale)}`}
             </p>
             {exchangeRate && (
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: 6 }}>
-                1 {from} = {ALL_CURRENCIES[to]?.symbol}{formatNumber(exchangeRate, to)} {to}
+                1 {from} = {ALL_CURRENCIES[to]?.symbol}{formatNumber(exchangeRate, to, locale)} {to}
               </p>
             )}
           </motion.div>
@@ -546,7 +555,7 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
                 >
                   <p style={{ fontSize: '0.7rem', fontWeight: 700 }}>{ALL_CURRENCIES[pair.from]?.flag} {pair.from}</p>
                   <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
-                    = {ALL_CURRENCIES[pair.to]?.symbol}{rate ? formatNumber(rate, pair.to) : '...'}
+                    = {ALL_CURRENCIES[pair.to]?.symbol}{rate ? formatNumber(rate, pair.to, locale) : '...'}
                   </p>
                 </motion.button>
               );
@@ -558,7 +567,7 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
         <p style={{ textAlign: 'center', fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 14 }}>
           <TrendingUp size={10} style={{ marginRight: 4 }} />
           {usingFallback ? 'Offline rates' : 'Live rates'} ·
-          Last updated: {lastUpdated ? lastUpdated.toLocaleDateString('en-IN', {
+          Last updated: {lastUpdated ? lastUpdated.toLocaleDateString(locale, {
             day: 'numeric',
             month: 'short',
             hour: '2-digit',

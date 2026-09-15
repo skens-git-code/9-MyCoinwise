@@ -1,12 +1,14 @@
-import React, { useContext, useState, useMemo, useCallback, useEffect } from 'react';
+import React, {
+  useContext, useState, useMemo, useCallback, useEffect, useRef, useId,
+} from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   TrendingUp, TrendingDown, Target,
   Download, Plus, ArrowUpRight, ArrowDownRight,
-  Wallet, Sparkles, Zap, Settings, Minus, XCircle,
+  Wallet, Sparkles, Zap, Settings, Minus,
   Rocket, LineChart, Tag, RefreshCw, Share2,
-  Edit3, Trash2, ChevronDown, ChevronUp, Loader
+  Edit3, Trash2, ChevronDown, AlertTriangle, X,
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -14,55 +16,163 @@ import TransactionForm from '../components/TransactionForm';
 import PropTypes from 'prop-types';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
+  Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import useCountUp from '../hooks/useCountUp';
 import { useToast } from '../components/ToastProvider';
 
-// ==================== CONSTANTS ====================
-
+/* ============================================================
+ * Constants
+ * ============================================================ */
 const PIE_COLORS = ['#059669', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4899'];
-const CATEGORY_OPTIONS = [
+
+const DEFAULT_CATEGORIES = [
   'Food', 'Groceries', 'Transport', 'Shopping', 'Entertainment', 'Health',
   'Education', 'Bills', 'Salary', 'Freelance', 'Gift', 'Rent', 'Travel',
-  'Fitness', 'Subscriptions', 'Utilities', 'Insurance', 'Investment', 'Other', 'Allowance'
+  'Fitness', 'Subscriptions', 'Utilities', 'Insurance', 'Investment', 'Other', 'Allowance',
 ];
 
-// ==================== SAFE HELPER FUNCTIONS ====================
+const LOCALE_MAP = {
+  en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
+};
+const resolveLocale = (lang) =>
+  LOCALE_MAP[lang] || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
 
-const safeFormatCurrency = (amount, fmt, fallbackSymbol = '$') => {
+const DARK_THEMES = new Set(['amoled', 'dark', 'midnight', 'black']);
+const isDarkTheme = (theme) => DARK_THEMES.has(String(theme || '').toLowerCase());
+
+const STORAGE_PREFIX = 'budgeta_dash_';
+
+/* ============================================================
+ * Utilities
+ * ============================================================ */
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/** Local YYYY-MM-DD (no UTC shift). */
+const toLocalDateKey = (dateInput) => {
+  if (!dateInput) return null;
+  if (typeof dateInput === 'string') {
+    const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  }
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+
+/** Parse a YYYY-MM-DD string as local date; other formats go through Date. */
+const safeParseDate = (dateInput) => {
+  if (dateInput instanceof Date) {
+    return Number.isNaN(dateInput.getTime()) ? null : dateInput;
+  }
+  if (typeof dateInput === 'string') {
+    const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+  }
+  if (typeof dateInput !== 'string' && typeof dateInput !== 'number') return null;
+  const d = new Date(dateInput);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/** Safe number conversion. */
+const toNumber = (v, fallback = 0) => {
+  const n = typeof v === 'string' ? parseFloat(v) : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+/** CSV escape + injection prevention. */
+const escapeCsvField = (raw) => {
+  const str = raw == null ? '' : String(raw);
+  const needsPrefix = /^[=+\-@\t\r]/.test(str);
+  const escaped = str.replace(/"/g, '""');
+  const prefixed = needsPrefix ? `'${escaped}` : escaped;
+  const needsQuotes = needsPrefix || /[",\n\r\t]/.test(prefixed);
+  return needsQuotes ? `"${prefixed}"` : prefixed;
+};
+
+/** Safe localStorage write. */
+const safeSetItem = (key, value) => {
+  try { localStorage.setItem(key, value); } catch { /* quota / private mode */ }
+};
+
+/** Safe localStorage read. */
+const safeGetItem = (key, fallback) => {
   try {
-    let numAmount = typeof amount === 'string' ? parseFloat(amount) : (typeof amount === 'number' ? amount : 0);
-    if (isNaN(numAmount)) {
-      return <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-        {fallbackSymbol}<span style={{ fontSize: '0.85em' }}>0.00</span>
-      </span>;
-    }
-    if (fmt && typeof fmt === 'function') {
-      return <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{fmt(numAmount)}</span>;
-    }
-    return <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-      <span style={{ fontSize: '0.85em' }}>{fallbackSymbol}</span>{numAmount.toFixed(2)}
-    </span>;
-  } catch (error) {
-    console.error('Currency formatting error:', error);
-    return <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-      <span style={{ fontSize: '0.85em' }}>{fallbackSymbol}</span>0.00
-    </span>;
+    const v = localStorage.getItem(key);
+    return v == null ? fallback : v;
+  } catch {
+    return fallback;
   }
 };
 
-const safeParseDate = (dateInput) => {
-  if (dateInput instanceof Date) return dateInput;
-  if (typeof dateInput !== "string" && typeof dateInput !== "number") return null;
-  const date = new Date(dateInput);
-  return Number.isNaN(date.getTime()) ? null : date;
+/** User-scoped key. */
+const userScopedKey = (base, userId) => `${STORAGE_PREFIX}${base}_${userId || 'guest'}`;
+
+/** Currency node for visual rendering. */
+const formatCurrencyNode = (amount, safeFmt, fallbackSymbol = '$') => {
+  const num = toNumber(amount, 0);
+  if (safeFmt && typeof safeFmt === 'function') {
+    try {
+      const formatted = safeFmt(num);
+      if (formatted != null) {
+        return (
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+            {formatted}
+          </span>
+        );
+      }
+    } catch { /* fall through */ }
+  }
+  return (
+    <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+      <span style={{ fontSize: '0.85em' }}>{fallbackSymbol}</span>
+      {num.toFixed(2)}
+    </span>
+  );
 };
 
+/**
+ * Robust plain-text currency for aria-labels and shares.
+ * Deliberately gives up on extracting text from JSX elements — safe fallback.
+ */
+const formatCurrencyText = (amount, safeFmt, fallbackSymbol = '$') => {
+  const num = toNumber(amount, 0);
+  if (safeFmt && typeof safeFmt === 'function') {
+    try {
+      const out = safeFmt(num);
+      if (typeof out === 'string') return out;
+      if (typeof out === 'number') return `${fallbackSymbol}${out.toFixed(2)}`;
+      // Never attempt to stringify JSX
+    } catch { /* ignore */ }
+  }
+  return `${fallbackSymbol}${num.toFixed(2)}`;
+};
+
+/** Locale-aware human date label. */
+const getDateLabel = (dateInput, locale) => {
+  const date = safeParseDate(dateInput);
+  if (!date) return '—';
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString(locale || 'en-US', { month: 'short', day: 'numeric' });
+};
+
+/** Validate a transaction payload. */
 const validateTransaction = (transaction) => {
   const errors = [];
-  if (!transaction.amount || isNaN(parseFloat(transaction.amount))) {
-    errors.push('Amount must be a valid number');
+  if (!transaction || typeof transaction !== 'object') {
+    return { isValid: false, errors: ['Invalid transaction'] };
+  }
+  const amt = toNumber(transaction.amount, NaN);
+  if (!Number.isFinite(amt) || amt <= 0) {
+    errors.push('Amount must be a positive number');
   }
   if (!transaction.category || typeof transaction.category !== 'string') {
     errors.push('Valid category is required');
@@ -76,56 +186,82 @@ const validateTransaction = (transaction) => {
   return { isValid: errors.length === 0, errors };
 };
 
-const getDateLabel = (dateStr) => {
-  const date = safeParseDate(dateStr);
-  if (!date) return 'Invalid Date';
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-  if (date.toDateString() === today.toDateString()) return 'Today';
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
-};
-
+/** Financial metrics for a list of parsed transactions. */
 const calculateFinancialMetrics = (transactions) => {
   if (!Array.isArray(transactions) || transactions.length === 0) {
     return { income: 0, expense: 0, netSavings: 0, savingsRate: 0, expenseOfIncome: 0 };
   }
-  const inc = transactions.filter(t => t?.type === 'income').reduce((sum, t) => sum + (t.parsedAmount || 0), 0);
-  const exp = transactions.filter(t => t?.type === 'expense').reduce((sum, t) => sum + (t.parsedAmount || 0), 0);
+  let inc = 0;
+  let exp = 0;
+  for (const t of transactions) {
+    if (t?.type === 'income') inc += t.parsedAmount || 0;
+    else if (t?.type === 'expense') exp += t.parsedAmount || 0;
+  }
   const net = inc - exp;
-  const rate = inc > 0 ? ((net / inc) * 100).toFixed(1) : 0;
-  const expPct = inc > 0 ? ((exp / inc) * 100).toFixed(0) : 0;
+  const rate = inc > 0 ? (net / inc) * 100 : 0;
+  const expPct = inc > 0 ? (exp / inc) * 100 : 0;
   return { income: inc, expense: exp, netSavings: net, savingsRate: rate, expenseOfIncome: expPct };
 };
 
-// ==================== SUB-COMPONENTS ====================
+/** Stable per-instance SVG gradient id. */
+const useStableId = (prefix) => {
+  const id = useId();
+  return `${prefix}-${id.replace(/:/g, '')}`;
+};
+
+/** Reactive prefers-reduced-motion. */
+const usePrefersReducedMotion = () => {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== 'undefined'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setReduced(mq.matches);
+    mq.addEventListener?.('change', sync);
+    return () => mq.removeEventListener?.('change', sync);
+  }, []);
+  return reduced;
+};
+
+/* ============================================================
+ * Sub-components
+ * ============================================================ */
 
 const CARD_VARIANTS = {
   hidden: { opacity: 0, y: 24, scale: 0.97 },
-  show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', damping: 20, stiffness: 260 } }
+  show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', damping: 20, stiffness: 260 } },
 };
-
 const STAGGER = { hidden: {}, show: { transition: { staggerChildren: 0.09 } } };
 
 const StatCard = React.memo(({
   icon: Icon,
-  label = "Unknown",
-  value = "-",
-  colorRgb = "255,255,255",
+  label = 'Unknown',
+  value,
+  valueText,
+  colorRgb = '255,255,255',
   trend,
   trendVal,
   accentColor,
   subtitle,
-  className = ''
+  className = '',
+  invertTrendColor = false,
 }) => {
-  const isValidTrend = ["up", "down", "neutral"].includes(trend);
+  const isValidTrend = ['up', 'down', 'neutral'].includes(trend);
+  // Truthful direction; color conveys sentiment.
+  const sentimentClass =
+    trend === 'up' ? (invertTrendColor ? 'neg' : 'pos')
+      : trend === 'down' ? (invertTrendColor ? 'pos' : 'neg')
+        : 'neutral';
+
   return (
     <motion.div
       variants={CARD_VARIANTS}
       className={`stat-card glass ${className}`}
       role="region"
-      aria-label={`${label} statistic: ${value}`}
+      aria-label={valueText ? `${label}: ${valueText}` : label}
     >
       <div className="stat-header">
         <span className="stat-label">{label}</span>
@@ -139,20 +275,23 @@ const StatCard = React.memo(({
           </div>
         )}
       </div>
-      <div className="stat-value" style={{ color: accentColor || "var(--text-primary)" }}>
+      <div className="stat-value" style={{ color: accentColor || 'var(--text-primary)' }}>
         {value}
       </div>
       <div className="stat-bottom-row">
         {subtitle && (
-          <span className="stat-subtitle" style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+          <span className="stat-subtitle" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             {subtitle}
           </span>
         )}
         {trendVal !== undefined && isValidTrend && (
-          <div className={`stat-trend ${trend}`}>
-            {trend === "up" && <ArrowUpRight size={13} />}
-            {trend === "down" && <ArrowDownRight size={13} />}
-            {trend === "neutral" && <Minus size={13} />}
+          <div
+            className={`stat-trend ${trend} sentiment-${sentimentClass}`}
+            aria-label={`Trend: ${trendVal}`}
+          >
+            {trend === 'up' && <ArrowUpRight size={13} aria-hidden="true" />}
+            {trend === 'down' && <ArrowDownRight size={13} aria-hidden="true" />}
+            {trend === 'neutral' && <Minus size={13} aria-hidden="true" />}
             <span>{trendVal}</span>
           </div>
         )}
@@ -164,121 +303,250 @@ StatCard.displayName = 'StatCard';
 StatCard.propTypes = {
   icon: PropTypes.elementType,
   label: PropTypes.string,
-  value: PropTypes.oneOfType([PropTypes.string, PropTypes.node]),
+  value: PropTypes.node,
+  valueText: PropTypes.string,
   colorRgb: PropTypes.string,
   trend: PropTypes.oneOf(['up', 'down', 'neutral']),
   trendVal: PropTypes.string,
   accentColor: PropTypes.string,
   subtitle: PropTypes.string,
-  className: PropTypes.string
+  className: PropTypes.string,
+  invertTrendColor: PropTypes.bool,
 };
 
 const DashboardSkeleton = () => (
-  <div className="bento-dashboard" aria-label="Loading dashboard data..." role="status">
-    <div className="bento-header shimmer" style={{ height: '40px', borderRadius: '14px', width: '200px', marginBottom: '24px', border: '1px solid var(--glass-border)' }}></div>
+  <div className="bento-dashboard" aria-label="Loading dashboard data" role="status">
+    <div className="bento-header shimmer" style={{ height: 40, borderRadius: 14, width: 200, marginBottom: 24, border: '1px solid var(--glass-border)' }} />
     <div className="bento-grid">
-      <div className="bento-tile bento-hero glass shimmer" style={{ minHeight: '180px' }}></div>
-      <div className="bento-tile bento-income glass shimmer" style={{ minHeight: '140px' }}></div>
-      <div className="bento-tile bento-expense glass shimmer" style={{ minHeight: '140px' }}></div>
-      <div className="bento-tile bento-recent glass shimmer" style={{ minHeight: '360px' }}></div>
-      <div className="bento-tile bento-chart glass shimmer" style={{ minHeight: '320px' }}></div>
-      <div className="bento-tile bento-goal glass shimmer" style={{ minHeight: '220px' }}></div>
-      <div className="bento-tile bento-pie glass shimmer" style={{ minHeight: '220px' }}></div>
+      <div className="bento-tile bento-hero glass shimmer" style={{ minHeight: 180 }} />
+      <div className="bento-tile bento-income glass shimmer" style={{ minHeight: 140 }} />
+      <div className="bento-tile bento-expense glass shimmer" style={{ minHeight: 140 }} />
+      <div className="bento-tile bento-recent glass shimmer" style={{ minHeight: 360 }} />
+      <div className="bento-tile bento-chart glass shimmer" style={{ minHeight: 320 }} />
+      <div className="bento-tile bento-goal glass shimmer" style={{ minHeight: 220 }} />
+      <div className="bento-tile bento-pie glass shimmer" style={{ minHeight: 220 }} />
     </div>
   </div>
 );
 
 const EmptyTransactionState = ({ onAddClick }) => (
   <div className="bento-empty">
-    <span className="bento-empty-icon" aria-hidden="true"><Rocket size={42} strokeWidth={1.5} opacity={0.5} /></span>
+    <span className="bento-empty-icon" aria-hidden="true">
+      <Rocket size={42} strokeWidth={1.5} opacity={0.5} />
+    </span>
     <p className="bento-empty-title">Start your journey</p>
     <p className="bento-empty-sub">Add your first transaction to begin tracking your finances.</p>
-    <button className="bento-empty-cta pulse-encouragement" onClick={onAddClick} aria-label="Add your first transaction">
+    <button
+      type="button"
+      className="bento-empty-cta pulse-encouragement"
+      onClick={onAddClick}
+      aria-label="Add your first transaction"
+    >
       <Plus size={16} /> Get Started
     </button>
   </div>
 );
 EmptyTransactionState.propTypes = { onAddClick: PropTypes.func.isRequired };
 
-// ==================== MAIN COMPONENT ====================
+const ConfirmDeleteModal = ({ tx, onCancel, onConfirm, safeFmt, currencySymbol }) => {
+  const confirmRef = useRef(null);
+  useEffect(() => {
+    const node = confirmRef.current;
+    if (!node) return undefined;
+    const prev = document.activeElement;
+    const btn = node.querySelector('button');
+    btn?.focus();
+    const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      try { prev?.focus?.(); } catch { /* ignore */ }
+    };
+  }, [onCancel]);
 
+  if (!tx) return null;
+  return (
+    <div
+      className="modal-overlay"
+      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Delete transaction"
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div
+        ref={confirmRef}
+        className="modal-box glass"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 440, width: '90%', borderRadius: 14, padding: '1.25rem', background: 'var(--bg-color)' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.6rem' }}>
+          <AlertTriangle size={20} color="var(--danger-color, #ef4444)" aria-hidden="true" />
+          <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Delete transaction</h3>
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Close"
+            style={{ marginLeft: 'auto', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+          Delete this <strong>{tx.type}</strong> of{' '}
+          <strong>{formatCurrencyText(tx.amount, safeFmt, currencySymbol)}</strong>?
+        </p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '0.4rem' }}>
+          This action cannot be undone.
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+          <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ background: 'var(--danger-color, #ef4444)' }}
+            onClick={onConfirm}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+ConfirmDeleteModal.propTypes = {
+  tx: PropTypes.object,
+  onCancel: PropTypes.func.isRequired,
+  onConfirm: PropTypes.func.isRequired,
+  safeFmt: PropTypes.func,
+  currencySymbol: PropTypes.string,
+};
+
+/* ============================================================
+ * Main Component
+ * ============================================================ */
 export default function Dashboard() {
   const contextValue = useContext(AppContext);
   const context = useMemo(() => contextValue || {}, [contextValue]);
 
   const {
-    user = null, transactions: rawTransactions = [], theme = 'light',
-    addTransaction, updateTransaction, deleteTransaction,
-    USER_ID = null, fmt, t, fetchTransactions, currencyInfo
+    user = null,
+    transactions: rawTransactions = [],
+    accounts = [],
+    theme = 'light',
+    addTransaction,
+    updateTransaction,
+    deleteTransaction,
+    USER_ID = null,
+    fmt,
+    t,
+    lang = 'en',
+    fetchTransactions,
+    currencyInfo,
+    loading,
   } = context;
+
+  const { showToast } = useToast();
+  const prefersReducedMotion = usePrefersReducedMotion();
+
+  const locale = useMemo(() => resolveLocale(lang), [lang]);
+  const isDark = useMemo(() => isDarkTheme(theme), [theme]);
 
   const currencySymbol = currencyInfo?.symbol || '$';
   const safeFmt = useCallback(
-    (val) => (fmt && typeof fmt === 'function' ? fmt(val) : `${currencySymbol}${Number(val).toFixed(2)}`),
-    [fmt, currencySymbol]
+    (val) => {
+      const num = toNumber(val, 0);
+      if (fmt && typeof fmt === 'function') {
+        try {
+          const out = fmt(num);
+          if (out != null) return out;
+        } catch { /* fall through */ }
+      }
+      return new Intl.NumberFormat(locale || 'en-US', {
+        style: 'currency', currency: currencyInfo?.code || 'USD',
+      }).format(num);
+    },
+    [fmt, locale, currencyInfo]
   );
 
-  const { showToast } = useToast();
+  /* ---------------- State ---------------- */
+  const dateFilterKey = useMemo(() => userScopedKey('date_filter', USER_ID), [USER_ID]);
+  const categoryFilterKey = useMemo(() => userScopedKey('category_filter', USER_ID), [USER_ID]);
+  const exportFilterKey = useMemo(() => userScopedKey('export_filter', USER_ID), [USER_ID]);
 
-  // State
   const [showForm, setShowForm] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
-  const [dateFilter, setDateFilter] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('budgeta_date_filter') || 'all';
-    return 'all';
-  });
-  const [categoryFilter, setCategoryFilter] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('budgeta_category_filter') || 'all';
-    return 'all';
-  });
-  const [exportFilter, setExportFilter] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('budgeta_export_filter') || 'all';
-    return 'all';
-  });
+  const [dateFilter, setDateFilter] = useState(() => safeGetItem(dateFilterKey, 'all'));
+  const [categoryFilter, setCategoryFilter] = useState(() => safeGetItem(categoryFilterKey, 'all'));
+  const [exportFilter, setExportFilter] = useState(() => safeGetItem(exportFilterKey, 'all'));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [recentLimit, setRecentLimit] = useState(8);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
 
-  // Persist filters
+  /* ---------------- Reload filters when USER_ID changes ---------------- */
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('budgeta_date_filter', dateFilter);
-      localStorage.setItem('budgeta_category_filter', categoryFilter);
-      localStorage.setItem('budgeta_export_filter', exportFilter);
-    }
-  }, [dateFilter, categoryFilter, exportFilter]);
+    setDateFilter(safeGetItem(dateFilterKey, 'all'));
+    setCategoryFilter(safeGetItem(categoryFilterKey, 'all'));
+    setExportFilter(safeGetItem(exportFilterKey, 'all'));
+  }, [dateFilterKey, categoryFilterKey, exportFilterKey]);
 
-  // ==================== DATA PROCESSING ====================
+  /* ---------------- Persist filters ---------------- */
+  useEffect(() => { safeSetItem(dateFilterKey, dateFilter); }, [dateFilterKey, dateFilter]);
+  useEffect(() => { safeSetItem(categoryFilterKey, categoryFilter); }, [categoryFilterKey, categoryFilter]);
+  useEffect(() => { safeSetItem(exportFilterKey, exportFilter); }, [exportFilterKey, exportFilter]);
 
-  // 1. Parse transactions (all, unfiltered)
+  /* ---------------- Reset recent limit on filter changes ---------------- */
+  useEffect(() => { setRecentLimit(8); }, [dateFilter, categoryFilter]);
+
+  /* ============================================================
+   * Data processing
+   * ============================================================ */
+
+  // 1. Parse all transactions
   const allParsed = useMemo(() => {
     if (!Array.isArray(rawTransactions)) return [];
-    return rawTransactions
-      .filter(tx => tx && typeof tx === 'object')
-      .map(tx => ({
-        ...tx,
-        parsedDate: safeParseDate(tx.date),
-        parsedAmount: parseFloat(tx.amount) || 0
-      }))
-      .filter(tx => tx.parsedDate !== null);
+    const out = [];
+    for (const tx of rawTransactions) {
+      if (!tx || typeof tx !== 'object') continue;
+      if (tx.is_deleted === true) continue;
+      const parsedDate = safeParseDate(tx.date);
+      if (!parsedDate) continue;
+      const rawAmt = toNumber(tx.amount, NaN);
+      if (!Number.isFinite(rawAmt) || rawAmt < 0) continue;
+      out.push({ ...tx, parsedDate, parsedAmount: rawAmt });
+    }
+    return out;
   }, [rawTransactions]);
 
-  // 2. Filtered transactions (for UI)
+  // 2. Apply filters
   const parsedTransactions = useMemo(() => {
     let processed = allParsed;
     if (categoryFilter !== 'all') {
-      processed = processed.filter(tx => tx.category === categoryFilter);
+      processed = processed.filter((tx) => tx.category === categoryFilter);
     }
     if (dateFilter !== 'all') {
       const now = new Date();
-      processed = processed.filter(tx => {
-        const diffTime = Math.abs(now - tx.parsedDate);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        if (dateFilter === '7days') return diffDays <= 7;
-        if (dateFilter === '30days') return diffDays <= 30;
+      now.setHours(23, 59, 59, 999);
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      processed = processed.filter((tx) => {
+        const t = tx.parsedDate;
+        if (t > now) return false;
+        if (dateFilter === '7days') {
+          const diff = (startOfToday - t) / 86400000;
+          return diff <= 7;
+        }
+        if (dateFilter === '30days') {
+          const diff = (startOfToday - t) / 86400000;
+          return diff <= 30;
+        }
         if (dateFilter === 'thisMonth') {
-          return tx.parsedDate.getMonth() === now.getMonth() && tx.parsedDate.getFullYear() === now.getFullYear();
+          return t.getMonth() === now.getMonth() && t.getFullYear() === now.getFullYear();
         }
         return true;
       });
@@ -286,27 +554,42 @@ export default function Dashboard() {
     return processed;
   }, [allParsed, categoryFilter, dateFilter]);
 
-  // 3. Unfiltered metrics (hero stats)
-  const unfilteredMetrics = useMemo(() => {
-    return calculateFinancialMetrics(allParsed);
-  }, [allParsed]);
-
-  // 4. Filtered metrics (for chart summary)
+  // 3. Metrics
+  const unfilteredMetrics = useMemo(() => calculateFinancialMetrics(allParsed), [allParsed]);
   const financialMetrics = useMemo(() => calculateFinancialMetrics(parsedTransactions), [parsedTransactions]);
   const { savingsRate, expenseOfIncome } = financialMetrics;
 
-  // 5. Sorted lists
-  const sortedDescAll = useMemo(() => [...allParsed].sort((a, b) => b.parsedDate - a.parsedDate), [allParsed]);
-  const sortedAscAll = useMemo(() => [...sortedDescAll].reverse(), [sortedDescAll]);
-  const sortedDescFiltered = useMemo(() => [...parsedTransactions].sort((a, b) => b.parsedDate - a.parsedDate), [parsedTransactions]);
-  const sortedAscFiltered = useMemo(() => [...sortedDescFiltered].reverse(), [sortedDescFiltered]);
+  // 4. Sorted lists
+  const sortedAscAll = useMemo(
+    () => [...allParsed].sort((a, b) => a.parsedDate - b.parsedDate),
+    [allParsed]
+  );
+  const sortedDescFiltered = useMemo(
+    () => [...parsedTransactions].sort((a, b) => b.parsedDate - a.parsedDate),
+    [parsedTransactions]
+  );
+  const sortedAscFiltered = useMemo(
+    () => [...parsedTransactions].sort((a, b) => a.parsedDate - b.parsedDate),
+    [parsedTransactions]
+  );
 
-  // 6. Hero stats (unfiltered)
-  const rawBalance = unfilteredMetrics.netSavings;
+  // 5. Starting balance from accounts
+  const startingBalance = useMemo(() => {
+    if (!Array.isArray(accounts) || accounts.length === 0) return 0;
+    return accounts
+      .filter((a) => a && a.is_active !== false)
+      .reduce((sum, a) => {
+        const bal = Number(a.initial_balance);
+        return sum + (Number.isFinite(bal) ? bal : 0);
+      }, 0);
+  }, [accounts]);
+
+  // 6. Hero stats
   const rawIncome = unfilteredMetrics.income;
   const rawExpense = unfilteredMetrics.expense;
   const netSavings = unfilteredMetrics.netSavings;
-  const monthlyGoal = user?.monthly_goal || 0;
+  const rawBalance = startingBalance + netSavings;
+  const monthlyGoal = toNumber(user?.monthly_goal, 0);
 
   // 7. Animated counters
   const { value: animatedBalance, isFinished: balanceDone } = useCountUp(rawBalance, 900);
@@ -319,251 +602,360 @@ export default function Dashboard() {
     return Math.max(0, Math.min((netSavings / monthlyGoal) * 100, 100));
   }, [netSavings, monthlyGoal]);
 
-  // 9. Daily average spend (fixed)
+  // 9. Daily average spend over the last 30 days
   const dailyAverageSpend = useMemo(() => {
     if (parsedTransactions.length === 0) return 0;
-    const totalExpense = parsedTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.parsedAmount, 0);
-    if (totalExpense === 0) return 0;
-
-    // Get date range of filtered transactions
-    const dates = parsedTransactions.map(t => t.parsedDate.getTime());
-    const minDate = new Date(Math.min(...dates));
-    const maxDate = new Date(Math.max(...dates));
-    const dayDiff = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)) || 1;
-    return totalExpense / dayDiff;
+    const cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(cutoff.getDate() - 30);
+    let total = 0;
+    const seenDays = new Set();
+    for (const t of parsedTransactions) {
+      if (t.type !== 'expense') continue;
+      if (t.parsedDate < cutoff) continue;
+      total += t.parsedAmount;
+      const key = toLocalDateKey(t.parsedDate);
+      if (key) seenDays.add(key);
+    }
+    const days = Math.max(1, Math.min(seenDays.size, 30));
+    return total / days;
   }, [parsedTransactions]);
 
-  // 10. Sparkline (unfiltered, all time)
+  // 10. Month-over-month (with upper bound = now)
+  const momMetrics = useMemo(() => {
+    const now = new Date();
+    const nowMs = now.getTime();
+    const currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+
+    let curIncome = 0, curExpense = 0;
+    let prevIncome = 0, prevExpense = 0;
+
+    for (const t of allParsed) {
+      const d = t.parsedDate;
+      const dMs = d.getTime();
+      const amt = t.parsedAmount;
+      const inCurrent = d >= currentStart && dMs <= nowMs;
+      const inPrev = d >= prevStart && d <= prevEnd;
+      if (t.type === 'income') {
+        if (inCurrent) curIncome += amt;
+        else if (inPrev) prevIncome += amt;
+      } else if (t.type === 'expense') {
+        if (inCurrent) curExpense += amt;
+        else if (inPrev) prevExpense += amt;
+      }
+    }
+
+    const pct = (cur, prev) => {
+      if (prev === 0 && cur === 0) return { val: '0%', dir: 'neutral' };
+      if (prev === 0) return { val: cur > 0 ? 'New' : '—', dir: cur > 0 ? 'up' : 'neutral' };
+      const raw = ((cur - prev) / Math.abs(prev)) * 100;
+      const rounded = Math.round(raw * 10) / 10;
+      return {
+        val: `${rounded >= 0 ? '+' : ''}${rounded.toFixed(1)}%`,
+        dir: rounded > 0.05 ? 'up' : rounded < -0.05 ? 'down' : 'neutral',
+      };
+    };
+
+    return {
+      income: pct(curIncome, prevIncome),
+      expense: pct(curExpense, prevExpense),
+      balance: pct(curIncome - curExpense, prevIncome - prevExpense),
+    };
+  }, [allParsed]);
+
+  // 11. Sparkline (day-bucketed, baseline-aware)
   const sparklineSvgPath = useMemo(() => {
     if (sortedAscAll.length < 2) return null;
-    let running = 0;
-    const points = sortedAscAll.slice(-12).map(t => {
-      running += (t.type === 'income' ? t.parsedAmount : -t.parsedAmount);
+    const buckets = new Map();
+    for (const t of sortedAscAll) {
+      const key = toLocalDateKey(t.parsedDate);
+      if (!key) continue;
+      const delta = t.type === 'income' ? t.parsedAmount : -t.parsedAmount;
+      buckets.set(key, (buckets.get(key) || 0) + delta);
+    }
+    const sorted = Array.from(buckets.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    if (sorted.length < 2) return null;
+    // Start from startingBalance so the sparkline reflects true account trajectory.
+    let running = startingBalance;
+    const series = sorted.slice(-14).map(([, delta]) => {
+      running += delta;
       return running;
     });
-    const min = Math.min(...points);
-    const max = Math.max(...points);
+    const min = Math.min(...series);
+    const max = Math.max(...series);
     const range = max - min || 1;
     const width = 120;
     const height = 36;
-    const coords = points.map((val, idx) => {
-      const x = (idx / (points.length - 1)) * width;
+    const coords = series.map((val, idx) => {
+      const x = (idx / (series.length - 1)) * width;
       const y = height - ((val - min) / range) * (height - 8) - 4;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     });
     return `M ${coords.join(' L ')}`;
-  }, [sortedAscAll]);
+  }, [sortedAscAll, startingBalance]);
 
-  // 11. Chart data (filtered)
+  // 12. Chart data (day-bucketed)
   const chartData = useMemo(() => {
     if (sortedAscFiltered.length === 0) return [];
     const map = new Map();
-    sortedAscFiltered.forEach(t => {
-      const label = t.parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      if (!map.has(label)) {
-        map.set(label, { name: label, income: 0, expense: 0, timestamp: t.parsedDate.getTime() });
+    for (const t of sortedAscFiltered) {
+      const key = toLocalDateKey(t.parsedDate);
+      if (!key) continue;
+      if (!map.has(key)) {
+        map.set(key, { name: key, income: 0, expense: 0, timestamp: t.parsedDate.getTime() });
       }
-      const entry = map.get(label);
+      const entry = map.get(key);
       if (t.type === 'income') entry.income += t.parsedAmount;
       else entry.expense += t.parsedAmount;
-    });
+    }
     return Array.from(map.values())
       .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(-10);
-  }, [sortedAscFiltered]);
+      .slice(-14)
+      .map((row) => ({
+        ...row,
+        name: new Date(row.timestamp).toLocaleDateString(locale, { month: 'short', day: 'numeric' }),
+      }));
+  }, [sortedAscFiltered, locale]);
 
-  // 12. Net worth over time (unfiltered)
+  // 13. Net worth over time (day-bucketed, includes startingBalance)
   const netWorthData = useMemo(() => {
     if (sortedAscAll.length === 0) return [];
-    let running = 0;
-    const data = [];
-    sortedAscAll.forEach(t => {
-      running += (t.type === 'income' ? t.parsedAmount : -t.parsedAmount);
-      data.push({
-        name: t.parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        balance: running,
-        timestamp: t.parsedDate.getTime()
-      });
-    });
-    // Keep last 20 points for performance
-    return data.slice(-20);
-  }, [sortedAscAll]);
+    const map = new Map();
+    for (const t of sortedAscAll) {
+      const key = toLocalDateKey(t.parsedDate);
+      if (!key) continue;
+      const delta = t.type === 'income' ? t.parsedAmount : -t.parsedAmount;
+      map.set(key, (map.get(key) || 0) + delta);
+    }
+    const sorted = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    let running = startingBalance;
+    return sorted
+      .map(([key, delta]) => {
+        running += delta;
+        const d = safeParseDate(key);
+        return {
+          name: d ? d.toLocaleDateString(locale, { month: 'short', day: 'numeric' }) : key,
+          balance: Number(running.toFixed(2)),
+          timestamp: d ? d.getTime() : 0,
+        };
+      })
+      .slice(-30);
+  }, [sortedAscAll, locale, startingBalance]);
 
-  // 13. Top expense category (filtered)
+  // 14. Top expense category
   const topExpenseCategory = useMemo(() => {
-    const map = {};
-    parsedTransactions.filter(t => t.type === 'expense').forEach(t => {
-      map[t.category] = (map[t.category] || 0) + t.parsedAmount;
-    });
-    const entries = Object.entries(map).sort((a, b) => b[1] - a[1]);
-    if (entries.length === 0) return null;
-    const totalExp = parsedTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.parsedAmount, 0) || 1;
-    return {
-      name: entries[0][0],
-      amount: entries[0][1],
-      pct: ((entries[0][1] / totalExp) * 100).toFixed(0)
-    };
+    const map = new Map();
+    let totalExp = 0;
+    for (const t of parsedTransactions) {
+      if (t.type !== 'expense') continue;
+      const cat = t.category || 'Other';
+      map.set(cat, (map.get(cat) || 0) + t.parsedAmount);
+      totalExp += t.parsedAmount;
+    }
+    if (map.size === 0 || totalExp === 0) return null;
+    const [name, amount] = Array.from(map.entries()).sort((a, b) => b[1] - a[1])[0];
+    return { name, amount, pct: ((amount / totalExp) * 100).toFixed(0) };
   }, [parsedTransactions]);
 
-  // 14. Pie data (filtered)
+  // 15. Pie data
   const pieData = useMemo(() => {
     const catMap = new Map();
-    parsedTransactions.filter(t => t.type === 'expense').forEach(t => {
+    for (const t of parsedTransactions) {
+      if (t.type !== 'expense') continue;
       const category = t.category || 'Other';
       catMap.set(category, (catMap.get(category) || 0) + t.parsedAmount);
-    });
+    }
     return Array.from(catMap.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6)
-      .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }));
+      .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }));
   }, [parsedTransactions]);
 
-  // 15. Grouped transactions (filtered, limited)
+  // 16. Grouped recent transactions
   const groupedTxns = useMemo(() => {
     const list = sortedDescFiltered.slice(0, recentLimit);
     const groups = [];
     let lastLabel = '';
-    list.forEach(tx => {
-      const label = getDateLabel(tx.date);
-      if (label !== lastLabel && label !== 'Invalid Date') {
-        groups.push({ type: 'header', label });
+    for (const tx of list) {
+      const label = getDateLabel(tx.date, locale);
+      if (label !== lastLabel && label !== '—') {
+        groups.push({ type: 'header', label, key: `h-${label}-${groups.length}` });
         lastLabel = label;
       }
-      groups.push({ type: 'tx', data: tx });
-    });
+      groups.push({ type: 'tx', data: tx, key: tx.id || tx._id || `t-${groups.length}` });
+    }
     return groups;
-  }, [sortedDescFiltered, recentLimit]);
+  }, [sortedDescFiltered, recentLimit, locale]);
 
-  // ==================== LOCALISATION ====================
+  // 17. Category options
+  const categoryOptions = useMemo(() => {
+    const set = new Set(DEFAULT_CATEGORIES);
+    for (const t of allParsed) {
+      if (t.category) set.add(String(t.category));
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allParsed]);
 
-  const getLocalizedText = useCallback((key, fallback) => {
-    const translation = t && typeof t === 'function' && t(key) !== key ? t(key) : null;
-    return translation || fallback;
+  /* ---------------- Localisation helper ---------------- */
+  const tr = useCallback((key, fallback) => {
+    const value = t && typeof t === 'function' ? t(key) : null;
+    return value && value !== key ? value : fallback;
   }, [t]);
 
   const savingsRateText = useMemo(() => {
-    if (parsedTransactions.length === 0) return getLocalizedText('no_transactions', 'No transactions yet');
-    if (Number.isNaN(Number(savingsRate)) || Number(savingsRate) <= 0) {
-      return 'No savings yet — let\'s change that 📈';
+    if (parsedTransactions.length === 0) {
+      return allParsed.length === 0
+        ? tr('no_transactions', 'No transactions yet')
+        : tr('no_match_filter', 'No transactions match the current filter');
     }
-    return `Saving ${savingsRate}% · ${parsedTransactions.length} transactions`;
-  }, [parsedTransactions, savingsRate, getLocalizedText]);
+    if (savingsRate <= 0) return 'No savings yet — let\'s change that 📈';
+    return `Saving ${savingsRate.toFixed(1)}% · ${parsedTransactions.length} transactions`;
+  }, [parsedTransactions.length, allParsed.length, savingsRate, tr]);
 
-  // ==================== THEME ====================
-
+  /* ---------------- Theme colours ---------------- */
   const balanceColor = rawBalance >= 0 ? 'var(--balance-accent)' : 'var(--danger)';
-  const isDark = theme === 'amoled';
+  const balanceHex = rawBalance >= 0 ? '#10b981' : '#ef4444';
+
   const tooltipStyle = useMemo(() => ({
     backgroundColor: isDark ? 'rgba(8,8,22,0.98)' : 'rgba(255,255,255,0.97)',
-    border: `1px solid ${isDark ? 'rgba(5, 150, 105,0.3)' : 'rgba(5, 150, 105,0.2)'}`,
-    borderRadius: '12px',
+    border: `1px solid ${isDark ? 'rgba(5,150,105,0.3)' : 'rgba(5,150,105,0.2)'}`,
+    borderRadius: 12,
     color: isDark ? '#f8fafc' : '#0f172a',
     boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-    backdropFilter: 'blur(12px)'
+    backdropFilter: 'blur(12px)',
   }), [isDark]);
 
-  const prefersReducedMotion = typeof window !== 'undefined'
-    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    : false;
+  const gInId = useStableId('gIn');
+  const gExId = useStableId('gEx');
+  const gNWId = useStableId('gNW');
 
-  // ==================== EVENT HANDLERS ====================
+  /* ============================================================
+   * Event handlers
+   * ============================================================ */
 
   const handleExportJSON = useCallback(async () => {
+    if (isExporting) return;
     setIsExporting(true);
     try {
-      const dataToExport = exportFilter === 'all' ? allParsed : parsedTransactions;
-      const dataStr = JSON.stringify(dataToExport, null, 2);
-      const blob = new Blob([dataStr], { type: "application/json" });
+      const data = exportFilter === 'all' ? allParsed : parsedTransactions;
+      const cleaned = data.map(({ parsedDate, ...rest }) => rest);
+      const blob = new Blob([JSON.stringify(cleaned, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
+      const link = document.createElement('a');
       link.href = url;
-      link.download = `transactions_${new Date().toISOString()}.json`;
+      link.download = `transactions_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       showToast('success', 'Data exported to JSON successfully!');
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       showToast('error', 'Failed to export data');
     } finally {
       setIsExporting(false);
     }
-  }, [allParsed, parsedTransactions, exportFilter, showToast]);
+  }, [allParsed, parsedTransactions, exportFilter, isExporting, showToast]);
 
   const handleExportCSV = useCallback(async () => {
+    if (isExporting) return;
     setIsExporting(true);
     try {
-      const dataToExport = exportFilter === 'all' ? allParsed : parsedTransactions;
+      const data = exportFilter === 'all' ? allParsed : parsedTransactions;
       const headers = ['Date', 'Type', 'Category', 'Amount', 'Note'];
-      const rows = dataToExport.map(tx => [
-        tx.date,
-        tx.type,
+      const rows = data.map((tx) => [
+        toLocalDateKey(tx.date) || '',
+        tx.type || '',
         tx.category || 'Other',
         tx.parsedAmount.toFixed(2),
-        tx.note || ''
+        tx.note || '',
       ]);
-      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const csvContent = [
+        headers.map(escapeCsvField).join(','),
+        ...rows.map((r) => r.map(escapeCsvField).join(',')),
+      ].join('\n');
+
+      const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `transactions_${new Date().toISOString()}.csv`;
+      link.download = `transactions_${new Date().toISOString().slice(0, 10)}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       showToast('success', 'CSV exported successfully!');
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       showToast('error', 'Failed to export CSV');
     } finally {
       setIsExporting(false);
     }
-  }, [allParsed, parsedTransactions, exportFilter, showToast]);
+  }, [allParsed, parsedTransactions, exportFilter, isExporting, showToast]);
 
   const handleRefresh = useCallback(async () => {
-    if (fetchTransactions) {
-      setIsRefreshing(true);
-      try {
-        await fetchTransactions();
-        showToast('success', 'Data refreshed successfully');
-      } catch (err) {
-        console.error(err);
-        showToast('error', 'Failed to refresh data');
-      } finally {
-        setIsRefreshing(false);
-      }
-    } else {
-      showToast('success', 'Data is up to date');
+    if (isRefreshing) return;
+    if (typeof fetchTransactions !== 'function') {
+      showToast('info', 'Data is already up to date');
+      return;
     }
-  }, [fetchTransactions, showToast]);
+    setIsRefreshing(true);
+    try {
+      await fetchTransactions();
+      setEditingTx(null);
+      setShowForm(false);
+      showToast('success', 'Data refreshed successfully');
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Failed to refresh data');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [fetchTransactions, isRefreshing, showToast]);
 
   const handleShare = useCallback(async () => {
-    const summary = `My Budget Dashboard\nBalance: ${safeFmt(rawBalance)}\nNet Savings: ${safeFmt(netSavings)}\nSavings Rate: ${savingsRate}%`;
+    const summary =
+      `My Budget Dashboard\n` +
+      `Balance: ${formatCurrencyText(rawBalance, safeFmt, currencySymbol)}\n` +
+      `Net Savings: ${formatCurrencyText(netSavings, safeFmt, currencySymbol)}\n` +
+      `Savings Rate: ${savingsRate.toFixed(1)}%`;
     try {
       if (navigator.share) {
         await navigator.share({ title: 'My Financial Dashboard', text: summary });
-      } else {
+        return;
+      }
+      if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(summary);
         showToast('success', 'Dashboard summary copied to clipboard!');
+        return;
       }
+      showToast('error', 'Sharing is not supported in this browser');
     } catch (err) {
-      if (err.name !== 'AbortError') showToast('error', 'Sharing failed');
+      if (err?.name !== 'AbortError') showToast('error', 'Sharing failed');
     }
-  }, [rawBalance, netSavings, savingsRate, safeFmt, showToast]);
+  }, [rawBalance, netSavings, savingsRate, safeFmt, currencySymbol, showToast]);
 
   const handleAddTransaction = useCallback(async (tx) => {
+    if (typeof addTransaction !== 'function') {
+      showToast('error', 'Transaction service unavailable');
+      return;
+    }
     const validation = validateTransaction(tx);
     if (!validation.isValid) {
-      return showToast('error', `Validation failed: ${validation.errors.join(', ')}`);
+      showToast('error', `Validation failed: ${validation.errors.join(', ')}`);
+      return;
     }
+    setIsLoadingAction(true);
     try {
       await addTransaction(tx);
       setShowForm(false);
       showToast('success', 'Transaction added successfully!');
-    } catch (error) {
-      showToast('error', error.message || 'Failed to add transaction. Please try again.');
+    } catch (err) {
+      showToast('error', err?.message || 'Failed to add transaction.');
+    } finally {
+      setIsLoadingAction(false);
     }
   }, [addTransaction, showToast]);
 
@@ -573,120 +965,162 @@ export default function Dashboard() {
   }, []);
 
   const handleUpdateTransaction = useCallback(async (tx) => {
+    if (typeof updateTransaction !== 'function') {
+      showToast('error', 'Transaction service unavailable');
+      return;
+    }
+    if (!editingTx) {
+      showToast('error', 'No transaction selected for editing');
+      return;
+    }
+    const validation = validateTransaction(tx);
+    if (!validation.isValid) {
+      showToast('error', `Validation failed: ${validation.errors.join(', ')}`);
+      return;
+    }
+    const id = editingTx.id || editingTx._id;
+    if (!id) {
+      showToast('error', 'Invalid transaction reference');
+      return;
+    }
     setIsLoadingAction(true);
     try {
-      await updateTransaction(editingTx.id || editingTx._id, tx);
+      await updateTransaction(id, tx);
       setShowForm(false);
       setEditingTx(null);
       showToast('success', 'Transaction updated successfully!');
-    } catch (error) {
-      showToast('error', error.message || 'Failed to update transaction.');
+    } catch (err) {
+      showToast('error', err?.message || 'Failed to update transaction.');
     } finally {
       setIsLoadingAction(false);
     }
   }, [updateTransaction, editingTx, showToast]);
 
-  const handleDeleteTransaction = useCallback(async (tx) => {
-    if (!window.confirm(`Delete this ${tx.type} of ${safeFmt(tx.amount)}?`)) return;
+  const requestDeleteTransaction = useCallback((tx) => setPendingDelete(tx), []);
+  const cancelDelete = useCallback(() => setPendingDelete(null), []);
+
+  const confirmDeleteTransaction = useCallback(async () => {
+    if (!pendingDelete) return;
+    if (typeof deleteTransaction !== 'function') {
+      showToast('error', 'Transaction service unavailable');
+      setPendingDelete(null);
+      return;
+    }
+    const id = pendingDelete.id || pendingDelete._id;
+    if (!id) {
+      showToast('error', 'Invalid transaction reference');
+      setPendingDelete(null);
+      return;
+    }
     setIsLoadingAction(true);
     try {
-      await deleteTransaction(tx.id || tx._id);
+      await deleteTransaction(id);
       showToast('success', 'Transaction deleted.');
-    } catch (error) {
-      showToast('error', error.message || 'Failed to delete transaction.');
+      setPendingDelete(null);
+    } catch (err) {
+      showToast('error', err?.message || 'Failed to delete transaction.');
     } finally {
       setIsLoadingAction(false);
     }
-  }, [deleteTransaction, safeFmt, showToast]);
+  }, [pendingDelete, deleteTransaction, showToast]);
 
-  const loadMore = useCallback(() => {
-    setRecentLimit(prev => prev + 8);
-  }, []);
+  const loadMore = useCallback(() => setRecentLimit((prev) => prev + 8), []);
 
-  // Keyboard shortcuts
+  /* ---------------- Keyboard: Ctrl+N only ---------------- */
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.ctrlKey && e.key.toLowerCase() === 'n') {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
         setShowForm(true);
       }
-      if (e.ctrlKey && e.key.toLowerCase() === 'r') {
-        e.preventDefault();
-        handleRefresh();
-      }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleRefresh]);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
-  // ==================== RENDER ====================
-
-  const categoryOptions = useMemo(() =>
-    CATEGORY_OPTIONS.map(cat => <option key={cat} value={cat}>{cat}</option>),
-    []
+  /* ============================================================
+   * Modal initial data (stable)
+   * ============================================================ */
+  const todayKey = useMemo(() => toLocalDateKey(new Date()), []);
+  const initialFormData = useMemo(
+    () => editingTx || { date: todayKey },
+    [editingTx, todayKey]
   );
 
-  if (!user) return <DashboardSkeleton />;
+  /* ============================================================
+   * Render
+   * ============================================================ */
+
+  if ((loading && !user) || !user) return <DashboardSkeleton />;
+
+  const expenseGreaterThanIncome = rawExpense > rawIncome;
 
   return (
     <ErrorBoundary>
       <div className="bento-dashboard">
         <div className="bento-header">
           <motion.div className="bento-insight-pill" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}>
-            <Sparkles size={14} />{savingsRateText}
+            <Sparkles size={14} /> {savingsRateText}
           </motion.div>
           <div className="bento-actions">
             <motion.button
+              type="button"
               className="bbtn-icon bbtn-refresh"
               onClick={handleRefresh}
               disabled={isRefreshing}
-              title="Refresh (Ctrl+R)"
-              aria-label="Refresh Data"
+              title="Refresh"
+              aria-label="Refresh data"
               whileHover={{ scale: 1.08 }}
               whileTap={{ scale: 0.92 }}
             >
               <RefreshCw size={16} className={isRefreshing ? 'spinning' : ''} />
             </motion.button>
             <motion.button
+              type="button"
               className="bbtn-icon bbtn-share"
               onClick={handleShare}
-              title="Share Dashboard"
+              title="Share dashboard"
               aria-label="Share"
               whileHover={{ scale: 1.08 }}
               whileTap={{ scale: 0.92 }}
             >
               <Share2 size={16} />
             </motion.button>
-            <div className="export-group" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            <div className="export-group" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               <select
                 className="export-filter-select"
                 value={exportFilter}
                 onChange={(e) => setExportFilter(e.target.value)}
-                aria-label="Export data scope"
-                style={{ background: 'var(--glass-2)', color: 'var(--text-main)', border: 'none', borderRadius: '6px', padding: '4px 8px', fontSize: '0.7rem' }}
+                aria-label="Export scope"
+                style={{
+                  background: 'var(--glass-2)', color: 'var(--text-main)',
+                  border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: '0.7rem',
+                }}
               >
                 <option value="all">All</option>
                 <option value="filtered">Filtered</option>
               </select>
               <motion.button
-                className="bbtn-icon bbtn-export bbtn-export-json"
+                type="button"
+                className="bbtn-icon bbtn-export"
                 onClick={handleExportJSON}
                 disabled={isExporting}
                 whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.92 }}
-                title={isExporting ? "Exporting..." : "Export JSON"}
+                title={isExporting ? 'Exporting…' : 'Export JSON'}
                 aria-label="Export JSON"
               >
                 {isExporting ? <RefreshCw size={16} className="spinning" /> : <Download size={16} />}
                 <span className="bbtn-export-label">JSON</span>
               </motion.button>
               <motion.button
-                className="bbtn-icon bbtn-export bbtn-export-csv"
+                type="button"
+                className="bbtn-icon bbtn-export"
                 onClick={handleExportCSV}
                 disabled={isExporting}
                 whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.92 }}
-                title={isExporting ? "Exporting..." : "Export CSV"}
+                title={isExporting ? 'Exporting…' : 'Export CSV'}
                 aria-label="Export CSV"
               >
                 {isExporting ? <RefreshCw size={16} className="spinning" /> : <Download size={16} />}
@@ -694,18 +1128,19 @@ export default function Dashboard() {
               </motion.button>
             </div>
             <motion.button
+              type="button"
               className="bbtn-pri bbtn-full"
               onClick={() => setShowForm(true)}
               title="Ctrl+N"
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
             >
-              <Plus size={14} /> {getLocalizedText('add_transaction', 'Add Transaction')}
+              <Plus size={14} /> {tr('add_transaction', 'Add Transaction')}
             </motion.button>
           </div>
         </div>
 
-        {/* Quick Stats Strip */}
+        {/* Quick stats strip */}
         <motion.div
           className="dashboard-quick-stats-strip glass"
           initial={{ opacity: 0, y: -8 }}
@@ -714,7 +1149,7 @@ export default function Dashboard() {
           <div className="dqs-pill">
             <Zap size={14} className="dqs-icon text-brand" />
             <span className="dqs-label">Savings Rate:</span>
-            <span className="dqs-val">{savingsRate}%</span>
+            <span className="dqs-val">{savingsRate.toFixed(1)}%</span>
           </div>
           {topExpenseCategory && (
             <div className="dqs-pill">
@@ -726,7 +1161,7 @@ export default function Dashboard() {
           <div className="dqs-pill">
             <TrendingDown size={14} className="dqs-icon text-warning" />
             <span className="dqs-label">Daily Avg Spend:</span>
-            <span className="dqs-val">{safeFmt(dailyAverageSpend)}</span>
+            <span className="dqs-val">{formatCurrencyNode(dailyAverageSpend, safeFmt, currencySymbol)}</span>
           </div>
         </motion.div>
 
@@ -735,7 +1170,7 @@ export default function Dashboard() {
           className="bento-filters"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}
+          style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}
           role="search"
           aria-label="Filter transactions"
         >
@@ -745,10 +1180,10 @@ export default function Dashboard() {
             onChange={(e) => setDateFilter(e.target.value)}
             aria-label="Filter by date"
           >
-            <option value="all">{getLocalizedText('all_time', 'All Time')}</option>
-            <option value="7days">{getLocalizedText('last_7_days', 'Last 7 Days')}</option>
-            <option value="30days">{getLocalizedText('last_30_days', 'Last 30 Days')}</option>
-            <option value="thisMonth">{getLocalizedText('this_month', 'This Month')}</option>
+            <option value="all">{tr('all_time', 'All Time')}</option>
+            <option value="7days">{tr('last_7_days', 'Last 7 Days')}</option>
+            <option value="30days">{tr('last_30_days', 'Last 30 Days')}</option>
+            <option value="thisMonth">{tr('this_month', 'This Month')}</option>
           </select>
           <select
             className="filter-select"
@@ -756,50 +1191,63 @@ export default function Dashboard() {
             onChange={(e) => setCategoryFilter(e.target.value)}
             aria-label="Filter by category"
           >
-            <option value="all">{getLocalizedText('all_categories', 'All Categories')}</option>
-            {categoryOptions}
+            <option value="all">{tr('all_categories', 'All Categories')}</option>
+            {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           {(dateFilter !== 'all' || categoryFilter !== 'all') && (
             <button
+              type="button"
               className="filter-clear"
               onClick={() => { setDateFilter('all'); setCategoryFilter('all'); }}
               aria-label="Clear filters"
             >
-              {getLocalizedText('clear_filters', 'Clear Filters')}
+              {tr('clear_filters', 'Clear Filters')}
             </button>
           )}
         </motion.div>
 
-        {/* Bento Grid */}
+        {/* Bento grid */}
         <motion.div className="bento-grid" variants={STAGGER} initial="hidden" animate="show">
-          <div className="ambient-orb orb-chart" style={{ top: '15%', right: '5%' }} aria-hidden="true"></div>
-          <div className="ambient-orb orb-goal" style={{ bottom: '10%', left: '10%' }} aria-hidden="true"></div>
-          <div className="ambient-orb orb-ai" style={{ bottom: '2%', right: '2%' }} aria-hidden="true"></div>
+          <div className="ambient-orb orb-chart" style={{ top: '15%', right: '5%' }} aria-hidden="true" />
+          <div className="ambient-orb orb-goal" style={{ bottom: '10%', left: '10%' }} aria-hidden="true" />
+          <div className="ambient-orb orb-ai" style={{ bottom: '2%', right: '2%' }} aria-hidden="true" />
 
-          {/* Hero Balance */}
+          {/* Hero — Total Balance (starting balance + net of transactions) */}
           <motion.div
             variants={CARD_VARIANTS}
             className={`bento-tile bento-hero glass ${balanceDone ? 'numberGlow' : ''}`}
-            style={{ borderColor: rawBalance >= 0 ? 'rgba(var(--balance-accent-rgb), 0.34)' : 'rgba(var(--danger-rgb), 0.3)' }}
+            style={{
+              borderColor: rawBalance >= 0
+                ? 'rgba(var(--balance-accent-rgb), 0.34)'
+                : 'rgba(var(--danger-rgb), 0.3)',
+            }}
             role="region"
-            aria-label="Account balance"
+            aria-label={`Total balance: ${formatCurrencyText(rawBalance, safeFmt, currencySymbol)}`}
+            aria-live="polite"
           >
-            <div className="blob-glow" style={{ background: rawBalance >= 0 ? 'rgba(var(--balance-accent-rgb), 0.15)' : 'rgba(var(--danger-rgb), 0.15)' }}></div>
+            <div
+              className="blob-glow"
+              style={{
+                background: rawBalance >= 0
+                  ? 'rgba(var(--balance-accent-rgb), 0.15)'
+                  : 'rgba(var(--danger-rgb), 0.15)',
+              }}
+            />
             <div className="bh-top">
-              <span className="bh-label">{getLocalizedText('total_balance', 'Total Balance')}</span>
+              <span className="bh-label">{tr('total_balance', 'Total Balance')}</span>
               <Wallet size={20} className="bh-icon" style={{ color: balanceColor }} />
             </div>
             <div className="bh-mid">
-              <h2 style={{ fontSize: 'clamp(1.8rem, 10vw, 2.4rem)', fontWeight: '900', color: balanceColor, margin: '8px 0' }}>
-                {safeFormatCurrency(animatedBalance, safeFmt, currencySymbol)}
+              <h2 style={{ fontSize: 'clamp(1.8rem, 10vw, 2.4rem)', fontWeight: 900, color: balanceColor, margin: '8px 0' }}>
+                {formatCurrencyNode(animatedBalance, safeFmt, currencySymbol)}
               </h2>
               {sparklineSvgPath && (
                 <div className="bh-sparkline-wrap" title="Net trajectory">
-                  <svg className="bh-sparkline-svg" viewBox="0 0 120 36">
+                  <svg className="bh-sparkline-svg" viewBox="0 0 120 36" aria-hidden="true">
                     <path
                       d={sparklineSvgPath}
                       fill="none"
-                      stroke={rawBalance >= 0 ? '#10b981' : '#ef4444'}
+                      stroke={balanceHex}
                       strokeWidth="2.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -807,46 +1255,69 @@ export default function Dashboard() {
                   </svg>
                 </div>
               )}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '8px' }}>
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{getLocalizedText('net_position', 'Net position')}</span>
-                <div className="bh-trend neutral" style={{ background: 'var(--glass-2)' }}>
-                  <Minus size={14} /><span>{getLocalizedText('vs_last_month', '+0% vs last month')}</span>
+              <div
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  width: '100%', flexWrap: 'wrap', gap: 8,
+                }}
+              >
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                  {tr('net_position', 'Net position')}
+                </span>
+                <div className={`bh-trend ${momMetrics.balance.dir}`} style={{ background: 'var(--glass-2)' }}>
+                  {momMetrics.balance.dir === 'up' && <ArrowUpRight size={14} aria-hidden="true" />}
+                  {momMetrics.balance.dir === 'down' && <ArrowDownRight size={14} aria-hidden="true" />}
+                  {momMetrics.balance.dir === 'neutral' && <Minus size={14} aria-hidden="true" />}
+                  <span>{momMetrics.balance.val} vs last month</span>
                 </div>
               </div>
             </div>
           </motion.div>
 
-          {/* Income & Expense Cards */}
+          {/* Income card */}
           <StatCard
             icon={TrendingUp}
-            label={getLocalizedText('total_income', 'Total Income')}
-            value={safeFormatCurrency(animatedIncome, safeFmt, currencySymbol)}
+            label={tr('total_income', 'Total Income')}
+            value={formatCurrencyNode(animatedIncome, safeFmt, currencySymbol)}
+            valueText={formatCurrencyText(rawIncome, safeFmt, currencySymbol)}
             colorRgb="34, 197, 94"
             accentColor="var(--success)"
-            subtitle={getLocalizedText('all_time', 'All time')}
-            trend="neutral"
-            trendVal={getLocalizedText('vs_last_month', '+0% vs last month')}
+            subtitle={tr('all_time', 'All time')}
+            trend={momMetrics.income.dir}
+            trendVal={momMetrics.income.val}
             className="bento-income"
           />
+
+          {/* Expense card — truthful trend direction; sentiment in CSS */}
           <StatCard
             icon={TrendingDown}
-            label={getLocalizedText('total_expenses', 'Total Expenses')}
-            value={safeFormatCurrency(animatedExpense, safeFmt, currencySymbol)}
+            label={tr('total_expenses', 'Total Expenses')}
+            value={formatCurrencyNode(animatedExpense, safeFmt, currencySymbol)}
+            valueText={formatCurrencyText(rawExpense, safeFmt, currencySymbol)}
             colorRgb="239, 68, 68"
             accentColor="var(--danger)"
-            subtitle={getLocalizedText('all_time', 'All time')}
-            trend="neutral"
-            trendVal={getLocalizedText('vs_last_month', '+0% vs last month')}
+            subtitle={tr('all_time', 'All time')}
+            trend={momMetrics.expense.dir}
+            trendVal={momMetrics.expense.val}
             className="bento-expense"
+            invertTrendColor
           />
 
-          {/* Recent Transactions */}
+          {/* Recent transactions */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-recent glass">
             <div className="bt-header">
-              <h3 className="heading-accent">{getLocalizedText('recent_transactions', 'Recent Transactions')}</h3>
+              <h3 className="heading-accent">{tr('recent_transactions', 'Recent Transactions')}</h3>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <NavLink to="/transactions" className="bt-link" title="View all transactions">View All →</NavLink>
-                <button className="bt-icon-btn" onClick={() => setShowForm(true)} title="Add transaction"><Plus size={16} /></button>
+                <button
+                  type="button"
+                  className="bt-icon-btn"
+                  onClick={() => setShowForm(true)}
+                  title="Add transaction"
+                  aria-label="Add transaction"
+                >
+                  <Plus size={16} />
+                </button>
               </div>
             </div>
             {parsedTransactions.length === 0 ? (
@@ -854,40 +1325,43 @@ export default function Dashboard() {
             ) : (
               <>
                 <div className="bt-list" role="list">
-                  {groupedTxns.map((item, idx) => {
+                  {groupedTxns.map((item) => {
                     if (item.type === 'header') {
                       return (
-                        <div key={`hdr-${idx}`} className="bt-date-group" role="heading" aria-level={4}>
+                        <div key={item.key} className="bt-date-group" role="heading" aria-level={4}>
                           {item.label}
                         </div>
                       );
                     }
                     const tx = item.data;
                     return (
-                      <div key={tx.id || `tx-${idx}`} className="bt-item" role="listitem">
+                      <div key={item.key} className="bt-item" role="listitem">
                         <div className={`bt-icn ${tx.type}`}><Tag size={16} aria-hidden="true" /></div>
                         <div className="bt-info">
                           <span className="bt-cat">{tx.category || 'Uncategorized'}</span>
-                          <span className="bt-date">{getDateLabel(tx.date)}</span>
+                          <span className="bt-date">{getDateLabel(tx.date, locale)}</span>
                           {tx.note && <span className="bt-note">{tx.note}</span>}
                         </div>
                         <div className="bt-amt-group">
                           <div className={`bt-amt ${tx.type}`}>
-                            {tx.type === 'income' ? '+' : '-'}{safeFormatCurrency(tx.amount, safeFmt, currencySymbol)}
+                            {tx.type === 'income' ? '+' : '-'}
+                            {formatCurrencyNode(tx.parsedAmount, safeFmt, currencySymbol)}
                           </div>
                           <div className="bt-actions">
                             <button
+                              type="button"
                               className="bt-action-btn"
                               onClick={() => handleEditTransaction(tx)}
-                              aria-label="Edit transaction"
+                              aria-label={`Edit transaction ${tx.category || ''}`.trim()}
                               title="Edit"
                             >
                               <Edit3 size={14} />
                             </button>
                             <button
+                              type="button"
                               className="bt-action-btn danger"
-                              onClick={() => handleDeleteTransaction(tx)}
-                              aria-label="Delete transaction"
+                              onClick={() => requestDeleteTransaction(tx)}
+                              aria-label={`Delete transaction ${tx.category || ''}`.trim()}
                               title="Delete"
                             >
                               <Trash2 size={14} />
@@ -899,7 +1373,12 @@ export default function Dashboard() {
                   })}
                 </div>
                 {sortedDescFiltered.length > recentLimit && (
-                  <button className="bt-load-more" onClick={loadMore} aria-label="Load more transactions">
+                  <button
+                    type="button"
+                    className="bt-load-more"
+                    onClick={loadMore}
+                    aria-label="Load more transactions"
+                  >
                     Load More <ChevronDown size={14} />
                   </button>
                 )}
@@ -907,17 +1386,24 @@ export default function Dashboard() {
             )}
           </motion.div>
 
-          {/* Spending vs Income Chart */}
+          {/* Spending vs Income chart */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-chart glass">
             <div className="bt-header">
-              <h3 className="heading-accent">{getLocalizedText('spending_vs_income', 'Spending vs Income')}</h3>
+              <h3 className="heading-accent">{tr('spending_vs_income', 'Spending vs Income')}</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {(dateFilter !== 'all' || categoryFilter !== 'all') && (
-                  <span className="bt-badge" style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--warning)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                  <span
+                    className="bt-badge"
+                    style={{
+                      background: 'rgba(245,158,11,0.15)',
+                      color: 'var(--warning)',
+                      border: '1px solid rgba(245,158,11,0.3)',
+                    }}
+                  >
                     filtered view
                   </span>
                 )}
-                <span className="bt-badge">{getLocalizedText('daily_trend', 'Daily Trend')}</span>
+                <span className="bt-badge">{tr('daily_trend', 'Daily Trend')}</span>
               </div>
             </div>
             <div className="bt-chart-wrap">
@@ -925,11 +1411,11 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="gIn" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id={gInId} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.75} />
                         <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                       </linearGradient>
-                      <linearGradient id="gEx" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id={gExId} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#ef4444" stopOpacity={0.65} />
                         <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                       </linearGradient>
@@ -937,12 +1423,15 @@ export default function Dashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'} vertical={false} />
                     <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(val) => safeFormatCurrency(val, safeFmt, currencySymbol)} />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      formatter={(val) => formatCurrencyText(val, safeFmt, currencySymbol)}
+                    />
                     <Legend
                       wrapperStyle={{ paddingTop: 12, fontSize: '0.78rem', fontWeight: 700 }}
                       formatter={(value) => (
                         <span style={{ color: 'var(--text-secondary)' }}>
-                          {value === 'income' ? getLocalizedText('income_label', 'Income') : getLocalizedText('expense_label', 'Expenses')}
+                          {value === 'income' ? tr('income_label', 'Income') : tr('expense_label', 'Expenses')}
                         </span>
                       )}
                     />
@@ -952,7 +1441,7 @@ export default function Dashboard() {
                       type="monotone"
                       dataKey="income"
                       stroke="#10b981"
-                      fill="url(#gIn)"
+                      fill={`url(#${gInId})`}
                       strokeWidth={2.5}
                       strokeLinecap="round"
                       dot={{ r: 0 }}
@@ -964,7 +1453,7 @@ export default function Dashboard() {
                       type="monotone"
                       dataKey="expense"
                       stroke="#ef4444"
-                      fill="url(#gEx)"
+                      fill={`url(#${gExId})`}
                       strokeWidth={2.5}
                       strokeLinecap="round"
                       dot={{ r: 0 }}
@@ -974,48 +1463,52 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               ) : (
                 <div className="bento-empty">
-                  <span className="bento-empty-icon" aria-hidden="true"><LineChart size={42} strokeWidth={1.5} opacity={0.5} /></span>
-                  <p className="bento-empty-title">{getLocalizedText('story_starts', 'Your story starts here')}</p>
-                  <p className="bento-empty-sub">{getLocalizedText('add_tx_timeline', 'Add transactions to see your spending timeline.')}</p>
+                  <span className="bento-empty-icon" aria-hidden="true">
+                    <LineChart size={42} strokeWidth={1.5} opacity={0.5} />
+                  </span>
+                  <p className="bento-empty-title">{tr('story_starts', 'Your story starts here')}</p>
+                  <p className="bento-empty-sub">{tr('add_tx_timeline', 'Add transactions to see your spending timeline.')}</p>
                 </div>
               )}
             </div>
             {chartData.length > 0 && (
               <div className="bt-chart-summary" role="note">
-                {rawExpense > rawIncome
-                  ? getLocalizedText('spent_pct', `⚠️ You spent {pct}% of your income this period`).replace('{pct}', expenseOfIncome)
+                {expenseGreaterThanIncome
+                  ? `⚠️ You spent ${expenseOfIncome.toFixed(0)}% of your income this period`
                   : rawIncome > 0
-                    ? getLocalizedText('saved_pct', `✅ You saved {pct}% of your income this period`).replace('{pct}', savingsRate)
-                    : getLocalizedText('add_income_rate', 'Add income transactions to see your savings rate')
-                }
+                    ? `✅ You saved ${savingsRate.toFixed(1)}% of your income this period`
+                    : 'Add income transactions to see your savings rate'}
               </div>
             )}
           </motion.div>
 
-          {/* Net Worth History (NEW) */}
+          {/* Net worth over time */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-networth glass">
             <div className="bt-header">
               <h3 className="heading-accent">Net Worth Over Time</h3>
-              <LineChart size={16} className="bt-icon-muted" />
+              <LineChart size={16} className="bt-icon-muted" aria-hidden="true" />
             </div>
-            <div className="bt-chart-wrap" style={{ height: '120px' }}>
+            <div className="bt-chart-wrap" style={{ height: 120 }}>
               {netWorthData.length > 1 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={netWorthData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="gNW" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={balanceColor} stopOpacity={0.6} />
-                        <stop offset="95%" stopColor={balanceColor} stopOpacity={0} />
+                      <linearGradient id={gNWId} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={balanceHex} stopOpacity={0.6} />
+                        <stop offset="95%" stopColor={balanceHex} stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 9 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(val) => safeFormatCurrency(val, safeFmt, currencySymbol)} />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      formatter={(val) => formatCurrencyText(val, safeFmt, currencySymbol)}
+                    />
                     <Area
                       type="monotone"
                       dataKey="balance"
-                      stroke={balanceColor}
-                      fill="url(#gNW)"
+                      stroke={balanceHex}
+                      fill={`url(#${gNWId})`}
                       strokeWidth={2}
                       dot={{ r: 2 }}
                       activeDot={{ r: 5 }}
@@ -1030,38 +1523,43 @@ export default function Dashboard() {
             </div>
           </motion.div>
 
-          {/* Savings Goal */}
+          {/* Savings goal */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-goal glass">
             <div className="bt-header">
-              <h3 className="heading-accent">{getLocalizedText('savings_goal', 'Savings Goal')}</h3>
-              <Target size={16} className="bt-icon-muted" />
+              <h3 className="heading-accent">{tr('savings_goal', 'Savings Goal')}</h3>
+              <Target size={16} className="bt-icon-muted" aria-hidden="true" />
             </div>
             {monthlyGoal > 0 ? (
               <>
                 <div className="bg-hud">
                   <span className="bg-pct">{goalProgress.toFixed(0)}%</span>
-                  <span className="bg-frac">{safeFormatCurrency(Math.max(0, netSavings), safeFmt)} / {safeFormatCurrency(monthlyGoal, safeFmt)}</span>
+                  <span className="bg-frac">
+                    {formatCurrencyNode(Math.max(0, netSavings), safeFmt, currencySymbol)} / {formatCurrencyNode(monthlyGoal, safeFmt, currencySymbol)}
+                  </span>
                 </div>
                 <div className="bg-track">
                   <motion.div
                     className={`bg-fill ${goalProgress < 15 ? 'breathing' : ''}`}
                     initial={{ width: 0 }}
                     animate={{ width: `${goalProgress}%` }}
-                    transition={{ duration: 1.5, delay: 0.5 }}
+                    transition={{
+                      duration: prefersReducedMotion ? 0 : 1.5,
+                      delay: prefersReducedMotion ? 0 : 0.5,
+                    }}
                   >
-                    <div className="bg-glow-dot"></div>
+                    <div className="bg-glow-dot" />
                   </motion.div>
                 </div>
                 <div className="bg-goal-actions-row">
                   <p className="bg-nudge">
                     {goalProgress >= 100
-                      ? '🎉 Monthly Target Achieved!'
+                      ? '🎉 Monthly target achieved!'
                       : goalProgress < 15
                         ? 'Every bit counts. Keep going!'
-                        : `${(100 - goalProgress).toFixed(0)}% to reach target`
-                    }
+                        : `${(100 - goalProgress).toFixed(0)}% to reach target`}
                   </p>
                   <button
+                    type="button"
                     className="bg-topup-btn"
                     onClick={() => setShowForm(true)}
                     title="Contribute towards goal"
@@ -1072,19 +1570,27 @@ export default function Dashboard() {
               </>
             ) : (
               <div className="bento-empty">
-                <span className="bento-empty-icon" aria-hidden="true"><Target size={42} strokeWidth={1.5} opacity={0.5} /></span>
-                <p className="bento-empty-title">{getLocalizedText('set_savings_goal', 'Set a savings goal')}</p>
-                <p className="bento-empty-sub">{getLocalizedText('track_progress_target', 'Track your progress toward a monthly target.')}</p>
-                <NavLink to="/settings" className="bento-empty-cta pulse-encouragement" style={{ textDecoration: 'none' }}>
-                  <Settings size={13} /> {getLocalizedText('set_goal_cta', 'Set Goal →')}
+                <span className="bento-empty-icon" aria-hidden="true">
+                  <Target size={42} strokeWidth={1.5} opacity={0.5} />
+                </span>
+                <p className="bento-empty-title">{tr('set_savings_goal', 'Set a savings goal')}</p>
+                <p className="bento-empty-sub">{tr('track_progress_target', 'Track your progress toward a monthly target.')}</p>
+                <NavLink
+                  to="/settings"
+                  className="bento-empty-cta pulse-encouragement"
+                  style={{ textDecoration: 'none' }}
+                >
+                  <Settings size={13} /> {tr('set_goal_cta', 'Set Goal →')}
                 </NavLink>
               </div>
             )}
           </motion.div>
 
-          {/* Pie Chart */}
+          {/* Pie chart */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-pie glass">
-            <div className="bt-header"><h3 className="heading-accent">{getLocalizedText('breakdown', 'Breakdown')}</h3></div>
+            <div className="bt-header">
+              <h3 className="heading-accent">{tr('breakdown', 'Breakdown')}</h3>
+            </div>
             <div className="bt-pie-wrap">
               {pieData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -1103,10 +1609,16 @@ export default function Dashboard() {
                       stroke="none"
                     >
                       {pieData.map((entry, i) => (
-                        <Cell key={`cell-${entry.name.replace(/\s+/g, '-')}-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        <Cell
+                          key={`cell-${entry.name.replace(/\s+/g, '-')}-${i}`}
+                          fill={PIE_COLORS[i % PIE_COLORS.length]}
+                        />
                       ))}
                     </Pie>
-                    <Tooltip contentStyle={tooltipStyle} formatter={(val) => safeFormatCurrency(val, safeFmt, currencySymbol)} />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      formatter={(val) => formatCurrencyText(val, safeFmt, currencySymbol)}
+                    />
                     <Legend
                       wrapperStyle={{ fontSize: '0.72rem', fontWeight: 700 }}
                       formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value}</span>}
@@ -1115,27 +1627,41 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               ) : (
                 <div className="bento-empty">
-                  <span className="bento-empty-icon" aria-hidden="true"><Tag size={42} strokeWidth={1.5} opacity={0.5} /></span>
-                  <p className="bento-empty-title">{getLocalizedText('no_exp_yet', 'No expenses yet')}</p>
-                  <p className="bento-empty-sub">{getLocalizedText('track_spend_breakdown', 'Track spending to see category breakdown.')}</p>
+                  <span className="bento-empty-icon" aria-hidden="true">
+                    <Tag size={42} strokeWidth={1.5} opacity={0.5} />
+                  </span>
+                  <p className="bento-empty-title">{tr('no_exp_yet', 'No expenses yet')}</p>
+                  <p className="bento-empty-sub">{tr('track_spend_breakdown', 'Track spending to see category breakdown.')}</p>
                 </div>
               )}
             </div>
           </motion.div>
         </motion.div>
 
-        {/* Transaction Form Modal */}
+        {/* Transaction form */}
         <TransactionForm
+          key={editingTx ? `edit-${editingTx.id || editingTx._id}` : `add-${showForm}`}
           isOpen={showForm}
-          initialData={editingTx || { date: new Date().toISOString().split('T')[0] }}
-          onClose={() => {
-            setShowForm(false);
-            setEditingTx(null);
-          }}
+          initialData={initialFormData}
+          onClose={() => { setShowForm(false); setEditingTx(null); }}
           onSubmit={editingTx ? handleUpdateTransaction : handleAddTransaction}
           isLoading={isLoadingAction}
         />
+
+        {/* Delete confirmation */}
+        <AnimatePresence>
+          {pendingDelete && (
+            <ConfirmDeleteModal
+              tx={pendingDelete}
+              onCancel={cancelDelete}
+              onConfirm={confirmDeleteTransaction}
+              safeFmt={safeFmt}
+              currencySymbol={currencySymbol}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </ErrorBoundary>
   );
 }
+

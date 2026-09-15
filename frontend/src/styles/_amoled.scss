@@ -1,70 +1,20 @@
 // ================================================================
-//   MYCOINWISE — THEME VARIABLES (AMOLED FILE)
-//   [AUDIT] Commented out duplicate variable definitions below.
-//   These are IDENTICAL to _themes.scss lines 1-129 and cause
-//   cascade conflicts. The component-layer overrides below this
-//   block are the unique purpose of this file.
-// ================================================================
-
-// /* [AUDIT] DUPLICATE BLOCK START — Already defined in _themes.scss
-// [data-theme="light"] {
-//   --surface-0: #f8fafc;
-//   --surface-1: #ffffff;
-//   --surface-2: #f1f5f9;
-//   --surface-3: #e2e8f0;
-//   --glass-1:            rgba(255, 255, 255, 0.65);
-//   --glass-2:            rgba(255, 255, 255, 0.82);
-//   --glass-3:            rgba(255, 255, 255, 0.94);
-//   --glass-border:       rgba(0, 0, 0, 0.07);
-//   --glass-border-hover: rgba(16, 185, 129, 0.35);
-//   --glass-border-active:rgba(16, 185, 129, 0.60);
-//   --glass-shadow:       0 8px 28px rgba(0, 0, 0, 0.05);
-//   --glass-shadow-hover: 0 16px 40px rgba(0, 0, 0, 0.08);
-//   --text-primary:   #0f172a;
-//   --text-secondary: #475569;
-//   --text-muted:     #64748b;
-//   --text-dim:       #94a3b8;
-//   --brand-primary:          #059669;
-//   --brand-secondary:        #7c3aed;
-//   --brand-accent:           #0891b2;
-//   --brand-primary-rgb:      5, 150, 105;
-//   --brand-secondary-rgb:    124, 58, 237;
-//   --brand-gradient:         linear-gradient(135deg, #059669 0%, #0891b2 50%, #7c3aed 100%);
-//   --brand-gradient-vibrant: linear-gradient(135deg, #34d399 0%, #059669 40%, #0891b2 100%);
-//   --brand-glow:             rgba(5, 150, 105, 0.20);
-//   --sidebar-bg:   rgba(255, 255, 255, 0.95);
-//   --nav-active-bg:   rgba(5, 150, 105, 0.10);
-//   --nav-active-text: #059669;
-//   --nav-hover-bg:    rgba(0, 0, 0, 0.04);
-//   --shadow-glow:  0 0 40px rgba(5, 150, 105, 0.15), 0 0 80px rgba(5, 150, 105, 0.06);
-//   --shadow-brand: 0 8px 28px rgba(5, 150, 105, 0.25);
-//   --shadow-lg:    0 10px 24px rgba(0, 0, 0, 0.06);
-//   --shadow-xl:    0 20px 40px rgba(0, 0, 0, 0.08);
-//   --shadow-2xl:   0 25px 50px rgba(0, 0, 0, 0.12);
-//   --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-//   --ambient-base:    rgba(248, 250, 252, 1);
-//   --ambient-mid:     rgba(241, 245, 249, 0.95);
-//   --ambient-accent:  rgba(226, 232, 240, 0.90);
-//   --orb-ai-color:    rgba(124, 58, 237, 0.12);
-//   --orb-goal-color:  rgba(5, 150, 105, 0.12);
-//   --orb-chart-color: rgba(8, 145, 178, 0.10);
-//   --bg-gradient: ...;
-// }
-// [data-theme="amoled"] {
-//   --surface-0: #000000;
-//   --surface-1: #050505;
-//   ... (all variables identical to _themes.scss)
-// }
-// DUPLICATE BLOCK END */
-
-// ================================================================
-//   MYCOINWISE — AMOLED COMPONENT LAYER
-//   All styles use CSS variables; SCSS nesting with `&`.
+//   MYCOINWISE — AMOLED THEME LAYER
+//   Component-layer overrides for [data-theme="amoled"].
+//   All variables come from _themes.scss (lines 1-129).
+//   No !important. No duplicate variable definitions.
+//
+//   NOTE: The theme attribute is expected to be set on <html>.
+//   The `&, body` selector below targets both the root element
+//   and its body child in one rule.
 // ================================================================
 
 [data-theme="amoled"] {
-  // ── Background ──
-  html,
+  /* ── Background ───────────────────────────────────────
+     `&,` targets <html data-theme="amoled"> itself.
+     `body` targets its child.
+     This fixes the previous dead `html` selector which never matched. */
+  &,
   body {
     background: var(--surface-0);
   }
@@ -83,11 +33,11 @@
   }
 
   .gradient-3,
-  .particles {
+  .gradient-bg .particles {
     display: none;
   }
 
-  // ── App Shell ──
+  /* ── App shell ──────────────────────────────────────── */
   .app-island-layout {
     background: var(--surface-0);
   }
@@ -120,6 +70,11 @@
         border-color: var(--brand-accent);
         box-shadow: var(--shadow-glow);
       }
+
+      &:focus-visible {
+        outline: 2px solid var(--brand-primary);
+        outline-offset: 2px;
+      }
     }
 
     .header-search-bar {
@@ -127,7 +82,8 @@
       border-color: var(--glass-border);
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
 
-      &:hover {
+      &:hover,
+      &:focus-within {
         background: var(--glass-2);
         border-color: var(--brand-accent);
         box-shadow: var(--shadow-glow);
@@ -135,25 +91,25 @@
     }
 
     .ih-balance {
-      background: rgba(52, 211, 153, 0.08);
-      border-color: rgba(52, 211, 153, 0.24);
+      background: rgba(var(--brand-primary-rgb), 0.08);
+      border-color: rgba(var(--brand-primary-rgb), 0.24);
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
 
       &:hover {
-        background: rgba(52, 211, 153, 0.14);
-        border-color: rgba(52, 211, 153, 0.5);
+        background: rgba(var(--brand-primary-rgb), 0.14);
+        border-color: rgba(var(--brand-primary-rgb), 0.5);
         box-shadow: var(--shadow-glow);
       }
     }
   }
 
-  // ── Brand ──
+  /* ── Brand ──────────────────────────────────────────── */
   .brand-icon {
     background: var(--brand-gradient-vibrant);
     box-shadow: 0 0 20px var(--brand-glow);
   }
 
-  // ── Navigation ──
+  /* ── Navigation ─────────────────────────────────────── */
   .inav-item {
     &.active {
       color: var(--nav-active-text);
@@ -164,6 +120,11 @@
       background: var(--nav-hover-bg);
       color: var(--text-primary);
     }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand-primary);
+      outline-offset: -2px;
+    }
   }
 
   .inav-active-pill {
@@ -172,19 +133,31 @@
     background: transparent;
   }
 
-  // ── Glass Cards (with fallback) ──
+  /* ── Glass cards ──────────────────────────────────────
+     Hover lift applies regardless of backdrop-filter support. */
   .glass,
   .glass-card,
   .bento-tile,
   .card,
   .stat-card,
   .chart-card {
+    /* Fallback for browsers without backdrop-filter */
     background: rgba(0, 0, 0, 0.8);
     border-color: var(--glass-border);
     box-shadow: var(--glass-shadow);
+    transition:
+      transform var(--transition-fast, 0.2s ease),
+      box-shadow var(--transition-fast, 0.2s ease),
+      border-color var(--transition-fast, 0.2s ease);
+
+    &:hover {
+      transform: translateY(-3px);
+      border-color: var(--glass-border-hover);
+      box-shadow: var(--glass-shadow-hover);
+    }
   }
 
-  @supports (backdrop-filter: blur(1px)) {
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
     .glass,
     .glass-card,
     .bento-tile,
@@ -194,21 +167,13 @@
       background: linear-gradient(145deg, var(--glass-1), var(--glass-2));
       backdrop-filter: blur(28px) saturate(130%);
       -webkit-backdrop-filter: blur(28px) saturate(130%);
-
-      &:hover {
-        transform: translateY(-3px);
-        border-color: var(--glass-border-hover);
-        box-shadow: var(--glass-shadow-hover);
-      }
     }
   }
 
-  // ── Dashboard ──
-  .bento-dashboard {
-    &::before,
-    &::after {
-      display: none;
-    }
+  /* ── Dashboard ──────────────────────────────────────── */
+  .bento-dashboard::before,
+  .bento-dashboard::after {
+    display: none;
   }
 
   .bento-hero .bh-mid h2,
@@ -223,8 +188,8 @@
   .bento-insight-pill,
   .ai-status-badge {
     color: var(--brand-primary);
-    background: rgba(52, 211, 153, 0.08);
-    border-color: rgba(52, 211, 153, 0.28);
+    background: rgba(var(--brand-primary-rgb), 0.08);
+    border-color: rgba(var(--brand-primary-rgb), 0.28);
   }
 
   .progress-fill,
@@ -239,7 +204,7 @@
     background: rgba(255, 255, 255, 0.06);
   }
 
-  // ── Buttons ──
+  /* ── Buttons ────────────────────────────────────────── */
   .bbtn-pri,
   .hero-btn,
   .cta-button {
@@ -255,6 +220,11 @@
       transform: translateY(-1px);
       box-shadow: 0 8px 28px rgba(255, 255, 255, 0.08);
     }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand-primary);
+      outline-offset: 2px;
+    }
   }
 
   .bbtn-sec,
@@ -269,10 +239,16 @@
       border-color: var(--glass-border-hover);
       background: var(--glass-1);
     }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand-primary);
+      outline-offset: 2px;
+    }
   }
 
-  // ── Form Controls ──
-  input,
+  /* ── Form controls ────────────────────────────────────
+     Excluded types that must keep native styling. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="submit"]):not([type="button"]),
   textarea,
   select {
     background: var(--surface-2);
@@ -280,22 +256,30 @@
     border-color: var(--glass-border);
     border-radius: var(--border-radius-sm);
 
+    &::placeholder {
+      color: var(--text-muted);
+    }
+
     &:focus {
       border-color: var(--brand-primary);
-      box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.14);
+      box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb), 0.14);
+    }
+
+    &:focus-visible {
+      outline: none; /* box-shadow replaces it */
     }
   }
 
-  // ── Typography ──
+  /* ── Typography ─────────────────────────────────────── */
   .text-gradient,
   .gradient-text {
     background: var(--brand-gradient-vibrant);
     -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
     background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
 
-  // ── Mobile Bottom Dock ──
+  /* ── Mobile bottom dock ─────────────────────────────── */
   .mobile-bottom-dock {
     background: rgba(0, 0, 0, 0.95);
     border-color: var(--glass-border);
@@ -307,19 +291,31 @@
     color: var(--brand-primary);
   }
 
+  .dock-item:focus-visible {
+    outline: 2px solid var(--brand-primary);
+    outline-offset: 2px;
+  }
+
   .dock-active-dot {
-    background: rgba(52, 211, 153, 0.12);
-    border-color: rgba(52, 211, 153, 0.28);
+    background: rgba(var(--brand-primary-rgb), 0.12);
+    border-color: rgba(var(--brand-primary-rgb), 0.28);
     box-shadow: none;
   }
 
-  // Disable breathing animations in AMOLED mode
-  .pulse-encouragement,
+  /* ── Motion ─────────────────────────────────────────── */
+  .pulse-encouragement {
+    animation: none;
+  }
+
+  /* .numberGlow was already set to `animation: none` in the original file.
+     Behaviour preserved. VERIFY in the running app that .numberGlow is
+     an animation class, not a static-effect class. If it turns out to be
+     static, this rule is unnecessary and can be deleted. */
   .numberGlow {
     animation: none;
   }
 
-  // ── Auth Pages ──
+  /* ── Auth pages ─────────────────────────────────────── */
   .auth-page {
     background: var(--surface-0);
   }
@@ -334,12 +330,19 @@
     display: none;
   }
 
+  /* Fallback: solid AMOLED surface */
   .auth-card {
-    background: linear-gradient(145deg, var(--glass-1), var(--glass-2));
+    background: var(--surface-1);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-shadow);
-    backdrop-filter: blur(32px) saturate(140%);
-    -webkit-backdrop-filter: blur(32px) saturate(140%);
+  }
+
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    .auth-card {
+      background: linear-gradient(145deg, var(--glass-1), var(--glass-2));
+      backdrop-filter: blur(32px) saturate(140%);
+      -webkit-backdrop-filter: blur(32px) saturate(140%);
+    }
   }
 
   .auth-logo-icon {
@@ -356,6 +359,11 @@
       background: rgba(255, 255, 255, 0.88);
       box-shadow: 0 8px 28px rgba(255, 255, 255, 0.08);
     }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand-primary);
+      outline-offset: 2px;
+    }
   }
 
   .auth-alt-btn {
@@ -368,9 +376,14 @@
       color: var(--surface-0);
       border-color: var(--text-primary);
     }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand-primary);
+      outline-offset: 2px;
+    }
   }
 
-  // ── Dropdowns, Popups, Modals ──
+  /* ── Dropdowns, popups, modals ──────────────────────── */
   .header-profile-dropdown,
   .header-stats-dropdown,
   .header-alerts-dropdown,
@@ -391,12 +404,23 @@
     border: 1px solid var(--glass-border);
   }
 
-  .hpd-action-btn:hover {
-    background: var(--glass-2);
-    color: var(--text-primary);
+  .hpd-action-btn {
+    transition:
+      background var(--transition-fast, 0.2s ease),
+      color var(--transition-fast, 0.2s ease);
+
+    &:hover {
+      background: var(--glass-2);
+      color: var(--text-primary);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand-primary);
+      outline-offset: 2px;
+    }
   }
 
-  // ── Scrollbar (WebKit) ──
+  /* ── Scrollbar ──────────────────────────────────────── */
   ::-webkit-scrollbar {
     background: var(--surface-0);
     width: 8px;
@@ -411,20 +435,26 @@
     }
   }
 
-  // ── Reduced Motion ──
+  /* ── Reduced motion ─────────────────────────────────── */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
-      animation-duration: 0.01ms;
-      transition-duration: 0.01ms;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
     }
   }
 }
 
-// ── Mobile AMOLED overrides ──
+/* ── Mobile AMOLED overrides ─────────────────────────── */
 @media (max-width: 768px) {
   [data-theme="amoled"] {
+    &,
+    body {
+      background: var(--surface-0);
+    }
+
     .app-island-layout {
       padding: 0;
     }
@@ -438,13 +468,24 @@
     .island-content-wrapper {
       padding: 20px 16px 100px;
     }
+
+    /* Cheaper blur on mobile to reduce jank */
+    .glass,
+    .glass-card,
+    .bento-tile,
+    .card,
+    .stat-card,
+    .chart-card {
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+    }
   }
 }
 
-// ================================================================
-//   QUANTUM UTILITIES & COMMAND PALETTE
-//   (Works in both themes, uses CSS variables)
-// ================================================================
+/* ================================================================
+ *   QUANTUM UTILITIES & COMMAND PALETTE
+ *   Theme-agnostic; uses CSS variables so it inherits both palettes.
+ * ================================================================ */
 
 .quantum-command-palette {
   position: fixed;
@@ -501,12 +542,19 @@
     font-family: var(--font-body);
     font-size: 0.9rem;
     font-weight: 500;
-    transition: all var(--transition-fast);
+    transition:
+      background var(--transition-fast, 0.2s ease),
+      color var(--transition-fast, 0.2s ease);
 
     &:hover,
     &:focus-visible {
       background: var(--glass-2);
       color: var(--text-primary);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand-primary);
+      outline-offset: -2px;
     }
   }
 }
@@ -525,364 +573,3 @@
     background: var(--glass-1);
   }
 }
-// /* ================================================================
-//    MYCOINWISE — AMOLED THEME LAYER
-//    All styles scoped under [data-theme="amoled"].
-//    No !important overrides. Clean cascade.
-//    ================================================================ */
-
-// /* ── Background ── */
-// [data-theme="amoled"] {
-//   html,
-//   body {
-//     background: #000;
-//   }
-
-//   .gradient-bg,
-//   .gradients-container {
-//     background: #000;
-//   }
-
-//   .gradient-1 {
-//     background: radial-gradient(circle, rgba(52, 211, 153, 0.12) 0%, transparent 70%);
-//   }
-
-//   .gradient-2 {
-//     background: radial-gradient(circle, rgba(167, 139, 250, 0.08) 0%, transparent 70%);
-//   }
-
-//   .gradient-3,
-//   .particles {
-//     display: none;
-//   }
-
-//   /* ── App Shell ── */
-//   .app-island-layout {
-//     background: #000;
-//   }
-
-//   .island-sidebar {
-//     background: #000;
-//     border-color: rgba(255, 255, 255, 0.07);
-//     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.95);
-//   }
-
-//   .island-main {
-//     background: #000;
-//   }
-
-//   .island-header {
-//     background: #000;
-//     border-color: rgba(255, 255, 255, 0.10);
-//     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.90), 0 1px 0 rgba(255, 255, 255, 0.08) inset;
-//   }
-
-//   .island-header .ibtn {
-//     background: rgba(255, 255, 255, 0.04);
-//     border-color: rgba(255, 255, 255, 0.08);
-//     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
-
-//     &:hover,
-//     &[aria-expanded="true"] {
-//       background: rgba(255, 255, 255, 0.10);
-//       border-color: rgba(52, 211, 153, 0.45);
-//       box-shadow: 0 10px 24px rgba(0, 0, 0, 0.85), 0 0 16px rgba(52, 211, 153, 0.25);
-//     }
-//   }
-
-//   .island-header .header-search-bar {
-//     background: rgba(255, 255, 255, 0.04);
-//     border-color: rgba(255, 255, 255, 0.08);
-//     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
-
-//     &:hover {
-//       background: rgba(255, 255, 255, 0.08);
-//       border-color: rgba(52, 211, 153, 0.4);
-//       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), 0 0 16px rgba(52, 211, 153, 0.18);
-//     }
-//   }
-
-//   .island-header .ih-balance {
-//     background: rgba(52, 211, 153, 0.08);
-//     border-color: rgba(52, 211, 153, 0.24);
-//     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
-
-//     &:hover {
-//       background: rgba(52, 211, 153, 0.14);
-//       border-color: rgba(52, 211, 153, 0.5);
-//       box-shadow: 0 10px 24px rgba(0, 0, 0, 0.85), 0 0 18px rgba(52, 211, 153, 0.28);
-//     }
-//   }
-
-//   /* ── Brand ── */
-//   .brand-icon {
-//     background: linear-gradient(135deg, #34d399 0%, #a78bfa 100%);
-//     box-shadow: 0 0 20px rgba(52, 211, 153, 0.20);
-//   }
-
-//   /* ── Navigation ── */
-//   .inav-item.active {
-//     color: var(--nav-active-text);
-//     background: var(--nav-active-bg);
-//   }
-
-//   .inav-active-pill {
-//     border-left-color: var(--brand-primary);
-//     box-shadow: none;
-//     background: transparent;
-//   }
-
-//   .inav-item:hover:not(.active) {
-//     background: var(--nav-hover-bg);
-//     color: #fff;
-//   }
-
-//   /* ── Glass Cards ── */
-//   .glass,
-//   .glass-card,
-//   .bento-tile,
-//   .card,
-//   .stat-card,
-//   .chart-card {
-//     background: linear-gradient(145deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.012));
-//     backdrop-filter: blur(28px) saturate(130%);
-//     -webkit-backdrop-filter: blur(28px) saturate(130%);
-//     border-color: rgba(255, 255, 255, 0.07);
-//     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.88);
-//   }
-
-//   .glass:hover,
-//   .glass-card:hover,
-//   .bento-tile:hover,
-//   .card:hover,
-//   .stat-card:hover,
-//   .chart-card:hover {
-//     transform: translateY(-3px);
-//     border-color: rgba(255, 255, 255, 0.18);
-//     box-shadow: 0 24px 56px rgba(0, 0, 0, 0.92), 0 0 32px rgba(52, 211, 153, 0.04);
-//   }
-
-//   /* ── Dashboard ── */
-//   .bento-dashboard::before,
-//   .bento-dashboard::after {
-//     display: none;
-//   }
-
-//   .bento-hero .bh-mid h2,
-//   .stat-value,
-//   .hero-balance,
-//   .balance-value {
-//     font-family: var(--font-head);
-//     text-shadow: none;
-//   }
-
-//   .bento-hero .bh-mid h2 {
-//     color: #fff;
-//   }
-
-//   .bento-insight-pill,
-//   .ai-status-badge {
-//     color: var(--brand-primary);
-//     background: rgba(52, 211, 153, 0.08);
-//     border-color: rgba(52, 211, 153, 0.28);
-//   }
-
-//   .progress-fill,
-//   .goal-progress-fill,
-//   .mc-progress-fill {
-//     background: linear-gradient(90deg, #34d399, #22d3ee);
-//     box-shadow: none;
-//   }
-
-//   .progress-track,
-//   .mc-progress-track {
-//     background: rgba(255, 255, 255, 0.06);
-//   }
-
-//   /* ── Buttons ── */
-//   .bbtn-pri,
-//   .hero-btn,
-//   .cta-button {
-//     min-height: 44px;
-//     border-radius: var(--border-radius-pill);
-//     background: #fff;
-//     color: #000;
-//     border: none;
-//     box-shadow: none;
-
-//     &:hover {
-//       background: rgba(255, 255, 255, 0.88);
-//       transform: translateY(-1px);
-//       box-shadow: 0 8px 28px rgba(255, 255, 255, 0.08);
-//     }
-//   }
-
-//   .bbtn-sec,
-//   .bbtn-icon,
-//   .ibtn {
-//     background: transparent;
-//     border-color: rgba(255, 255, 255, 0.10);
-//     color: var(--text-secondary);
-
-//     &:hover {
-//       color: #fff;
-//       border-color: rgba(255, 255, 255, 0.35);
-//       background: rgba(255, 255, 255, 0.04);
-//     }
-//   }
-
-//   /* ── Form Controls ── */
-//   input,
-//   textarea,
-//   select {
-//     background: rgba(0, 0, 0, 0.40);
-//     color: #fff;
-//     border-color: rgba(255, 255, 255, 0.10);
-//     border-radius: var(--border-radius-sm);
-
-//     &:focus {
-//       border-color: var(--brand-primary);
-//       box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.14);
-//     }
-//   }
-
-//   /* ── Typography ── */
-//   .text-gradient,
-//   .gradient-text {
-//     background: linear-gradient(135deg, #34d399, #22d3ee, #a78bfa);
-//     -webkit-background-clip: text;
-//     -webkit-text-fill-color: transparent;
-//     background-clip: text;
-//   }
-
-//   /* ── Mobile Bottom Dock ── */
-//   .mobile-bottom-dock {
-//     background: rgba(0, 0, 0, 0.95);
-//     border-color: rgba(255, 255, 255, 0.07);
-//     backdrop-filter: blur(32px);
-//     -webkit-backdrop-filter: blur(32px);
-//   }
-
-//   .dock-item.active {
-//     color: var(--brand-primary);
-//   }
-
-//   .dock-active-dot {
-//     background: rgba(52, 211, 153, 0.12);
-//     border-color: rgba(52, 211, 153, 0.28);
-//     box-shadow: none;
-//   }
-
-//   /* Disable breathing animations in AMOLED mode */
-//   .pulse-encouragement,
-//   .numberGlow {
-//     animation: none;
-//   }
-
-//   /* ── Auth Pages ── */
-//   .auth-page {
-//     background: #000;
-//   }
-
-//   .auth-bg {
-//     background:
-//       radial-gradient(circle at 12% 8%, rgba(52, 211, 153, 0.12), transparent 30%),
-//       radial-gradient(circle at 88% 90%, rgba(167, 139, 250, 0.08), transparent 34%);
-//   }
-
-//   .auth-orb {
-//     display: none;
-//   }
-
-//   .auth-card {
-//     background: linear-gradient(145deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.010));
-//     border: 1px solid rgba(255, 255, 255, 0.07);
-//     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.92);
-//     backdrop-filter: blur(32px) saturate(140%);
-//     -webkit-backdrop-filter: blur(32px) saturate(140%);
-//   }
-
-//   .auth-logo-icon {
-//     background: linear-gradient(135deg, #34d399, #a78bfa);
-//     box-shadow: none;
-//   }
-
-//   .auth-submit {
-//     background: #fff;
-//     color: #000;
-//     box-shadow: none;
-
-//     &:hover {
-//       background: rgba(255, 255, 255, 0.88);
-//       box-shadow: 0 8px 28px rgba(255, 255, 255, 0.08);
-//     }
-//   }
-
-//   .auth-alt-btn {
-//     background: rgba(255, 255, 255, 0.025);
-//     border-color: rgba(255, 255, 255, 0.09);
-//     color: var(--brand-primary);
-
-//     &:hover {
-//       background: #fff;
-//       color: #000;
-//       border-color: #fff;
-//     }
-//   }
-
-//   /* ── Dropdowns, Popups, Modals & Floating Menus (Solid Opaque AMOLED) ── */
-//   .header-profile-dropdown,
-//   .header-stats-dropdown,
-//   .header-alerts-dropdown,
-//   .island-dropdown,
-//   .shortcuts-modal,
-//   .cmd-palette-modal,
-//   .modal-box,
-//   .modal-content,
-//   .drawer-content {
-//     background: #000 !important;
-//     border: 1px solid rgba(255, 255, 255, 0.14) !important;
-//     box-shadow: 0 25px 70px rgba(0, 0, 0, 0.98), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
-//     opacity: 1 !important;
-//   }
-
-//   .hpd-user-card {
-//     background: rgba(255, 255, 255, 0.04) !important;
-//     border: 1px solid rgba(255, 255, 255, 0.08) !important;
-//   }
-
-//   .hpd-action-btn:hover {
-//     background: rgba(255, 255, 255, 0.07) !important;
-//     color: #fff !important;
-//   }
-
-//   /* ── Reduced Motion ── */
-//   @media (prefers-reduced-motion: reduce) {
-//     *,
-//     *::before,
-//     *::after {
-//       animation-duration: 0.01ms;
-//       transition-duration: 0.01ms;
-//     }
-//   }
-// }
-
-// /* ── Mobile AMOLED overrides ── */
-// @media (max-width: 768px) {
-//   [data-theme="amoled"] {
-//     .app-island-layout {
-//       padding: 0;
-//     }
-
-//     .island-main {
-//       border-radius: 0;
-//       border-left: 0;
-//       border-right: 0;
-//     }
-
-//     .island-content-wrapper {
-//       padding: 20px 16px 100px;
-//     }
-//   }
-// }
-

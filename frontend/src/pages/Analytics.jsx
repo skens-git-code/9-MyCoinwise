@@ -1,310 +1,612 @@
 import React, {
-  useContext, useMemo, useState, useRef, useCallback, useEffect, memo
+  useContext, useMemo, useState, useRef, useCallback, useEffect, memo,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AppContext } from '../contexts/AppContext';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, LineChart, Line, AreaChart, Area
+  PieChart, Pie, Cell, Legend, LineChart, Line,
 } from 'recharts';
 import {
-  TrendingUp, TrendingDown, AlertTriangle, CheckCircle2,
-  Calendar, Download, Share2, Sparkles, Eye, ShieldAlert,
-  ArrowUpRight, ArrowDownRight, Layers, BarChart3, HelpCircle,
-  X, Filter, ChevronDown, ChevronUp
+  TrendingUp, TrendingDown, CheckCircle2,
+  Calendar, Download, Share2, Sparkles, ShieldAlert,
+  ArrowUpRight, ArrowDownRight, X, Filter, RotateCcw, Loader2,
 } from 'lucide-react';
 import { useToast } from '../components/ToastProvider';
 
-// ---------- Constants ----------
+/* ============================================================
+ * Constants
+ * ============================================================ */
 const PIE_COLORS_LIGHT = ['#059669', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#8b5cf6', '#3b82f6', '#f97316', '#14b8a6'];
-const PIE_COLORS_DARK = ['#34d399', '#22d3ee', '#fbbf24', '#6ee7b7', '#f87171', '#f472b6', '#a78bfa', '#60a5fa', '#fb923c', '#5eead4'];
+const PIE_COLORS_DARK  = ['#34d399', '#22d3ee', '#fbbf24', '#6ee7b7', '#f87171', '#f472b6', '#a78bfa', '#60a5fa', '#fb923c', '#5eead4'];
 const CATEGORY_COLORS_LIGHT = ['#10b981', '#06b6d4', '#f59e0b', '#8b5cf6', '#ec4899', '#3b82f6', '#ef4444', '#14b8a6'];
-const CATEGORY_COLORS_DARK = ['#34d399', '#22d3ee', '#fbbf24', '#a78bfa', '#f472b6', '#60a5fa', '#f87171', '#5eead4'];
+const CATEGORY_COLORS_DARK  = ['#34d399', '#22d3ee', '#fbbf24', '#a78bfa', '#f472b6', '#60a5fa', '#f87171', '#5eead4'];
 
-// ---------- Utilities ----------
+const REVIEWED_KEY = 'mycoinwise-reviewed-anomalies';
+const MAX_MONTHS_MONTHLY_CHART = 12;
+const MAX_MONTHS_EVOLUTION = 6;
+const ANOMALY_MIN_SAMPLES = 4;
+const ANOMALY_SIGMA = 2;
+const ANOMALY_MIN_AMOUNT = 50;
+const ANOMALY_WINDOW_DAYS = 180; // only consider recent transactions
+
+/** Locale map aligned with the rest of the app (Calendar page uses the same). */
+const LOCALE_MAP = {
+  en: 'en-US',
+  hi: 'hi-IN',
+  mr: 'mr-IN',
+  bgc: 'hi-IN',
+  kn: 'kn-IN',
+};
+const resolveLocale = (lang) => LOCALE_MAP[lang] || undefined;
+
+/** Robust dark-theme detection. */
+const DARK_THEMES = new Set(['amoled', 'dark', 'midnight', 'black']);
+const isDarkTheme = (theme) => DARK_THEMES.has(String(theme || '').toLowerCase());
+
+/* ============================================================
+ * Utilities
+ * ============================================================ */
+
+const isValidDate = (value) => {
+  if (!value) return false;
+  const d = value instanceof Date ? value : new Date(value);
+  return !Number.isNaN(d.getTime());
+};
+
 const validateTransaction = (t) => {
   if (!t || typeof t !== 'object') return false;
-  if (!t.date || isNaN(new Date(t.date).getTime())) return false;
-  if (!t.type || !['income', 'expense'].includes(t.type)) return false;
+  if (!isValidDate(t.date)) return false;
+  if (!t.type || (t.type !== 'income' && t.type !== 'expense')) return false;
   const amt = Number(t.amount);
-  if (t.amount === undefined || t.amount === null || isNaN(amt) || amt < 0) return false;
+  if (t.amount === undefined || t.amount === null) return false;
+  if (!Number.isFinite(amt) || amt < 0) return false;
   return true;
 };
 
 const safeParseAmount = (amount) => {
   const num = Number(amount);
-  return isNaN(num) || num < 0 ? 0 : num;
+  return Number.isFinite(num) && num >= 0 ? num : 0;
 };
 
-const formatDelta = (cur, prev) => {
-  if (prev === 0) {
-    return cur > 0 ? '+∞' : cur < 0 ? '-∞' : '0%';
+/** Stable hash so the same anomaly keeps the same id across renders. */
+const stableHash = (str) => {
+  let h = 0;
+  if (!str) return '0';
+  for (let i = 0; i < str.length; i += 1) {
+    h = (h << 5) - h + str.charCodeAt(i);
+    h |= 0;
   }
-  if (Math.abs(prev) < 0.01 && Math.abs(cur) < 0.01) return '0%';
-  const delta = ((cur - prev) / Math.abs(prev)) * 100;
-  if (!Number.isFinite(delta)) return '∞';
-  if (Math.abs(delta) > 9999) return delta > 0 ? '>9999%' : '<-9999%';
-  return `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%`;
+  return Math.abs(h).toString(36);
 };
 
-const toMonthKey = (date) => {
-  const d = new Date(date);
+const anomalyId = (tx, category) =>
+  stableHash(
+    `${category}|${tx.date || ''}|${tx.amount || ''}|${tx.note || ''}|${tx.account_id || tx.accountId || ''}`
+  );
+
+/** Proper CSV field escape + injection prevention. */
+const escapeCsvField = (raw) => {
+  const str = raw == null ? '' : String(raw);
+  const needsPrefix = /^[=+\-@\t\r]/.test(str);
+  const escaped = str.replace(/"/g, '""');
+  const prefixed = needsPrefix ? `'${escaped}` : escaped;
+  const needsQuotes = needsPrefix || /[",\n\r\t]/.test(prefixed);
+  return needsQuotes ? `"${prefixed}"` : prefixed;
+};
+
+/** Structured delta — no magic strings, no NaN leaks. */
+const computeDelta = (cur, prev) => {
+  if (!Number.isFinite(cur) || !Number.isFinite(prev)) {
+    return { display: 'N/A', direction: 'flat', valid: false, value: null };
+  }
+  if (prev === 0 && cur === 0) {
+    return { display: '0%', direction: 'flat', valid: true, value: 0 };
+  }
+  if (prev === 0) {
+    return {
+      display: cur > 0 ? 'New' : '-New',
+      direction: cur > 0 ? 'up' : 'down',
+      valid: true,
+      value: null,
+    };
+  }
+  const raw = ((cur - prev) / Math.abs(prev)) * 100;
+  if (!Number.isFinite(raw)) {
+    return { display: 'N/A', direction: 'flat', valid: false, value: null };
+  }
+  const capped = Math.max(-9999, Math.min(9999, raw));
+  const prefix = capped >= 0 ? '+' : '';
+  return {
+    display: `${prefix}${capped.toFixed(1)}%`,
+    direction: capped > 0.05 ? 'up' : capped < -0.05 ? 'down' : 'flat',
+    valid: true,
+    value: capped,
+  };
+};
+
+/** Local YYYY-MM key — no UTC drift. */
+const toMonthKey = (dateInput) => {
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return null;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
-const formatMonthLabel = (key) => {
-  const [year, month] = key.split('-');
-  const date = new Date(Number(year), Number(month) - 1, 1);
-  return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+/** Local start-of-month timestamp. */
+const monthStartTimestamp = (monthKey) => {
+  const [y, m] = monthKey.split('-').map(Number);
+  return new Date(y, m - 1, 1).getTime();
 };
 
-// ---------- Custom Tooltip (memoized) ----------
+const startOfDay = (input) => {
+  if (!input) return null;
+  const d = input instanceof Date ? new Date(input) : new Date(input);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const endOfDay = (input) => {
+  if (!input) return null;
+  const d = input instanceof Date ? new Date(input) : new Date(input);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(23, 59, 59, 999);
+  return d;
+};
+
+/** Localised month label. */
+const formatMonthLabel = (key, locale) => {
+  const [year, month] = key.split('-');
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  return date.toLocaleDateString(locale || 'en-US', { month: 'short', year: '2-digit' });
+};
+
+/** Localised short date. */
+const formatShortDate = (input, locale) => {
+  const d = new Date(input);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(locale || 'en-US', { month: 'short', day: 'numeric' });
+};
+
+/** Localised full date. */
+const formatFullDate = (input, locale) => {
+  const d = new Date(input);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(locale || 'en-US');
+};
+
+/** Fill every month between min and max, inclusive. */
+const enumerateMonths = (minKey, maxKey) => {
+  if (!minKey || !maxKey) return [];
+  const [minY, minM] = minKey.split('-').map(Number);
+  const [maxY, maxM] = maxKey.split('-').map(Number);
+  const out = [];
+  let y = minY;
+  let m = minM;
+  while (y < maxY || (y === maxY && m <= maxM)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return out;
+};
+
+/* ============================================================
+ * Custom Tooltip (memoized)
+ * ============================================================ */
 const CustomTooltip = memo(({ active, payload, label, isDark, fmt }) => {
   if (!active || !payload || !payload.length) return null;
   return (
-    <div className="custom-tooltip glass" style={{
-      backgroundColor: isDark ? 'rgba(10,10,26,0.95)' : 'rgba(255,255,255,0.95)',
-      border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(5, 150, 105, 0.2)'}`,
-      borderRadius: '12px',
-      padding: '10px 14px',
-      color: isDark ? '#f8fafc' : '#0f172a',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
-      fontSize: '0.82rem'
-    }}>
+    <div
+      className="custom-tooltip glass"
+      style={{
+        backgroundColor: isDark ? 'rgba(10,10,26,0.95)' : 'rgba(255,255,255,0.95)',
+        border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(5,150,105,0.2)'}`,
+        borderRadius: 12,
+        padding: '10px 14px',
+        color: isDark ? '#f8fafc' : '#0f172a',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+        fontSize: '0.82rem',
+      }}
+    >
       <p style={{ margin: '0 0 6px 0', fontWeight: 'bold' }}>{label}</p>
       {payload.map((entry, index) => (
-        <p key={index} style={{ margin: '3px 0', color: entry.color, fontWeight: 600 }}>
-          {entry.name}: {typeof fmt === 'function' ? fmt(entry.value) : `$${entry.value}`}
+        <p key={`${entry.dataKey}-${index}`} style={{ margin: '3px 0', color: entry.color, fontWeight: 600 }}>
+          {entry.name}: {typeof fmt === 'function' ? fmt(entry.value) : String(entry.value)}
         </p>
       ))}
     </div>
   );
 });
 
-// ---------- Drill‑Down Modal ----------
-const DrillDownModal = ({ isOpen, onClose, title, transactions, fmt }) => {
+/* ============================================================
+ * Drill‑Down Modal
+ * ============================================================ */
+const DrillDownModal = memo(({ isOpen, onClose, title, transactions, fmt, locale }) => {
+  // Escape to close — depends on stable `onClose` from parent.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
+
+  const total = transactions.reduce((sum, t) => sum + safeParseAmount(t.amount), 0);
+
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-color)', maxWidth: '600px', width: '90%', maxHeight: '80vh', borderRadius: '16px', padding: '1.5rem', overflow: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-          <h3>{title}</h3>
-          <button onClick={onClose} aria-label="Close modal"><X size={20} /></button>
+    <div
+      className="modal-overlay"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title || 'Transaction details'}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div
+        className="modal-content"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--bg-color)', maxWidth: 600, width: '90%',
+          maxHeight: '80vh', borderRadius: 16, padding: '1.5rem',
+          overflow: 'auto', color: 'var(--text-main)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h3 style={{ margin: 0 }}>{title}</h3>
+          <button
+            onClick={onClose}
+            aria-label="Close modal"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              padding: 4,
+              borderRadius: 6,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <X size={20} />
+          </button>
         </div>
+
         {transactions.length === 0 ? (
-          <p>No transactions found.</p>
+          <p style={{ color: 'var(--text-muted)' }}>No transactions found.</p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {transactions.map((t, idx) => (
-              <li key={t.id || t._id || idx} style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>{t.note || t.category || 'Uncategorized'} – {new Date(t.date).toLocaleDateString()}</span>
-                <span style={{ fontWeight: 'bold' }}>{fmt ? fmt(t.amount) : t.amount}</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: 0 }}>
+              {transactions.length} transaction{transactions.length === 1 ? '' : 's'} · Total: {fmt(total)}
+            </p>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {transactions.map((t, idx) => (
+                <li
+                  key={t.id || t._id || `${t.date}-${idx}`}
+                  style={{
+                    padding: '0.55rem 0',
+                    borderBottom: '1px solid var(--border-color)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '1rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>
+                      {t.category || t.note || 'Uncategorized'}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      {formatFullDate(t.date, locale)}
+                      {t.note && t.category ? ` · ${t.note}` : ''}
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      color: t.type === 'income' ? 'var(--success-color, #10b981)' : 'var(--danger-color, #ef4444)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {t.type === 'income' ? '+' : '-'}{fmt(safeParseAmount(t.amount))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
     </div>
   );
-};
+});
+DrillDownModal.displayName = 'DrillDownModal';
 
-// ---------- Main Component ----------
+/* ============================================================
+ * Main Component
+ * ============================================================ */
 export default function Analytics() {
-  const { transactions = [], theme, fmt: contextFmt } = useContext(AppContext);
+  const {
+    transactions = [],
+    theme,
+    fmt: contextFmt,
+    user,
+    lang,
+    currency,
+    currencyInfo,
+  } = useContext(AppContext);
   const { showToast } = useToast();
-  const isDark = theme === 'amoled';
 
-  // Fallback fmt
+  const isDark = isDarkTheme(theme);
+  const locale = useMemo(() => resolveLocale(lang), [lang]);
+  const activeCurrency = currency || user?.currency || 'USD';
+  const symbol = currencyInfo?.symbol || '$';
+
   const fmt = useCallback(
     (value) => {
-      if (contextFmt) return contextFmt(value);
-      if (value === undefined || value === null) return '$0.00';
+      if (contextFmt) {
+        try {
+          const out = contextFmt(value);
+          if (out != null) return out;
+        } catch { /* fall through */ }
+      }
+      if (value === undefined || value === null) return `${symbol}0.00`;
       const num = Number(value);
-      if (isNaN(num)) return '$0.00';
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
+      if (!Number.isFinite(num)) return `${symbol}0.00`;
+      try {
+        return new Intl.NumberFormat(locale || 'en-US', { style: 'currency', currency: activeCurrency }).format(num);
+      } catch {
+        return `${symbol}${num.toFixed(2)}`;
+      }
     },
-    [contextFmt]
+    [contextFmt, locale, activeCurrency, symbol]
   );
 
-  // ---------- State ----------
+  /* ---------------- State ---------------- */
   const [periodFilter, setPeriodFilter] = useState('month');
   const [chartType, setChartType] = useState('bar');
   const [showAllEvolutionCategories, setShowAllEvolutionCategories] = useState(false);
-  const [reviewedAnomalies, setReviewedAnomalies] = useState(() => {
-    try {
-      const stored = localStorage.getItem('mycoinwise-reviewed-anomalies');
-      return new Set(stored ? JSON.parse(stored) : []);
-    } catch { return new Set(); }
-  });
   const [customRange, setCustomRange] = useState({ start: '', end: '' });
   const [showCustomRange, setShowCustomRange] = useState(false);
   const [drillData, setDrillData] = useState({ isOpen: false, title: '', transactions: [] });
+  const [isExportingPng, setIsExportingPng] = useState(false);
+
+  const reviewedStorageKey = useMemo(
+    () => (user?.id || user?._id ? `${REVIEWED_KEY}:${user.id || user._id}` : REVIEWED_KEY),
+    [user]
+  );
+
+  const [reviewedAnomalies, setReviewedAnomalies] = useState(() => {
+    try {
+      const stored = localStorage.getItem(reviewedStorageKey);
+      return new Set(stored ? JSON.parse(stored) : []);
+    } catch { return new Set(); }
+  });
 
   const chartSectionRef = useRef(null);
 
-  // ---------- Persist reviewed anomalies ----------
+  // Reload reviewed anomalies if the storage key changes (e.g. user switch).
   useEffect(() => {
-    localStorage.setItem('mycoinwise-reviewed-anomalies', JSON.stringify([...reviewedAnomalies]));
-  }, [reviewedAnomalies]);
+    try {
+      const stored = localStorage.getItem(reviewedStorageKey);
+      setReviewedAnomalies(new Set(stored ? JSON.parse(stored) : []));
+    } catch {
+      setReviewedAnomalies(new Set());
+    }
+  }, [reviewedStorageKey]);
 
-  // ---------- Stable Transactions Memo ----------
-  const validTransactions = useMemo(() => {
-    if (!Array.isArray(transactions)) return [];
-    // Use a stable serialization to avoid recomputation on reference changes
-    return transactions.filter(validateTransaction);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(transactions)]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(reviewedStorageKey, JSON.stringify([...reviewedAnomalies]));
+    } catch { /* storage may be full or disabled */ }
+  }, [reviewedAnomalies, reviewedStorageKey]);
 
-  // ---------- Period Comparison Logic ----------
+  /* ---------------- Valid transactions ---------------- */
+  const validTransactions = useMemo(
+    () => (Array.isArray(transactions) ? transactions.filter(validateTransaction) : []),
+    [transactions]
+  );
+
+  /* ============================================================
+   * Period Comparison
+   * ============================================================ */
   const comparisonMetrics = useMemo(() => {
     const now = new Date();
-    let currentStart, currentEnd, prevStart, prevEnd;
-    const isAll = periodFilter === 'all';
+    let currentStart = null, currentEnd = null, prevStart = null, prevEnd = null;
 
-    if (isAll) {
+    if (periodFilter === 'all') {
       currentStart = new Date(0);
       currentEnd = new Date();
-      prevStart = null;
-      prevEnd = null;
     } else if (periodFilter === 'month') {
       currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      currentEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      currentEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
       prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      prevEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+      prevEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
     } else if (periodFilter === 'quarter') {
       const q = Math.floor(now.getMonth() / 3);
       currentStart = new Date(now.getFullYear(), q * 3, 1);
-      currentEnd = new Date(now.getFullYear(), (q + 1) * 3, 0, 23, 59, 59);
+      currentEnd = new Date(now.getFullYear(), (q + 1) * 3, 0, 23, 59, 59, 999);
       prevStart = new Date(now.getFullYear(), (q - 1) * 3, 1);
-      prevEnd = new Date(now.getFullYear(), q * 3, 0, 23, 59, 59);
+      prevEnd = new Date(now.getFullYear(), q * 3, 0, 23, 59, 59, 999);
     } else if (periodFilter === 'year') {
       currentStart = new Date(now.getFullYear(), 0, 1);
-      currentEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+      currentEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
       prevStart = new Date(now.getFullYear() - 1, 0, 1);
-      prevEnd = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59);
-    } else {
-      // custom range
-      if (customRange.start && customRange.end) {
-        currentStart = new Date(customRange.start);
-        currentEnd = new Date(customRange.end);
-        // For custom, we don't compute previous automatically; we'll show only current
-        prevStart = null;
-        prevEnd = null;
+      prevEnd = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+    } else if (periodFilter === 'custom') {
+      const s = startOfDay(customRange.start);
+      const e = endOfDay(customRange.end);
+      if (s && e && s <= e) {
+        currentStart = s;
+        currentEnd = e;
       } else {
-        currentStart = new Date(0);
-        currentEnd = new Date();
-        prevStart = null;
-        prevEnd = null;
+        // Invalid custom range → treat as current month
+        currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        currentEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
       }
+    } else {
+      currentStart = new Date(0);
+      currentEnd = new Date();
     }
 
     const filterTxs = (start, end) => {
       if (!start || !end) return [];
-      return validTransactions.filter(t => {
+      return validTransactions.filter((t) => {
         const d = new Date(t.date);
         return d >= start && d <= end;
       });
     };
 
-    const currentTxs = filterTxs(currentStart, currentEnd);
-    const prevTxs = (prevStart && prevEnd) ? filterTxs(prevStart, prevEnd) : [];
-
     const sumTxs = (list) => {
-      const inc = list.filter(t => t.type === 'income').reduce((a, c) => a + safeParseAmount(c.amount), 0);
-      const exp = list.filter(t => t.type === 'expense').reduce((a, c) => a + safeParseAmount(c.amount), 0);
+      let inc = 0, exp = 0;
+      for (const t of list) {
+        const amt = safeParseAmount(t.amount);
+        if (t.type === 'income') inc += amt;
+        else if (t.type === 'expense') exp += amt;
+      }
       return { income: inc, expense: exp, net: inc - exp, count: list.length };
     };
+
+    const currentTxs = filterTxs(currentStart, currentEnd);
+    const prevTxs = prevStart && prevEnd ? filterTxs(prevStart, prevEnd) : [];
 
     const curSum = sumTxs(currentTxs);
     const prevSum = sumTxs(prevTxs);
 
-    const deltaIncome = prevStart ? formatDelta(curSum.income, prevSum.income) : 'N/A';
-    const deltaExpense = prevStart ? formatDelta(curSum.expense, prevSum.expense) : 'N/A';
-    const deltaNet = prevStart ? formatDelta(curSum.net, prevSum.net) : 'N/A';
+    const hasComparison = Boolean(prevStart && prevEnd);
 
-    // Savings rate
-    const savingsRate = curSum.income > 0 ? ((curSum.net / curSum.income) * 100) : 0;
+    const incomeDelta = hasComparison ? computeDelta(curSum.income, prevSum.income) : { display: 'N/A', direction: 'flat', valid: false, value: null };
+    const expenseDelta = hasComparison ? computeDelta(curSum.expense, prevSum.expense) : { display: 'N/A', direction: 'flat', valid: false, value: null };
+    const netDelta = hasComparison ? computeDelta(curSum.net, prevSum.net) : { display: 'N/A', direction: 'flat', valid: false, value: null };
+
+    const savingsRate = curSum.income > 0 ? (curSum.net / curSum.income) * 100 : null;
 
     return {
       current: curSum,
       previous: prevSum,
-      incomeDelta: deltaIncome,
-      expenseDelta: deltaExpense,
-      netDelta: deltaNet,
+      incomeDelta,
+      expenseDelta,
+      netDelta,
       savingsRate,
-      hasComparison: !!prevStart
+      hasComparison,
     };
   }, [validTransactions, periodFilter, customRange]);
 
-  // ---------- Monthly Aggregates ----------
+  /* ============================================================
+   * Monthly Aggregates
+   * ============================================================ */
   const monthlyData = useMemo(() => {
     const monthMap = new Map();
-    validTransactions.forEach(t => {
+    validTransactions.forEach((t) => {
       const key = toMonthKey(t.date);
-      const amount = safeParseAmount(t.amount);
+      if (!key) return;
       if (!monthMap.has(key)) {
-        monthMap.set(key, { name: key, income: 0, expense: 0, timestamp: new Date(t.date).getTime() });
+        monthMap.set(key, { name: key, income: 0, expense: 0 });
       }
-      const data = monthMap.get(key);
-      if (t.type === 'income') data.income += amount;
-      else data.expense += amount;
+      const entry = monthMap.get(key);
+      const amt = safeParseAmount(t.amount);
+      if (t.type === 'income') entry.income += amt;
+      else entry.expense += amt;
     });
+
     return Array.from(monthMap.values())
-      .map(m => ({
+      .map((m) => ({
         ...m,
-        savings: parseFloat((m.income - m.expense).toFixed(2)),
-        displayName: formatMonthLabel(m.name)
+        savings: Number((m.income - m.expense).toFixed(2)),
+        timestamp: monthStartTimestamp(m.name),
+        displayName: formatMonthLabel(m.name, locale),
       }))
       .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(-8);
-  }, [validTransactions]);
+      .slice(-MAX_MONTHS_MONTHLY_CHART);
+  }, [validTransactions, locale]);
 
-  // ---------- Category Evolution ----------
+  /* ============================================================
+   * Category Evolution — fills gaps, drops zero-total categories
+   * ============================================================ */
   const categoryEvolution = useMemo(() => {
-    const catTotals = {};
-    validTransactions.filter(t => t.type === 'expense').forEach(t => {
-      const c = t.category || 'Other';
-      catTotals[c] = (catTotals[c] || 0) + safeParseAmount(t.amount);
-    });
-    const sortedCats = Object.entries(catTotals)
+    const catTotals = new Map();
+    validTransactions
+      .filter((t) => t.type === 'expense')
+      .forEach((t) => {
+        const c = t.category || 'Other';
+        catTotals.set(c, (catTotals.get(c) || 0) + safeParseAmount(t.amount));
+      });
+
+    const sortedCats = Array.from(catTotals.entries())
       .sort((a, b) => b[1] - a[1])
-      .map(e => e[0]);
-    const activeCats = showAllEvolutionCategories ? sortedCats.slice(0, 8) : sortedCats.slice(0, 5);
+      .map((e) => e[0]);
 
-    const monthMap = {};
-    validTransactions.filter(t => t.type === 'expense').forEach(t => {
-      const mKey = toMonthKey(t.date);
-      if (!monthMap[mKey]) {
-        monthMap[mKey] = { name: mKey, timestamp: new Date(t.date).getTime() };
-        activeCats.forEach(c => { monthMap[mKey][c] = 0; });
-      }
-      const cat = t.category || 'Other';
-      if (activeCats.includes(cat)) {
-        monthMap[mKey][cat] = (monthMap[mKey][cat] || 0) + safeParseAmount(t.amount);
-      }
+    // Pick top N (5 or 8)
+    const limit = showAllEvolutionCategories ? 8 : 5;
+    const activeCats = sortedCats.slice(0, limit);
+
+    if (activeCats.length === 0) {
+      return { data: [], categories: [] };
+    }
+
+    // Determine full month range
+    const monthKeys = new Set();
+    validTransactions.forEach((t) => {
+      if (t.type !== 'expense') return;
+      const key = toMonthKey(t.date);
+      if (key) monthKeys.add(key);
+    });
+    if (monthKeys.size === 0) {
+      return { data: [], categories: activeCats };
+    }
+
+    const sortedMonthKeys = Array.from(monthKeys).sort();
+    const allMonths = enumerateMonths(sortedMonthKeys[0], sortedMonthKeys[sortedMonthKeys.length - 1]);
+
+    // Fill every month with zeros for every category
+    const monthData = new Map();
+    allMonths.forEach((key) => {
+      const row = {
+        name: key,
+        timestamp: monthStartTimestamp(key),
+        displayName: formatMonthLabel(key, locale),
+      };
+      activeCats.forEach((c) => { row[c] = 0; });
+      monthData.set(key, row);
     });
 
-    const data = Object.values(monthMap)
+    // Populate
+    validTransactions.forEach((t) => {
+      if (t.type !== 'expense') return;
+      const cat = t.category || 'Other';
+      if (!activeCats.includes(cat)) return;
+      const key = toMonthKey(t.date);
+      if (!key) return;
+      const row = monthData.get(key);
+      if (row) row[cat] += safeParseAmount(t.amount);
+    });
+
+    // Keep only the last MAX_MONTHS_EVOLUTION months
+    const data = Array.from(monthData.values())
       .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(-6)
-      .map(d => ({ ...d, displayName: formatMonthLabel(d.name) }));
+      .slice(-MAX_MONTHS_EVOLUTION);
 
-    return { data, categories: activeCats };
-  }, [validTransactions, showAllEvolutionCategories]);
+    // Drop categories whose total in the visible window is 0
+    const visibleCats = activeCats.filter((cat) =>
+      data.some((row) => Number(row[cat]) > 0)
+    );
 
-  // ---------- Day of Week ----------
+    return { data, categories: visibleCats };
+  }, [validTransactions, showAllEvolutionCategories, locale]);
+
+  /* ============================================================
+   * Day of Week
+   * ============================================================ */
   const dayOfWeekData = useMemo(() => {
-    const days = [
-      { name: 'Sun', expense: 0, income: 0, count: 0 },
-      { name: 'Mon', expense: 0, income: 0, count: 0 },
-      { name: 'Tue', expense: 0, income: 0, count: 0 },
-      { name: 'Wed', expense: 0, income: 0, count: 0 },
-      { name: 'Thu', expense: 0, income: 0, count: 0 },
-      { name: 'Fri', expense: 0, income: 0, count: 0 },
-      { name: 'Sat', expense: 0, income: 0, count: 0 },
-    ];
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((name) => ({
+      name, expense: 0, income: 0, count: 0,
+    }));
     let weekendExp = 0, weekdayExp = 0;
-    validTransactions.forEach(t => {
+
+    validTransactions.forEach((t) => {
       const d = new Date(t.date).getDay();
       const amt = safeParseAmount(t.amount);
       if (t.type === 'expense') {
@@ -314,120 +616,151 @@ export default function Analytics() {
       } else {
         days[d].income += amt;
       }
-      days[d].count++;
+      days[d].count += 1;
     });
+
     const totalExp = weekendExp + weekdayExp;
-    const weekendPct = totalExp > 0 ? ((weekendExp / totalExp) * 100).toFixed(0) : '0';
-    return { days, weekendExp, weekdayExp, weekendPct: Number(weekendPct) };
+    const weekendPct = totalExp > 0 ? Math.round((weekendExp / totalExp) * 100) : 0;
+    return { days, weekendExp, weekdayExp, weekendPct };
   }, [validTransactions]);
 
-  // ---------- Anomaly Detection ----------
+  /* ============================================================
+   * Anomaly Detection — recent window, stable IDs
+   * ============================================================ */
   const anomalies = useMemo(() => {
-    const catStats = {};
-    validTransactions.filter(t => t.type === 'expense').forEach(t => {
-      const cat = t.category || 'Other';
-      if (!catStats[cat]) catStats[cat] = [];
-      catStats[cat].push({ tx: t, amount: safeParseAmount(t.amount) });
-    });
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - ANOMALY_WINDOW_DAYS);
+
+    const catStats = new Map();
+    validTransactions
+      .filter((t) => t.type === 'expense')
+      .filter((t) => new Date(t.date) >= cutoff)
+      .forEach((t) => {
+        const cat = t.category || 'Other';
+        if (!catStats.has(cat)) catStats.set(cat, []);
+        catStats.get(cat).push({ tx: t, amount: safeParseAmount(t.amount) });
+      });
+
     const flagged = [];
-    Object.entries(catStats).forEach(([cat, list]) => {
-      if (list.length < 3) return;
+    catStats.forEach((list, cat) => {
+      if (list.length < ANOMALY_MIN_SAMPLES) return;
       const mean = list.reduce((a, c) => a + c.amount, 0) / list.length;
-      const variance = list.reduce((a, c) => a + Math.pow(c.amount - mean, 2), 0) / list.length;
+      const variance = list.reduce((a, c) => a + (c.amount - mean) ** 2, 0) / list.length;
       const stdDev = Math.sqrt(variance);
+      if (stdDev <= 0) return;
+
       list.forEach(({ tx, amount }) => {
-        if (amount > mean + (2 * stdDev) && amount > 50) {
-          const id = tx.id || tx._id || `${cat}-${tx.date}-${amount}-${Math.random()}`;
+        if (amount > mean + ANOMALY_SIGMA * stdDev && amount > ANOMALY_MIN_AMOUNT) {
           flagged.push({
-            id,
+            id: anomalyId(tx, cat),
             tx,
+            category: cat,
             mean,
             stdDev,
-            ratio: (amount / (mean || 1)).toFixed(1)
+            ratio: (amount / (mean || 1)).toFixed(1),
           });
         }
       });
     });
+
     return flagged.sort((a, b) => new Date(b.tx.date) - new Date(a.tx.date));
   }, [validTransactions]);
 
   const activeAnomalies = useMemo(
-    () => anomalies.filter(a => !reviewedAnomalies.has(a.id)),
+    () => anomalies.filter((a) => !reviewedAnomalies.has(a.id)),
     [anomalies, reviewedAnomalies]
   );
 
-  // ---------- Expense Categories ----------
+  /* ============================================================
+   * Expense Categories (All-Time pie)
+   * ============================================================ */
   const expenseCategories = useMemo(() => {
     const map = new Map();
-    validTransactions.filter(t => t.type === 'expense').forEach(t => {
-      const cat = t.category || 'Other';
-      map.set(cat, (map.get(cat) || 0) + safeParseAmount(t.amount));
-    });
+    validTransactions
+      .filter((t) => t.type === 'expense')
+      .forEach((t) => {
+        const cat = t.category || 'Other';
+        map.set(cat, (map.get(cat) || 0) + safeParseAmount(t.amount));
+      });
     const total = Array.from(map.values()).reduce((a, c) => a + c, 0);
-    return Array.from(map.entries()).map(([name, value]) => ({
-      name,
-      value: parseFloat(value.toFixed(2)),
-      percentage: total > 0 ? ((value / total) * 100).toFixed(1) : 0
-    })).sort((a, b) => b.value - a.value).slice(0, 8);
+    return Array.from(map.entries())
+      .map(([name, value]) => ({
+        name,
+        value: Number(value.toFixed(2)),
+        percentage: total > 0 ? ((value / total) * 100).toFixed(1) : '0.0',
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
   }, [validTransactions]);
 
-  // ---------- AI Insights ----------
+  /* ============================================================
+   * AI Insights — NaN-safe
+   * ============================================================ */
   const generatedInsights = useMemo(() => {
     const cards = [];
+
     const expDelta = comparisonMetrics.expenseDelta;
-    if (typeof expDelta === 'string' && expDelta.startsWith('+')) {
-      const num = parseFloat(expDelta);
-      if (num > 15) {
+    if (expDelta.valid && expDelta.value != null) {
+      if (expDelta.value > 15) {
         cards.push({
           type: 'warning',
           title: 'Spending Acceleration',
-          message: `Your spending this period is ${num.toFixed(0)}% higher than the previous period. Consider reviewing discretionary expenses.`
+          message: `Your spending this period is ${expDelta.value.toFixed(0)}% higher than the previous period. Consider reviewing discretionary expenses.`,
         });
-      }
-    } else if (typeof expDelta === 'string' && expDelta.startsWith('-')) {
-      const num = parseFloat(expDelta);
-      if (num < -10) {
+      } else if (expDelta.value < -10) {
         cards.push({
           type: 'success',
           title: 'Spending Discipline',
-          message: `Great job! Your spending is down by ${Math.abs(num).toFixed(0)}% compared to last period.`
+          message: `Great job! Your spending is down by ${Math.abs(expDelta.value).toFixed(0)}% compared to last period.`,
         });
       }
     }
+
     if (dayOfWeekData.weekendPct >= 40) {
       cards.push({
         type: 'info',
         title: 'Weekend Outflow Concentration',
-        message: `${dayOfWeekData.weekendPct}% of your total expenses occur on Saturdays & Sundays.`
+        message: `${dayOfWeekData.weekendPct}% of your total expenses occur on Saturdays & Sundays.`,
       });
     }
-    if (expenseCategories.length > 0 && Number(expenseCategories[0]?.percentage) > 35) {
+
+    if (expenseCategories.length > 0 && Number(expenseCategories[0].percentage) > 35) {
       cards.push({
         type: 'info',
         title: `Heavy ${expenseCategories[0].name} Concentration`,
-        message: `${expenseCategories[0].name} accounts for ${expenseCategories[0].percentage}% of total expenses. Diversifying or budgeting this area will boost net savings.`
+        message: `${expenseCategories[0].name} accounts for ${expenseCategories[0].percentage}% of total expenses. Diversifying or budgeting this area will boost net savings.`,
       });
     }
-    if (comparisonMetrics.savingsRate < 10 && comparisonMetrics.savingsRate >= 0) {
+
+    if (
+      comparisonMetrics.savingsRate != null &&
+      comparisonMetrics.savingsRate < 10 &&
+      comparisonMetrics.savingsRate >= 0
+    ) {
       cards.push({
         type: 'warning',
         title: 'Low Savings Rate',
-        message: `Your savings rate is only ${comparisonMetrics.savingsRate.toFixed(1)}%. Consider cutting non‑essential expenses.`
+        message: `Your savings rate is only ${comparisonMetrics.savingsRate.toFixed(1)}%. Consider cutting non‑essential expenses.`,
       });
     }
+
     if (cards.length === 0) {
       cards.push({
         type: 'success',
         title: 'Balanced Financial Trajectory',
-        message: 'Your income-to-expense distribution remains healthy and within normal variance.'
+        message: 'Your income-to-expense distribution remains healthy and within normal variance.',
       });
     }
+
     return cards;
   }, [comparisonMetrics, dayOfWeekData, expenseCategories]);
 
-  // ---------- Handlers ----------
+  /* ============================================================
+   * Handlers
+   * ============================================================ */
+
   const handleMarkAnomalyReviewed = useCallback((id) => {
-    setReviewedAnomalies(prev => {
+    setReviewedAnomalies((prev) => {
       const next = new Set(prev);
       next.add(id);
       return next;
@@ -436,7 +769,7 @@ export default function Analytics() {
   }, [showToast]);
 
   const handleDismissAnomaly = useCallback((id) => {
-    setReviewedAnomalies(prev => {
+    setReviewedAnomalies((prev) => {
       const next = new Set(prev);
       next.add(id);
       return next;
@@ -444,110 +777,206 @@ export default function Analytics() {
     showToast('success', 'Anomaly dismissed.');
   }, [showToast]);
 
-  const exportChartAsImage = async () => {
+  const handleResetReviewedAnomalies = useCallback(() => {
+    if (reviewedAnomalies.size === 0) return;
+    setReviewedAnomalies(new Set());
+    showToast('success', 'Reviewed anomalies cleared.');
+  }, [reviewedAnomalies, showToast]);
+
+  const exportChartAsImage = useCallback(async () => {
+    if (isExportingPng) return;
+    setIsExportingPng(true);
     try {
       const { default: html2canvas } = await import('html2canvas');
       if (!chartSectionRef.current) return;
       const canvas = await html2canvas(chartSectionRef.current, {
         scale: 2,
         backgroundColor: isDark ? '#090d16' : '#ffffff',
-        useCORS: true
+        useCORS: true,
       });
       const url = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.href = url;
-      link.download = `mycoinwise_analytics_${new Date().toISOString().split('T')[0]}.png`;
+      const now = new Date();
+      const dateStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      link.download = `mycoinwise_analytics_${dateStamp}.png`;
       link.click();
       showToast('success', 'Chart image downloaded as PNG!');
     } catch (err) {
       console.error(err);
       showToast('error', 'Failed to export chart image.');
+    } finally {
+      setIsExportingPng(false);
     }
-  };
+  }, [isDark, isExportingPng, showToast]);
 
   const exportCSV = useCallback(() => {
     const headers = ['Date', 'Type', 'Category', 'Amount', 'Note'];
-    const rows = validTransactions.map(t => [
+    const rows = validTransactions.map((t) => [
       t.date,
       t.type,
       t.category || 'Other',
-      safeParseAmount(t.amount),
-      t.note || ''
+      safeParseAmount(t.amount).toFixed(2),
+      t.note || '',
     ]);
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const csvContent = [
+      headers.map(escapeCsvField).join(','),
+      ...rows.map((r) => r.map(escapeCsvField).join(',')),
+    ].join('\n');
+
+    // BOM helps Excel detect UTF-8. Some strict parsers include it in the first header.
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `mycoinwise_data_${new Date().toISOString().split('T')[0]}.csv`;
+    const now = new Date();
+    const dateStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    link.download = `mycoinwise_data_${dateStamp}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     showToast('success', 'CSV exported successfully!');
   }, [validTransactions, showToast]);
 
-  const handleShareSummary = useCallback(() => {
+  const handleShareSummary = useCallback(async () => {
+    const savingsRateText =
+      comparisonMetrics.savingsRate != null
+        ? `${comparisonMetrics.savingsRate.toFixed(1)}%`
+        : 'N/A';
+
     const text = `📊 MyCoinwise Financial Report (${periodFilter.toUpperCase()})
 • Inflow: ${fmt(comparisonMetrics.current.income)}
 • Outflow: ${fmt(comparisonMetrics.current.expense)}
 • Net Savings: ${fmt(comparisonMetrics.current.net)}
-• Savings Rate: ${comparisonMetrics.savingsRate.toFixed(1)}%
+• Savings Rate: ${savingsRateText}
 • Top Category: ${expenseCategories[0]?.name || 'N/A'} (${expenseCategories[0]?.percentage || 0}%)
-• Period vs Period Expense Shift: ${comparisonMetrics.expenseDelta}`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      showToast('success', 'Financial summary copied to clipboard!');
-    } else {
-      showToast('error', 'Clipboard not available.');
+• Period Expense Shift: ${comparisonMetrics.expenseDelta.display}`;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        showToast('success', 'Financial summary copied to clipboard!');
+      } else {
+        showToast('error', 'Clipboard not available.');
+      }
+    } catch {
+      showToast('error', 'Failed to copy summary.');
     }
   }, [periodFilter, fmt, comparisonMetrics, expenseCategories, showToast]);
 
-  const handleChartClick = useCallback((data, chartType) => {
-    if (!data) return;
-    let title = '';
-    let filtered = [];
-    if (chartType === 'bar' && data.activeLabel) {
-      // Click on a monthly bar – show transactions in that month
-      const monthKey = data.activeLabel; // this is the display name, but we need to map back to YYYY-MM
-      // Find the month key from monthlyData
-      const monthEntry = monthlyData.find(m => m.displayName === monthKey);
-      if (monthEntry) {
-        const key = monthEntry.name;
-        const start = new Date(key);
-        const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
-        filtered = validTransactions.filter(t => {
-          const d = new Date(t.date);
-          return d >= start && d <= end;
-        });
-        title = `Transactions for ${monthKey}`;
-      }
-    } else if (chartType === 'pie' && data && data.name) {
-      // Click on a pie slice – show transactions in that category
-      const cat = data.name;
-      filtered = validTransactions.filter(t => (t.category || 'Other') === cat && t.type === 'expense');
-      title = `Expenses in "${cat}"`;
-    }
-    if (filtered.length > 0) {
-      setDrillData({ isOpen: true, title, transactions: filtered });
-    } else {
-      showToast('info', 'No transactions found for this selection.');
-    }
-  }, [monthlyData, validTransactions, showToast]);
+  /* ============================================================
+   * Drill‑down handlers (stable callbacks)
+   * ============================================================ */
 
-  // ---------- Custom Range ----------
-  const applyCustomRange = useCallback(() => {
-    if (customRange.start && customRange.end) {
-      setPeriodFilter('custom');
-      showToast('success', 'Custom range applied.');
-    } else {
-      showToast('error', 'Please select both start and end dates.');
+  const openMonthDrillDown = useCallback((monthKey) => {
+    const [y, m] = monthKey.split('-').map(Number);
+    const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+    const end = new Date(y, m, 0, 23, 59, 59, 999);
+    const filtered = validTransactions.filter((t) => {
+      const d = new Date(t.date);
+      return d >= start && d <= end;
+    });
+    if (filtered.length === 0) {
+      showToast('info', 'No transactions found for this month.');
+      return;
     }
+    setDrillData({
+      isOpen: true,
+      title: `Transactions for ${formatMonthLabel(monthKey, locale)}`,
+      transactions: filtered,
+    });
+  }, [validTransactions, locale, showToast]);
+
+  const openCategoryDrillDown = useCallback((category) => {
+    const filtered = validTransactions.filter(
+      (t) => (t.category || 'Other') === category && t.type === 'expense'
+    );
+    if (filtered.length === 0) {
+      showToast('info', 'No expenses found for this category.');
+      return;
+    }
+    setDrillData({
+      isOpen: true,
+      title: `Expenses in "${category}"`,
+      transactions: filtered,
+    });
+  }, [validTransactions, showToast]);
+
+  const closeDrill = useCallback(() => {
+    setDrillData({ isOpen: false, title: '', transactions: [] });
+  }, []);
+
+  const handleBarClick = useCallback((data) => {
+    const monthKey = data?.payload?.name;
+    if (monthKey) openMonthDrillDown(monthKey);
+  }, [openMonthDrillDown]);
+
+  const handlePieClick = useCallback((data) => {
+    const category = data?.name ?? data?.payload?.name;
+    if (category) openCategoryDrillDown(category);
+  }, [openCategoryDrillDown]);
+
+  /* ============================================================
+   * Custom Range
+   * ============================================================ */
+  const applyCustomRange = useCallback(() => {
+    const { start, end } = customRange;
+    if (!start || !end) {
+      showToast('error', 'Please select both start and end dates.');
+      return;
+    }
+    const s = new Date(start);
+    const e = new Date(end);
+    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) {
+      showToast('error', 'Invalid date range.');
+      return;
+    }
+    if (s > e) {
+      showToast('error', 'Start date must be on or before end date.');
+      return;
+    }
+    setPeriodFilter('custom');
+    setShowCustomRange(false);
+    showToast('success', 'Custom range applied.');
   }, [customRange, showToast]);
 
-  // ---------- Theme-aware colours ----------
+  const clearCustomRange = useCallback(() => {
+    setShowCustomRange(false);
+    setCustomRange({ start: '', end: '' });
+    setPeriodFilter('month');
+  }, []);
+
+  /* ============================================================
+   * Theme colours
+   * ============================================================ */
   const pieColors = isDark ? PIE_COLORS_DARK : PIE_COLORS_LIGHT;
   const categoryColors = isDark ? CATEGORY_COLORS_DARK : CATEGORY_COLORS_LIGHT;
 
-  // ---------- Render ----------
+  /* ============================================================
+   * Loading / Empty
+   * ============================================================ */
+  if (validTransactions.length === 0) {
+    return (
+      <div className="shared-page analytics-page-wrap">
+        <div className="spage-header">
+          <div className="spage-title">
+            <h2>Analytics & Intelligence</h2>
+            <span className="badge">AI Insights</span>
+          </div>
+        </div>
+        <div className="glass" style={{ padding: '3rem 1rem', textAlign: 'center', borderRadius: 14 }}>
+          <Sparkles size={48} style={{ opacity: 0.4, marginBottom: '1rem' }} />
+          <h3 style={{ marginBottom: '0.5rem' }}>No data yet</h3>
+          <p style={{ color: 'var(--text-muted)' }}>
+            Add some transactions to unlock analytics and AI insights.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  /* ============================================================
+   * Render
+   * ============================================================ */
   return (
     <div className="shared-page analytics-page-wrap">
       <div className="spage-header">
@@ -556,8 +985,14 @@ export default function Analytics() {
           <span className="badge">AI Insights</span>
         </div>
         <div className="analytics-actions">
-          <button onClick={exportChartAsImage} className="btn-secondary" title="Download PNG of analytics charts">
-            <Download size={15} /> Export PNG
+          <button
+            onClick={exportChartAsImage}
+            className="btn-secondary"
+            disabled={isExportingPng}
+            title="Download PNG of analytics charts"
+          >
+            {isExportingPng ? <Loader2 size={15} className="spin" /> : <Download size={15} />}
+            {isExportingPng ? 'Exporting…' : 'Export PNG'}
           </button>
           <button onClick={exportCSV} className="btn-secondary" title="Export data as CSV">
             <Download size={15} /> CSV
@@ -576,93 +1011,176 @@ export default function Analytics() {
             { id: 'month', label: 'This Month vs Last' },
             { id: 'quarter', label: 'This Quarter vs Last' },
             { id: 'year', label: 'Year over Year' },
-          ].map(p => (
+            { id: 'all', label: 'All Time' },
+          ].map((p) => (
             <button
               key={p.id}
               className={`apb-btn ${periodFilter === p.id ? 'active' : ''}`}
               onClick={() => setPeriodFilter(p.id)}
+              aria-pressed={periodFilter === p.id}
             >
               {p.label}
             </button>
           ))}
           <button
             className={`apb-btn ${periodFilter === 'custom' ? 'active' : ''}`}
-            onClick={() => setShowCustomRange(!showCustomRange)}
+            onClick={() => setShowCustomRange((s) => !s)}
+            aria-expanded={showCustomRange}
           >
             <Filter size={14} /> Custom
+            {periodFilter === 'custom' && customRange.start && customRange.end && (
+              <span
+                style={{
+                  marginLeft: 6,
+                  fontSize: '0.7rem',
+                  opacity: 0.8,
+                }}
+              >
+                ({customRange.start} → {customRange.end})
+              </span>
+            )}
           </button>
+          {periodFilter === 'custom' && (
+            <button
+              className="apb-btn"
+              onClick={clearCustomRange}
+              title="Clear custom range"
+              aria-label="Clear custom range"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Custom Range Inputs */}
-      {showCustomRange && (
-        <div className="custom-range-panel glass" style={{ padding: '0.75rem', marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <label>Start: <input type="date" value={customRange.start} onChange={e => setCustomRange(prev => ({ ...prev, start: e.target.value }))} /></label>
-          <label>End: <input type="date" value={customRange.end} onChange={e => setCustomRange(prev => ({ ...prev, end: e.target.value }))} /></label>
-          <button className="btn-secondary" onClick={applyCustomRange}>Apply</button>
-          <button className="btn-secondary" onClick={() => { setShowCustomRange(false); setPeriodFilter('month'); }}>Cancel</button>
-        </div>
-      )}
+      <AnimatePresence>
+        {showCustomRange && (
+          <motion.div
+            className="custom-range-panel glass"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            style={{
+              padding: '0.75rem',
+              marginTop: '0.5rem',
+              display: 'flex',
+              gap: '0.5rem',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              overflow: 'hidden',
+            }}
+          >
+            <label>
+              Start:
+              <input
+                type="date"
+                value={customRange.start}
+                max={customRange.end || undefined}
+                onChange={(e) => setCustomRange((prev) => ({ ...prev, start: e.target.value }))}
+                aria-label="Custom range start date"
+              />
+            </label>
+            <label>
+              End:
+              <input
+                type="date"
+                value={customRange.end}
+                min={customRange.start || undefined}
+                onChange={(e) => setCustomRange((prev) => ({ ...prev, end: e.target.value }))}
+                aria-label="Custom range end date"
+              />
+            </label>
+            <button className="btn-secondary" onClick={applyCustomRange}>Apply</button>
+            <button className="btn-secondary" onClick={clearCustomRange}>Cancel</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Comparison Cards */}
       <div className="analytics-comparison-grid">
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Period Inflow</span>
-            <span className={`sc-delta ${comparisonMetrics.incomeDelta !== 'N/A' && !comparisonMetrics.incomeDelta.startsWith('-') ? 'text-success' : 'text-danger'}`}>
-              {comparisonMetrics.incomeDelta !== 'N/A' ? (comparisonMetrics.incomeDelta.startsWith('+') ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />) : null}
-              {comparisonMetrics.incomeDelta}
+            <span className={`sc-delta ${comparisonMetrics.incomeDelta.direction === 'down' ? 'text-danger' : 'text-success'}`}>
+              {comparisonMetrics.incomeDelta.valid ? (
+                comparisonMetrics.incomeDelta.direction === 'up' ? <ArrowUpRight size={14} /> :
+                comparisonMetrics.incomeDelta.direction === 'down' ? <ArrowDownRight size={14} /> : null
+              ) : null}
+              {comparisonMetrics.incomeDelta.display}
             </span>
           </div>
           <h3 className="sc-val text-success">+{fmt(comparisonMetrics.current.income)}</h3>
-          {comparisonMetrics.hasComparison && <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.income)}</p>}
+          {comparisonMetrics.hasComparison && (
+            <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.income)}</p>
+          )}
         </motion.div>
 
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Period Outflow</span>
-            <span className={`sc-delta ${comparisonMetrics.expenseDelta !== 'N/A' && comparisonMetrics.expenseDelta.startsWith('-') ? 'text-success' : 'text-danger'}`}>
-              {comparisonMetrics.expenseDelta !== 'N/A' ? (comparisonMetrics.expenseDelta.startsWith('-') ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />) : null}
-              {comparisonMetrics.expenseDelta}
+            <span className={`sc-delta ${comparisonMetrics.expenseDelta.direction === 'down' ? 'text-success' : 'text-danger'}`}>
+              {comparisonMetrics.expenseDelta.valid ? (
+                comparisonMetrics.expenseDelta.direction === 'up' ? <ArrowUpRight size={14} /> :
+                comparisonMetrics.expenseDelta.direction === 'down' ? <ArrowDownRight size={14} /> : null
+              ) : null}
+              {comparisonMetrics.expenseDelta.display}
             </span>
           </div>
           <h3 className="sc-val text-danger">-{fmt(comparisonMetrics.current.expense)}</h3>
-          {comparisonMetrics.hasComparison && <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.expense)}</p>}
+          {comparisonMetrics.hasComparison && (
+            <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.expense)}</p>
+          )}
         </motion.div>
 
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Net Position</span>
-            <span className={`sc-delta ${comparisonMetrics.netDelta !== 'N/A' && comparisonMetrics.netDelta.startsWith('+') ? 'text-success' : 'text-danger'}`}>
-              {comparisonMetrics.netDelta !== 'N/A' ? (comparisonMetrics.netDelta.startsWith('+') ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />) : null}
-              {comparisonMetrics.netDelta}
+            <span className={`sc-delta ${comparisonMetrics.netDelta.direction === 'down' ? 'text-danger' : 'text-success'}`}>
+              {comparisonMetrics.netDelta.valid ? (
+                comparisonMetrics.netDelta.direction === 'up' ? <ArrowUpRight size={14} /> :
+                comparisonMetrics.netDelta.direction === 'down' ? <ArrowDownRight size={14} /> : null
+              ) : null}
+              {comparisonMetrics.netDelta.display}
             </span>
           </div>
           <h3 className={`sc-val ${comparisonMetrics.current.net >= 0 ? 'text-success' : 'text-danger'}`}>
             {comparisonMetrics.current.net >= 0 ? '+' : ''}{fmt(comparisonMetrics.current.net)}
           </h3>
-          {comparisonMetrics.hasComparison && <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.net)}</p>}
+          {comparisonMetrics.hasComparison && (
+            <p className="sc-prev">Prev: {fmt(comparisonMetrics.previous.net)}</p>
+          )}
         </motion.div>
 
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Savings Rate</span>
-            <span className={`sc-delta ${comparisonMetrics.savingsRate >= 15 ? 'text-success' : 'text-warning'}`}>
-              {comparisonMetrics.savingsRate >= 15 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+            <span className={`sc-delta ${
+              comparisonMetrics.savingsRate == null
+                ? ''
+                : comparisonMetrics.savingsRate >= 15 ? 'text-success' : 'text-warning'
+            }`}>
+              {comparisonMetrics.savingsRate == null
+                ? null
+                : comparisonMetrics.savingsRate >= 15
+                  ? <TrendingUp size={14} />
+                  : <TrendingDown size={14} />}
             </span>
           </div>
-          <h3 className="sc-val">{comparisonMetrics.savingsRate.toFixed(1)}%</h3>
-          <p className="sc-prev">of income saved</p>
+          <h3 className="sc-val">
+            {comparisonMetrics.savingsRate != null ? `${comparisonMetrics.savingsRate.toFixed(1)}%` : '—'}
+          </h3>
+          <p className="sc-prev">
+            {comparisonMetrics.savingsRate != null ? 'of income saved' : 'no income in period'}
+          </p>
         </motion.div>
       </div>
 
       {/* AI Insights */}
       <div className="analytics-ai-strip">
         {generatedInsights.map((ins, i) => (
-          <div key={i} className={`ai-insight-card glass ${ins.type}`}>
-            <div className="aic-icon">
-              <Sparkles size={16} />
-            </div>
+          <div key={`${ins.type}-${i}`} className={`ai-insight-card glass ${ins.type}`}>
+            <div className="aic-icon"><Sparkles size={16} /></div>
             <div className="aic-body">
               <strong>{ins.title}</strong>
               <p>{ins.message}</p>
@@ -673,20 +1191,26 @@ export default function Analytics() {
 
       {/* Anomalies */}
       {activeAnomalies.length > 0 && (
-        <motion.div className="analytics-anomaly-box glass" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+        <motion.div
+          className="analytics-anomaly-box glass"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
           <div className="aab-header">
             <div className="aab-title">
               <ShieldAlert size={18} className="text-warning" />
               <h4>Unusual Spending Detected ({activeAnomalies.length})</h4>
             </div>
-            <span className="aab-sub">Transactions {'>'}2 standard deviations above category average</span>
+            <span className="aab-sub">
+              Transactions &gt;{ANOMALY_SIGMA}σ above category average (last {ANOMALY_WINDOW_DAYS} days)
+            </span>
           </div>
           <div className="aab-list">
-            {activeAnomalies.slice(0, 5).map(a => (
+            {activeAnomalies.slice(0, 5).map((a) => (
               <div key={a.id} className="aab-row">
                 <div className="aab-info">
-                  <span className="aab-cat">{a.tx.category}</span>
-                  <span className="aab-date">{new Date(a.tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                  <span className="aab-cat">{a.category}</span>
+                  <span className="aab-date">{formatShortDate(a.tx.date, locale)}</span>
                   {a.tx.note && <span className="aab-note">· {a.tx.note}</span>}
                 </div>
                 <div className="aab-right">
@@ -705,8 +1229,23 @@ export default function Analytics() {
         </motion.div>
       )}
 
+      {/* Reviewed Anomalies reset */}
+      {reviewedAnomalies.size > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+          <button
+            className="btn-secondary"
+            onClick={handleResetReviewedAnomalies}
+            title="Bring back all dismissed anomalies"
+            style={{ fontSize: '0.78rem' }}
+          >
+            <RotateCcw size={13} /> Restore {reviewedAnomalies.size} dismissed
+          </button>
+        </div>
+      )}
+
       {/* Charts Section */}
       <div ref={chartSectionRef} className="analytics-charts">
+        {/* Monthly Trajectory */}
         <motion.div className="chart-card glass chart-card-large" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <h3>Monthly Financial Trajectory</h3>
@@ -718,18 +1257,18 @@ export default function Analytics() {
           {monthlyData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               {chartType === 'bar' ? (
-                <BarChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }} onClick={(data) => handleChartClick(data, 'bar')}>
+                <BarChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                   <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
                   <Legend />
-                  <Bar dataKey="income" fill={isDark ? '#34d399' : '#10b981'} radius={[6, 6, 0, 0]} name="Inflow" />
-                  <Bar dataKey="expense" fill={isDark ? '#f87171' : '#ef4444'} radius={[6, 6, 0, 0]} name="Outflow" />
-                  <Bar dataKey="savings" fill={isDark ? '#6ee7b7' : '#059669'} radius={[6, 6, 0, 0]} name="Net Savings" />
+                  <Bar dataKey="income" fill={isDark ? '#34d399' : '#10b981'} radius={[6, 6, 0, 0]} name="Inflow" onClick={handleBarClick} cursor="pointer" />
+                  <Bar dataKey="expense" fill={isDark ? '#f87171' : '#ef4444'} radius={[6, 6, 0, 0]} name="Outflow" onClick={handleBarClick} cursor="pointer" />
+                  <Bar dataKey="savings" fill={isDark ? '#6ee7b7' : '#059669'} radius={[6, 6, 0, 0]} name="Net Savings" onClick={handleBarClick} cursor="pointer" />
                 </BarChart>
               ) : (
-                <LineChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }} onClick={(data) => handleChartClick(data, 'line')}>
+                <LineChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                   <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
@@ -746,6 +1285,7 @@ export default function Analytics() {
           )}
         </motion.div>
 
+        {/* Category Evolution */}
         <motion.div className="chart-card glass chart-card-large" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <div>
@@ -755,14 +1295,14 @@ export default function Analytics() {
             <button
               className="btn-secondary"
               style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-              onClick={() => setShowAllEvolutionCategories(prev => !prev)}
+              onClick={() => setShowAllEvolutionCategories((p) => !p)}
             >
               {showAllEvolutionCategories ? 'Show Top 5' : 'Show All (Top 8)'}
             </button>
           </div>
-          {categoryEvolution.data.length > 0 ? (
+          {categoryEvolution.data.length > 0 && categoryEvolution.categories.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={categoryEvolution.data.map(d => ({ ...d, displayName: d.displayName }))} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+              <LineChart data={categoryEvolution.data} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                 <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                 <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
@@ -776,6 +1316,7 @@ export default function Analytics() {
                     stroke={categoryColors[idx % categoryColors.length]}
                     strokeWidth={2}
                     dot={{ r: 3 }}
+                    connectNulls
                   />
                 ))}
               </LineChart>
@@ -785,6 +1326,7 @@ export default function Analytics() {
           )}
         </motion.div>
 
+        {/* Day of Week */}
         <motion.div className="chart-card glass" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <h3>Day of Week Outflow</h3>
@@ -801,6 +1343,7 @@ export default function Analytics() {
           </ResponsiveContainer>
         </motion.div>
 
+        {/* Expense Allocation */}
         <motion.div className="chart-card glass" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <h3>Expense Allocation</h3>
@@ -818,10 +1361,14 @@ export default function Analytics() {
                   paddingAngle={3}
                   dataKey="value"
                   nameKey="name"
-                  onClick={(data) => handleChartClick(data, 'pie')}
+                  onClick={handlePieClick}
+                  cursor="pointer"
                 >
                   {expenseCategories.map((entry, index) => (
-                    <Cell key={`cell-${entry.name.replace(/\s+/g, '-')}-${index}`} fill={pieColors[index % pieColors.length]} />
+                    <Cell
+                      key={`cell-${entry.name.replace(/\s+/g, '-')}-${index}`}
+                      fill={pieColors[index % pieColors.length]}
+                    />
                   ))}
                 </Pie>
                 <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
@@ -837,11 +1384,19 @@ export default function Analytics() {
       {/* Drill‑Down Modal */}
       <DrillDownModal
         isOpen={drillData.isOpen}
-        onClose={() => setDrillData({ isOpen: false, title: '', transactions: [] })}
+        onClose={closeDrill}
         title={drillData.title}
         transactions={drillData.transactions}
         fmt={fmt}
+        locale={locale}
       />
+
+      {/* Local spin keyframe for the export button */}
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; }
+      `}</style>
     </div>
   );
 }
+

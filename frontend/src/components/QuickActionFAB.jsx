@@ -1,17 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, ArrowLeftRight, Target, CreditCard, X, Sparkles } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { AppContext } from '../contexts/AppContext';
 
 export default function QuickActionFAB({ onAddTransaction }) {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const context = useContext(AppContext);
+  const t = context?.t;
 
   const actions = [
     {
       id: 'add-tx',
-      label: 'Add Transaction',
+      label: t?.('add_transaction') || 'Add Transaction',
       icon: ArrowLeftRight,
       color: '#059669',
       onClick: () => {
@@ -21,7 +24,7 @@ export default function QuickActionFAB({ onAddTransaction }) {
     },
     {
       id: 'add-goal',
-      label: 'New Savings Goal',
+      label: t?.('new_goal') || t?.('create_goal') || 'New Savings Goal',
       icon: Target,
       color: '#0ea5e9',
       onClick: () => {
@@ -31,7 +34,7 @@ export default function QuickActionFAB({ onAddTransaction }) {
     },
     {
       id: 'add-sub',
-      label: 'New Subscription',
+      label: t?.('add_subscription') || t?.('add_subscription_btn') || 'New Subscription',
       icon: CreditCard,
       color: '#8b5cf6',
       onClick: () => {
@@ -94,7 +97,7 @@ export default function QuickActionFAB({ onAddTransaction }) {
         onClick={() => setIsOpen(prev => !prev)}
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.92 }}
-        aria-label="Quick Actions Menu"
+        aria-label={t?.('quick_actions') || 'Quick Actions Menu'}
         aria-expanded={isOpen}
       >
         <motion.div animate={{ rotate: isOpen ? 135 : 0 }} transition={{ duration: 0.2 }}>
