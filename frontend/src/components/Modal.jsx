@@ -1,25 +1,57 @@
-import React, { useEffect, useId } from 'react';
+import React, { useEffect, useId, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { AppContext } from '../contexts/AppContext';
 
-const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoading, danger, confirmDisabled }) => {
+const Modal = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  confirmText,
+  onConfirm,
+  isLoading,
+  danger,
+  confirmDisabled,
+  cancelText,
+  processingText,
+}) => {
   const modalId = useId();
+  const context = useContext(AppContext);
+  const t = context?.t;
+  const resolvedCancelText = cancelText || t?.('cancel') || 'Cancel';
+  const resolvedProcessingText = processingText || t?.('processing') || 'Processing...';
 
   useEffect(() => {
     if (!isOpen) return;
 
     const modal = document.getElementById(modalId);
-    if (!modal) return;
+    if (modal) {
+      const initialFocusable = modal.querySelector(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      initialFocusable?.focus();
+    }
 
-    const focusableElements = modal.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    const firstFocusable = focusableElements[0];
-    const lastFocusable = focusableElements[focusableElements.length - 1];
-
-    const handleTab = (e) => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !isLoading) {
+        onClose();
+        return;
+      }
       if (e.key !== 'Tab') return;
+
+      const currentModal = document.getElementById(modalId);
+      if (!currentModal) return;
+
+      const focusableElements = currentModal.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusableElements.length === 0) return;
+
+      const firstFocusable = focusableElements[0];
+      const lastFocusable = focusableElements[focusableElements.length - 1];
+
       if (e.shiftKey) {
         if (document.activeElement === firstFocusable) {
           e.preventDefault();
@@ -33,23 +65,20 @@ const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoa
       }
     };
 
-    document.addEventListener('keydown', handleTab);
-    firstFocusable?.focus();
-
-    return () => document.removeEventListener('keydown', handleTab);
-  }, [isOpen, modalId]);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, modalId, isLoading, onClose]);
 
   return createPortal(
     <AnimatePresence>
       {isOpen && (
         <motion.div
           className="modal-overlay"
-          style={{ zIndex: 'var(--z-modal)' }}
+          style={{ zIndex: 'var(--z-modal, 999999)' }}
           role="dialog"
           aria-modal="true"
           aria-labelledby={`${modalId}-title`}
           onClick={() => !isLoading && onClose()}
-          onKeyDown={(e) => e.key === 'Escape' && !isLoading && onClose()}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -86,7 +115,7 @@ const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoa
                   onClick={onClose}
                   disabled={isLoading}
                 >
-                  Cancel
+                  {resolvedCancelText}
                 </button>
                 <button
                   type="button"
@@ -95,7 +124,7 @@ const Modal = ({ isOpen, onClose, title, children, confirmText, onConfirm, isLoa
                   disabled={isLoading || confirmDisabled}
                   style={danger ? { background: 'var(--danger)' } : {}}
                 >
-                  {isLoading ? 'Processing...' : confirmText}
+                  {isLoading ? resolvedProcessingText : confirmText}
                 </button>
               </div>
             )}

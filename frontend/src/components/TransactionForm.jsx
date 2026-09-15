@@ -534,7 +534,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 
             <div className="transaction-form-grid">
               <div className="form-field">
-                <label>Transaction Number</label>
+                <label>{t?.('transaction_number') || 'Transaction Number'}</label>
                 <input
                   value={transactionNumber}
                   onChange={e => setTransactionNumber(e.target.value)}
@@ -633,14 +633,14 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 )}
       <Modal
         isOpen={showUnsavedModal}
-        title="Discard Changes?"
+        title={t?.('discard_changes') || 'Discard Changes?'}
         onClose={() => setShowUnsavedModal(false)}
         onConfirm={onClose}
-        confirmText="Discard"
+        confirmText={t?.('discard') || 'Discard'}
         danger={true}
       >
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          You have unsaved changes. Are you sure you want to close without saving?
+          {t?.('unsaved_changes_warning') || 'You have unsaved changes. Are you sure you want to close without saving?'}
         </p>
       </Modal>
     </>

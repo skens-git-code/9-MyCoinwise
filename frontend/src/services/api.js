@@ -224,18 +224,52 @@ export const api = {
   // Export
   exportToExcel: async (userId, options = {}) => {
     const res = await axios.get(`${API_URL}/export/${userId}`, { responseType: 'blob', ...options });
-    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const blob = new Blob([res.data]);
+    const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.setAttribute('download', `mycoinwise_export_${userId}.xlsx`);
     document.body.appendChild(link);
     link.click();
     link.remove();
+    window.URL.revokeObjectURL(url);
   },
 
   // AI Chat (the API key remains server-side)
   chatWithAI: async (message, history) => {
     const res = await axios.post(`${API_URL}/ai/chat`, { message, history });
+    return res.data;
+  },
+
+  // Wealth
+  getWealthItems: async () => {
+    const res = await axios.get(`${API_URL}/wealth/items`);
+    return res.data;
+  },
+  createWealthItem: async (data) => {
+    const res = await axios.post(`${API_URL}/wealth/items`, data);
+    return res.data;
+  },
+  updateWealthItem: async (id, data) => {
+    const res = await axios.put(`${API_URL}/wealth/items/${id}`, data);
+    return res.data;
+  },
+  deleteWealthItem: async (id) => {
+    const res = await axios.delete(`${API_URL}/wealth/items/${id}`);
+    return res.data;
+  },
+  getWealthHistory: async (params) => {
+    const res = await axios.get(`${API_URL}/wealth/history`, { params });
+    return res.data;
+  },
+  getWealthAiInsights: async (payload) => {
+    const res = await axios.post(`${API_URL}/wealth/ai-insights`, payload);
+    return res.data;
+  },
+
+  // Cashflow
+  getCashflowAiInsights: async (payload, config = {}) => {
+    const res = await axios.post(`${API_URL}/cashflow/ai-insights`, payload, config);
     return res.data;
   },
 

@@ -117,18 +117,24 @@ const getFaviconMimeType = (source) => {
   return '';
 };
 
-export function formatCurrency(amount, currency = 'USD') {
+const LOCALE_MAP = {
+  en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
+};
+
+export function formatCurrency(amount, currency = 'USD', localeOrLang = 'en-US') {
   const info = CURRENCIES[currency] || CURRENCIES.USD;
   const parsedAmount = Number(amount);
   const val = Number.isFinite(parsedAmount) ? parsedAmount : 0;
   const isNeg = val < 0;
-  const numStr = Math.abs(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const resolvedLocale = LOCALE_MAP[localeOrLang] || localeOrLang || 'en-US';
+  const numStr = Math.abs(val).toLocaleString(resolvedLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `${isNeg ? '-' : ''}${info.symbol}${numStr}`;
 }
 
 export default function App() {
   const [theme, setTheme] = useState(() => normalizeTheme(localStorage.getItem('mcw-theme')));
   const [lang, setLang] = useState(() => localStorage.getItem('mcw-lang') || 'en');
+  const t = useMemo(() => getT(lang), [lang]);
   const [user, setUser] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -377,14 +383,12 @@ export default function App() {
     const result = await api.addTransaction({ ...tx, user_id: user?.id || user?._id });
     if (result.transaction) setTransactions(prev => [result.transaction, ...prev]);
     applyBalance(result.balance);
-    await fetchData();
     return result;
   };
   const deleteTransaction = async (id) => {
     const result = await api.deleteTransaction(id);
     setTransactions(prev => prev.filter(tx => tx.id !== id && tx._id !== id));
     applyBalance(result.balance);
-    await fetchData();
     return result;
   };
   const editTransaction = async (id, data) => {
@@ -393,7 +397,6 @@ export default function App() {
       setTransactions(prev => prev.map(tx => (tx.id === id || tx._id === id) ? result.transaction : tx));
     }
     applyBalance(result.balance);
-    await fetchData();
     return result;
   };
   const resetAccount = async () => { await api.resetAccount(user?.id || user?._id); await fetchData(); };
@@ -423,11 +426,10 @@ export default function App() {
 
   const currency = user?.currency || 'USD';
   const currencyInfo = CURRENCIES[currency] || CURRENCIES.USD;
-  const fmt = (amount) => formatCurrency(amount, currency);
+  const fmt = (amount) => formatCurrency(amount, currency, lang);
 
   const alerts = useMemo(() => generateAlerts(transactions, user, goals), [transactions, user, goals]);
-  const insights = useMemo(() => getSpendingInsights(transactions, fmt), [transactions, currency]);
-  const t = useMemo(() => getT(lang), [lang]);
+  const insights = useMemo(() => getSpendingInsights(transactions, fmt), [transactions, currency, lang]);
 
   // While the initial token validation is in flight, show a spinner so neither
   // the login page nor the protected app content flashes before auth is known.

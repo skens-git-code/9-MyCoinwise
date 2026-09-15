@@ -3,7 +3,7 @@
 // Generates a styled PDF report from transaction data
 // =============================================
 
-export async function exportToPDF(user, transactions, currencyInfo) {
+export async function exportToPDF(user, transactions = [], currencyInfo, localeOpt) {
   // Dynamically import jsPDF + autoTable
   const { default: jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
@@ -11,6 +11,7 @@ export async function exportToPDF(user, transactions, currencyInfo) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const symbol = currencyInfo?.symbol || '$';
   const currency = user?.currency || 'USD';
+  const activeLocale = localeOpt || user?.locale || (typeof navigator !== 'undefined' ? navigator.language : 'en-US') || 'en-US';
 
   // ── Header ──────────────────────────────────────────────────────────────────
   doc.setFillColor(5, 150, 105);
@@ -27,13 +28,19 @@ export async function exportToPDF(user, transactions, currencyInfo) {
 
   // Date
   doc.setFontSize(9);
-  doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, 140, 28);
+  doc.text(`Generated: ${new Date().toLocaleString(activeLocale)}`, 140, 28);
   doc.text(`Currency: ${currency}`, 140, 35);
 
   // ── Summary Box ─────────────────────────────────────────────────────────────
-  const income = transactions.filter(t => t.type === 'income').reduce((a, c) => a + Number(c.amount), 0);
-  const expense = transactions.filter(t => t.type === 'expense').reduce((a, c) => a + Number(c.amount), 0);
-  const balance = Number(user?.balance || 0);
+  const income = transactions.filter(t => t.type === 'income').reduce((a, c) => {
+    const val = Number(c.amount);
+    return a + (Number.isFinite(val) ? val : 0);
+  }, 0);
+  const expense = transactions.filter(t => t.type === 'expense').reduce((a, c) => {
+    const val = Number(c.amount);
+    return a + (Number.isFinite(val) ? val : 0);
+  }, 0);
+  const balance = Number.isFinite(Number(user?.balance)) ? Number(user.balance) : 0;
   const savingsRate = income > 0 ? ((income - expense) / income * 100).toFixed(1) : 0;
 
   const summaryY = 52;
@@ -63,13 +70,21 @@ export async function exportToPDF(user, transactions, currencyInfo) {
   });
 
   // ── Table ────────────────────────────────────────────────────────────────────
-  const tableData = transactions.map(t => [
-    new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
-    t.type === 'income' ? 'Income' : 'Expense',
-    t.category,
-    t.note || '—',
-    (t.type === 'income' ? '+' : '-') + symbol + parseFloat(t.amount).toFixed(2),
-  ]);
+  const tableData = transactions.map(t => {
+    const parsedDate = t.date ? new Date(t.date) : new Date();
+    const formattedDate = !isNaN(parsedDate.getTime())
+      ? parsedDate.toLocaleDateString(activeLocale, { day: 'numeric', month: 'short', year: 'numeric' })
+      : (t.date || '—');
+    const amtNum = Number(t.amount);
+    const safeAmount = Number.isFinite(amtNum) ? amtNum.toFixed(2) : '0.00';
+    return [
+      formattedDate,
+      t.type === 'income' ? 'Income' : 'Expense',
+      t.category || '—',
+      t.note || '—',
+      (t.type === 'income' ? '+' : '-') + symbol + safeAmount,
+    ];
+  });
 
   autoTable(doc, {
     startY: summaryY + 28,
@@ -114,5 +129,7 @@ export async function exportToPDF(user, transactions, currencyInfo) {
     );
   }
 
-  doc.save(`MyCoinwise_${user?.username || 'Report'}_${new Date().toISOString().split('T')[0]}.pdf`);
+  const now = new Date();
+  const dateStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  doc.save(`MyCoinwise_${user?.username || 'Report'}_${dateStamp}.pdf`);
 }

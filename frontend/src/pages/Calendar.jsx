@@ -1,45 +1,72 @@
-import React, { useState, useContext, useMemo, useCallback } from 'react';
+import React, {
+  useState, useContext, useMemo, useCallback, useEffect, useRef,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon,
   Activity, ArrowUpRight, ArrowDownRight, Wallet, Clock,
-  CalendarDays, Zap, CheckCircle2, TrendingUp, TrendingDown,
-  Edit3, Trash2, Filter, Download, X
+  CalendarDays, AlertTriangle, Edit3, Trash2, Filter, Download, X,
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
 import { useToast } from '../components/ToastProvider';
 
-// ---------- Utility Functions ----------
+/* ============================================================
+ * Constants
+ * ============================================================ */
+const LOCALE_MAP = {
+  en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
+};
+const resolveLocale = (lang) =>
+  LOCALE_MAP[lang] || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+
+/* ============================================================
+ * Date helpers (UTC-safe)
+ * ============================================================ */
+const pad2 = (n) => String(n).padStart(2, '0');
+
 const normalizeDateKey = (dateInput) => {
   if (!dateInput) return null;
-  let date;
   if (typeof dateInput === 'string') {
-    // If it's a full ISO string, take first 10 chars
-    if (dateInput.includes('T')) return dateInput.split('T')[0];
-    // If it's YYYY-MM-DD, return as is
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateInput)) return dateInput;
-    // Otherwise try parsing
-    date = new Date(dateInput);
-  } else if (dateInput instanceof Date) {
-    date = dateInput;
-  } else if (typeof dateInput === 'number') {
-    date = new Date(dateInput);
-  } else {
-    return null;
+    const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
   }
-  if (isNaN(date.getTime())) return null;
-  return date.toISOString().split('T')[0];
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
 
-const formatMonthYear = (year, month, locale = 'en-US') => {
-  const date = new Date(year, month, 1);
-  return date.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+const parseKeyLocal = (key) => {
+  if (!key) return null;
+  const m = String(key).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isNaN(d.getTime()) ? null : d;
 };
 
-const getWeekDays = (locale = 'en-US') => {
-  const base = new Date(2021, 0, 3); // Sunday
+const formatMonthYear = (year, month, locale) =>
+  new Date(year, month, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+
+const formatMonthLong = (year, month, locale) =>
+  new Date(year, month, 1).toLocaleDateString(locale, { month: 'long' });
+
+const formatFullDate = (key, locale) => {
+  const d = parseKeyLocal(key);
+  if (!d) return '';
+  return d.toLocaleDateString(locale, {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+  });
+};
+
+const formatShortDay = (d, locale) =>
+  d.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+
+const formatDayWithYear = (d, locale) =>
+  d.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
+
+const getWeekDays = (locale) => {
+  const base = new Date(2021, 0, 3);
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(base);
     d.setDate(base.getDate() + i);
@@ -47,132 +74,258 @@ const getWeekDays = (locale = 'en-US') => {
   });
 };
 
-// ---------- Main Component ----------
+const escapeCsvField = (raw) => {
+  const str = raw == null ? '' : String(raw);
+  const needsPrefix = /^[=+\-@\t\r]/.test(str);
+  const escaped = str.replace(/"/g, '""');
+  const prefixed = needsPrefix ? `'${escaped}` : escaped;
+  const needsQuotes = needsPrefix || /[",\n\r\t]/.test(prefixed);
+  return needsQuotes ? `"${prefixed}"` : quoted(prefixed);
+};
+// Small helper to avoid duplicating the quote logic in the ternary above.
+const quoted = (s) => `"${s}"`;
+
+const toNumber = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** True only if the transaction is a live (non-deleted) record. */
+const isLiveTransaction = (tx) =>
+  tx && typeof tx === 'object' && tx.is_deleted !== true;
+
+/* ============================================================
+ * Focus trap for modals
+ * ============================================================ */
+function useFocusTrap(ref, isActive) {
+  useEffect(() => {
+    if (!isActive || !ref.current) return undefined;
+    const node = ref.current;
+    const previousActive = document.activeElement;
+
+    const getFocusable = () => {
+      const selector =
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      return Array.from(node.querySelectorAll(selector)).filter(
+        (el) => el.offsetParent !== null || el === document.activeElement
+      );
+    };
+
+    const focusables = getFocusable();
+    if (focusables.length > 0) focusables[0].focus();
+
+    const onKeyDown = (e) => {
+      if (e.key !== 'Tab') return;
+      const list = getFocusable();
+      if (list.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = list[0];
+      const last = list[list.length - 1];
+      const current = document.activeElement;
+
+      if (e.shiftKey) {
+        if (current === first || !node.contains(current)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (current === last || !node.contains(current)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (previousActive && previousActive.focus) {
+        try { previousActive.focus(); } catch { /* ignore */ }
+      }
+    };
+  }, [ref, isActive]);
+}
+
+/* ============================================================
+ * Component
+ * ============================================================ */
 export default function Calendar() {
-  const { transactions = [], addTransaction, updateTransaction, deleteTransaction, fmt: contextFmt, t, lang = 'en' } = useContext(AppContext);
+  const {
+    transactions = [],
+    addTransaction,
+    updateTransaction,
+    deleteTransaction,
+    fmt: contextFmt,
+    t,
+    lang = 'en',
+    loading,
+  } = useContext(AppContext);
   const { showToast } = useToast();
 
-  const localeMap = {
-    en: 'en-US',
-    hi: 'hi-IN',
-    mr: 'mr-IN',
-    bgc: 'hi-IN',
-    kn: 'kn-IN',
-  };
-  const locale = localeMap[lang] || navigator.language || 'en-US';
+  const locale = useMemo(() => resolveLocale(lang), [lang]);
+  const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
 
-  // Fallback formatter
   const fmt = useCallback(
     (value) => {
-      if (contextFmt) return contextFmt(value);
-      if (value === undefined || value === null) return '$0.00';
+      if (contextFmt) {
+        try {
+          const out = contextFmt(value);
+          if (out != null) return out;
+        } catch { /* fall through */ }
+      }
       const num = Number(value);
-      if (isNaN(num)) return '$0.00';
-      return new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD' }).format(num);
+      const safe = Number.isFinite(num) ? num : 0;
+      return new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD' }).format(safe);
     },
     [contextFmt, locale]
   );
 
-  // ---------- State ----------
+  /* ---------------- State ---------------- */
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState('monthly'); // 'monthly', 'weekly', 'heatmap'
+  const [viewMode, setViewMode] = useState('monthly');
   const [selectedDate, setSelectedDate] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
   const [newTxDate, setNewTxDate] = useState('');
-  const [heatmapMetric, setHeatmapMetric] = useState('expense'); // 'expense', 'income', 'net'
-  const [dayFilterType, setDayFilterType] = useState('all'); // 'all', 'income', 'expense'
+  const [heatmapMetric, setHeatmapMetric] = useState('expense');
+  const [dayFilterType, setDayFilterType] = useState('all');
+  const [pendingDelete, setPendingDelete] = useState(null);
 
-  // ---------- Derived Data ----------
+  const dayModalRef = useRef(null);
+  const deleteModalRef = useRef(null);
+
+  /* ---------------- Derived calendar bounds ---------------- */
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDayOfMonth = new Date(year, month, 1).getDay();
 
-  // Transaction map by date (YYYY-MM-DD)
+  /* ---------------- Transaction index (soft-delete aware) ---------------- */
+  const liveTransactions = useMemo(() => {
+    const list = Array.isArray(transactions) ? transactions : [];
+    return list.filter(isLiveTransaction);
+  }, [transactions]);
+
   const txByDate = useMemo(() => {
-    const map = {};
-    transactions?.forEach(tx => {
+    const map = Object.create(null);
+    for (const tx of liveTransactions) {
       const key = normalizeDateKey(tx.date);
-      if (!key) return;
+      if (!key) continue;
       if (!map[key]) map[key] = { items: [], income: 0, expense: 0, net: 0 };
       map[key].items.push(tx);
-      const amt = Number(tx.amount) || 0;
+      const amt = toNumber(tx.amount);
       if (tx.type === 'income') map[key].income += amt;
       else if (tx.type === 'expense') map[key].expense += amt;
       map[key].net = map[key].income - map[key].expense;
-    });
+    }
     return map;
-  }, [transactions]);
+  }, [liveTransactions]);
 
-  // Max value for heatmap scaling (based on selected metric)
-  const heatmapMax = useMemo(() => {
+  /* ---------------- Heatmap scaling ---------------- */
+  const heatmapStats = useMemo(() => {
     let max = 0;
-    Object.values(txByDate).forEach(day => {
-      const val = day[heatmapMetric] || 0;
+    let min = 0;
+    for (const key in txByDate) {
+      const val = toNumber(txByDate[key][heatmapMetric]);
       if (val > max) max = val;
-    });
-    return max || 1;
+      if (val < min) min = val;
+    }
+    const maxAbs = Math.max(Math.abs(max), Math.abs(min), 1);
+    return { max, min, maxAbs };
   }, [txByDate, heatmapMetric]);
 
-  // Transactions for current month
+  /* ---------------- Current-month transactions ---------------- */
   const currentMonthTransactions = useMemo(() => {
-    return transactions?.filter(t => {
+    return liveTransactions.filter((t) => {
       const key = normalizeDateKey(t.date);
       if (!key) return false;
       const [y, m] = key.split('-').map(Number);
       return y === year && m === month + 1;
-    }) || [];
-  }, [transactions, year, month]);
+    });
+  }, [liveTransactions, year, month]);
 
-  const monthlyIncome = currentMonthTransactions.filter(t => t.type === 'income').reduce((a, c) => a + Number(c.amount), 0);
-  const monthlyExpense = currentMonthTransactions.filter(t => t.type === 'expense').reduce((a, c) => a + Number(c.amount), 0);
+  const monthlyIncome = useMemo(
+    () => currentMonthTransactions
+      .filter((t) => t.type === 'income')
+      .reduce((a, c) => a + toNumber(c.amount), 0),
+    [currentMonthTransactions]
+  );
+  const monthlyExpense = useMemo(
+    () => currentMonthTransactions
+      .filter((t) => t.type === 'expense')
+      .reduce((a, c) => a + toNumber(c.amount), 0),
+    [currentMonthTransactions]
+  );
   const monthlyNet = monthlyIncome - monthlyExpense;
 
-  // Selected day data
+  /* ---------------- Selected day ---------------- */
   const selectedDayData = useMemo(() => {
     if (!selectedDate) return null;
     return txByDate[selectedDate] || { items: [], income: 0, expense: 0, net: 0 };
   }, [selectedDate, txByDate]);
 
-  // Category breakdown for selected day
   const dayCategoryTotals = useMemo(() => {
-    if (!selectedDayData) return {};
-    const totals = {};
-    selectedDayData.items.forEach(tx => {
+    if (!selectedDayData) return [];
+    const acc = new Map();
+    for (const tx of selectedDayData.items) {
       const cat = tx.category || 'Other';
-      totals[cat] = (totals[cat] || 0) + Number(tx.amount);
-    });
-    return totals;
+      if (!acc.has(cat)) acc.set(cat, { category: cat, income: 0, expense: 0 });
+      const bucket = acc.get(cat);
+      const amt = toNumber(tx.amount);
+      if (tx.type === 'income') bucket.income += amt;
+      else if (tx.type === 'expense') bucket.expense += amt;
+    }
+    return Array.from(acc.values()).sort((a, b) => (b.income + b.expense) - (a.income + a.expense));
   }, [selectedDayData]);
 
-  // Filtered items for day modal
   const filteredDayItems = useMemo(() => {
     if (!selectedDayData) return [];
     if (dayFilterType === 'all') return selectedDayData.items;
-    return selectedDayData.items.filter(tx => tx.type === dayFilterType);
+    return selectedDayData.items.filter((tx) => tx.type === dayFilterType);
   }, [selectedDayData, dayFilterType]);
 
-  // ---------- Handlers ----------
-  const prevMonth = useCallback(() => {
-    setCurrentDate(new Date(year, month - 1, 1));
-  }, [year, month]);
+  /* ============================================================
+   * Navigation
+   * ============================================================ */
 
-  const nextMonth = useCallback(() => {
-    setCurrentDate(new Date(year, month + 1, 1));
-  }, [year, month]);
+  const prevPeriod = useCallback(() => {
+    if (viewMode === 'weekly') {
+      setCurrentDate((d) => {
+        const next = new Date(d);
+        next.setDate(next.getDate() - 7);
+        return next;
+      });
+    } else {
+      setCurrentDate(new Date(year, month - 1, 1));
+    }
+  }, [viewMode, year, month]);
 
-  const jumpToToday = useCallback(() => {
-    setCurrentDate(new Date());
-  }, []);
+  const nextPeriod = useCallback(() => {
+    if (viewMode === 'weekly') {
+      setCurrentDate((d) => {
+        const next = new Date(d);
+        next.setDate(next.getDate() + 7);
+        return next;
+      });
+    } else {
+      setCurrentDate(new Date(year, month + 1, 1));
+    }
+  }, [viewMode, year, month]);
+
+  const jumpToToday = useCallback(() => setCurrentDate(new Date()), []);
 
   const goToMonthYear = useCallback((targetYear, targetMonth) => {
     setCurrentDate(new Date(targetYear, targetMonth, 1));
   }, []);
 
+  /* ============================================================
+   * Modal handlers
+   * ============================================================ */
+
   const openDayDetails = useCallback((dateKey) => {
     setSelectedDate(dateKey);
+    setDayFilterType('all');
   }, []);
 
   const closeDayDetails = useCallback(() => {
@@ -181,148 +334,239 @@ export default function Calendar() {
   }, []);
 
   const openAddForDate = useCallback((dateKey, e) => {
-    if (e) e.stopPropagation();
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
     setNewTxDate(dateKey);
     setIsAdding(true);
     setSelectedDate(null);
   }, []);
 
   const openEditForTransaction = useCallback((tx, e) => {
-    e.stopPropagation();
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
     setEditingTx(tx);
     setIsEditing(true);
     setSelectedDate(null);
   }, []);
 
+  const closeAdd = useCallback(() => {
+    setIsAdding(false);
+    setNewTxDate('');
+  }, []);
+
+  const closeEdit = useCallback(() => {
+    setIsEditing(false);
+    setEditingTx(null);
+  }, []);
+
+  /* Memoize the initial data objects so TransactionForm doesn't re-render unnecessarily. */
+  const addInitialData = useMemo(() => ({ date: newTxDate }), [newTxDate]);
+
+  /* ============================================================
+   * CRUD
+   * ============================================================ */
+
   const handleAddSubmit = useCallback(async (txData) => {
     try {
       await addTransaction(txData);
-      showToast('success', 'Transaction added successfully.');
-      setIsAdding(false);
+      showToast('success', tr('tx_added', 'Transaction added successfully.'));
+      closeAdd();
     } catch (err) {
-      showToast('error', err.message || 'Failed to add transaction.');
+      showToast('error', err?.message || tr('tx_add_failed', 'Failed to add transaction.'));
     }
-  }, [addTransaction, showToast]);
+  }, [addTransaction, showToast, closeAdd, tr]);
 
   const handleEditSubmit = useCallback(async (txData) => {
-    try {
-      await updateTransaction(editingTx.id || editingTx._id, txData);
-      showToast('success', 'Transaction updated.');
-      setIsEditing(false);
-      setEditingTx(null);
-    } catch (err) {
-      showToast('error', err.message || 'Failed to update transaction.');
+    if (!editingTx) return;
+    const id = editingTx.id || editingTx._id;
+    if (!id) {
+      showToast('error', tr('tx_invalid', 'Invalid transaction.'));
+      closeEdit();
+      return;
     }
-  }, [updateTransaction, editingTx, showToast]);
+    try {
+      await updateTransaction(id, txData);
+      showToast('success', tr('tx_updated', 'Transaction updated.'));
+      closeEdit();
+    } catch (err) {
+      showToast('error', err?.message || tr('tx_update_failed', 'Failed to update transaction.'));
+    }
+  }, [updateTransaction, editingTx, showToast, closeEdit, tr]);
 
-  const handleDeleteTransaction = useCallback(async (tx) => {
-    if (!window.confirm(`Delete this ${tx.type} of ${fmt(tx.amount)}?`)) return;
-    try {
-      await deleteTransaction(tx.id || tx._id);
-      showToast('success', 'Transaction deleted.');
-      // Refresh the day view
-      setSelectedDate(prev => prev); // trigger re-render
-    } catch (err) {
-      showToast('error', err.message || 'Failed to delete transaction.');
+  const requestDelete = useCallback((tx) => setPendingDelete(tx), []);
+  const cancelDelete = useCallback(() => setPendingDelete(null), []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    const id = pendingDelete.id || pendingDelete._id;
+    if (!id) {
+      showToast('error', tr('tx_invalid', 'Invalid transaction.'));
+      setPendingDelete(null);
+      return;
     }
-  }, [deleteTransaction, fmt, showToast]);
+    try {
+      await deleteTransaction(id);
+      showToast('success', tr('tx_deleted', 'Transaction deleted.'));
+      setPendingDelete(null);
+    } catch (err) {
+      showToast('error', err?.message || tr('tx_delete_failed', 'Failed to delete transaction.'));
+    }
+  }, [pendingDelete, deleteTransaction, showToast, tr]);
+
+  /* ============================================================
+   * CSV export
+   * ============================================================ */
 
   const exportMonthCSV = useCallback(() => {
     const headers = ['Date', 'Type', 'Category', 'Amount', 'Note'];
-    const rows = currentMonthTransactions.map(tx => [
+    const rows = currentMonthTransactions.map((tx) => [
       normalizeDateKey(tx.date),
       tx.type,
       tx.category || 'Other',
-      Number(tx.amount).toFixed(2),
-      tx.note || ''
+      toNumber(tx.amount).toFixed(2),
+      tx.note || '',
     ]);
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const csvContent = [
+      headers.map(escapeCsvField).join(','),
+      ...rows.map((r) => r.map(escapeCsvField).join(',')),
+    ].join('\n');
+
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `transactions_${year}-${String(month+1).padStart(2,'0')}.csv`;
+    link.download = `transactions_${year}-${pad2(month + 1)}.csv`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    showToast('success', 'CSV exported successfully.');
-  }, [currentMonthTransactions, year, month, showToast]);
+    showToast('success', tr('csv_exported', 'CSV exported successfully.'));
+  }, [currentMonthTransactions, year, month, showToast, tr]);
 
-  // ---------- Render Helpers ----------
+  /* ============================================================
+   * Escape closes whichever modal is on top
+   * ============================================================ */
+  useEffect(() => {
+    if (!selectedDate && !pendingDelete) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (pendingDelete) {
+        cancelDelete();
+      } else if (selectedDate) {
+        closeDayDetails();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selectedDate, pendingDelete, closeDayDetails, cancelDelete]);
+
+  /* ---------------- Focus traps ---------------- */
+  useFocusTrap(dayModalRef, Boolean(selectedDate));
+  useFocusTrap(deleteModalRef, Boolean(pendingDelete));
+
+  /* ============================================================
+   * Render helpers
+   * ============================================================ */
+
   const renderMonthYearPicker = () => {
     const years = Array.from({ length: 21 }, (_, i) => year - 10 + i);
     const months = Array.from({ length: 12 }, (_, i) => i);
+    const selectStyle = {
+      background: 'var(--bg-color)',
+      color: 'var(--text-main)',
+      border: '1px solid var(--border-color)',
+      borderRadius: 6,
+      padding: '0.25rem 0.5rem',
+    };
     return (
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
         <select
           value={year}
           onChange={(e) => goToMonthYear(Number(e.target.value), month)}
-          aria-label="Select year"
-          style={{ background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0.25rem 0.5rem' }}
+          aria-label={tr('select_year', 'Select year')}
+          style={selectStyle}
         >
-          {years.map(y => <option key={y} value={y}>{y}</option>)}
+          {years.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
         <select
           value={month}
           onChange={(e) => goToMonthYear(year, Number(e.target.value))}
-          aria-label="Select month"
-          style={{ background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0.25rem 0.5rem' }}
+          aria-label={tr('select_month', 'Select month')}
+          style={selectStyle}
         >
-          {months.map(m => (
-            <option key={m} value={m}>
-              {new Date(year, m, 1).toLocaleDateString(locale, { month: 'long' })}
-            </option>
+          {months.map((m) => (
+            <option key={m} value={m}>{formatMonthLong(year, m, locale)}</option>
           ))}
         </select>
       </div>
     );
   };
 
-  // Monthly grid
-  const renderMonthlyGrid = useCallback(() => {
+  /* ---------------- Monthly grid ---------------- */
+  const renderMonthlyGrid = () => {
     const weekDays = getWeekDays(locale);
     const todayStr = normalizeDateKey(new Date());
     const cells = [];
-    // Empty cells before first day
+
     for (let i = 0; i < firstDayOfMonth; i++) {
       cells.push(<div key={`empty-${i}`} className="cal-day empty" />);
     }
+
     for (let d = 1; d <= daysInMonth; d++) {
-      const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const key = `${year}-${pad2(month + 1)}-${pad2(d)}`;
       const dayData = txByDate[key];
       const isToday = key === todayStr;
-      const hasData = dayData && (dayData.income > 0 || dayData.expense > 0);
+      const hasData = Boolean(dayData && (dayData.income > 0 || dayData.expense > 0));
+      const netClass = hasData ? (dayData.net >= 0 ? 'net-positive' : 'net-negative') : '';
+
       cells.push(
         <div
           key={`day-${d}`}
-          className={`cal-day ${isToday ? 'today' : ''} ${hasData ? (dayData.net >= 0 ? 'net-positive' : 'net-negative') : ''}`}
+          className={`cal-day ${isToday ? 'today' : ''} ${netClass}`}
           onClick={() => openDayDetails(key)}
           role="button"
-          tabIndex="0"
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDayDetails(key); } }}
-          title={hasData ? `Income: ${fmt(dayData.income)}\nExpense: ${fmt(dayData.expense)}` : 'No transactions'}
-          aria-label={`${d} ${new Date(year, month, d).toLocaleDateString(locale, { month: 'long' })}, ${dayData ? 'has transactions' : 'no transactions'}`}
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              openDayDetails(key);
+            }
+          }}
+          title={hasData ? `+${fmt(dayData.income)} / -${fmt(dayData.expense)}` : ''}
+          aria-label={`${d} ${formatMonthLong(year, month, locale)}${hasData ? ', has transactions' : ', no transactions'}`}
         >
           <div className="cal-day-top-row">
             <span className="cal-date-num">{d}</span>
             <button
+              type="button"
               className="cal-day-quick-add"
               onClick={(e) => openAddForDate(key, e)}
-              title="Add transaction for this day"
-              aria-label="Add transaction"
+              title={tr('add_transaction', 'Add transaction for this day')}
+              aria-label={tr('add_transaction', 'Add transaction')}
             >
               <Plus size={12} />
             </button>
           </div>
           {dayData && (
             <div className="cal-day-summaries">
-              {dayData.income > 0 && <div className="cal-sum-badge income">+{fmt(dayData.income)}</div>}
-              {dayData.expense > 0 && <div className="cal-sum-badge expense">-{fmt(dayData.expense)}</div>}
+              {dayData.income > 0 && (
+                <div className="cal-sum-badge income">+{fmt(dayData.income)}</div>
+              )}
+              {dayData.expense > 0 && (
+                <div className="cal-sum-badge expense">-{fmt(dayData.expense)}</div>
+              )}
               {dayData.items.length > 0 && (
                 <div className="cal-dots-row">
                   {dayData.items.slice(0, 4).map((item, idx) => (
-                    <span key={idx} className={`cal-dot ${item.type}`} title={`${item.category}: ${fmt(item.amount)}`} />
+                    <span
+                      key={item.id || item._id || idx}
+                      className={`cal-dot ${item.type}`}
+                      title={`${item.category || ''}: ${fmt(item.amount)}`}
+                    />
                   ))}
-                  {dayData.items.length > 4 && <span className="cal-dot-more">+{dayData.items.length - 4}</span>}
+                  {dayData.items.length > 4 && (
+                    <span className="cal-dot-more" title={`${dayData.items.length - 4} more`}>
+                      +{dayData.items.length - 4}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -330,169 +574,279 @@ export default function Calendar() {
         </div>
       );
     }
+
     return (
       <>
-        {weekDays.map(day => <div key={day} className="cal-weekday">{day}</div>)}
+        {weekDays.map((day) => <div key={day} className="cal-weekday">{day}</div>)}
         {cells}
       </>
     );
-  }, [year, month, firstDayOfMonth, daysInMonth, txByDate, fmt, locale, openDayDetails, openAddForDate]);
+  };
 
-  // Weekly view
-  const renderWeeklyGrid = useCallback(() => {
-    const today = new Date(year, month, 1);
-    const dayOfWeek = today.getDay();
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - dayOfWeek);
+  /* ---------------- Weekly grid ---------------- */
+  const renderWeeklyGrid = () => {
+    const ref = new Date(currentDate);
+    ref.setHours(0, 0, 0, 0);
+    const dayOfWeek = ref.getDay();
+    const startOfWeek = new Date(ref);
+    startOfWeek.setDate(ref.getDate() - dayOfWeek);
+
     const weekDays = getWeekDays(locale);
     const todayStr = normalizeDateKey(new Date());
 
-    return (
-      <div className="cal-weekly-grid">
-        {Array.from({ length: 7 }, (_, i) => {
-          const dayDate = new Date(startOfWeek);
-          dayDate.setDate(startOfWeek.getDate() + i);
-          const key = normalizeDateKey(dayDate);
-          const dayData = txByDate[key] || { items: [], income: 0, expense: 0, net: 0 };
-          const isToday = key === todayStr;
-          return (
-            <div key={`week-${i}`} className={`cal-week-card glass ${isToday ? 'today' : ''}`}>
-              <div className="cwc-header">
-                <span className="cwc-day-name">{weekDays[i]}</span>
-                <span className="cwc-day-num">{dayDate.getDate()}</span>
-                <button
-                  className="cwc-add-btn"
-                  onClick={(e) => openAddForDate(key, e)}
-                  title="Add for this day"
-                  aria-label="Add transaction"
-                >
-                  <Plus size={13} />
-                </button>
-              </div>
-              <div className="cwc-totals">
-                <div className="cwc-total-row text-success">
-                  <span>{t?.('inflow') || 'Inflow'}</span>
-                  <strong>+{fmt(dayData.income)}</strong>
-                </div>
-                <div className="cwc-total-row text-danger">
-                  <span>{t?.('outflow') || 'Outflow'}</span>
-                  <strong>-{fmt(dayData.expense)}</strong>
-                </div>
-                <div className={`cwc-total-row net ${dayData.net >= 0 ? 'text-success' : 'text-danger'}`}>
-                  <span>{t?.('net') || 'Net'}</span>
-                  <strong>{fmt(dayData.net)}</strong>
-                </div>
-              </div>
-              <div className="cwc-items-list">
-                {dayData.items.length > 0 ? (
-                  dayData.items.map(tx => (
-                    <div key={tx.id || tx._id} className="cwc-item" onClick={() => openDayDetails(key)}>
-                      <span className="cwc-item-cat">{tx.category}</span>
-                      <span className={`cwc-item-amt ${tx.type}`}>{tx.type === 'income' ? '+' : '-'}{fmt(tx.amount)}</span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="cwc-empty">{t?.('no_entries') || 'No entries'}</p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }, [year, month, txByDate, fmt, locale, openAddForDate, openDayDetails, t]);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
 
-  // Heatmap
-  const renderHeatmap = useCallback(() => {
+    const spansYears = startOfWeek.getFullYear() !== endOfWeek.getFullYear();
+    const rangeLabel = spansYears
+      ? `${formatDayWithYear(startOfWeek, locale)} – ${formatDayWithYear(endOfWeek, locale)}`
+      : `${formatShortDay(startOfWeek, locale)} – ${formatShortDay(endOfWeek, locale)}, ${endOfWeek.getFullYear()}`;
+
+    return (
+      <>
+        <div
+          style={{
+            fontSize: '0.85rem',
+            color: 'var(--text-muted)',
+            marginBottom: '0.75rem',
+            textAlign: 'center',
+          }}
+        >
+          {rangeLabel}
+        </div>
+        <div className="cal-weekly-grid">
+          {Array.from({ length: 7 }, (_, i) => {
+            const dayDate = new Date(startOfWeek);
+            dayDate.setDate(startOfWeek.getDate() + i);
+            const key = normalizeDateKey(dayDate);
+            const dayData = txByDate[key] || { items: [], income: 0, expense: 0, net: 0 };
+            const isToday = key === todayStr;
+            return (
+              <div key={key} className={`cal-week-card glass ${isToday ? 'today' : ''}`}>
+                <div className="cwc-header">
+                  <span className="cwc-day-name">{weekDays[i]}</span>
+                  <span className="cwc-day-num">{dayDate.getDate()}</span>
+                  <button
+                    type="button"
+                    className="cwc-add-btn"
+                    onClick={(e) => openAddForDate(key, e)}
+                    title={tr('add_transaction', 'Add for this day')}
+                    aria-label={tr('add_transaction', 'Add transaction')}
+                  >
+                    <Plus size={13} />
+                  </button>
+                </div>
+                <div className="cwc-totals">
+                  <div className="cwc-total-row text-success">
+                    <span>{tr('inflow', 'Inflow')}</span>
+                    <strong>+{fmt(dayData.income)}</strong>
+                  </div>
+                  <div className="cwc-total-row text-danger">
+                    <span>{tr('outflow', 'Outflow')}</span>
+                    <strong>-{fmt(dayData.expense)}</strong>
+                  </div>
+                  <div className={`cwc-total-row net ${dayData.net >= 0 ? 'text-success' : 'text-danger'}`}>
+                    <span>{tr('net', 'Net')}</span>
+                    <strong>{fmt(dayData.net)}</strong>
+                  </div>
+                </div>
+                <div className="cwc-items-list">
+                  {dayData.items.length > 0 ? (
+                    dayData.items.map((tx, idx) => (
+                      <div
+                        key={tx.id || tx._id || idx}
+                        className="cwc-item"
+                        onClick={() => openDayDetails(key)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openDayDetails(key);
+                          }
+                        }}
+                      >
+                        <span className="cwc-item-cat">
+                          {tx.category || tr('uncategorized', 'Uncategorized')}
+                        </span>
+                        <span className={`cwc-item-amt ${tx.type}`}>
+                          {tx.type === 'income' ? '+' : '-'}{fmt(tx.amount)}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="cwc-empty">{tr('no_entries', 'No entries')}</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  };
+
+  /* ---------------- Heatmap ---------------- */
+  const renderHeatmap = () => {
     const todayStr = normalizeDateKey(new Date());
     const cells = [];
     for (let i = 0; i < firstDayOfMonth; i++) {
       cells.push(<div key={`empty-${i}`} className="cal-day empty" />);
     }
     for (let d = 1; d <= daysInMonth; d++) {
-      const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const key = `${year}-${pad2(month + 1)}-${pad2(d)}`;
       const dayData = txByDate[key] || { expense: 0, income: 0, net: 0 };
-      const value = dayData[heatmapMetric] || 0;
-      const level = heatmapMax === 0 ? 0 : Math.min(Math.ceil((value / heatmapMax) * 4), 4);
+      const raw = toNumber(dayData[heatmapMetric]);
+      const scaled = Math.abs(raw);
+      const level = heatmapStats.maxAbs === 0
+        ? 0
+        : Math.min(Math.ceil((scaled / heatmapStats.maxAbs) * 4), 4);
+      const isNegative = raw < 0;
       const isToday = key === todayStr;
+
       cells.push(
         <div
           key={`day-${d}`}
-          className={`cal-day heatmap-level-${level} ${isToday ? 'today' : ''}`}
+          className={`cal-day heatmap-level-${level} ${isToday ? 'today' : ''} ${isNegative ? 'heatmap-negative' : ''}`}
           onClick={() => openDayDetails(key)}
-          title={`${heatmapMetric}: ${fmt(value)}`}
+          title={`${heatmapMetric}: ${fmt(raw)}`}
           role="button"
-          tabIndex="0"
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDayDetails(key); } }}
-          aria-label={`${d} ${new Date(year, month, d).toLocaleDateString(locale, { month: 'long' })}, ${heatmapMetric}: ${fmt(value)}`}
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              openDayDetails(key);
+            }
+          }}
+          aria-label={`${d} ${formatMonthLong(year, month, locale)}, ${heatmapMetric}: ${fmt(raw)}`}
         >
           <span className="cal-date-num">{d}</span>
         </div>
       );
     }
     return cells;
-  }, [year, month, firstDayOfMonth, daysInMonth, txByDate, heatmapMetric, heatmapMax, fmt, locale, openDayDetails]);
+  };
 
-  // ---------- Render ----------
+  /* ============================================================
+   * Loading
+   * ============================================================ */
+  if (loading && liveTransactions.length === 0) {
+    return (
+      <div className="calendar-page-content">
+        <div className="masonry-header">
+          <div className="mh-titles">
+            <h2>{tr('calendar_hub', 'Calendar Hub')}</h2>
+          </div>
+        </div>
+        <div className="glass" style={{ padding: '3rem 1rem', textAlign: 'center', borderRadius: 14 }}>
+          <Clock size={40} style={{ opacity: 0.5, marginBottom: '1rem' }} />
+          <p style={{ color: 'var(--text-muted)' }}>{tr('loading_calendar', 'Loading calendar…')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  /* ============================================================
+   * Render
+   * ============================================================ */
   return (
     <div className="calendar-page-content">
       <div className="masonry-header">
         <div className="mh-titles">
-          <h2>{t?.('calendar_hub') || 'Calendar Hub'}</h2>
-          <span className="mh-badge">{currentMonthTransactions.length} {t?.('transactions_this_month') || 'transactions this month'}</span>
+          <h2>{tr('calendar_hub', 'Calendar Hub')}</h2>
+          <span className="mh-badge">
+            {currentMonthTransactions.length} {tr('transactions_this_month', 'transactions this month')}
+          </span>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <button className="btn-secondary" onClick={jumpToToday} title="Jump to today" aria-label="Go to today">
-            <Clock size={14} /> {t?.('today') || 'Today'}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={jumpToToday}
+            title={tr('jump_today', 'Jump to today')}
+            aria-label={tr('today', 'Today')}
+          >
+            <Clock size={14} /> {tr('today', 'Today')}
           </button>
           {renderMonthYearPicker()}
+
           <div className="view-toggles glass">
-            <button className={`vt-btn ${viewMode === 'monthly' ? 'active' : ''}`} onClick={() => setViewMode('monthly')} aria-label="Monthly view">
-              <CalendarIcon size={15} /> {t?.('month') || 'Month'}
-            </button>
-            <button className={`vt-btn ${viewMode === 'weekly' ? 'active' : ''}`} onClick={() => setViewMode('weekly')} aria-label="Weekly view">
-              <CalendarDays size={15} /> {t?.('week') || 'Week'}
-            </button>
-            <button className={`vt-btn ${viewMode === 'heatmap' ? 'active' : ''}`} onClick={() => setViewMode('heatmap')} aria-label="Heatmap view">
-              <Activity size={15} /> {t?.('heatmap') || 'Heatmap'}
-            </button>
+            {[
+              { id: 'monthly', label: tr('month', 'Month'), Icon: CalendarIcon },
+              { id: 'weekly', label: tr('week', 'Week'), Icon: CalendarDays },
+              { id: 'heatmap', label: tr('heatmap', 'Heatmap'), Icon: Activity },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={`vt-btn ${viewMode === tab.id ? 'active' : ''}`}
+                onClick={() => setViewMode(tab.id)}
+                aria-pressed={viewMode === tab.id}
+                aria-label={`${tab.label} view`}
+              >
+                <tab.Icon size={15} /> {tab.label}
+              </button>
+            ))}
           </div>
+
           {viewMode === 'heatmap' && (
-            <div className="heatmap-toggle" style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'var(--bg-color)', padding: '2px 6px', borderRadius: '6px' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t?.('metric') || 'Metric'}:</span>
-              {['expense', 'income', 'net'].map(metric => (
+            <div
+              className="heatmap-toggle"
+              style={{
+                display: 'flex', gap: 4, alignItems: 'center',
+                background: 'var(--bg-color)', padding: '2px 6px', borderRadius: 6,
+              }}
+            >
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {tr('metric', 'Metric')}:
+              </span>
+              {['expense', 'income', 'net'].map((metric) => (
                 <button
                   key={metric}
+                  type="button"
                   className={`btn-sm ${heatmapMetric === metric ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setHeatmapMetric(metric)}
                   style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                  aria-pressed={heatmapMetric === metric}
                 >
-                  {t?.(metric) || (metric.charAt(0).toUpperCase() + metric.slice(1))}
+                  {tr(metric, metric.charAt(0).toUpperCase() + metric.slice(1))}
                 </button>
               ))}
             </div>
           )}
-          <button className="btn-secondary" onClick={exportMonthCSV} aria-label="Export month data as CSV">
+
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={exportMonthCSV}
+            aria-label={tr('export_csv', 'Export month data as CSV')}
+          >
             <Download size={14} /> CSV
           </button>
-          <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="btn-primary" onClick={() => openAddForDate(normalizeDateKey(new Date()))}>
-            <Plus size={16} /> {t?.('new_entry') || 'New Entry'}
+
+          <motion.button
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            className="btn-primary"
+            onClick={() => openAddForDate(normalizeDateKey(new Date()))}
+          >
+            <Plus size={16} /> {tr('new_entry', 'New Entry')}
           </motion.button>
         </div>
       </div>
 
-      {/* Month Metrics */}
+      {/* Month metrics */}
       <div className="dashboard-row calendar-stats-row">
         <div className="glass stat-card cal-metric-card">
-          <p className="stat-lbl">{t?.('monthly_inflow') || 'Monthly Inflow'}</p>
+          <p className="stat-lbl">{tr('monthly_inflow', 'Monthly Inflow')}</p>
           <h3 className="stat-val text-success">+{fmt(monthlyIncome)}</h3>
         </div>
         <div className="glass stat-card cal-metric-card">
-          <p className="stat-lbl">{t?.('monthly_outflow') || 'Monthly Outflow'}</p>
+          <p className="stat-lbl">{tr('monthly_outflow', 'Monthly Outflow')}</p>
           <h3 className="stat-val text-danger">-{fmt(monthlyExpense)}</h3>
         </div>
         <div className="glass stat-card cal-metric-card">
-          <p className="stat-lbl">{t?.('net_position') || 'Net Position'}</p>
+          <p className="stat-lbl">{tr('net_position', 'Net Position')}</p>
           <h3 className={`stat-val ${monthlyNet >= 0 ? 'text-success' : 'text-danger'}`}>
             {monthlyNet >= 0 ? '+' : ''}{fmt(monthlyNet)}
           </h3>
@@ -501,9 +855,31 @@ export default function Calendar() {
 
       <div className="calendar-container glass">
         <div className="cal-header">
-          <button className="ibtn" onClick={prevMonth} aria-label="Previous month"><ChevronLeft size={18} /></button>
-          <h3 className="cal-month-title">{formatMonthYear(year, month, locale)}</h3>
-          <button className="ibtn" onClick={nextMonth} aria-label="Next month"><ChevronRight size={18} /></button>
+          <button
+            type="button"
+            className="ibtn"
+            onClick={prevPeriod}
+            aria-label={viewMode === 'weekly'
+              ? tr('previous_week', 'Previous week')
+              : tr('previous_month', 'Previous month')}
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <h3 className="cal-month-title">
+            {viewMode === 'weekly'
+              ? tr('weekly_view', 'Weekly View')
+              : formatMonthYear(year, month, locale)}
+          </h3>
+          <button
+            type="button"
+            className="ibtn"
+            onClick={nextPeriod}
+            aria-label={viewMode === 'weekly'
+              ? tr('next_week', 'Next week')
+              : tr('next_month', 'Next month')}
+          >
+            <ChevronRight size={18} />
+          </button>
         </div>
 
         {viewMode === 'weekly' ? (
@@ -515,10 +891,9 @@ export default function Calendar() {
         )}
       </div>
 
-      {/* Modals Portal */}
+      {/* Modals */}
       {createPortal(
         <AnimatePresence mode="wait">
-          {/* Day Details Modal */}
           {selectedDate && selectedDayData && (
             <motion.div
               key="day-modal"
@@ -529,38 +904,51 @@ export default function Calendar() {
               onClick={closeDayDetails}
             >
               <motion.div
+                ref={dayModalRef}
                 className="modal-box glass"
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.9, y: 20 }}
-                onClick={e => e.stopPropagation()}
-                style={{ maxWidth: '680px', maxHeight: '80vh', overflowY: 'auto' }}
+                onClick={(e) => e.stopPropagation()}
+                style={{ maxWidth: 680, maxHeight: '80vh', overflowY: 'auto' }}
                 role="dialog"
-                aria-label="Day details"
+                aria-modal="true"
+                aria-label={tr('day_details', 'Day details')}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                   <div>
                     <h3 style={{ margin: 0, fontSize: '1.15rem' }}>
-                      {new Date(selectedDate).toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                      {formatFullDate(selectedDate, locale)}
                     </h3>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{selectedDayData.items.length} record(s)</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      {selectedDayData.items.length} {tr('records', 'record(s)')}
+                    </span>
                   </div>
-                  <button className="ibtn" onClick={closeDayDetails} aria-label="Close modal">✕</button>
+                  <button
+                    type="button"
+                    className="ibtn"
+                    onClick={closeDayDetails}
+                    aria-label={tr('close', 'Close')}
+                  >
+                    <X size={18} />
+                  </button>
                 </div>
 
-                {/* Day summary */}
                 {selectedDayData.items.length > 0 && (
-                  <div className="day-breakdown-stats-strip glass" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', padding: '0.75rem' }}>
+                  <div
+                    className="day-breakdown-stats-strip glass"
+                    style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', padding: '0.75rem' }}
+                  >
                     <div className="db-stat">
-                      <span className="db-lbl">Inflow</span>
+                      <span className="db-lbl">{tr('inflow', 'Inflow')}</span>
                       <span className="db-val text-success">+{fmt(selectedDayData.income)}</span>
                     </div>
                     <div className="db-stat">
-                      <span className="db-lbl">Outflow</span>
+                      <span className="db-lbl">{tr('outflow', 'Outflow')}</span>
                       <span className="db-val text-danger">-{fmt(selectedDayData.expense)}</span>
                     </div>
                     <div className="db-stat">
-                      <span className="db-lbl">Net</span>
+                      <span className="db-lbl">{tr('net', 'Net')}</span>
                       <span className={`db-val ${selectedDayData.net >= 0 ? 'text-success' : 'text-danger'}`}>
                         {fmt(selectedDayData.net)}
                       </span>
@@ -568,61 +956,106 @@ export default function Calendar() {
                   </div>
                 )}
 
-                {/* Category breakdown */}
-                {selectedDayData.items.length > 0 && (
+                {dayCategoryTotals.length > 0 && (
                   <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    {Object.entries(dayCategoryTotals).map(([cat, total]) => (
-                      <span key={cat} className="badge" style={{ background: 'var(--bg-color)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem' }}>
-                        {cat}: {fmt(total)}
+                    {dayCategoryTotals.map(({ category, income, expense }) => (
+                      <span
+                        key={category}
+                        className="badge"
+                        style={{
+                          background: 'var(--bg-color)',
+                          padding: '2px 8px',
+                          borderRadius: 12,
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        {category}
+                        {income > 0 && <> · <span className="text-success">+{fmt(income)}</span></>}
+                        {expense > 0 && <> · <span className="text-danger">-{fmt(expense)}</span></>}
                       </span>
                     ))}
                   </div>
                 )}
 
-                {/* Filter */}
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', alignItems: 'center' }}>
-                  <Filter size={14} />
-                  <button className={`btn-sm ${dayFilterType === 'all' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDayFilterType('all')}>All</button>
-                  <button className={`btn-sm ${dayFilterType === 'income' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDayFilterType('income')}>Income</button>
-                  <button className={`btn-sm ${dayFilterType === 'expense' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDayFilterType('expense')}>Expense</button>
-                </div>
+                {selectedDayData.items.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', alignItems: 'center' }}>
+                    <Filter size={14} />
+                    {[
+                      { id: 'all', label: tr('all', 'All') },
+                      { id: 'income', label: tr('income', 'Income') },
+                      { id: 'expense', label: tr('expense', 'Expense') },
+                    ].map(({ id, label }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`btn-sm ${dayFilterType === id ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setDayFilterType(id)}
+                        aria-pressed={dayFilterType === id}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-                <div className="day-transactions-list" style={{ maxHeight: '320px', overflowY: 'auto', marginTop: 14 }}>
+                <div className="day-transactions-list" style={{ maxHeight: 320, overflowY: 'auto', marginTop: 14 }}>
                   {filteredDayItems.length === 0 ? (
                     <div className="glass empty-state" style={{ padding: '40px 20px', textAlign: 'center' }}>
                       <Wallet size={42} style={{ color: 'var(--text-muted)', margin: '0 auto 12px', opacity: 0.4 }} />
-                      <h3 style={{ color: 'var(--text-secondary)', marginBottom: 6, fontSize: '1rem' }}>No Transactions</h3>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No transactions match the current filter.</p>
+                      <h3 style={{ color: 'var(--text-secondary)', marginBottom: 6, fontSize: '1rem' }}>
+                        {tr('no_transactions', 'No Transactions')}
+                      </h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                        {tr('no_transactions_filter', 'No transactions match the current filter.')}
+                      </p>
                     </div>
                   ) : (
                     filteredDayItems.map((tx, idx) => (
-                      <div key={tx.id || `dtx-${idx}`} className="day-tx-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                      <div
+                        key={tx.id || tx._id || `dtx-${idx}`}
+                        className="day-tx-row"
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)',
+                        }}
+                      >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
                           <div className={`day-tx-badge ${tx.type}`}>
                             {tx.type === 'income' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
                           </div>
-                          <div style={{ flex: 1 }}>
-                            <p style={{ fontWeight: 600, margin: 0, fontSize: '0.9rem' }}>{tx.category}</p>
-                            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>{tx.note || 'No note'}</p>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontWeight: 600, margin: 0, fontSize: '0.9rem' }}>
+                              {tx.category || tr('uncategorized', 'Uncategorized')}
+                            </p>
+                            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
+                              {tx.note || tr('no_note', 'No note')}
+                            </p>
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          <span style={{ fontWeight: 700, fontSize: '0.92rem', color: tx.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
+                          <span
+                            style={{
+                              fontWeight: 700, fontSize: '0.92rem',
+                              color: tx.type === 'income' ? 'var(--success)' : 'var(--danger)',
+                            }}
+                          >
                             {tx.type === 'income' ? '+' : '-'}{fmt(tx.amount)}
                           </span>
                           <button
+                            type="button"
                             onClick={(e) => openEditForTransaction(tx, e)}
                             className="ibtn"
-                            aria-label="Edit transaction"
-                            style={{ padding: '2px' }}
+                            aria-label={tr('edit_transaction', 'Edit transaction')}
+                            style={{ padding: 2 }}
                           >
                             <Edit3 size={14} />
                           </button>
                           <button
-                            onClick={() => handleDeleteTransaction(tx)}
+                            type="button"
+                            onClick={() => requestDelete(tx)}
                             className="ibtn"
-                            aria-label="Delete transaction"
-                            style={{ padding: '2px', color: 'var(--danger)' }}
+                            aria-label={tr('delete_transaction', 'Delete transaction')}
+                            style={{ padding: 2, color: 'var(--danger)' }}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -633,33 +1066,91 @@ export default function Calendar() {
                 </div>
 
                 <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                  <button className="btn-secondary" onClick={closeDayDetails}>Close</button>
-                  <button className="btn-primary" onClick={() => openAddForDate(selectedDate)}><Plus size={16} /> Add For This Date</button>
+                  <button type="button" className="btn-secondary" onClick={closeDayDetails}>
+                    {tr('close', 'Close')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => openAddForDate(selectedDate)}
+                  >
+                    <Plus size={16} /> {tr('add_for_date', 'Add For This Date')}
+                  </button>
                 </div>
               </motion.div>
             </motion.div>
           )}
 
-          {/* Add Transaction Modal */}
           {isAdding && (
             <TransactionForm
               key="add-modal"
-              isOpen={true}
-              initialData={{ date: newTxDate }}
-              onClose={() => { setIsAdding(false); setNewTxDate(''); }}
+              isOpen
+              initialData={addInitialData}
+              onClose={closeAdd}
               onSubmit={handleAddSubmit}
             />
           )}
 
-          {/* Edit Transaction Modal */}
           {isEditing && editingTx && (
             <TransactionForm
-              key="edit-modal"
-              isOpen={true}
+              key={`edit-modal-${editingTx.id || editingTx._id || 'tx'}`}
+              isOpen
               initialData={editingTx}
-              onClose={() => { setIsEditing(false); setEditingTx(null); }}
+              onClose={closeEdit}
               onSubmit={handleEditSubmit}
             />
+          )}
+
+          {pendingDelete && (
+            <motion.div
+              key="delete-modal"
+              className="modal-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={cancelDelete}
+            >
+              <motion.div
+                ref={deleteModalRef}
+                className="modal-box glass"
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-label={tr('delete_transaction_title', 'Delete transaction')}
+                style={{ maxWidth: 460 }}
+              >
+                <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <AlertTriangle size={20} color="var(--danger-color, #ef4444)" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
+                    {tr('delete_transaction_title', 'Delete transaction')}
+                  </h3>
+                </div>
+                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  {tr('delete_transaction_confirm', 'Are you sure you want to delete this')}{' '}
+                  <strong>{pendingDelete.type}</strong>{' '}
+                  {tr('of', 'of')} <strong>{fmt(pendingDelete.amount)}</strong>?
+                </p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '0.4rem' }}>
+                  {tr('cannot_be_undone', 'This action cannot be undone.')}
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
+                  <button type="button" className="btn-secondary" onClick={cancelDelete}>
+                    {tr('cancel', 'Cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    style={{ background: 'var(--danger-color, #ef4444)' }}
+                    onClick={confirmDelete}
+                  >
+                    {tr('delete', 'Delete')}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
           )}
         </AnimatePresence>,
         document.body
