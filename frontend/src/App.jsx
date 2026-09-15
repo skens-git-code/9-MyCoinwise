@@ -9,6 +9,7 @@ import { generateAlerts, getSpendingInsights } from './services/aiEngine';
 import { getT, LANGUAGES } from './services/i18n';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './components/ToastProvider';
+import { MotionConfig } from 'framer-motion';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Transactions = lazy(() => import('./pages/Transactions'));
@@ -469,38 +470,40 @@ export default function App() {
         alerts, insights, deferredPrompt, installPWA, goals, budgets, accounts, subscriptions, events,
       }}>
         <ToastProvider>
-          <Router>
-            <Suspense fallback={<Loader />}>
-              <Routes>
-                <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-                <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
-                <Route path="/*" element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <Suspense fallback={<Loader />}>
-                        <Routes>
-                          <Route path="/" element={<Dashboard />} />
-                          <Route path="/transactions" element={<Transactions />} />
-                          <Route path="/analytics" element={<Analytics />} />
-                          <Route path="/accounts" element={<Accounts />} />
-                          <Route path="/budgets" element={<Budgets />} />
-                          <Route path="/goals" element={<Goals />} />
-                          <Route path="/subscriptions" element={<Subscriptions />} />
-                          <Route path="/cashflow" element={<Cashflow />} />
-                          <Route path="/wealth" element={<Wealth />} />
-                          <Route path="/calendar" element={<Calendar />} />
-                          <Route path="/settings" element={<SettingsPage />} />
-                          <Route path="/about" element={<About />} />
-                          <Route path="/calculator" element={<Calculator />} />
-                          <Route path="*" element={<Navigate to="/" />} />
-                        </Routes>
-                      </Suspense>
-                    </AppLayout>
-                  </ProtectedRoute>
-                } />
-              </Routes>
-            </Suspense>
-          </Router>
+          <MotionConfig reducedMotion="user">
+            <Router>
+              <Suspense fallback={<Loader />}>
+                <Routes>
+                  <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+                  <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+                  <Route path="/*" element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <Suspense fallback={<Loader />}>
+                          <Routes>
+                            <Route path="/" element={<Dashboard />} />
+                            <Route path="/transactions" element={<Transactions />} />
+                            <Route path="/analytics" element={<Analytics />} />
+                            <Route path="/accounts" element={<Accounts />} />
+                            <Route path="/budgets" element={<Budgets />} />
+                            <Route path="/goals" element={<Goals />} />
+                            <Route path="/subscriptions" element={<Subscriptions />} />
+                            <Route path="/cashflow" element={<Cashflow />} />
+                            <Route path="/wealth" element={<Wealth />} />
+                            <Route path="/calendar" element={<Calendar />} />
+                            <Route path="/settings" element={<SettingsPage />} />
+                            <Route path="/about" element={<About />} />
+                            <Route path="/calculator" element={<Calculator />} />
+                            <Route path="*" element={<Navigate to="/" />} />
+                          </Routes>
+                        </Suspense>
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } />
+                </Routes>
+              </Suspense>
+            </Router>
+          </MotionConfig>
         </ToastProvider>
       </AppContext.Provider>
     </ErrorBoundary>
