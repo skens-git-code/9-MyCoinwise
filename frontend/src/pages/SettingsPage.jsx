@@ -4,7 +4,7 @@ import React, {
   lazy, Suspense,
 } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Save, User, Users, Target, Moon, Sun, Download, CheckCircle, AlertCircle,
   Palette, Database, Plus, Settings, ShieldAlert, Globe, Bell, Zap, Smartphone,
@@ -18,6 +18,7 @@ import { LANGUAGES } from '../services/i18n';
 
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
+import PropTypes from 'prop-types';
 
 // Lazy-loaded heavy dependencies
 const EmojiPicker = lazy(() => import('emoji-picker-react'));
@@ -1598,87 +1599,126 @@ const AppearanceTab = ({ theme, handleThemeChange }) => {
 /* ============================================================
  * Users tab
  * ============================================================ */
-const UsersTab = ({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => (
-  <>
-    <div className="manage-users-hero">
-      <div className="idp-hero-icon manage-users-hero-icon" aria-hidden>
-        <Users size={28} />
-      </div>
-      <div>
-        <div className="manage-users-title-row">
-          <h3>{t?.('manage_users') || 'Manage Users'}</h3>
-          <span className="manage-users-count">
-            {sortedUsers.length} {sortedUsers.length === 1 ? (t?.('profile_count') || 'profile') : (t?.('profiles_count') || 'profiles')}
-          </span>
-        </div>
-        <p>{t?.('manage_users_desc') || 'Easily switch between household accounts and keep each workspace personal.'}</p>
-      </div>
-    </div>
+const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => {
+  const prefersReducedMotion = useReducedMotion();
+  const rowHover = prefersReducedMotion ? undefined : { x: 4 };
+  const switchHover = prefersReducedMotion ? undefined : { scale: 1.05 };
+  const deleteHover = prefersReducedMotion ? undefined : { scale: 1.1 };
+  const tapScale = prefersReducedMotion ? undefined : { scale: 0.95 };
+  const deleteTapScale = prefersReducedMotion ? undefined : { scale: 0.9 };
+  const addHover = prefersReducedMotion ? undefined : { scale: 1.02 };
 
-    <div className="manage-users-body">
-      <div className="manage-users-list">
-        {sortedUsers.map((u) => {
-          const uid = u.id || u._id;
-          const isCurrentUser = String(uid) === String(USER_ID);
-          const avatar = getSafeUserAvatar(u);
-          const email = getSafeUserEmail(u);
-          return (
-            <motion.div
-              key={uid}
-              whileHover={{ x: 4 }}
-              className={`manage-user-card ${isCurrentUser ? 'is-active' : ''}`}
-            >
-              <span className="manage-user-avatar" style={{ background: u.profile_color || '#059669' }} aria-hidden>
-                {avatar.type === 'image' ? <img src={avatar.value} alt="" /> : avatar.value}
-              </span>
-              <div className="manage-user-main">
-                <p className="manage-user-name">{getUserDisplayName(u)}</p>
-                {email && <p className="manage-user-email" title={email}>{email}</p>}
-                <span className="manage-user-role">{u.profession || t?.('personal_workspace') || 'Personal workspace'}</span>
-              </div>
-              {isCurrentUser ? (
-                <span className="manage-user-status">{t?.('active') || 'Active'}</span>
-              ) : (
-                <div className="manage-user-actions">
-                  <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setModals((prev) => ({ ...prev, switchConfirm: u }))}
-                    disabled={switchingUserId === uid}
-                    aria-label={`Switch to ${getUserDisplayName(u)}`}
-                    className="manage-user-switch"
-                  >
-                    <Users size={14} aria-hidden />
-                    {switchingUserId === uid ? (t?.('switching') || 'Switching…') : (t?.('switch') || 'Switch')}
-                  </motion.button>
-                  <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setModals((prev) => ({ ...prev, deleteUser: uid }))}
-                    aria-label={`Delete ${getUserDisplayName(u)}`}
-                    className="manage-user-delete"
-                  >
-                    <Trash2 size={16} aria-hidden />
-                  </motion.button>
-                </div>
-              )}
-            </motion.div>
-          );
-        })}
+  const users = Array.isArray(sortedUsers) ? sortedUsers : [];
+
+  return (
+    <>
+      <div className="manage-users-hero">
+        <div className="idp-hero-icon manage-users-hero-icon" aria-hidden>
+          <Users size={28} />
+        </div>
+        <div>
+          <div className="manage-users-title-row">
+            <h3>{t?.('manage_users') || 'Manage Users'}</h3>
+            <span className="manage-users-count">
+              {users.length} {users.length === 1 ? (t?.('profile_count') || 'profile') : (t?.('profiles_count') || 'profiles')}
+            </span>
+          </div>
+          <p>{t?.('manage_users_desc') || 'Easily switch between household accounts and keep each workspace personal.'}</p>
+        </div>
       </div>
-      <motion.button
-        type="button"
-        className="btn-secondary manage-users-add"
-        onClick={() => setModals((prev) => ({ ...prev, addUser: { name: '', email: '' } }))}
-        whileHover={{ scale: 1.02 }}
-      >
-        <Plus size={18} aria-hidden /> {t?.('add_new_user') || 'Add New User'}
-      </motion.button>
-    </div>
-  </>
-);
+
+      <div className="manage-users-body">
+        {users.length === 0 ? (
+          <div
+            className="manage-users-empty"
+            role="status"
+            aria-live="polite"
+            style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)' }}
+          >
+            <Users size={40} aria-hidden style={{ opacity: 0.3, margin: '0 auto 12px' }} />
+            <p style={{ fontWeight: 600, margin: '0 0 4px' }}>{t?.('no_users_yet') || 'No users yet.'}</p>
+            <p className="muted" style={{ fontSize: '0.85rem', margin: 0 }}>{t?.('add_first_user') || 'Add your first user to get started.'}</p>
+          </div>
+        ) : (
+          <div className="manage-users-list" role="list">
+            {users.map((u, i) => {
+              const uid = u?.id || u?._id;
+              const isCurrentUser = Boolean(uid && USER_ID && String(uid) === String(USER_ID));
+              const isSwitching = Boolean(switchingUserId && uid && String(switchingUserId) === String(uid));
+              const avatar = getSafeUserAvatar(u);
+              const email = getSafeUserEmail(u);
+              const displayName = getUserDisplayName(u);
+              const fallbackKey = uid || `user-${u?.email || u?.username || i}`;
+
+              return (
+                <motion.div
+                  key={fallbackKey}
+                  role="listitem"
+                  whileHover={rowHover}
+                  className={`manage-user-card ${isCurrentUser ? 'is-active' : ''}`}
+                >
+                  <span className="manage-user-avatar" style={{ background: u?.profile_color || '#059669' }} aria-hidden>
+                    {avatar.type === 'image' ? <img src={avatar.value} alt="" /> : avatar.value}
+                  </span>
+                  <div className="manage-user-main">
+                    <p className="manage-user-name">{displayName}</p>
+                    {email && <p className="manage-user-email" title={email}>{email}</p>}
+                    <span className="manage-user-role">{u?.profession || t?.('personal_workspace') || 'Personal workspace'}</span>
+                  </div>
+                  {isCurrentUser ? (
+                    <span className="manage-user-status">{t?.('active') || 'Active'}</span>
+                  ) : (
+                    <div className="manage-user-actions">
+                      <motion.button
+                        type="button"
+                        whileHover={switchHover}
+                        whileTap={tapScale}
+                        onClick={() => uid && setModals((prev) => ({ ...prev, switchConfirm: u }))}
+                        disabled={isSwitching}
+                        aria-label={`Switch to ${displayName}`}
+                        className="manage-user-switch"
+                      >
+                        <Users size={14} aria-hidden />
+                        {isSwitching ? (t?.('switching') || 'Switching…') : (t?.('switch') || 'Switch')}
+                      </motion.button>
+                      <motion.button
+                        type="button"
+                        whileHover={deleteHover}
+                        whileTap={deleteTapScale}
+                        onClick={() => uid && setModals((prev) => ({ ...prev, deleteUser: uid }))}
+                        disabled={isSwitching}
+                        aria-label={`Delete ${displayName}`}
+                        className="manage-user-delete"
+                      >
+                        <Trash2 size={16} aria-hidden />
+                      </motion.button>
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+        <motion.button
+          type="button"
+          className="btn-secondary manage-users-add"
+          onClick={() => setModals((prev) => ({ ...prev, addUser: { name: '', email: '' } }))}
+          whileHover={addHover}
+        >
+          <Plus size={18} aria-hidden /> {t?.('add_new_user') || 'Add New User'}
+        </motion.button>
+      </div>
+    </>
+  );
+});
+UsersTab.displayName = 'UsersTab';
+UsersTab.propTypes = {
+  sortedUsers: PropTypes.arrayOf(PropTypes.object),
+  USER_ID: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  setModals: PropTypes.func.isRequired,
+  switchingUserId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  t: PropTypes.func,
+};
 
 /* ============================================================
  * Data tab
@@ -2158,10 +2198,13 @@ function SettingsInner({ context }) {
   }, [modals.deleteUser, USER_ID, refetch, showMessage, requestReAuth, loadingStates.deleteUser, logout, navigate]);
 
   const handleSwitchUser = useCallback(async () => {
-    const userToSwitch = modals.switchConfirm;
-    if (!userToSwitch) return;
+    const rawTarget = modals.switchConfirm;
+    if (!rawTarget) return;
 
-    const switchId = userToSwitch.id || userToSwitch._id;
+    const switchId = typeof rawTarget === 'object' ? (rawTarget.id || rawTarget._id) : rawTarget;
+    if (!switchId) return;
+
+    const userToSwitch = allUsers.find((x) => String(x?.id || x?._id) === String(switchId)) || (typeof rawTarget === 'object' ? rawTarget : null);
     setLoadingStates((prev) => ({ ...prev, switch: switchId }));
 
     try {
@@ -2181,7 +2224,8 @@ function SettingsInner({ context }) {
       }
 
       await switchUser(switchId);
-      showMessage('success', `Switched to ${getUserDisplayName(userToSwitch)}`);
+      const switchTargetName = userToSwitch ? getUserDisplayName(userToSwitch) : 'user';
+      showMessage('success', `Switched to ${switchTargetName}`);
       if (refetch) await refetch();
       setModals((prev) => ({ ...prev, switchConfirm: null }));
     } catch (err) {
@@ -2189,7 +2233,7 @@ function SettingsInner({ context }) {
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, switch: null }));
     }
-  }, [modals.switchConfirm, switchUser, refetch, showMessage, formState, USER_ID, user]);
+  }, [modals.switchConfirm, allUsers, switchUser, refetch, showMessage, formState, USER_ID, user]);
 
   /* ============================================================
    * Theme
@@ -2623,7 +2667,15 @@ function SettingsInner({ context }) {
       >
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: 16, lineHeight: 1.6 }}>
           Are you sure you want to switch to{' '}
-          <strong>{getUserDisplayName(modals.switchConfirm)}</strong>?
+          <strong>
+            {getUserDisplayName(
+              allUsers.find((x) => String(x?.id || x?._id) === String(
+                typeof modals.switchConfirm === 'object'
+                  ? (modals.switchConfirm?.id || modals.switchConfirm?._id)
+                  : modals.switchConfirm
+              )) || (typeof modals.switchConfirm === 'object' ? modals.switchConfirm : null)
+            )}
+          </strong>?
         </p>
         {formState.isDirty && (
           <div
