@@ -3,68 +3,321 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
   Rocket, Shield, Zap, Globe, Github, Twitter, Instagram, Facebook, Mail,
-  Heart, Code, Sparkles, BrainCircuit, Users, Award, Clock
+  Heart, Code, Sparkles, BrainCircuit, Users, Award, Clock, MapPin,
+  GraduationCap, Briefcase, Terminal, Database, Cloud, Cpu, BookOpen,
+  CheckCircle2, ArrowRight, Linkedin, Phone, Calculator, Star, Coffee,
+  Layers, Wrench, Target, Quote, ExternalLink
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 
-// ==================== STATIC DATA ====================
+/* ============================================================
+   STATIC DATA — single creator profile
+   ============================================================ */
+
 const DEFAULT_STATS = {
-  users: '10k+',
-  managed: '$2B+',
-  uptime: '99.9%',
+  projects: '50+',
+  contributions: '1.5K+',
+  tools: '4',
+  ventures: '2',
 };
 
-const TEAM_MEMBERS = [
-  { name: 'Alex Rivera', role: 'Founder & CEO', initials: 'AR', bio: 'Ex‑FinTech engineer with a passion for AI.' },
-  { name: 'Jamie Chen', role: 'Head of Product', initials: 'JC', bio: 'Design‑led product strategist.' },
-  { name: 'Taylor Singh', role: 'Lead Engineer', initials: 'TS', bio: 'Full‑stack architect and performance guru.' },
+const PROFILE = {
+  name: 'Sarthak Mathapati',
+  initials: 'SM',
+  role: 'AI Software Engineer & Full-Stack Developer',
+  tagline: 'Disciplina · Execução · Foco',
+  location: 'Newton School of Technology, Delhi, India',
+  email: 'sarthakmathapati4@gmail.com',
+  phone: '+91 93567 07688',
+  mantra: '#BuildingWithInnovation',
+  portfolioUrl: 'https://portfolioskens.vercel.app/',
+  mission:
+    'I build technology that empowers people, solves real-world problems, and makes the digital world more accessible, intuitive, and beautifully human for everyone.',
+  intro:
+    "Hello, I'm Sarthak Mathapati — an AI Software Engineer & Web Developer crafting sleek, responsive, and meaningful digital experiences. I turn ideas into reality.",
+  bio: [
+    "I'm Sarthak Sidalingayya Mathapati, a 2nd-year B.Tech student in Computer Science & Artificial Intelligence at Newton School of Technology, in collaboration with Rishihood University.",
+    "Born in Sawantwadi (Sindhudurg, Maharashtra) and raised across Kolhapur to Delhi, I've experienced diverse cultures and perspectives — something that profoundly shapes the way I think, learn, and build.",
+    "Curious by nature and disciplined by choice, I'm always learning, experimenting, and innovating — guided by my personal mantra: #BuildingWithInnovation 🚀",
+  ],
+};
+
+/* ============================================================
+   IMAGE ASSETS — replace with your actual image URLs
+   ============================================================ */
+
+const IMAGES = {
+  // Replace with your actual profile photo URL
+  profile: 'https://scrawny-maroon-wwjdpftgcz.edgeone.app/WhatsApp%20Image%202025-10-05%20at%2000.21.05_0bb32ab9.jpg',
+  
+  // Tool screenshots — replace with actual screenshots
+  tools: {
+    mathens: 'https://images.unsplash.com/photo-1587145820266-a5951ee6f620?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
+    cryptens: 'https://images.unsplash.com/photo-1614064641938-3bbee52942c7?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
+    battlens: 'https://images.unsplash.com/photo-1611996575749-79a3a250f948?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
+    achievens: 'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
+  },
+  
+  // Venture logos — replace with actual logos
+  ventures: {
+    skens: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?ixlib=rb-4.0.3&auto=format&fit=crop&w=200&q=80',
+    leaflix: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?ixlib=rb-4.0.3&auto=format&fit=crop&w=200&q=80',
+  },
+};
+
+const SOCIALS = [
+  { label: 'GitHub', href: 'https://github.com/skens-git-code', icon: Github },
+  { label: 'LinkedIn', href: 'https://www.linkedin.com/in/sarthak-mathapati-b2b04430a/', icon: Linkedin },
+  { label: 'X / Twitter', href: 'https://x.com/mathapatism8', icon: Twitter },
+  { label: 'Instagram', href: 'https://www.instagram.com/mathapati.i8/', icon: Instagram },
 ];
 
-// ==================== MAIN COMPONENT ====================
+const FOCUS_AREAS = [
+  {
+    icon: BrainCircuit,
+    title: 'AI Engineering',
+    desc: 'Predictive models, LLM integrations and intelligent automation built with TensorFlow, PyTorch and the OpenAI API.',
+  },
+  {
+    icon: Code,
+    title: 'Full-Stack Development',
+    desc: 'End-to-end product delivery with React, Next.js, Node.js and FastAPI — from database schema to polished UI.',
+  },
+  {
+    icon: Sparkles,
+    title: 'Interface Craft',
+    desc: 'Motion-rich, accessible interfaces that feel premium on every screen size, not like another spreadsheet.',
+  },
+  {
+    icon: Shield,
+    title: 'Secure by Default',
+    desc: 'Encrypted transport, sane auth flows and data ownership. Your information is never a product.',
+  },
+];
+
+const TECH_GROUPS = [
+  { label: 'Frontend', icon: Layers, items: ['React', 'Next.js', 'TypeScript', 'Tailwind CSS', 'HTML/CSS'] },
+  { label: 'Backend', icon: Terminal, items: ['Node.js', 'Express', 'Python', 'FastAPI'] },
+  { label: 'Data', icon: Database, items: ['MongoDB', 'PostgreSQL', 'MySQL', 'Redis'] },
+  { label: 'Cloud & DevOps', icon: Cloud, items: ['AWS', 'Docker', 'Kubernetes', 'GitHub Actions'] },
+  { label: 'AI / ML', icon: Cpu, items: ['TensorFlow', 'PyTorch', 'OpenAI API', 'LangChain'] },
+];
+
+const TOOLS = [
+  {
+    name: 'Mathens.io',
+    icon: Calculator,
+    href: 'https://skens-git-code.github.io/2-Calculator/',
+    desc: 'Powerful personal calculator — fast, intelligent and precise math companion for everyone.',
+    image: IMAGES.tools.mathens,
+    tags: ['React', 'Math', 'Utility'],
+  },
+  {
+    name: 'CryptEns.io',
+    icon: Shield,
+    href: 'https://skens-git-code.github.io/3-PW-Generator/',
+    desc: 'Secure password generator — create robust, uncrackable keys to protect your digital identity.',
+    image: IMAGES.tools.cryptens,
+    tags: ['Security', 'Generator', 'Utility'],
+  },
+  {
+    name: 'Battlens.io',
+    icon: Zap,
+    href: 'https://skens-git-code.github.io/4-RPS-Game/',
+    desc: 'Classic Rock Paper Scissors — test your luck and strategy against the computer.',
+    image: IMAGES.tools.battlens,
+    tags: ['Game', 'Interactive', 'Fun'],
+  },
+  {
+    name: 'Achievens.io',
+    icon: CheckCircle2,
+    href: 'https://skens-git-code.github.io/5-To-Do-App/',
+    desc: 'Minimalist task manager — streamline your goals and boost productivity with an intuitive list.',
+    image: IMAGES.tools.achievens,
+    tags: ['Productivity', 'Task Management', 'Utility'],
+  },
+];
+
+const VENTURES = [
+  {
+    name: 'Skens.inc',
+    role: 'Founder',
+    desc: 'A product studio turning ideas into shipped software — apps, tools and AI-first experiments.',
+    image: IMAGES.ventures.skens,
+  },
+  {
+    name: 'Leaflix.inc',
+    role: 'Co-Founder',
+    desc: 'An education-forward venture exploring how technology can make learning more personal.',
+    image: IMAGES.ventures.leaflix,
+  },
+];
+
+const TIMELINE = [
+  {
+    period: '2025 — Present',
+    title: 'Newton School of Technology',
+    desc: 'B.Tech in Computer Science & Artificial Intelligence.',
+  },
+  {
+    period: '2025 — Present',
+    title: 'Startup Founder',
+    desc: 'Building innovative solutions with Skens.inc & Leaflix.inc.',
+  },
+  {
+    period: '2023 — 2025',
+    title: 'Web Development Journey',
+    desc: 'Mastering full-stack development and modern web technologies.',
+  },
+];
+
+const PRINCIPLES = [
+  'Continuous Learning',
+  'Daily Coding Practice',
+  'Health First',
+  'Open Source Contribution',
+  'Document Everything',
+  'Help Others Grow',
+];
+
+const GOALS = [
+  { horizon: 'Short Term · 2025', items: ['Launch the Skens.inc MVP', 'Contribute to 5+ open source projects', 'Build an AI chatbot with 10K+ users'] },
+  { horizon: 'Medium Term · 2026–27', items: ['Scale a product to 100K+ users', 'Speak at international tech conferences', 'Launch an AI-powered SaaS product'] },
+  { horizon: 'Long Term · 2028+', items: ['Establish a tech education platform', 'Publish a book on AI development', 'Fund tech education in rural areas'] },
+];
+
+/* ============================================================
+   SMALL PRESENTATIONAL HELPERS
+   ============================================================ */
+
+const glassCard = {
+  padding: 24,
+  borderRadius: 20,
+};
+
+function SectionTitle({ icon: Icon, children, sub }) {
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <h3
+        style={{
+          fontSize: 'clamp(1.05rem, 2.4vw, 1.3rem)',
+          fontWeight: 700,
+          fontFamily: 'var(--font-head)',
+          letterSpacing: '-0.01em',
+          margin: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            display: 'grid',
+            placeItems: 'center',
+            background: 'rgba(var(--brand-primary-rgb, 16, 185, 129), 0.12)',
+            color: 'var(--brand-primary)',
+            flexShrink: 0,
+          }}
+        >
+          <Icon size={17} strokeWidth={2.5} />
+        </span>
+        {children}
+      </h3>
+      {sub && (
+        <p
+          style={{
+            margin: '8px 0 0 42px',
+            color: 'var(--text-secondary)',
+            fontSize: '0.92rem',
+            lineHeight: 1.55,
+          }}
+        >
+          {sub}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Chip({ children }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '6px 12px',
+        borderRadius: 999,
+        fontSize: '0.78rem',
+        fontWeight: 600,
+        letterSpacing: '0.01em',
+        background: 'var(--glass-2, rgba(255,255,255,0.06))',
+        border: '1px solid var(--glass-border, rgba(255,255,255,0.1))',
+        color: 'var(--text-secondary)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/* ============================================================
+   MAIN COMPONENT
+   ============================================================ */
+
 export default function About({ stats = DEFAULT_STATS }) {
   const { t } = useContext(AppContext);
-  // Detect reduced motion preference
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => (
-    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  ));
+
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const handler = (e) => setPrefersReducedMotion(e.matches);
     mediaQuery.addEventListener('change', handler);
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
-  // Animation variants – disabled when reduced motion is preferred
   const containerVariants = prefersReducedMotion
     ? { visible: { transition: { staggerChildren: 0 } } }
     : {
         hidden: { opacity: 0 },
         visible: {
           opacity: 1,
-          transition: { staggerChildren: 0.1, delayChildren: 0.1 },
+          transition: { staggerChildren: 0.08, delayChildren: 0.05 },
         },
       };
 
   const itemVariants = prefersReducedMotion
     ? { visible: { y: 0, opacity: 1 } }
     : {
-        hidden: { y: 20, opacity: 0 },
+        hidden: { y: 18, opacity: 0 },
         visible: {
           y: 0,
           opacity: 1,
-          transition: { type: 'spring', stiffness: 300, damping: 24 },
+          transition: { type: 'spring', stiffness: 280, damping: 26 },
         },
       };
 
-  const handleCalculatorClick = () => {
-    if (typeof window !== 'undefined' && window.gtag) {
-      window.gtag('event', 'click', { event_category: 'engagement', event_label: 'calculator_cta' });
-    }
-  };
+  const hoverLift = prefersReducedMotion ? {} : { y: -4 };
+
+  const statTiles = [
+    { label: 'Projects Shipped', value: stats.projects },
+    { label: 'GitHub Contributions', value: stats.contributions },
+    { label: 'Live Tools', value: stats.tools },
+    { label: 'Ventures Founded', value: stats.ventures },
+  ];
 
   return (
     <div className="island-page">
+      {/* ==================== HEADER ==================== */}
       <motion.div
         className="island-header glass-sm"
         initial={prefersReducedMotion ? { opacity: 1 } : { y: -20, opacity: 0 }}
@@ -73,8 +326,8 @@ export default function About({ stats = DEFAULT_STATS }) {
       >
         <div className="ih-left">
           <div className="ih-titles">
-            <h1>{t?.('about') || 'About Us'}</h1>
-            <p>{t?.('about_hero_tag') || 'Meet the vision behind MyCoinwise'}</p>
+            <h1>{t?.('about') || 'About'}</h1>
+            <p>{t?.('about_hero_tag') || 'The builder behind the product'}</p>
           </div>
         </div>
       </motion.div>
@@ -85,430 +338,1099 @@ export default function About({ stats = DEFAULT_STATS }) {
       >
         <motion.div
           className="about-container"
-          style={{ maxWidth: 900, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 32 }}
+          style={{
+            maxWidth: 960,
+            margin: '0 auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 24,
+          }}
           variants={containerVariants}
           initial="hidden"
           animate="visible"
         >
-          {/* Hero Section */}
-          <motion.div
+          {/* ==================== HERO / IDENTITY ==================== */}
+          <motion.section
             variants={itemVariants}
             className="bento-tile-base glass"
             style={{
-              padding: '48px 32px',
-              textAlign: 'center',
+              padding: 'clamp(24px, 5vw, 44px)',
               position: 'relative',
               overflow: 'hidden',
             }}
+            aria-labelledby="about-hero-title"
           >
             <div
+              aria-hidden="true"
               style={{
                 position: 'absolute',
                 inset: 0,
-                background: `radial-gradient(circle at 50% -20%, rgba(var(--brand-primary-rgb, 16, 185, 129), 0.15) 0%, transparent 60%)`,
+                background:
+                  'radial-gradient(circle at 15% -10%, rgba(var(--brand-primary-rgb, 16, 185, 129), 0.18) 0%, transparent 55%), radial-gradient(circle at 95% 110%, rgba(139, 92, 246, 0.14) 0%, transparent 55%)',
+                pointerEvents: 'none',
               }}
-              aria-hidden="true"
             />
-            <motion.div
-              animate={
-                prefersReducedMotion
-                  ? {}
-                  : { rotate: [0, 5, -5, 0] }
-              }
-              transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-              style={{
-                width: 80,
-                height: 80,
-                margin: '0 auto 24px',
-                background: 'var(--brand-gradient)',
-                borderRadius: 24,
-                display: 'grid',
-                placeItems: 'center',
-                color: '#fff',
-                boxShadow: '0 12px 32px var(--brand-glow)',
-              }}
-            >
-              <Sparkles size={36} strokeWidth={2.5} />
-            </motion.div>
-            <h2
-              style={{
-                fontSize: 'clamp(2rem, 5vw, 3rem)',
-                fontFamily: 'var(--font-head)',
-                fontWeight: 800,
-                letterSpacing: '-0.03em',
-                marginBottom: 16,
-              }}
-            >
-              {t?.('about_hero_title') || 'Empowering Next-Gen Financial Freedom'}
-            </h2>
-            <p
-              style={{
-                fontSize: '1.1rem',
-                color: 'var(--text-secondary)',
-                maxWidth: 600,
-                margin: '0 auto',
-                lineHeight: 1.6,
-              }}
-            >
-              {t?.('about_hero_desc') || 'MyCoinwise delivers intelligent budgeting, wealth forecasting, and instant multi-currency analytics designed to keep your finances clear, secure, and thriving.'}
-            </p>
-          </motion.div>
 
-          {/* Core Values Grid */}
-          <motion.div
+            <div
+              style={{
+                position: 'relative',
+                display: 'flex',
+                gap: 'clamp(20px, 4vw, 36px)',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              {/* Profile Image */}
+              <motion.div
+                animate={prefersReducedMotion ? {} : { y: [0, -6, 0] }}
+                transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+                style={{
+                  width: 120,
+                  height: 120,
+                  flexShrink: 0,
+                  borderRadius: 30,
+                  overflow: 'hidden',
+                  boxShadow: '0 16px 40px var(--brand-glow, rgba(16,185,129,0.35))',
+                  border: '3px solid rgba(var(--brand-primary-rgb, 16, 185, 129), 0.3)',
+                }}
+              >
+                <img
+                  src={IMAGES.profile}
+                  alt="Sarthak Mathapati"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                  }}
+                  loading="lazy"
+                />
+              </motion.div>
+
+              {/* Name / role / tagline */}
+              <div style={{ flex: 1, minWidth: 240 }}>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: '0.7rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.12em',
+                    fontWeight: 700,
+                    color: 'var(--brand-primary)',
+                    marginBottom: 10,
+                  }}
+                >
+                  <Sparkles size={13} aria-hidden="true" />
+                  {PROFILE.tagline}
+                </span>
+
+                <h2
+                  id="about-hero-title"
+                  style={{
+                    fontSize: 'clamp(1.75rem, 5vw, 2.6rem)',
+                    fontFamily: 'var(--font-head)',
+                    fontWeight: 800,
+                    letterSpacing: '-0.03em',
+                    lineHeight: 1.08,
+                    margin: '0 0 8px',
+                  }}
+                >
+                  {PROFILE.name}
+                </h2>
+
+                <p
+                  style={{
+                    margin: '0 0 14px',
+                    fontSize: 'clamp(0.95rem, 2.4vw, 1.08rem)',
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  {PROFILE.role}
+                </p>
+
+                <p
+                  style={{
+                    margin: '0 0 18px',
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.95rem',
+                    lineHeight: 1.65,
+                    maxWidth: 560,
+                  }}
+                >
+                  {PROFILE.intro}
+                </p>
+
+                {/* Meta badges */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+                  <Chip>
+                    <MapPin size={12} style={{ marginRight: 6 }} aria-hidden="true" />
+                    Delhi, India
+                  </Chip>
+                  <Chip>
+                    <GraduationCap size={12} style={{ marginRight: 6 }} aria-hidden="true" />
+                    CS &amp; AI, B.Tech
+                  </Chip>
+                  <Chip>
+                    <Target size={12} style={{ marginRight: 6 }} aria-hidden="true" />
+                    {PROFILE.mantra}
+                  </Chip>
+                </div>
+
+                {/* Primary actions */}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <a
+                    href={PROFILE.portfolioUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary"
+                    style={{
+                      padding: '10px 18px',
+                      borderRadius: 12,
+                      textDecoration: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontSize: '0.9rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <ExternalLink size={16} aria-hidden="true" /> View Full Portfolio
+                  </a>
+                  <a
+                    href={`mailto:${PROFILE.email}`}
+                    className="btn-secondary"
+                    style={{
+                      padding: '10px 18px',
+                      borderRadius: 12,
+                      textDecoration: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontSize: '0.9rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Mail size={16} aria-hidden="true" /> Work with me
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Social row */}
+            <div
+              style={{
+                position: 'relative',
+                marginTop: 26,
+                paddingTop: 20,
+                borderTop: '1px solid var(--glass-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div
+                className="about-social-links"
+                style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}
+                aria-label="Social media links"
+              >
+                {SOCIALS.map(({ label, href, icon: Icon }) => (
+                  <a
+                    key={label}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={label}
+                    title={label}
+                    className="about-social-link"
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 12,
+                      display: 'grid',
+                      placeItems: 'center',
+                      background: 'var(--glass-2, rgba(255,255,255,0.06))',
+                      border: '1px solid var(--glass-border, rgba(255,255,255,0.1))',
+                      color: 'var(--text-secondary)',
+                      textDecoration: 'none',
+                      transition: 'transform .2s ease, color .2s ease',
+                    }}
+                  >
+                    <Icon size={17} aria-hidden="true" />
+                  </a>
+                ))}
+              </div>
+
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: '0.82rem',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: 'var(--brand-primary)',
+                    boxShadow: '0 0 0 4px rgba(var(--brand-primary-rgb, 16, 185, 129), 0.18)',
+                  }}
+                  aria-hidden="true"
+                />
+                Open to freelance, consulting &amp; collaboration
+              </span>
+            </div>
+          </motion.section>
+
+          {/* ==================== STATS ==================== */}
+          <motion.section
             variants={itemVariants}
+            aria-label="Highlights"
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-              gap: 16,
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: 12,
             }}
           >
-            {[
-              {
-                icon: BrainCircuit,
-                title: 'AI‑Powered Insights',
-                desc: 'Predictive forecasting and intelligent categorisation driven by advanced machine learning.',
-              },
-              {
-                icon: Shield,
-                title: 'Bank‑Grade Security',
-                desc: 'Your data is encrypted, anonymized, and never sold to third parties.',
-              },
-              {
-                icon: Zap,
-                title: 'Lightning Fast',
-                desc: 'Built for speed with real‑time syncing and an optimized architecture.',
-              },
-              {
-                icon: Globe,
-                title: 'Global Ready',
-                desc: 'Multi‑currency support and real‑time exchange rates out of the box.',
-              },
-            ].map((value, i) => (
-              <motion.div
-                key={i}
+            {statTiles.map((s) => (
+              <div
+                key={s.label}
                 className="bento-tile-base glass-sm"
-                whileHover={prefersReducedMotion ? {} : { y: -4 }}
-                transition={{ duration: 0.2 }}
-                style={{ padding: 24 }}
+                style={{ padding: '20px 18px', textAlign: 'center' }}
               >
                 <div
                   style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 12,
-                    background: `rgba(var(--brand-primary-rgb, 16, 185, 129), 0.1)`,
-                    color: 'var(--brand-primary)',
-                    display: 'grid',
-                    placeItems: 'center',
-                    marginBottom: 16,
+                    fontSize: 'clamp(1.4rem, 3.5vw, 1.75rem)',
+                    fontWeight: 800,
+                    fontFamily: 'var(--font-head)',
+                    letterSpacing: '-0.02em',
+                    background: 'var(--brand-gradient)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                    lineHeight: 1.1,
                   }}
                 >
-                  <value.icon size={22} strokeWidth={2.5} />
+                  {s.value}
                 </div>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 8 }}>
-                  {value.title}
-                </h3>
-                <p
+                <div
                   style={{
-                    color: 'var(--text-secondary)',
-                    fontSize: '0.95rem',
-                    lineHeight: 1.5,
+                    marginTop: 6,
+                    fontSize: '0.78rem',
+                    color: 'var(--text-muted)',
+                    fontWeight: 600,
+                    letterSpacing: '0.02em',
                   }}
                 >
-                  {value.desc}
-                </p>
-              </motion.div>
+                  {s.label}
+                </div>
+              </div>
             ))}
-          </motion.div>
+          </motion.section>
 
-          {/* Team Section (NEW) */}
-          <motion.div variants={itemVariants}>
-            <h3
+          {/* ==================== MISSION ==================== */}
+          <motion.section
+            variants={itemVariants}
+            className="bento-tile-base glass-sm"
+            style={{ ...glassCard, position: 'relative', overflow: 'hidden' }}
+            aria-label="Mission statement"
+          >
+            <Quote
+              size={64}
+              aria-hidden="true"
               style={{
-                fontSize: '1.4rem',
+                position: 'absolute',
+                top: 8,
+                right: 12,
+                opacity: 0.07,
+                color: 'var(--brand-primary)',
+              }}
+            />
+            <span
+              style={{
+                fontSize: '0.7rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
                 fontWeight: 700,
-                marginBottom: 16,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
+                color: 'var(--text-muted)',
               }}
             >
-              <Users size={24} className="text-primary" /> Meet the Team
-            </h3>
+              My Mission
+            </span>
+            <p
+              style={{
+                margin: '10px 0 0',
+                fontSize: 'clamp(1rem, 2.6vw, 1.18rem)',
+                lineHeight: 1.6,
+                fontWeight: 500,
+                maxWidth: 720,
+              }}
+            >
+              {PROFILE.mission}
+            </p>
+          </motion.section>
+
+          {/* ==================== BIO / JOURNEY ==================== */}
+          <motion.section
+            variants={itemVariants}
+            className="bento-tile-base glass-sm"
+            style={glassCard}
+            aria-labelledby="about-journey-title"
+          >
+            <SectionTitle icon={BookOpen}>
+              <span id="about-journey-title">The Journey</span>
+            </SectionTitle>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {PROFILE.bio.map((para, i) => (
+                <p
+                  key={i}
+                  style={{
+                    margin: 0,
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.95rem',
+                    lineHeight: 1.7,
+                  }}
+                >
+                  {para}
+                </p>
+              ))}
+            </div>
+          </motion.section>
+
+          {/* ==================== FOCUS AREAS ==================== */}
+          <motion.section variants={itemVariants} aria-labelledby="about-focus-title">
+            <SectionTitle
+              icon={Wrench}
+              sub="Four things I care about in every product I touch."
+            >
+              <span id="about-focus-title">What I Do</span>
+            </SectionTitle>
+
             <div
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: 16,
+                gap: 12,
               }}
             >
-              {TEAM_MEMBERS.map((member) => (
-                <div
-                  key={member.name}
+              {FOCUS_AREAS.map(({ icon: Icon, title, desc }) => (
+                <motion.div
+                  key={title}
                   className="bento-tile-base glass-sm"
-                  style={{ padding: 24, textAlign: 'center' }}
+                  whileHover={hoverLift}
+                  transition={{ duration: 0.2 }}
+                  style={{ padding: 22 }}
                 >
                   <div
+                    aria-hidden="true"
                     style={{
-                      width: 72,
-                      height: 72,
-                      borderRadius: '50%',
-                      background: `linear-gradient(135deg, var(--brand-primary), var(--brand-secondary))`,
+                      width: 44,
+                      height: 44,
+                      borderRadius: 13,
+                      background: 'rgba(var(--brand-primary-rgb, 16, 185, 129), 0.1)',
+                      color: 'var(--brand-primary)',
                       display: 'grid',
                       placeItems: 'center',
-                      margin: '0 auto 12px',
-                      color: '#fff',
-                      fontWeight: 700,
-                      fontSize: '1.4rem',
+                      marginBottom: 14,
                     }}
                   >
-                    {member.initials}
+                    <Icon size={21} strokeWidth={2.5} />
                   </div>
-                  <h4 style={{ fontWeight: 600, marginBottom: 4 }}>{member.name}</h4>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {member.role}
-                  </p>
+                  <h4 style={{ fontSize: '1rem', fontWeight: 650, margin: '0 0 8px' }}>
+                    {title}
+                  </h4>
                   <p
                     style={{
-                      fontSize: '0.85rem',
+                      margin: 0,
                       color: 'var(--text-secondary)',
-                      marginTop: 8,
+                      fontSize: '0.9rem',
+                      lineHeight: 1.55,
                     }}
                   >
-                    {member.bio}
+                    {desc}
                   </p>
+                </motion.div>
+              ))}
+            </div>
+          </motion.section>
+
+          {/* ==================== TECH STACK ==================== */}
+          <motion.section
+            variants={itemVariants}
+            className="bento-tile-base glass-sm"
+            style={glassCard}
+            aria-labelledby="about-stack-title"
+          >
+            <SectionTitle
+              icon={Layers}
+              sub="A modern, evolving toolkit for building efficient, scalable and good-looking software."
+            >
+              <span id="about-stack-title">Tech Stack</span>
+            </SectionTitle>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {TECH_GROUPS.map(({ label, icon: Icon, items }) => (
+                <div key={label}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginBottom: 10,
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <Icon size={15} aria-hidden="true" style={{ color: 'var(--brand-primary)' }} />
+                    {label}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {items.map((item) => (
+                      <Chip key={item}>{item}</Chip>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
-          </motion.div>
+          </motion.section>
 
-          {/* Developer / Mission Section */}
-          <motion.div
-            variants={itemVariants}
-            style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}
-          >
+          {/* ==================== TOOLS / PRODUCTS ==================== */}
+          <motion.section variants={itemVariants} aria-labelledby="about-tools-title">
+            <SectionTitle
+              icon={Rocket}
+              sub="Small, focused utilities I designed and shipped — all free to use."
+            >
+              <span id="about-tools-title">Things I've Built</span>
+            </SectionTitle>
+
             <div
-              className="bento-tile-base glass-sm"
               style={{
-                padding: '32px',
-                display: 'flex',
-                gap: 24,
-                flexWrap: 'wrap',
-                alignItems: 'center',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: 16,
               }}
             >
-              <div style={{ flex: 1, minWidth: 280 }}>
-                <h3
+              {TOOLS.map(({ name, icon: Icon, href, desc, image, tags }) => (
+                <motion.a
+                  key={name}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bento-tile-base glass-sm"
+                  whileHover={hoverLift}
+                  transition={{ duration: 0.2 }}
                   style={{
-                    fontSize: '1.4rem',
-                    fontFamily: 'var(--font-head)',
-                    fontWeight: 700,
-                    marginBottom: 12,
+                    padding: 0,
+                    textDecoration: 'none',
+                    color: 'inherit',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    borderRadius: 20,
+                  }}
+                >
+                  {/* Tool Image */}
+                  <div
+                    style={{
+                      height: 160,
+                      overflow: 'hidden',
+                      position: 'relative',
+                    }}
+                  >
+                    <img
+                      src={image}
+                      alt={`${name} preview`}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        transition: 'transform 0.4s ease',
+                      }}
+                      loading="lazy"
+                    />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 50%)',
+                      }}
+                      aria-hidden="true"
+                    />
+                  </div>
+
+                  <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 10,
+                            display: 'grid',
+                            placeItems: 'center',
+                            background: 'rgba(var(--brand-primary-rgb, 16, 185, 129), 0.1)',
+                            color: 'var(--brand-primary)',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Icon size={17} strokeWidth={2.5} />
+                        </span>
+                        <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>{name}</h4>
+                      </div>
+                      <ArrowRight size={16} aria-hidden="true" style={{ opacity: 0.5 }} />
+                    </div>
+
+                    <p
+                      style={{
+                        margin: 0,
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.88rem',
+                        lineHeight: 1.55,
+                      }}
+                    >
+                      {desc}
+                    </p>
+
+                    {/* Tags */}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                      {tags.map((tag) => (
+                        <span
+                          key={tag}
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 600,
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            background: 'var(--glass-2, rgba(255,255,255,0.06))',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </motion.a>
+              ))}
+            </div>
+          </motion.section>
+
+          {/* ==================== VENTURES ==================== */}
+          <motion.section variants={itemVariants} aria-labelledby="about-ventures-title">
+            <SectionTitle
+              icon={Briefcase}
+              sub="Turning ideas into real products with a small, dedicated team."
+            >
+              <span id="about-ventures-title">Ventures</span>
+            </SectionTitle>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: 16,
+              }}
+            >
+              {VENTURES.map((v) => (
+                <div
+                  key={v.name}
+                  className="bento-tile-base glass-sm"
+                  style={{ padding: 0, overflow: 'hidden', borderRadius: 20 }}
+                >
+                  {/* Venture Image */}
+                  <div
+                    style={{
+                      height: 120,
+                      overflow: 'hidden',
+                      position: 'relative',
+                    }}
+                  >
+                    <img
+                      src={v.image}
+                      alt={`${v.name} preview`}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                      }}
+                      loading="lazy"
+                    />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 60%)',
+                      }}
+                      aria-hidden="true"
+                    />
+                  </div>
+
+                  <div style={{ padding: 22 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                        {v.name}
+                      </h4>
+                      <span
+                        style={{
+                          fontSize: '0.68rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.1em',
+                          fontWeight: 700,
+                          color: 'var(--brand-primary)',
+                        }}
+                      >
+                        {v.role}
+                      </span>
+                    </div>
+                    <p
+                      style={{
+                        margin: 0,
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.9rem',
+                        lineHeight: 1.55,
+                      }}
+                    >
+                      {v.desc}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.section>
+
+          {/* ==================== TIMELINE ==================== */}
+          <motion.section
+            variants={itemVariants}
+            className="bento-tile-base glass-sm"
+            style={glassCard}
+            aria-labelledby="about-timeline-title"
+          >
+            <SectionTitle icon={Clock}>
+              <span id="about-timeline-title">Timeline</span>
+            </SectionTitle>
+
+            <ol
+              style={{
+                listStyle: 'none',
+                margin: 0,
+                padding: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 0,
+              }}
+            >
+              {TIMELINE.map((item, i) => (
+                <li
+                  key={item.title}
+                  style={{
+                    display: 'flex',
+                    gap: 16,
+                    paddingBottom: i === TIMELINE.length - 1 ? 0 : 20,
+                    position: 'relative',
+                  }}
+                >
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      flexShrink: 0,
+                      width: 14,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        background: 'var(--brand-gradient)',
+                        marginTop: 5,
+                        boxShadow: '0 0 0 4px rgba(var(--brand-primary-rgb, 16, 185, 129), 0.14)',
+                      }}
+                    />
+                    {i !== TIMELINE.length - 1 && (
+                      <span
+                        style={{
+                          flex: 1,
+                          width: 2,
+                          marginTop: 6,
+                          background: 'var(--glass-border)',
+                          borderRadius: 2,
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  <div style={{ paddingBottom: 2 }}>
+                    <div
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        color: 'var(--brand-primary)',
+                        marginBottom: 4,
+                      }}
+                    >
+                      {item.period}
+                    </div>
+                    <h4 style={{ margin: '0 0 4px', fontSize: '0.98rem', fontWeight: 650 }}>
+                      {item.title}
+                    </h4>
+                    <p
+                      style={{
+                        margin: 0,
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.88rem',
+                        lineHeight: 1.55,
+                      }}
+                    >
+                      {item.desc}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </motion.section>
+
+          {/* ==================== PRINCIPLES ==================== */}
+          <motion.section
+            variants={itemVariants}
+            className="bento-tile-base glass-sm"
+            style={glassCard}
+            aria-labelledby="about-principles-title"
+          >
+            <SectionTitle
+              icon={CheckCircle2}
+              sub="The habits that keep me grounded while moving forward."
+            >
+              <span id="about-principles-title">Principles &amp; Habits</span>
+            </SectionTitle>
+
+            <ul
+              style={{
+                listStyle: 'none',
+                margin: 0,
+                padding: 0,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: 10,
+              }}
+            >
+              {PRINCIPLES.map((p) => (
+                <li
+                  key={p}
+                  style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
-                  }}
-                >
-                  <Code size={24} className="text-primary" /> Crafted with
-                  Precision
-                </h3>
-                <p
-                  style={{
+                    fontSize: '0.9rem',
                     color: 'var(--text-secondary)',
-                    fontSize: '1rem',
-                    lineHeight: 1.6,
-                    marginBottom: 20,
                   }}
                 >
-                  We believe financial tools shouldn't look like boring
-                  spreadsheets. We built MyCoinwise to bring the fluid, premium
-                  experience of modern mobile apps to the world of personal
-                  wealth tracking on all your devices.
-                </p>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <a
-                    href="https://github.com/your-repo" // Replace with actual URL
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn-secondary"
-                    style={{
-                      padding: '10px 16px',
-                      display: 'inline-flex',
-                      gap: 8,
-                      alignItems: 'center',
-                      borderRadius: 12,
-                      textDecoration: 'none',
-                    }}
-                  >
-                    <Github size={18} /> Source Code
-                  </a>
-                  <a
-                    href="https://twitter.com/your-handle" // Replace with actual URL
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn-secondary"
-                    style={{
-                      padding: '10px 16px',
-                      display: 'inline-flex',
-                      gap: 8,
-                      alignItems: 'center',
-                      borderRadius: 12,
-                      textDecoration: 'none',
-                    }}
-                  >
-                    <Twitter size={18} /> Follow Us
-                  </a>
-                </div>
-                <div
-                  className="about-social-links"
-                  style={{ marginTop: 16, display: 'flex', gap: 12 }}
-                  aria-label="Social media links"
-                >
-                  <a
-                    href="https://instagram.com/your-handle" // Replace with actual URL
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="about-social-link instagram"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)', textDecoration: 'none' }}
-                    aria-label="Instagram (coming soon)"
-                  >
-                    <Instagram size={18} /> Instagram <span style={{ fontSize: '0.7rem', background: 'var(--glass-2)', padding: '2px 8px', borderRadius: 12 }}>Coming soon</span>
-                  </a>
-                  <a
-                    href="https://facebook.com/your-handle" // Replace with actual URL
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="about-social-link facebook"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)', textDecoration: 'none' }}
-                    aria-label="Facebook (coming soon)"
-                  >
-                    <Facebook size={18} /> Facebook <span style={{ fontSize: '0.7rem', background: 'var(--glass-2)', padding: '2px 8px', borderRadius: 12 }}>Coming soon</span>
-                  </a>
-                </div>
-              </div>
-              <div
-                style={{
-                  width: 140,
-                  height: 140,
-                  borderRadius: '50%',
-                  background: `linear-gradient(135deg, rgba(var(--brand-primary-rgb, 16, 185, 129), 0.2), rgba(139,92,246,0.2))`,
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  display: 'grid',
-                  placeItems: 'center',
-                  margin: '0 auto',
-                }}
-              >
-                <Heart
-                  size={48}
-                  color="var(--brand-primary)"
-                  fill={`rgba(var(--brand-primary-rgb, 16, 185, 129), 0.2)`}
-                />
-              </div>
-            </div>
-          </motion.div>
+                  <CheckCircle2
+                    size={16}
+                    aria-hidden="true"
+                    style={{ color: 'var(--brand-primary)', flexShrink: 0 }}
+                  />
+                  {p}
+                </li>
+              ))}
+            </ul>
+          </motion.section>
 
-          {/* Calculator CTA */}
-          <motion.div
-            variants={itemVariants}
-            className="about-calculator-cta glass-sm"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '20px 24px',
-              borderRadius: '16px',
-              border: '1px solid var(--glass-border)',
-              flexWrap: 'wrap',
-              gap: 16,
-            }}
-          >
+          {/* ==================== GOALS ==================== */}
+          <motion.section variants={itemVariants} aria-labelledby="about-goals-title">
+            <SectionTitle icon={Target}>
+              <span id="about-goals-title">Where I'm Headed</span>
+            </SectionTitle>
+
             <div
-              className="about-calculator-cta-icon"
               style={{
-                width: 48,
-                height: 48,
-                borderRadius: '50%',
-                background: `rgba(var(--brand-primary-rgb, 16, 185, 129), 0.15)`,
                 display: 'grid',
-                placeItems: 'center',
-                color: 'var(--brand-primary)',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: 12,
               }}
             >
-              <Sparkles size={22} />
+              {GOALS.map((goal) => (
+                <div
+                  key={goal.horizon}
+                  className="bento-tile-base glass-sm"
+                  style={{ padding: 22 }}
+                >
+                  <div
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      color: 'var(--brand-primary)',
+                      marginBottom: 12,
+                    }}
+                  >
+                    {goal.horizon}
+                  </div>
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 9 }}>
+                    {goal.items.map((item) => (
+                      <li
+                        key={item}
+                        style={{
+                          display: 'flex',
+                          gap: 9,
+                          fontSize: '0.88rem',
+                          lineHeight: 1.5,
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
+                        <Star
+                          size={14}
+                          aria-hidden="true"
+                          style={{ color: 'var(--brand-primary)', flexShrink: 0, marginTop: 3 }}
+                        />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
-            <div style={{ flex: 1 }}>
-              <span
-                className="calculator-eyebrow"
+          </motion.section>
+
+          {/* ==================== PORTFOLIO LINK CTA ==================== */}
+          <motion.section
+            variants={itemVariants}
+            className="bento-tile-base glass"
+            style={{
+              ...glassCard,
+              padding: 'clamp(24px, 5vw, 40px)',
+              textAlign: 'center',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+            aria-labelledby="about-portfolio-title"
+          >
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background:
+                  'radial-gradient(circle at 50% 120%, rgba(139, 92, 246, 0.16) 0%, transparent 60%)',
+                pointerEvents: 'none',
+              }}
+            />
+
+            <div style={{ position: 'relative' }}>
+              <div
+                aria-hidden="true"
                 style={{
-                  fontSize: '0.7rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: 1,
+                  width: 56,
+                  height: 56,
+                  margin: '0 auto 16px',
+                  borderRadius: 18,
+                  background: 'linear-gradient(135deg, var(--brand-primary), #8b5cf6)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: '#fff',
+                  boxShadow: '0 12px 30px rgba(139, 92, 246, 0.3)',
+                }}
+              >
+                <ExternalLink size={26} />
+              </div>
+
+              <h3
+                id="about-portfolio-title"
+                style={{
+                  fontSize: 'clamp(1.25rem, 3.5vw, 1.7rem)',
+                  fontFamily: 'var(--font-head)',
+                  fontWeight: 800,
+                  letterSpacing: '-0.02em',
+                  margin: '0 0 10px',
+                }}
+              >
+                See the full portfolio
+              </h3>
+
+              <p
+                style={{
+                  margin: '0 auto 22px',
+                  maxWidth: 480,
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.95rem',
+                  lineHeight: 1.6,
+                }}
+              >
+                Explore detailed case studies, project demos, and the complete body of work at my
+                dedicated portfolio site.
+              </p>
+
+              <a
+                href={PROFILE.portfolioUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-primary"
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: 12,
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: '0.95rem',
+                  fontWeight: 600,
+                }}
+              >
+                portfolioskens.vercel.app <ExternalLink size={15} aria-hidden="true" />
+              </a>
+            </div>
+          </motion.section>
+
+          {/* ==================== CONTACT / CTA ==================== */}
+          <motion.section
+            variants={itemVariants}
+            className="bento-tile-base glass"
+            style={{
+              ...glassCard,
+              padding: 'clamp(24px, 5vw, 40px)',
+              textAlign: 'center',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+            aria-labelledby="about-cta-title"
+          >
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background:
+                  'radial-gradient(circle at 50% 120%, rgba(var(--brand-primary-rgb, 16, 185, 129), 0.16) 0%, transparent 60%)',
+                pointerEvents: 'none',
+              }}
+            />
+
+            <div style={{ position: 'relative' }}>
+              <div
+                aria-hidden="true"
+                style={{
+                  width: 56,
+                  height: 56,
+                  margin: '0 auto 16px',
+                  borderRadius: 18,
+                  background: 'var(--brand-gradient)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: '#fff',
+                  boxShadow: '0 12px 30px var(--brand-glow, rgba(16,185,129,0.3))',
+                }}
+              >
+                <Heart size={26} fill="rgba(255,255,255,0.25)" />
+              </div>
+
+              <h3
+                id="about-cta-title"
+                style={{
+                  fontSize: 'clamp(1.25rem, 3.5vw, 1.7rem)',
+                  fontFamily: 'var(--font-head)',
+                  fontWeight: 800,
+                  letterSpacing: '-0.02em',
+                  margin: '0 0 10px',
+                }}
+              >
+                Let's build something meaningful
+              </h3>
+
+              <p
+                style={{
+                  margin: '0 auto 22px',
+                  maxWidth: 480,
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.95rem',
+                  lineHeight: 1.6,
+                }}
+              >
+                Freelance projects, technical consulting, open source collaboration
+                or mentorship — my inbox is always open.
+              </p>
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 10,
+                  justifyContent: 'center',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <a
+                  href={`mailto:${PROFILE.email}`}
+                  className="btn-primary"
+                  style={{
+                    padding: '11px 20px',
+                    borderRadius: 12,
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  <Mail size={16} aria-hidden="true" /> {PROFILE.email}
+                </a>
+                <a
+                  href={`tel:${PROFILE.phone.replace(/\s/g, '')}`}
+                  className="btn-secondary"
+                  style={{
+                    padding: '11px 20px',
+                    borderRadius: 12,
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  <Phone size={16} aria-hidden="true" /> {PROFILE.phone}
+                </a>
+              </div>
+
+              <p
+                style={{
+                  marginTop: 22,
+                  marginBottom: 0,
+                  fontSize: '0.8rem',
                   color: 'var(--text-muted)',
                 }}
               >
-                New in MyCoinwise
-              </span>
-              <h3 style={{ margin: '4px 0', fontSize: '1.1rem' }}>
-                Make every number useful.
-              </h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>
-                Explore the new scientific calculator with trigonometry, powers,
-                memory, history, and keyboard support.
+                {PROFILE.location} · Available 24 × 7
               </p>
             </div>
-            <Link
-              to="/calculator"
-              className="btn-primary about-calculator-link"
-              onClick={handleCalculatorClick}
-              style={{
-                padding: '10px 20px',
-                borderRadius: 12,
-                textDecoration: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              Open Calculator
-            </Link>
-          </motion.div>
-
-          {/* Stats Footer */}
-          <motion.div
-            variants={itemVariants}
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              gap: 24,
-              padding: '24px 0',
-              borderTop: '1px solid var(--glass-border)',
-              flexWrap: 'wrap',
-            }}
-          >
-            {[
-              { label: 'Users', value: stats.users },
-              { label: 'Managed', value: stats.managed },
-              { label: 'Uptime', value: stats.uptime },
-            ].map((stat) => (
-              <div key={stat.label} style={{ textAlign: 'center' }}>
-                <div
-                  style={{
-                    fontSize: '1.5rem',
-                    fontWeight: 800,
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  {stat.value}
-                </div>
-                <div
-                  style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}
-                >
-                  {stat.label}
-                </div>
-              </div>
-            ))}
-          </motion.div>
+          </motion.section>
         </motion.div>
       </div>
     </div>
