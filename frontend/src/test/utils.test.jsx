@@ -62,8 +62,19 @@ describe('currencyUtils', () => {
 });
 
 describe('useMediaQuery hook', () => {
-  it('renders without error in test environment', () => {
+  it('renders without error in test environment with string query', () => {
     const { result } = renderHook(() => useMediaQuery('(max-width: 768px)'));
     expect(typeof result.current).toBe('boolean');
   });
+
+  it('renders without error with object query format', () => {
+    const { result } = renderHook(() => useMediaQuery({ maxWidth: 767 }));
+    expect(typeof result.current).toBe('boolean');
+  });
+
+  it('handles minWidth and maxWidth composite object queries', () => {
+    const { result } = renderHook(() => useMediaQuery({ minWidth: 768, maxWidth: 1024 }));
+    expect(typeof result.current).toBe('boolean');
+  });
 });
+
