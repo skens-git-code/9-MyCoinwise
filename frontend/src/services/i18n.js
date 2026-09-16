@@ -2,6 +2,8 @@
 // MyCoinwise – Internationalization (i18n)
 // Supported: English (en), Hindi (hi), Marathi (mr), Haryanvi (bgc), Kannada (kn)
 // =============================================
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
 
 export const LANGUAGES = {
   en: { name: 'English', code: 'en', flag: '🇺🇸' },
@@ -1748,7 +1750,26 @@ export const TRANSLATIONS = {
   }
 };
 
-// Helper hook function to get translations
+if (!i18n.isInitialized) {
+  i18n
+    .use(initReactI18next)
+    .init({
+      resources: {
+        en: { translation: TRANSLATIONS.en },
+        hi: { translation: TRANSLATIONS.hi },
+        mr: { translation: TRANSLATIONS.mr },
+        bgc: { translation: TRANSLATIONS.bgc },
+        kn: { translation: TRANSLATIONS.kn },
+      },
+      lng: 'en',
+      fallbackLng: 'en',
+      interpolation: {
+        escapeValue: false,
+      },
+    });
+}
+
+/* Original getT helper implementation (Problematic - static property access without standard i18next engine integration):
 export function getT(lang = 'en') {
   const translations = TRANSLATIONS[lang] || TRANSLATIONS.en;
   return (key, fallback) => {
@@ -1758,3 +1779,18 @@ export function getT(lang = 'en') {
     return fallback !== undefined ? fallback : undefined;
   };
 }
+*/
+export function getT(lang = 'en') {
+  if (i18n.language !== lang && ['en', 'hi', 'mr', 'bgc', 'kn'].includes(lang)) {
+    i18n.changeLanguage(lang);
+  }
+  const translations = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  return (key, fallback) => {
+    if (!key) return fallback !== undefined ? fallback : '';
+    if (translations && typeof translations[key] === 'string') return translations[key];
+    if (TRANSLATIONS.en && typeof TRANSLATIONS.en[key] === 'string') return TRANSLATIONS.en[key];
+    return fallback !== undefined ? fallback : undefined;
+  };
+}
+
+export default i18n;

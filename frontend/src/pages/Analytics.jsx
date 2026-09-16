@@ -329,6 +329,7 @@ DrillDownModal.displayName = 'DrillDownModal';
  * Main Component
  * ============================================================ */
 export default function Analytics() {
+  /* Original context destructuring without loading:
   const {
     transactions = [],
     theme,
@@ -337,6 +338,18 @@ export default function Analytics() {
     lang,
     currency,
     currencyInfo,
+  } = useContext(AppContext);
+  // Issue: loading was not destructured, preventing the component from showing a loading skeleton while fetches are in-flight.
+  */
+  const {
+    transactions = [],
+    theme,
+    fmt: contextFmt,
+    user,
+    lang,
+    currency,
+    currencyInfo,
+    loading,
   } = useContext(AppContext);
   const { showToast } = useToast();
 
@@ -954,6 +967,29 @@ export default function Analytics() {
   /* ============================================================
    * Loading / Empty
    * ============================================================ */
+  /* Original empty check without loading state check:
+  if (validTransactions.length === 0) {
+    return (
+      <div className="shared-page analytics-page-wrap">
+  // Issue: When transactions were in-flight, the UI prematurely rendered "No data yet", causing layout shift and flickering.
+  */
+  if (loading && validTransactions.length === 0) {
+    return (
+      <div className="shared-page analytics-page-wrap">
+        <div className="spage-header">
+          <div className="spage-title">
+            <h2>Analytics & Intelligence</h2>
+            <span className="badge">AI Insights</span>
+          </div>
+        </div>
+        <div className="glass" style={{ padding: '3rem 1rem', textAlign: 'center', borderRadius: 14 }}>
+          <Loader2 className="spin" size={36} style={{ margin: '0 auto 12px', opacity: 0.6 }} />
+          <p style={{ color: 'var(--text-muted)' }}>Loading analytics…</p>
+        </div>
+      </div>
+    );
+  }
+
   if (validTransactions.length === 0) {
     return (
       <div className="shared-page analytics-page-wrap">

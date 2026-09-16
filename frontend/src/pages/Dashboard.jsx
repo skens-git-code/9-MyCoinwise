@@ -953,7 +953,16 @@ export default function Dashboard() {
       setShowForm(false);
       showToast('success', 'Transaction added successfully!');
     } catch (err) {
+      /* Original error toast using err?.message:
       showToast('error', err?.message || 'Failed to add transaction.');
+      // Issue: Masked backend error body with generic HTTP client message.
+      */
+      const errorMsg =
+        err?.response?.data?.error ||
+        err?.response?.data?.errors?.[0]?.msg ||
+        err?.message ||
+        'Failed to add transaction.';
+      showToast('error', errorMsg);
     } finally {
       setIsLoadingAction(false);
     }
@@ -990,7 +999,16 @@ export default function Dashboard() {
       setEditingTx(null);
       showToast('success', 'Transaction updated successfully!');
     } catch (err) {
+      /* Original error toast using err?.message:
       showToast('error', err?.message || 'Failed to update transaction.');
+      // Issue: Masked backend error body with generic HTTP client message.
+      */
+      const errorMsg =
+        err?.response?.data?.error ||
+        err?.response?.data?.errors?.[0]?.msg ||
+        err?.message ||
+        'Failed to update transaction.';
+      showToast('error', errorMsg);
     } finally {
       setIsLoadingAction(false);
     }

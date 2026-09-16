@@ -355,6 +355,7 @@ function UndoToast({ state, onUndo, onDismiss, tr }) {
  * Main Component
  * ============================================================ */
 export default function Goals() {
+  /* Original context destructuring without loading:
   const {
     transactions = [],
     goals = [],
@@ -363,6 +364,18 @@ export default function Goals() {
     USER_ID,
     t,
     lang = 'en',
+  } = useContext(AppContext);
+  // Issue: loading was not destructured, preventing Goals from showing a loading skeleton while fetching.
+  */
+  const {
+    transactions = [],
+    goals = [],
+    fmt,
+    refetch,
+    USER_ID,
+    t,
+    lang = 'en',
+    loading,
   } = useContext(AppContext);
   const { showToast } = useToast();
 
@@ -982,6 +995,27 @@ export default function Goals() {
   /* ============================================================
    * Render
    * ============================================================ */
+  /* Original render without loading check:
+  return (
+    <div className="masonry-layout-page goals-page-wrap">
+  // Issue: When goals were loading, page immediately flashed 0 goals and empty state.
+  */
+  if (loading && goals.length === 0) {
+    return (
+      <div className="masonry-layout-page goals-page-wrap">
+        <div className="masonry-header">
+          <div className="mh-titles">
+            <h2>{tr('goals', 'Savings Goals')}</h2>
+          </div>
+        </div>
+        <div className="glass" style={{ padding: '3rem 1rem', textAlign: 'center', borderRadius: 14 }}>
+          <Clock className="spin" size={36} style={{ margin: '0 auto 12px', opacity: 0.6 }} />
+          <p style={{ color: 'var(--text-muted)' }}>{tr('loading', 'Loading goals…')}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="masonry-layout-page goals-page-wrap">
       <canvas

@@ -266,7 +266,16 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         resetForm();
       }
     } catch (err) {
+      /* Original error handler discarding backend error details:
       setError('Failed to save transaction. Please try again.');
+      // Issue: Masked exact backend validation messages with a generic fallback string.
+      */
+      const errorMsg =
+        err?.response?.data?.error ||
+        err?.response?.data?.errors?.[0]?.msg ||
+        err?.message ||
+        'Failed to save transaction. Please try again.';
+      setError(errorMsg);
       console.error('Submit error:', err);
     } finally {
       setIsSubmitting(false);

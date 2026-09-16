@@ -22,4 +22,14 @@ calculationSchema.methods.toJSON = function() {
   return value;
 };
 
+/* Original duplicate index declaration:
+// Add to models/Calculation.js
+calculationSchema.index(
+  { user_id: 1, client_id: 1 },
+  { unique: true, name: 'user_client_unique' }
+);
+// Issue: Duplicate index on { user_id: 1, client_id: 1 } (already declared on line 15),
+// creating redundant MongoDB index and build warnings.
+*/
+
 module.exports = mongoose.model('Calculation', calculationSchema);
