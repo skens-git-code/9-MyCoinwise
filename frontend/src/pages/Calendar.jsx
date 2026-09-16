@@ -469,20 +469,13 @@ export default function Calendar() {
   const renderMonthYearPicker = () => {
     const years = Array.from({ length: 21 }, (_, i) => year - 10 + i);
     const months = Array.from({ length: 12 }, (_, i) => i);
-    const selectStyle = {
-      background: 'var(--bg-color)',
-      color: 'var(--text-main)',
-      border: '1px solid var(--border-color)',
-      borderRadius: 6,
-      padding: '0.25rem 0.5rem',
-    };
     return (
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+      <div className="cal-picker-group">
         <select
           value={year}
           onChange={(e) => goToMonthYear(Number(e.target.value), month)}
           aria-label={tr('select_year', 'Select year')}
-          style={selectStyle}
+          className="cal-select"
         >
           {years.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
@@ -490,7 +483,7 @@ export default function Calendar() {
           value={month}
           onChange={(e) => goToMonthYear(year, Number(e.target.value))}
           aria-label={tr('select_month', 'Select month')}
-          style={selectStyle}
+          className="cal-select"
         >
           {months.map((m) => (
             <option key={m} value={m}>{formatMonthLong(year, m, locale)}</option>
@@ -758,15 +751,15 @@ export default function Calendar() {
             {currentMonthTransactions.length} {tr('transactions_this_month', 'transactions this month')}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="cal-header-controls">
           <button
             type="button"
-            className="btn-secondary"
+            className="btn-secondary cal-today-btn"
             onClick={jumpToToday}
             title={tr('jump_today', 'Jump to today')}
             aria-label={tr('today', 'Today')}
           >
-            <Clock size={14} /> {tr('today', 'Today')}
+            <Clock size={15} /> {tr('today', 'Today')}
           </button>
           {renderMonthYearPicker()}
 
@@ -790,13 +783,7 @@ export default function Calendar() {
           </div>
 
           {viewMode === 'heatmap' && (
-            <div
-              className="heatmap-toggle"
-              style={{
-                display: 'flex', gap: 4, alignItems: 'center',
-                background: 'var(--bg-color)', padding: '2px 6px', borderRadius: 6,
-              }}
-            >
+            <div className="heatmap-toggle glass">
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 {tr('metric', 'Metric')}:
               </span>
@@ -806,7 +793,7 @@ export default function Calendar() {
                   type="button"
                   className={`btn-sm ${heatmapMetric === metric ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setHeatmapMetric(metric)}
-                  style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                  style={{ fontSize: '0.72rem', padding: '4px 10px', borderRadius: '8px' }}
                   aria-pressed={heatmapMetric === metric}
                 >
                   {tr(metric, metric.charAt(0).toUpperCase() + metric.slice(1))}
@@ -817,17 +804,17 @@ export default function Calendar() {
 
           <button
             type="button"
-            className="btn-secondary"
+            className="btn-secondary cal-csv-btn"
             onClick={exportMonthCSV}
             aria-label={tr('export_csv', 'Export month data as CSV')}
           >
-            <Download size={14} /> CSV
+            <Download size={15} /> CSV
           </button>
 
           <motion.button
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
-            className="btn-primary"
+            className="btn-primary cal-new-btn"
             onClick={() => openAddForDate(normalizeDateKey(new Date()))}
           >
             <Plus size={16} /> {tr('new_entry', 'New Entry')}

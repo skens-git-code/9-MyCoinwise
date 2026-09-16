@@ -150,6 +150,14 @@ export default function App() {
   const [globalError, setGlobalError] = useState(null);
   const [token, setToken] = useState(() => getStoredToken());
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [previousSession, setPreviousSession] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('mcw-previous-session');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
 
   // Keep the branded startup screen visible long enough to feel intentional,
   // including on fast local loads where auth would otherwise resolve instantly.
@@ -279,6 +287,8 @@ export default function App() {
     api.logout().catch(() => { });
     localStorage.removeItem('mcw-token');
     sessionStorage.removeItem('mcw-token');
+    sessionStorage.removeItem('mcw-previous-session');
+    setPreviousSession(null);
     setToken(null);
     setUser(null);
     setAllUsers([]);
@@ -294,6 +304,8 @@ export default function App() {
     const handleAuthExpired = () => {
       localStorage.removeItem('mcw-token');
       sessionStorage.removeItem('mcw-token');
+      sessionStorage.removeItem('mcw-previous-session');
+      setPreviousSession(null);
       setToken(null);
       setUser(null);
       setAllUsers([]);
@@ -309,14 +321,15 @@ export default function App() {
     return () => window.removeEventListener('mcw:auth-expired', handleAuthExpired);
   }, []);
 
-  const fetchData = async () => {
-    if (!token) {
+  const fetchData = async (overrideToken) => {
+    const activeToken = overrideToken || token;
+    if (!activeToken) {
       setIsInitialAuthLoad(false);
       return;
     }
 
     try {
-      if (!user) setIsInitialAuthLoad(true);
+      if (!user && !overrideToken) setIsInitialAuthLoad(true);
       else setIsBackgroundSyncing(true);
       setGlobalError(null);
 
@@ -410,19 +423,49 @@ export default function App() {
 
   const switchUser = async (userId) => {
     try {
-      setIsInitialAuthLoad(true);
+      setIsBackgroundSyncing(true);
+
+      // If switching back to previous session, clear it; otherwise record current user
+      if (previousSession && String(previousSession.id) === String(userId)) {
+        sessionStorage.removeItem('mcw-previous-session');
+        setPreviousSession(null);
+      } else if (user) {
+        const prevSessionData = {
+          id: user.id || user._id,
+          username: user.username,
+          last_name: user.last_name || '',
+          profile_avatar: user.profile_avatar,
+          profile_color: user.profile_color,
+          email: user.email,
+          switchedAt: Date.now(),
+        };
+        sessionStorage.setItem('mcw-previous-session', JSON.stringify(prevSessionData));
+        setPreviousSession(prevSessionData);
+      }
+
       const response = await api.switchUser(userId);
       if (response && response.token) {
-        localStorage.setItem('mcw-token', response.token);
+        // Preserve the original storage type (respects the "remember me" login preference)
+        const usedSessionStorage = !!sessionStorage.getItem('mcw-token');
+        localStorage.removeItem('mcw-token');
+        sessionStorage.removeItem('mcw-token');
+        (usedSessionStorage ? sessionStorage : localStorage).setItem('mcw-token', response.token);
         setToken(response.token);
-        // fetchData is triggered automatically by token dependency in useEffect
+        await fetchData(response.token);
+        return response;
       }
     } catch (error) {
       console.error('Switch user failed:', error);
       throw error;
     } finally {
+      setIsBackgroundSyncing(false);
       setIsInitialAuthLoad(false);
     }
+  };
+
+  const revertSession = async () => {
+    if (!previousSession?.id) return;
+    return await switchUser(previousSession.id);
   };
 
   const currency = user?.currency || 'USD';
@@ -442,6 +485,7 @@ export default function App() {
           addTransaction, deleteTransaction, editTransaction,
           updateTransaction: editTransaction,
           resetAccount, createUser, switchUser, login, logout,
+          previousSession, revertSession,
           isInitialAuthLoad, isBackgroundSyncing, globalError,
           fetchTransactions: fetchData,
           refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
@@ -463,6 +507,7 @@ export default function App() {
         addTransaction, deleteTransaction, editTransaction,
         updateTransaction: editTransaction,
         resetAccount, createUser, switchUser, login, logout,
+        previousSession, revertSession,
         isInitialAuthLoad, isBackgroundSyncing, globalError,
         fetchTransactions: fetchData,
         refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,

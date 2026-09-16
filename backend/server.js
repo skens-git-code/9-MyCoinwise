@@ -171,7 +171,18 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5001;
 let server;
 
-connectToMongo().then(() => {
+connectToMongo().then(async () => {
+  // Ensure legacy root accounts have household_id populated
+  try {
+    const User = require('./models/User');
+    await User.updateMany(
+      { $or: [{ household_id: null }, { household_id: { $exists: false } }] },
+      [{ $set: { household_id: '$_id' } }]
+    );
+  } catch (healErr) {
+    logger.warn(`Could not run household_id self-healing migration: ${healErr.message}`);
+  }
+
   server = app.listen(PORT, () => {
     logger.info(`🚀 MyCoinwise API running on port ${PORT}`);
   });

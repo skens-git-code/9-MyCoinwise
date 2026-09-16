@@ -637,7 +637,7 @@ body,
 /* Desktop Sidebar — Completely Stabilized & Pixel-Perfect Alignment */
 .island-sidebar {
   flex-shrink: 0 !important;
-  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s ease !important;
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1) !important;
   will-change: width !important;
   contain: layout style !important;
   overflow-x: hidden !important;
@@ -646,31 +646,46 @@ body,
   -ms-overflow-style: none !important;
   position: relative !important;
   z-index: 100 !important;
+  /* Prevent any global .glass:hover or card-hover transforms from shifting/jittering the sidebar */
+  transform: none !important;
+  backface-visibility: hidden;
+
+  &:hover {
+    transform: none !important;
+  }
 
   &::-webkit-scrollbar {
     display: none !important;
   }
 
-  &.open,
-  &.hover-expanded {
-    width: var(--sidebar-width, 260px) !important;
-  }
-
   &.open {
+    width: var(--sidebar-width, 260px) !important;
     overflow-y: auto !important;
   }
 
-  &.collapsed:not(.hover-expanded) {
+  &.collapsed {
     width: var(--sidebar-collapsed, 72px) !important;
   }
 
-  /* Elevated glass glow when hovered in collapsed mode */
-  &.hover-expanded {
-    box-shadow: 0 16px 44px -8px rgba(0, 0, 0, 0.75), 0 0 24px rgba(0, 212, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  /* Stabilize all children from hover transforms or layout thrashing */
+  .inav-item,
+  .island-brand,
+  .island-user,
+  .island-footer,
+  .collapse-toggle {
+    transform: none !important;
+
+    &:hover {
+      transform: none !important;
+    }
+  }
+
+  .brand-icon,
+  .collapse-toggle {
+    pointer-events: auto !important;
   }
 
   /* Nested children pointer-events: none to prevent boundary collisions & false mouseouts */
-  .brand-icon,
   .brand-icon svg,
   .brand-name,
   .user-avatar-wrapper,
@@ -690,7 +705,7 @@ body,
   /* ========================================================
      COLLAPSED STATE (72px Rail) — Precise 36px Center Axis
      ======================================================== */
-  &.collapsed:not(.hover-expanded) {
+  &.collapsed {
     /* Brand Header */
     .island-brand {
       height: 64px !important;
@@ -910,8 +925,7 @@ body,
   /* ========================================================
      EXPANDED STATE (260px) — Balanced, Spacious, Left-Aligned
      ======================================================== */
-  &.open,
-  &.hover-expanded {
+  &.open {
     /* Brand Header */
     .island-brand {
       height: 64px !important;
