@@ -59,6 +59,12 @@ const auth = async (req, res, next) => {
       }
     }
 
+    // Self-heal missing household_id on root accounts so DB records are always consistent
+    if (!user.household_id) {
+      user.household_id = user._id;
+      User.updateOne({ _id: user._id }, { $set: { household_id: user._id } }).catch(() => {});
+    }
+
     // Add user string object to request object to not break previous routes expecting req.user.id
     req.user = {
       id: String(user.id || user._id),

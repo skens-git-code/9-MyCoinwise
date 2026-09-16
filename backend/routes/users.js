@@ -241,7 +241,13 @@ router.get('/', async (req, res) => {
   try {
     const householdId = req.user.household_id || req.user.id;
     const users = await User.find({
-      $or: [{ household_id: householdId }, { _id: req.user.id }],
+      $or: [
+        { household_id: householdId },
+        { _id: householdId },
+        { _id: req.user.id },
+        { household_id: req.user.id },
+      ],
+      is_active: { $ne: false },
     })
       .select('username last_name profession email email_verified created_at balance theme monthly_goal currency profile_avatar profile_color household_id')
       .sort({ _id: 1 });
@@ -551,8 +557,13 @@ router.post('/:id/switch', [param('id').isMongoId().withMessage('Invalid user ID
     const householdId = req.user.household_id || req.user.id;
     const target = await User.findOne({
       _id: req.params.id,
-      $or: [{ household_id: householdId }, { _id: req.user.id }],
-      is_active: true,
+      $or: [
+        { household_id: householdId }, // target is a household member
+        { _id: householdId },           // target IS the household root
+        { household_id: req.user.id }, // target was created by current user
+        { _id: req.user.id },           // target is self
+      ],
+      is_active: { $ne: false },
     });
     if (!target) return res.status(403).json({ error: 'You can only switch to a linked household profile.' });
 
@@ -578,6 +589,7 @@ router.post('/:id/switch', [param('id').isMongoId().withMessage('Invalid user ID
       email: target.email,
       profile_avatar: target.profile_avatar,
       profile_color: target.profile_color,
+      household_id: target.household_id || target._id,
     } });
   } catch (error) {
     logger.error('[Users] switch user error:', error);

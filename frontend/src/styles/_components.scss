@@ -4981,22 +4981,138 @@ textarea:focus-visible {
   text-overflow: ellipsis;
 }
 
+// Calendar Header Controls
+.cal-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  row-gap: 12px;
+  flex-wrap: wrap;
+
+  .cal-today-btn,
+  .cal-csv-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    max-height: 42px !important;
+    padding: 0 18px !important;
+    border-radius: 12px !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    white-space: nowrap;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .cal-picker-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    .cal-select {
+      display: inline-flex;
+      align-items: center;
+      height: 42px !important;
+      min-height: 42px !important;
+      max-height: 42px !important;
+      line-height: 40px;
+      padding: 0 34px 0 14px !important;
+      border-radius: 12px !important;
+      font-size: 0.85rem !important;
+      font-weight: 600 !important;
+      font-family: var(--font-body);
+      color: var(--text-primary);
+      background-color: var(--glass-2);
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--shadow-sm);
+      backdrop-filter: blur(var(--glass-blur-sm, 10px));
+      -webkit-backdrop-filter: blur(var(--glass-blur-sm, 10px));
+      cursor: pointer;
+      outline: none;
+      -webkit-appearance: none !important;
+      -moz-appearance: none !important;
+      appearance: none !important;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 11px center;
+      background-size: 13px;
+      transition: all var(--transition-base);
+
+      &:hover {
+        background-color: var(--glass-3);
+        border-color: var(--glass-border-hover);
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-md);
+      }
+
+      &:focus {
+        border-color: var(--brand-primary);
+        box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+      }
+
+      option {
+        background-color: var(--surface-2, #ffffff);
+        color: var(--text-primary);
+      }
+    }
+  }
+
+  .heatmap-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 42px !important;
+    min-height: 42px !important;
+    max-height: 42px !important;
+    padding: 0 10px;
+    border-radius: 12px;
+    background: var(--glass-card, rgba(13, 21, 39, 0.6));
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .cal-new-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    max-height: 42px !important;
+    padding: 0 20px !important;
+    border-radius: 12px !important;
+    font-size: 0.86rem !important;
+    font-weight: 600 !important;
+    white-space: nowrap;
+    box-shadow: 0 2px 12px rgba(var(--brand-primary-rgb), 0.35);
+  }
+}
+
 // Calendar View Toggles Segmented Control
 .view-toggles {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 4px;
-  border-radius: 12px;
+  gap: 5px;
+  padding: 4px 5px;
+  border-radius: 13px;
+  height: 42px !important;
+  min-height: 42px !important;
+  max-height: 42px !important;
+  box-sizing: border-box;
   background: var(--glass-card, rgba(13, 21, 39, 0.6));
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 
   .vt-btn {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 7px 14px;
+    gap: 7px;
+    height: 32px;
+    padding: 0 14px;
     border-radius: 9px;
     border: none;
     background: transparent;

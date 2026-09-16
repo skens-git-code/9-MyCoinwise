@@ -1599,7 +1599,7 @@ const AppearanceTab = ({ theme, handleThemeChange }) => {
 /* ============================================================
  * Users tab
  * ============================================================ */
-const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId, t }) => {
+const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId, previousSession, revertSession, t }) => {
   const prefersReducedMotion = useReducedMotion();
   const rowHover = prefersReducedMotion ? undefined : { x: 4 };
   const switchHover = prefersReducedMotion ? undefined : { scale: 1.05 };
@@ -1628,6 +1628,53 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
       </div>
 
       <div className="manage-users-body">
+        {previousSession && String(previousSession.id) !== String(USER_ID) && (
+          <div
+            className="manage-users-revert-banner"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              padding: '12px 16px',
+              marginBottom: 16,
+              background: 'rgba(56, 189, 248, 0.08)',
+              border: '1px solid rgba(56, 189, 248, 0.25)',
+              borderRadius: 12,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>↩️</span>
+              <div>
+                <p style={{ margin: '0 0 2px', fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                  Previous Session: {previousSession.username}
+                </p>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  You switched from {previousSession.username}. Revert your session anytime without restriction.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="manage-user-switch"
+              onClick={() => revertSession?.()}
+              disabled={!!switchingUserId}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                cursor: 'pointer',
+              }}
+            >
+              <Users size={14} aria-hidden />
+              Revert to {previousSession.username}
+            </button>
+          </div>
+        )}
         {users.length === 0 ? (
           <div
             className="manage-users-empty"
@@ -1645,6 +1692,7 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
               const uid = u?.id || u?._id;
               const isCurrentUser = Boolean(uid && USER_ID && String(uid) === String(USER_ID));
               const isSwitching = Boolean(switchingUserId && uid && String(switchingUserId) === String(uid));
+              const isPreviousSession = Boolean(previousSession?.id && uid && String(previousSession.id) === String(uid));
               const avatar = getSafeUserAvatar(u);
               const email = getSafeUserEmail(u);
               const displayName = getUserDisplayName(u);
@@ -1661,7 +1709,23 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
                     {avatar.type === 'image' ? <img src={avatar.value} alt="" /> : avatar.value}
                   </span>
                   <div className="manage-user-main">
-                    <p className="manage-user-name">{displayName}</p>
+                    <p className="manage-user-name">
+                      {displayName}
+                      {isPreviousSession && (
+                        <span style={{
+                          marginLeft: 8,
+                          fontSize: '0.72rem',
+                          padding: '2px 8px',
+                          borderRadius: 10,
+                          background: 'rgba(56, 189, 248, 0.15)',
+                          color: 'var(--brand-primary)',
+                          fontWeight: 600,
+                          verticalAlign: 'middle',
+                        }}>
+                          Previous Session
+                        </span>
+                      )}
+                    </p>
                     {email && <p className="manage-user-email" title={email}>{email}</p>}
                     <span className="manage-user-role">{u?.profession || t?.('personal_workspace') || 'Personal workspace'}</span>
                   </div>
@@ -1679,7 +1743,9 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
                         className="manage-user-switch"
                       >
                         <Users size={14} aria-hidden />
-                        {isSwitching ? (t?.('switching') || 'Switching…') : (t?.('switch') || 'Switch')}
+                        {isSwitching
+                          ? (t?.('switching') || 'Switching…')
+                          : (isPreviousSession ? 'Revert' : (t?.('switch') || 'Switch'))}
                       </motion.button>
                       <motion.button
                         type="button"
@@ -1876,6 +1942,8 @@ function SettingsInner({ context }) {
     resetAccount,
     createUser,
     switchUser,
+    previousSession,
+    revertSession,
     currencyInfo,
     lang,
     setLanguage,
@@ -1901,7 +1969,7 @@ function SettingsInner({ context }) {
   }, [user]);
 
   /* ---------------- Tabs ---------------- */
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState(() => (
     tabParam && TAB_IDS.includes(tabParam) ? tabParam : 'profile'
@@ -2226,14 +2294,13 @@ function SettingsInner({ context }) {
       await switchUser(switchId);
       const switchTargetName = userToSwitch ? getUserDisplayName(userToSwitch) : 'user';
       showMessage('success', `Switched to ${switchTargetName}`);
-      if (refetch) await refetch();
       setModals((prev) => ({ ...prev, switchConfirm: null }));
     } catch (err) {
       showMessage('error', `Failed to switch user: ${err?.message || 'Unknown error'}`);
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, switch: null }));
     }
-  }, [modals.switchConfirm, allUsers, switchUser, refetch, showMessage, formState, USER_ID, user]);
+  }, [modals.switchConfirm, allUsers, switchUser, showMessage, formState, USER_ID, user]);
 
   /* ============================================================
    * Theme
@@ -2394,6 +2461,8 @@ function SettingsInner({ context }) {
             USER_ID={USER_ID}
             setModals={setModals}
             switchingUserId={loadingStates.switch}
+            previousSession={previousSession}
+            revertSession={revertSession}
           />
         );
       case 'data':
@@ -2471,7 +2540,10 @@ function SettingsInner({ context }) {
                   type="button"
                   aria-selected={activeTab === tab.id}
                   id={`tab-${tab.id}`}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setSearchParams({ tab: tab.id }, { replace: true });
+                  }}
                   whileHover={{ x: 4 }}
                   whileTap={{ scale: 0.98 }}
                   className={`settings-nav-tab ${activeTab === tab.id ? 'active' : ''}`}
