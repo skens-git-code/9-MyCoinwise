@@ -314,8 +314,8 @@ const useResponsiveSidebar = (initialState = true) => {
 };
 */
 const useResponsiveSidebar = (initialState = true) => {
-  const isMobile = useMediaQuery({ maxWidth: BREAKPOINTS.mobile - 1 });
-  const isTablet = useMediaQuery({ minWidth: BREAKPOINTS.mobile, maxWidth: BREAKPOINTS.tablet - 1 });
+  const isMobile = useMediaQuery(`(max-width: ${BREAKPOINTS.mobile - 1}px)`);
+  const isTablet = useMediaQuery(`(min-width: ${BREAKPOINTS.mobile}px) and (max-width: ${BREAKPOINTS.tablet}px)`);
   const deviceType = isMobile ? 'mobile' : isTablet ? 'tablet' : 'desktop';
 
   const [desktopPreference, setDesktopPreference] = useState(initialState);
@@ -819,12 +819,10 @@ export default function AppLayout({ children }) {
 
           <QuickActionFAB onAddTransaction={handleOpenAddTx} />
 
-          {deviceType !== 'desktop' && (
-            <MobileBottomNav
-              t={t}
-              onOpenDrawer={handleOpenDrawer}
-            />
-          )}
+          <MobileBottomNav
+            t={t}
+            onOpenDrawer={handleOpenDrawer}
+          />
 
           <AnimatePresence>
             {drawerOpen && (
