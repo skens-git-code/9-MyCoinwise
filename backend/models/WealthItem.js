@@ -30,4 +30,7 @@ const wealthItemSchema = new mongoose.Schema({
   note: { type: String, default: '', maxlength: 1000, trim: true }
 }, { timestamps: true });
 
+/* Optimization: Add index on user_id to avoid full collection scans (COLLSCAN) on /api/wealth/items */
+wealthItemSchema.index({ user_id: 1 });
+
 module.exports = mongoose.model('WealthItem', wealthItemSchema);

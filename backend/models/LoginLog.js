@@ -7,6 +7,7 @@ const loginLogSchema = new mongoose.Schema({
     ref: 'User', 
     default: null, 
     index: true,
+    /* Original buggy code:
     validate: {
       validator: async function(v) {
         if (!v) return true;
@@ -14,6 +15,9 @@ const loginLogSchema = new mongoose.Schema({
       },
       message: 'User does not exist'
     }
+    // Issue: Schema-level async DB query executes an extra User.exists() roundtrip on EVERY login/log write,
+    // adding latency to auth endpoints and crashing audit log writes if a user record is being transitioned.
+    */
   },
   email: { 
     type: String, 

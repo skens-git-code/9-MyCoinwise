@@ -80,4 +80,18 @@ transactionSchema.virtual('id').get(function() {
   return this._id.toHexString();
 });
 
+/* Original duplicate index declarations:
+transactionSchema.index(
+  { user_id: 1, recurrence_instance_key: 1 },
+  { unique: true, sparse: true, name: 'user_recurrence_instance_unique' }
+);
+
+transactionSchema.index(
+  { user_id: 1, import_fingerprint: 1 },
+  { sparse: true, name: 'user_import_fingerprint' }
+);
+// Issue: Duplicate index specifications on { user_id: 1, recurrence_instance_key: 1 } and { user_id: 1, import_fingerprint: 1 }
+// with differing options caused index build conflicts in MongoDB and wasted memory. Kept canonical definitions above.
+*/
+
 module.exports = mongoose.model('Transaction', transactionSchema);

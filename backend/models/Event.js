@@ -21,4 +21,7 @@ eventSchema.methods.toJSON = function() {
   return obj;
 };
 
+/* Optimization: Add compound index on user_id and date for fast calendar queries and sorting */
+eventSchema.index({ user_id: 1, date: 1 });
+
 module.exports = mongoose.model('Event', eventSchema);

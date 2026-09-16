@@ -54,6 +54,12 @@ subscriptionSchema.virtual('days_until_billing').get(function() {
   if (!this.next_billing_date) return null;
   const diff = this.next_billing_date - new Date();
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+
 });
+
+subscriptionSchema.index(
+  { user_id: 1, name: 1 },
+  { unique: true, collation: { locale: 'en', strength: 2 }, name: 'user_sub_name_unique' }
+);
 
 module.exports = mongoose.model('Subscription', subscriptionSchema);

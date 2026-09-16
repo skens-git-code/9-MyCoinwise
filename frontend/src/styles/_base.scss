@@ -417,10 +417,31 @@ body::after {
   }
 }
 
+/* Original @keyframes spin (Problematic - lacked hardware acceleration translateZ(0) and transform-box: fill-box, causing SVG wobbling, subpixel jitter, and CPU repaint cycles):
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
+}
+*/
+@keyframes spin {
+  from {
+    transform: rotate(0deg) translateZ(0);
+  }
+  to {
+    transform: rotate(360deg) translateZ(0);
+  }
+}
+
+.spin,
+.spinning,
+.spinner {
+  animation: spin 1s linear infinite;
+  transform-origin: center center;
+  transform-box: fill-box;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 @keyframes bounceIn {

@@ -1,6 +1,7 @@
 import React, { useState, useContext, useMemo, useCallback, useEffect, useRef } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion'; // [FIX #1] added MotionConfig
+import { useMediaQuery } from 'react-responsive';
 import {
   LayoutDashboard, ArrowLeftRight, BarChart3, Target, Activity, Briefcase,
   CreditCard, Settings, ChevronRight, TrendingUp, TrendingDown,
@@ -126,6 +127,7 @@ const formatBalance = (balance, currencySymbol = '$', langOrLocale = 'en-US') =>
   })}`;
 };
 
+/* Original getDeviceType (Problematic - static window.innerWidth check without live matchMedia subscription caused delayed and jerky breakpoint response):
 const getDeviceType = () => {
   if (typeof window === 'undefined') return 'desktop';
   const width = window.innerWidth;
@@ -133,6 +135,8 @@ const getDeviceType = () => {
   if (width < BREAKPOINTS.tablet) return 'tablet';
   return 'desktop';
 };
+// Migrated to dynamic, hardware-accelerated media queries via `useMediaQuery` from react-responsive.
+*/
 
 const getStoredSyncEnabled = () => {
   if (typeof window === 'undefined') return true;
@@ -261,6 +265,7 @@ const useUserDisplay = (user, t) => {
   }, [user, t]);
 };
 
+/* Original useResponsiveSidebar (Problematic - relied on debounced 150ms resize event loop that caused layout jitter, stutter, and lagging breakpoint transitions):
 const useResponsiveSidebar = (initialState = true) => {
   const [sidebarOpen, setSidebarOpen] = useState(initialState);
   const [deviceType, setDeviceType] = useState(getDeviceType());
@@ -299,6 +304,24 @@ const useResponsiveSidebar = (initialState = true) => {
       if (getDeviceType() !== 'mobile') {
         desktopPreferenceRef.current = next;
       }
+      return next;
+    });
+  }, []);
+
+  return { sidebarOpen, setSidebarOpen: setSidebarOpenWithMemory, deviceType };
+};
+*/
+const useResponsiveSidebar = (initialState = true) => {
+  const isMobile = useMediaQuery({ maxWidth: BREAKPOINTS.mobile - 1 });
+  const isTablet = useMediaQuery({ minWidth: BREAKPOINTS.mobile, maxWidth: BREAKPOINTS.tablet - 1 });
+  const deviceType = isMobile ? 'mobile' : isTablet ? 'tablet' : 'desktop';
+
+  const [desktopPreference, setDesktopPreference] = useState(initialState);
+  const sidebarOpen = deviceType === 'mobile' ? false : desktopPreference;
+
+  const setSidebarOpenWithMemory = useCallback((value) => {
+    setDesktopPreference((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
       return next;
     });
   }, []);
@@ -517,6 +540,7 @@ export default function AppLayout({ children }) {
     return formatBalance(user?.balance, currencyInfo?.symbol, lang);
   }, [user, currencyInfo?.symbol, fmt, lang]);
 
+  /* Original financialSummary calculation without soft-delete check:
   const financialSummary = useMemo(() => {
     const income = transactions
       .filter(t => t.type === 'income')
@@ -525,6 +549,26 @@ export default function AppLayout({ children }) {
         return sum + (Number.isFinite(val) ? val : 0);
       }, 0);
     const expense = transactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => {
+        const val = Number(t.amount);
+        return sum + (Number.isFinite(val) ? val : 0);
+      }, 0);
+    const net = income - expense;
+    const rate = income > 0 ? ((net / income) * 100).toFixed(0) : '0';
+    return { income, expense, net, rate };
+  }, [transactions]);
+  // Issue: Excluded check for t.is_deleted === true, causing soft-deleted transactions to leak into top-level layout figures.
+  */
+  const financialSummary = useMemo(() => {
+    const liveTxs = transactions.filter(t => t && t.is_deleted !== true);
+    const income = liveTxs
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => {
+        const val = Number(t.amount);
+        return sum + (Number.isFinite(val) ? val : 0);
+      }, 0);
+    const expense = liveTxs
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => {
         const val = Number(t.amount);
@@ -729,6 +773,7 @@ export default function AppLayout({ children }) {
             />
 
             <div className="island-content-wrapper">
+              {/* Original route transition (Problematic - animated scale and vertical displacement simultaneously during route change, triggering layout shifts and animation queue bottlenecks):
               <AnimatePresence mode="wait">
                 <motion.div
                   key={location.pathname}
@@ -739,6 +784,28 @@ export default function AppLayout({ children }) {
                   transition={{
                     duration: ANIMATION_DURATIONS.normal,
                     ease: [0.16, 1, 0.3, 1]
+                  }}
+                >
+                  <Breadcrumbs />
+                  {children}
+                </motion.div>
+              </AnimatePresence>
+              */}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={location.pathname}
+                  className="island-page"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{
+                    duration: 0.18,
+                    ease: [0.16, 1, 0.3, 1]
+                  }}
+                  style={{
+                    willChange: 'opacity, transform',
+                    backfaceVisibility: 'hidden',
+                    WebkitBackfaceVisibility: 'hidden'
                   }}
                 >
                   <Breadcrumbs />

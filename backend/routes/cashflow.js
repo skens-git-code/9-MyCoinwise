@@ -10,19 +10,22 @@ const fetchGemini = async (prompt) => {
   if (!apiKey) throw new Error('Missing GEMINI_API_KEY environment variable.');
 
   const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash'; // Use 1.5-flash by default
+  /* Original buggy code:
   const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
-
-  const data = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: parseFloat(process.env.GEMINI_TEMPERATURE) || 0.7,
-      maxOutputTokens: parseInt(process.env.GEMINI_MAX_TOKENS, 10) || 250,
-    },
-  };
-
   const response = await axios.post(url, data, {
     timeout: 15000, // 15 seconds
     headers: { 'Content-Type': 'application/json' },
+  });
+  // Issue: Passing the Gemini API key in the URL query string leaks it to server access logs, proxies, and error messages.
+  */
+  const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`;
+
+  const response = await axios.post(url, data, {
+    timeout: 15000, // 15 seconds
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
   });
 
   const candidates = response.data?.candidates;
@@ -95,9 +98,16 @@ Provide an insight comparing their daily burn rate to income, taking subscriptio
       const fallback = dangerDay
         ? `Your cashflow may hit a low point on day ${dangerDay}. Consider reducing variable expenses or adjusting subscriptions.`
         : 'Your cashflow remains stable. Keep monitoring your daily burn rate.';
+      /* Original buggy code:
       res.status(500).json({
         error: 'Failed to generate AI insight.',
         fallback,
+      });
+      // Issue: Returning status 500 causes Axios to throw on client side, discarding the fallback message.
+      */
+      res.status(200).json({
+        insight: fallback,
+        fallback: true,
       });
     }
   }

@@ -13,8 +13,13 @@ const aiLimiter = rateLimit({
 // Helper — builds financial context string for the AI
 async function getFinancialContext(userId) {
   try {
+    /* Original buggy code:
     const transactions = await Transaction.find({ user_id: userId }).sort({ date: -1 }).limit(50);
     const goals = await Goal.find({ user_id: userId });
+    // Issue: Did not filter is_deleted: { $ne: true }, causing soft-deleted transactions and archived goals to leak into AI context.
+    */
+    const transactions = await Transaction.find({ user_id: userId, is_deleted: { $ne: true } }).sort({ date: -1 }).limit(50);
+    const goals = await Goal.find({ user_id: userId, is_archived: { $ne: true } });
 
     const recentTx = transactions.map(t =>
       `${t.date?.toISOString().split('T')[0] || 'N/A'} - ${(t.type || '').toUpperCase()} - ${t.category}: $${t.amount}${t.note ? ` (${t.note})` : ''}`

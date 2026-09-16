@@ -1,92 +1,201 @@
+/**
+ * accounts.js — Account management routes
+ *
+ * Response shapes (unchanged from client contract):
+ *   GET    → bare array
+ *   POST   → { account, message }
+ *   PUT    → { account, message }
+ *   DELETE → { message }
+ */
+
 const express = require('express');
 const mongoose = require('mongoose');
 const Account = require('../models/Account');
-const Transaction = require('../models/Transaction'); // assume you have this
+const Transaction = require('../models/Transaction');
 const checkOwnership = require('../middleware/ownership');
+const { logger } = require('../utils/logger');
 
 const router = express.Router();
-const CURRENCY_CODES = new Set(['USD', 'INR', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SGD', 'AED', 'CHF', 'CNY', 'MXN', 'BRL', 'KRW', 'THB']);
-const HEX_COLOR = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/;
-const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// ---------- Helpers ----------
+/* ── Constants ─────────────────────────────────────────────── */
+
+const MAX_BALANCE = 999_999_999.99;
+const MAX_NAME_LENGTH = 100;
+const MAX_TYPE_LENGTH = 50;
+const MAX_ICON_LENGTH = 40;
+
+const ALLOWED_ICONS = new Set(['Wallet', 'CreditCard', 'Landmark', 'Coins']);
+const CANONICAL_TYPES = new Set([
+  'bank', 'wallet', 'credit_card', 'investment', 'cash', 'other',
+]);
+const CUSTOM_TYPE_PATTERN = /^[a-z][a-z0-9_]{0,49}$/;
+
+const CURRENCY_CODES = new Set([
+  'USD', 'INR', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SGD', 'AED',
+  'CHF', 'CNY', 'MXN', 'BRL', 'KRW', 'THB',
+]);
+
+const HEX_COLOR = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/;
+
+/* ── Helpers ───────────────────────────────────────────────── */
+
+const escapeRegExp = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const parseAccountBalance = (value) => {
   if (value === '' || value === null || value === undefined) return null;
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
   const amount = typeof value === 'string' ? Number(value.trim()) : value;
-  if (!Number.isFinite(amount) || Math.abs(amount) > 999999999.99) return null;
+  if (!Number.isFinite(amount)) return null;
+  if (Math.abs(amount) > MAX_BALANCE) return null;
   return Number(amount.toFixed(2));
 };
 
-const parseBoolean = (value) => value === true || value === 'true' || value === 1 || value === '1';
+const parseBoolean = (value) =>
+  value === true || value === 'true' || value === 1 || value === '1';
 
 const validateAccountFields = ({ name, type, currency, color, icon } = {}) => {
-  if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.trim().length > 100)) {
-    return 'Account name is required and must be 100 characters or fewer.';
+  if (name !== undefined) {
+    if (typeof name !== 'string') return 'Account name must be a string.';
+    const trimmed = name.trim();
+    if (!trimmed) return 'Account name is required.';
+    if (trimmed.length > MAX_NAME_LENGTH) {
+      return `Account name must be ${MAX_NAME_LENGTH} characters or fewer.`;
+    }
   }
-  if (type !== undefined && (typeof type !== 'string' || type.trim().length > 50)) return 'Account type is invalid.';
-  if (currency !== undefined && !CURRENCY_CODES.has(String(currency).trim().toUpperCase())) return 'Currency is invalid.';
-  if (color !== undefined && (typeof color !== 'string' || !HEX_COLOR.test(color))) return 'Color must be a valid hex color.';
-  if (icon !== undefined && (typeof icon !== 'string' || icon.length > 40)) return 'Icon is invalid.';
+  if (type !== undefined) {
+    if (typeof type !== 'string') return 'Account type must be a string.';
+    const normalized = type.trim().toLowerCase();
+    if (!normalized) return 'Account type cannot be empty.';
+    if (normalized.length > MAX_TYPE_LENGTH) return 'Account type is too long.';
+    if (!CANONICAL_TYPES.has(normalized) && !CUSTOM_TYPE_PATTERN.test(normalized)) {
+      return 'Account type is invalid.';
+    }
+  }
+  if (currency !== undefined) {
+    const code = String(currency).trim().toUpperCase();
+    if (!CURRENCY_CODES.has(code)) return 'Currency is invalid.';
+  }
+  if (color !== undefined) {
+    if (typeof color !== 'string' || !HEX_COLOR.test(color)) {
+      return 'Color must be a valid hex color.';
+    }
+  }
+  if (icon !== undefined) {
+    if (typeof icon !== 'string') return 'Icon must be a string.';
+    if (icon.length > MAX_ICON_LENGTH) return 'Icon is too long.';
+    if (!ALLOWED_ICONS.has(icon)) return 'Icon is invalid.';
+  }
   return null;
 };
 
-// ---------- GET: List accounts with transaction count ----------
-router.get('/:userId', checkOwnership('userId'), async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.userId)) {
-    return res.status(400).json({ error: 'Invalid user ID.' });
+const normalizeType = (type) => {
+  if (type === undefined) return undefined;
+  return type.trim().toLowerCase();
+};
+
+const toObjectId = (value) => {
+  if (!value || !mongoose.isValidObjectId(value)) return null;
+  return new mongoose.Types.ObjectId(value);
+};
+
+const handleMongoError = (error, res, fallbackMessage) => {
+  if (error?.code === 11000) {
+    const field = Object.keys(error.keyPattern || {})[0] || 'field';
+    return res.status(409).json({
+      error: `An account with this ${field} already exists.`,
+    });
   }
+  logger.error(fallbackMessage, error);
+  return res.status(500).json({ error: fallbackMessage });
+};
+
+/* ── Middleware ────────────────────────────────────────────── */
+
+router.use((req, res, next) => {
+  if (req.method === 'OPTIONS') return next();
+  if (!req.user || (!req.user.id && !req.user._id)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  req.userId = req.user.id || req.user._id;
+  return next();
+});
+
+router.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  next();
+});
+
+/* ── GET /:userId ──────────────────────────────────────────── */
+
+router.get('/:userId', checkOwnership('userId'), async (req, res) => {
+  const userId = toObjectId(req.params.userId);
+  if (!userId) return res.status(400).json({ error: 'Invalid user ID.' });
+
+  if (String(req.userId) !== String(req.params.userId)) {
+    return res.status(403).json({ error: 'Forbidden.' });
+  }
+
   try {
-    const accounts = await Account.aggregate([
-      { $match: { user_id: new mongoose.Types.ObjectId(req.params.userId) } },
+    const accounts = await Account.find({ user_id: userId })
+      .sort({ is_active: -1, created_at: -1 })
+      .lean();
+
+    if (accounts.length === 0) return res.json([]);
+
+    const accountIds = accounts.map((a) => a._id);
+    const counts = await Transaction.aggregate([
       {
-        $lookup: {
-          from: 'transactions',
-          let: { accountId: '$_id' },
-          pipeline: [
-            { $match: { $expr: { $eq: ['$account_id', '$$accountId'] }, is_deleted: { $ne: true } } },
-            { $project: { _id: 1 } },
-          ],
-          as: 'transactions',
+        $match: {
+          account_id: { $in: accountIds },
+          is_deleted: { $ne: true },
         },
       },
-      {
-        $addFields: {
-          transaction_count: { $size: '$transactions' },
-        },
-      },
-      { $project: { transactions: 0 } }, // remove the raw transactions array
-      { $sort: { is_active: -1, created_at: -1 } },
+      { $group: { _id: '$account_id', count: { $sum: 1 } } },
     ]);
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-    res.json(accounts);
+
+    const countMap = new Map(counts.map((c) => [String(c._id), c.count]));
+    const result = accounts.map((acc) => ({
+      ...acc,
+      transaction_count: countMap.get(String(acc._id)) || 0,
+    }));
+
+    return res.json(result);
   } catch (error) {
-    console.error('Get accounts error:', error);
-    res.status(500).json({ error: 'Unable to load accounts.' });
+    logger.error('Get accounts error:', error);
+    return res.status(500).json({ error: 'Unable to load accounts.' });
   }
 });
 
-// ---------- POST: Create account ----------
+/* ── POST / ────────────────────────────────────────────────── */
+
 router.post('/', async (req, res) => {
   const { name, type, currency, initial_balance, color, icon } = req.body || {};
+
   const validationError = validateAccountFields({ name, type, currency, color, icon });
-  const openingBalance = parseAccountBalance(initial_balance);
   if (validationError) return res.status(400).json({ error: validationError });
+
+  const openingBalance = parseAccountBalance(initial_balance);
   if (openingBalance === null) {
-    return res.status(400).json({ error: 'Initial balance must be a valid amount with at most two decimal places.' });
+    return res.status(400).json({
+      error: 'Initial balance must be a valid amount with at most two decimal places.',
+    });
   }
 
   try {
     const normalizedName = name.trim();
     const duplicate = await Account.exists({
-      user_id: req.user.id,
+      user_id: req.userId,
       name: new RegExp(`^${escapeRegExp(normalizedName)}$`, 'i'),
     });
-    if (duplicate) return res.status(409).json({ error: 'An account with this name already exists.' });
+    if (duplicate) {
+      return res.status(409).json({ error: 'An account with this name already exists.' });
+    }
 
     const account = await Account.create({
-      user_id: req.user.id,
+      user_id: req.userId,
       name: normalizedName,
-      type: type || 'bank',
+      type: normalizeType(type) || 'bank',
       currency: String(currency || 'USD').trim().toUpperCase(),
       initial_balance: openingBalance,
       current_balance: openingBalance,
@@ -95,110 +204,97 @@ router.post('/', async (req, res) => {
       is_active: true,
     });
 
-    // Return the new account with transaction_count = 0
-    const accountWithCount = { ...account.toObject(), transaction_count: 0 };
-    res.status(201).json({ account: accountWithCount, message: 'Account created' });
-  } catch (error) {
-    console.error('Create account error:', error);
-    res.status(error.code === 11000 ? 409 : 500).json({
-      error: error.code === 11000 ? 'An account with this name already exists.' : 'Unable to create account.',
+    return res.status(201).json({
+      account: { ...account.toObject(), transaction_count: 0 },
+      message: 'Account created',
     });
+  } catch (error) {
+    return handleMongoError(error, res, 'Unable to create account.');
   }
 });
 
-// ---------- PUT: Update account ----------
+/* ── PUT /:id ──────────────────────────────────────────────── */
+
 router.put('/:id', async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) {
-    return res.status(400).json({ error: 'Invalid account ID.' });
-  }
+  const accountId = toObjectId(req.params.id);
+  if (!accountId) return res.status(400).json({ error: 'Invalid account ID.' });
 
   const validationError = validateAccountFields(req.body);
   if (validationError) return res.status(400).json({ error: validationError });
 
   try {
-    const account = await Account.findOne({ _id: req.params.id, user_id: req.user.id });
+    const account = await Account.findOne({ _id: accountId, user_id: req.userId });
     if (!account) return res.status(404).json({ error: 'Account not found.' });
 
     const { name, type, currency, is_active, color, icon } = req.body;
 
-    // --- Name ---
     if (name !== undefined) {
       const normalizedName = name.trim();
       const duplicate = await Account.exists({
         _id: { $ne: account._id },
-        user_id: req.user.id,
+        user_id: req.userId,
         name: new RegExp(`^${escapeRegExp(normalizedName)}$`, 'i'),
       });
-      if (duplicate) return res.status(409).json({ error: 'An account with this name already exists.' });
+      if (duplicate) {
+        return res.status(409).json({ error: 'An account with this name already exists.' });
+      }
       account.name = normalizedName;
     }
 
-    // --- Type ---
-    if (type !== undefined) account.type = type;
+    if (type !== undefined) account.type = normalizeType(type);
 
-    // --- Currency ---
     if (currency !== undefined) {
       const newCurrency = String(currency).trim().toUpperCase();
-      // Prevent currency change if the account has transactions
-      const txCount = await Transaction.countDocuments({ account_id: account._id, is_deleted: { $ne: true } });
-      if (txCount > 0 && newCurrency !== account.currency) {
-        return res.status(400).json({
-          error: `Cannot change currency because this account has ${txCount} transaction(s).`
+      if (newCurrency !== account.currency) {
+        const txCount = await Transaction.countDocuments({
+          account_id: account._id,
+          is_deleted: { $ne: true },
         });
+        if (txCount > 0) {
+          return res.status(400).json({
+            error: `Cannot change currency because this account has ${txCount} transaction(s).`,
+          });
+        }
+        account.currency = newCurrency;
       }
-      account.currency = newCurrency;
     }
 
-    // --- Active status (maps to frontend's archived) ---
-    if (is_active !== undefined) {
-      account.is_active = parseBoolean(is_active);
-    }
-
-    // --- Color & Icon ---
+    if (is_active !== undefined) account.is_active = parseBoolean(is_active);
     if (color !== undefined) account.color = color;
     if (icon !== undefined) account.icon = icon;
 
     await account.save();
 
-    // Fetch updated account with transaction count
-    const updatedAccount = await Account.aggregate([
-      { $match: { _id: account._id } },
+    const [countResult] = await Transaction.aggregate([
       {
-        $lookup: {
-          from: 'transactions',
-          let: { accountId: '$_id' },
-          pipeline: [
-            { $match: { $expr: { $eq: ['$account_id', '$$accountId'] }, is_deleted: { $ne: true } } },
-            { $project: { _id: 1 } },
-          ],
-          as: 'transactions',
-        },
+        $match: { account_id: account._id, is_deleted: { $ne: true } },
       },
-      { $addFields: { transaction_count: { $size: '$transactions' } } },
-      { $project: { transactions: 0 } },
+      { $group: { _id: null, count: { $sum: 1 } } },
     ]);
 
-    res.json({ account: updatedAccount[0], message: 'Account updated' });
+    const updated = account.toObject();
+    updated.transaction_count = countResult?.count || 0;
+
+    return res.json({ account: updated, message: 'Account updated' });
   } catch (error) {
-    console.error('Update account error:', error);
-    res.status(error.code === 11000 ? 409 : 500).json({
-      error: error.code === 11000 ? 'An account with this name already exists.' : 'Unable to update account.',
-    });
+    return handleMongoError(error, res, 'Unable to update account.');
   }
 });
 
-// ---------- DELETE: Account (with transaction check) ----------
+/* ── DELETE /:id ───────────────────────────────────────────── */
+
 router.delete('/:id', async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) {
-    return res.status(400).json({ error: 'Invalid account ID.' });
-  }
+  const accountId = toObjectId(req.params.id);
+  if (!accountId) return res.status(400).json({ error: 'Invalid account ID.' });
 
   try {
-    const account = await Account.findOne({ _id: req.params.id, user_id: req.user.id });
+    const account = await Account.findOne({ _id: accountId, user_id: req.userId });
     if (!account) return res.status(404).json({ error: 'Account not found.' });
 
-    // Check for existing transactions
-    const txCount = await Transaction.countDocuments({ account_id: account._id, is_deleted: { $ne: true } });
+    const txCount = await Transaction.countDocuments({
+      account_id: account._id,
+      is_deleted: { $ne: true },
+    });
     if (txCount > 0) {
       return res.status(409).json({
         error: `Cannot delete account because it has ${txCount} transaction(s). Reassign or delete them first.`,
@@ -206,10 +302,10 @@ router.delete('/:id', async (req, res) => {
     }
 
     await account.deleteOne();
-    res.json({ message: 'Account deleted' });
+    return res.json({ message: 'Account deleted' });
   } catch (error) {
-    console.error('Delete account error:', error);
-    res.status(500).json({ error: 'Unable to delete account.' });
+    logger.error('Delete account error:', error);
+    return res.status(500).json({ error: 'Unable to delete account.' });
   }
 });
 

@@ -1,15 +1,18 @@
 /* eslint-disable react-refresh/only-export-components, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { I18nextProvider } from 'react-i18next';
 import AppLayout from './components/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import Loader from './components/Loader';
 import { api, CURRENCIES, getStoredToken } from './services/api';
 import { generateAlerts, getSpendingInsights } from './services/aiEngine';
-import { getT, LANGUAGES } from './services/i18n';
+import i18n, { getT, LANGUAGES } from './services/i18n';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './components/ToastProvider';
 import { MotionConfig } from 'framer-motion';
+
+import { AppContext } from './contexts/AppContext';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Transactions = lazy(() => import('./pages/Transactions'));
@@ -27,7 +30,28 @@ const Register = lazy(() => import('./pages/Register'));
 const About = lazy(() => import('./pages/About'));
 const Calculator = lazy(() => import('./pages/Calculator'));
 
-import { AppContext } from './contexts/AppContext';
+function AppRoutes() {
+  return (
+    <Suspense fallback={<Loader />}>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/transactions" element={<Transactions />} />
+        <Route path="/analytics" element={<Analytics />} />
+        <Route path="/accounts" element={<Accounts />} />
+        <Route path="/budgets" element={<Budgets />} />
+        <Route path="/goals" element={<Goals />} />
+        <Route path="/subscriptions" element={<Subscriptions />} />
+        <Route path="/cashflow" element={<Cashflow />} />
+        <Route path="/wealth" element={<Wealth />} />
+        <Route path="/calendar" element={<Calendar />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/calculator" element={<Calculator />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </Suspense>
+  );
+}
 
 const AVAILABLE_THEMES = ['light', 'amoled'];
 const normalizeTheme = (value) => AVAILABLE_THEMES.includes(value) ? value : 'light';
@@ -393,6 +417,7 @@ export default function App() {
     setUser(prev => prev ? { ...prev, balance: Number(balance) } : prev);
   };
 
+  /* Original mutation handlers without accounts resync:
   const addTransaction = async (tx) => {
     const result = await api.addTransaction({ ...tx, user_id: user?.id || user?._id });
     if (result.transaction) setTransactions(prev => [result.transaction, ...prev]);
@@ -411,6 +436,41 @@ export default function App() {
       setTransactions(prev => prev.map(tx => (tx.id === id || tx._id === id) ? result.transaction : tx));
     }
     applyBalance(result.balance);
+    return result;
+  };
+  // Issue: When transactions were added, edited, or deleted, account balances in accounts state
+  // remained stale until full page reload, causing desynchronization with the backend.
+  */
+  const syncAccountsSilently = async () => {
+    const activeId = user?.id || user?._id;
+    if (!activeId) return;
+    try {
+      const refreshedAccounts = await api.getAccounts(activeId);
+      if (Array.isArray(refreshedAccounts)) setAccounts(refreshedAccounts);
+    } catch { /* best effort */ }
+  };
+
+  const addTransaction = async (tx) => {
+    const result = await api.addTransaction({ ...tx, user_id: user?.id || user?._id });
+    if (result.transaction) setTransactions(prev => [result.transaction, ...prev]);
+    applyBalance(result.balance);
+    syncAccountsSilently();
+    return result;
+  };
+  const deleteTransaction = async (id) => {
+    const result = await api.deleteTransaction(id);
+    setTransactions(prev => prev.filter(tx => tx.id !== id && tx._id !== id));
+    applyBalance(result.balance);
+    syncAccountsSilently();
+    return result;
+  };
+  const editTransaction = async (id, data) => {
+    const result = await api.editTransaction(id, data);
+    if (result.transaction) {
+      setTransactions(prev => prev.map(tx => (tx.id === id || tx._id === id) ? result.transaction : tx));
+    }
+    applyBalance(result.balance);
+    syncAccountsSilently();
     return result;
   };
   const resetAccount = async () => { await api.resetAccount(user?.id || user?._id); await fetchData(); };
@@ -480,6 +540,32 @@ export default function App() {
   if (isAppStarting || isInitialAuthLoad) {
     return (
       <ErrorBoundary>
+        <I18nextProvider i18n={i18n}>
+          <AppContext.Provider value={{
+            user, allUsers, transactions, theme, toggleTheme, setThemeDirect,
+            addTransaction, deleteTransaction, editTransaction,
+            updateTransaction: editTransaction,
+            resetAccount, createUser, switchUser, login, logout,
+            previousSession, revertSession,
+            isInitialAuthLoad, isBackgroundSyncing, globalError,
+            loading: isInitialAuthLoad || isBackgroundSyncing,
+            fetchTransactions: fetchData,
+            refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
+            lang, setLanguage, t, token,
+            alerts, insights, deferredPrompt, installPWA, goals, budgets, accounts, subscriptions, events,
+          }}>
+            <ToastProvider>
+              <Loader fullScreen mode={token ? "auth" : "inline"} />
+            </ToastProvider>
+          </AppContext.Provider>
+        </I18nextProvider>
+      </ErrorBoundary>
+    );
+  }
+
+  return (
+    <ErrorBoundary>
+      <I18nextProvider i18n={i18n}>
         <AppContext.Provider value={{
           user, allUsers, transactions, theme, toggleTheme, setThemeDirect,
           addTransaction, deleteTransaction, editTransaction,
@@ -487,70 +573,53 @@ export default function App() {
           resetAccount, createUser, switchUser, login, logout,
           previousSession, revertSession,
           isInitialAuthLoad, isBackgroundSyncing, globalError,
+          loading: isInitialAuthLoad || isBackgroundSyncing,
           fetchTransactions: fetchData,
           refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
           lang, setLanguage, t, token,
           alerts, insights, deferredPrompt, installPWA, goals, budgets, accounts, subscriptions, events,
         }}>
           <ToastProvider>
-            <Loader fullScreen mode={token ? "auth" : "inline"} />
+            <MotionConfig reducedMotion="user">
+              <Router>
+                <Suspense fallback={<Loader />}>
+                  <Routes>
+                    <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+                    <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+                    <Route path="/*" element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          {/* Original inline Routes without location tracking (Problematic - caused unmount race conditions where outgoing route immediately re-rendered incoming route before exit animation completed):
+                          <Suspense fallback={<Loader />}>
+                            <Routes>
+                              <Route path="/" element={<Dashboard />} />
+                              <Route path="/transactions" element={<Transactions />} />
+                              <Route path="/analytics" element={<Analytics />} />
+                              <Route path="/accounts" element={<Accounts />} />
+                              <Route path="/budgets" element={<Budgets />} />
+                              <Route path="/goals" element={<Goals />} />
+                              <Route path="/subscriptions" element={<Subscriptions />} />
+                              <Route path="/cashflow" element={<Cashflow />} />
+                              <Route path="/wealth" element={<Wealth />} />
+                              <Route path="/calendar" element={<Calendar />} />
+                              <Route path="/settings" element={<SettingsPage />} />
+                              <Route path="/about" element={<About />} />
+                              <Route path="/calculator" element={<Calculator />} />
+                              <Route path="*" element={<Navigate to="/" />} />
+                            </Routes>
+                          </Suspense>
+                          */}
+                          <AppRoutes />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    } />
+                  </Routes>
+                </Suspense>
+              </Router>
+            </MotionConfig>
           </ToastProvider>
         </AppContext.Provider>
-      </ErrorBoundary>
-    );
-  }
-
-  return (
-    <ErrorBoundary>
-      <AppContext.Provider value={{
-        user, allUsers, transactions, theme, toggleTheme, setThemeDirect,
-        addTransaction, deleteTransaction, editTransaction,
-        updateTransaction: editTransaction,
-        resetAccount, createUser, switchUser, login, logout,
-        previousSession, revertSession,
-        isInitialAuthLoad, isBackgroundSyncing, globalError,
-        fetchTransactions: fetchData,
-        refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
-        lang, setLanguage, t, token,
-        alerts, insights, deferredPrompt, installPWA, goals, budgets, accounts, subscriptions, events,
-      }}>
-        <ToastProvider>
-          <MotionConfig reducedMotion="user">
-            <Router>
-              <Suspense fallback={<Loader />}>
-                <Routes>
-                  <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-                  <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
-                  <Route path="/*" element={
-                    <ProtectedRoute>
-                      <AppLayout>
-                        <Suspense fallback={<Loader />}>
-                          <Routes>
-                            <Route path="/" element={<Dashboard />} />
-                            <Route path="/transactions" element={<Transactions />} />
-                            <Route path="/analytics" element={<Analytics />} />
-                            <Route path="/accounts" element={<Accounts />} />
-                            <Route path="/budgets" element={<Budgets />} />
-                            <Route path="/goals" element={<Goals />} />
-                            <Route path="/subscriptions" element={<Subscriptions />} />
-                            <Route path="/cashflow" element={<Cashflow />} />
-                            <Route path="/wealth" element={<Wealth />} />
-                            <Route path="/calendar" element={<Calendar />} />
-                            <Route path="/settings" element={<SettingsPage />} />
-                            <Route path="/about" element={<About />} />
-                            <Route path="/calculator" element={<Calculator />} />
-                            <Route path="*" element={<Navigate to="/" />} />
-                          </Routes>
-                        </Suspense>
-                      </AppLayout>
-                    </ProtectedRoute>
-                  } />
-                </Routes>
-              </Suspense>
-            </Router>
-          </MotionConfig>
-        </ToastProvider>
-      </AppContext.Provider>
+      </I18nextProvider>
     </ErrorBoundary>
   );
 }

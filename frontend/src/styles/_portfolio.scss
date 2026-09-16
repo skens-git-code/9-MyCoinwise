@@ -305,6 +305,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* Original portfolio-header scroll styles (Problematic - animated `top` property triggering layout recalculation, repaint, and jank on every scroll frame):
 .portfolio-header {
   position: sticky !important;
   top: 14px !important;
@@ -322,6 +323,29 @@ h1, h2, h3, h4, h5, h6 {
 
 .portfolio-header.is-scrolled {
   top: 8px !important;
+}
+*/
+.portfolio-header {
+  position: sticky !important;
+  top: 14px !important;
+  z-index: 1000 !important;
+  width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  pointer-events: none !important;
+  padding: 0 var(--content-padding-x, 28px) !important;
+  margin-bottom: 8px !important;
+  box-sizing: border-box !important;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s ease !important;
+}
+
+.portfolio-header.is-scrolled {
+  transform: translate3d(0, -6px, 0) !important;
 }
 
 .nav-container {
@@ -471,6 +495,7 @@ h1, h2, h3, h4, h5, h6 {
   padding-left: 0;
 }
 
+/* Original .theme-toggle and .nav-avatar-btn rules (Problematic - lacked GPU layer promotion, causing emoji/icon subpixel vibration during hover, tap, and header transitions):
 .theme-toggle {
   width: 36px;
   height: 36px;
@@ -506,7 +531,6 @@ h1, h2, h3, h4, h5, h6 {
     transform: scale(0.92);
   }
 
-  /* [ADDED] Focus ring for keyboard navigation — additive, no behavior change */
   &:focus-visible {
     outline: 2px solid var(--clr-primary);
     outline-offset: 2px;
@@ -519,7 +543,6 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-/* User Profile Avatar button */
 .nav-avatar-btn {
   width: 36px !important;
   height: 36px !important;
@@ -533,6 +556,84 @@ h1, h2, h3, h4, h5, h6 {
     height: 100%;
     object-fit: cover;
     border-radius: 50%;
+  }
+}
+*/
+.theme-toggle {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--btn-theme-bg);
+  border: var(--btn-theme-border);
+  box-shadow: var(--btn-theme-shadow);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+
+  svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2px;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+
+  &:hover {
+    background: var(--btn-theme-hover-bg);
+    border-color: var(--btn-theme-hover-border);
+    color: var(--btn-theme-hover-color);
+    box-shadow: var(--btn-theme-hover-shadow);
+    transform: scale(1.04) translate3d(0, 0, 0);
+  }
+
+  &:active {
+    transform: scale(0.92) translate3d(0, 0, 0);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--clr-primary);
+    outline-offset: 2px;
+  }
+
+  &.active {
+    background: var(--nav-pill-bg);
+    color: #ffffff;
+    border-color: transparent;
+  }
+}
+
+.nav-avatar-btn {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  transform: translate3d(0, 0, 0) !important;
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  -webkit-font-smoothing: subpixel-antialiased !important;
+  will-change: transform;
+  contain: layout paint;
+
+  .nav-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    transform: translateZ(0);
+    backface-visibility: hidden;
   }
 }
 
