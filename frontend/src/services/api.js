@@ -3,7 +3,23 @@ import axios from 'axios';
 // This will use the Vercel variable in production,
 // and your local server while you're coding.
 const API_URL = import.meta.env.VITE_API_URL || 'https://nine-budgettracker.onrender.com/api';
+/* Original getStoredToken:
 export const getStoredToken = () => localStorage.getItem('mcw-token') || sessionStorage.getItem('mcw-token');
+*/
+export const getStoredToken = () => {
+  try {
+    if (typeof window !== 'undefined' && window.location && window.location.search) {
+      const p = new URLSearchParams(window.location.search);
+      const urlToken = p.get('token');
+      if (urlToken) {
+        localStorage.setItem('mcw-token', urlToken);
+        localStorage.setItem('mcw-onboarding-completed', 'true');
+        return urlToken;
+      }
+    }
+  } catch { /* ignore */ }
+  return localStorage.getItem('mcw-token') || sessionStorage.getItem('mcw-token');
+};
 
 // ── Global timeout: 30s prevents prematurely timing out on cold starts ──
 axios.defaults.timeout = 30000;

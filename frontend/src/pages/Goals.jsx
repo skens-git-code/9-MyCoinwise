@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Target, Trash2, Edit3, PlusCircle, Clock, Zap,
   FileText, Calendar, AlertTriangle, ArrowUpDown, History,
-  Undo2, Download, LayoutTemplate, X, CheckCircle2, Sparkles,
+  Undo2, Download, LayoutTemplate, X, CheckCircle2, Sparkles, Search,
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { predictTimeToGoal } from '../services/aiEngine';
@@ -352,6 +352,44 @@ function UndoToast({ state, onUndo, onDismiss, tr }) {
 }
 
 /* ============================================================
+ * Goals Skeleton Loader (Zero Layout Shift)
+ * ============================================================ */
+const GoalsSkeleton = ({ tr }) => (
+  <div className="masonry-layout-page goals-page-wrap" aria-label={tr?.('loading_goals', 'Loading savings goals') || 'Loading savings goals'} role="status">
+    <div className="masonry-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div className="skeleton" style={{ height: 38, width: 220, borderRadius: 12 }} />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="skeleton" style={{ height: 38, width: 84, borderRadius: 10 }} />
+        <div className="skeleton" style={{ height: 38, width: 114, borderRadius: 10 }} />
+      </div>
+    </div>
+    {/* Summary banner skeleton */}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 16 }}>
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="glass skeleton" style={{ height: 96, borderRadius: 16 }} />
+      ))}
+    </div>
+    {/* Toolbar skeleton */}
+    <div className="glass" style={{ height: 56, borderRadius: 14, marginBottom: 16, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12 }}>
+      <div className="skeleton" style={{ height: 32, width: 160, borderRadius: 8 }} />
+      <div className="skeleton" style={{ height: 34, width: 240, borderRadius: 9999, marginLeft: 'auto' }} />
+    </div>
+    {/* Category strip skeleton */}
+    <div style={{ display: 'flex', gap: 8, marginBottom: 20, overflow: 'hidden' }}>
+      {[70, 130, 90, 80, 100, 85].map((w, idx) => (
+        <div key={idx} className="skeleton" style={{ height: 36, width: w, borderRadius: 9999, flexShrink: 0 }} />
+      ))}
+    </div>
+    {/* Masonry cards skeleton */}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: 20 }}>
+      {[1, 2, 3, 4, 5, 6].map((i) => (
+        <div key={i} className="glass skeleton" style={{ height: 280, borderRadius: 18 }} />
+      ))}
+    </div>
+  </div>
+);
+
+/* ============================================================
  * Main Component
  * ============================================================ */
 export default function Goals() {
@@ -394,7 +432,8 @@ export default function Goals() {
   const [contributeAmount, setContributeAmount] = useState('');
   const [activeCategoryFilter, setActiveCategoryFilter] = useState('all');
 
-  /* ✨ NEW: view / sort / filter state */
+  /* ✨ NEW: view / sort / filter / search state */
+  const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('created_desc');
   const [showCompleted, setShowCompleted] = useState(false);
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
@@ -477,7 +516,8 @@ export default function Goals() {
     return dl < today;
   }, [getPct]);
 
-  /** ✨ NEW: sort + filter + completion view. */
+  /** ✨ NEW: sort + filter + completion view + live search. */
+  /* Original filteredGoals without search query filtering:
   const filteredGoals = useMemo(() => {
     let list = goals;
 
@@ -534,6 +574,74 @@ export default function Goals() {
     }
     return sorted;
   }, [goals, activeCategoryFilter, showOverdueOnly, showCompleted, sortBy, getPct, isOverdue]);
+  */
+
+  const filteredGoals = useMemo(() => {
+    let list = goals;
+
+    // Search query filter (matches goal name, notes, or localized category)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((g) => {
+        const nameMatch = String(g.name || '').toLowerCase().includes(q);
+        const notesMatch = String(g.notes || '').toLowerCase().includes(q);
+        const catLabel = getCategoryLabel(g.category, t).toLowerCase();
+        const catMatch = catLabel.includes(q);
+        return nameMatch || notesMatch || catMatch;
+      });
+    }
+
+    // Category filter
+    if (activeCategoryFilter !== 'all') {
+      list = list.filter((g) => getCategoryKey(g.category) === activeCategoryFilter);
+    }
+
+    // Overdue filter
+    if (showOverdueOnly) {
+      list = list.filter((g) => isOverdue(g));
+    }
+
+    // Completion filter
+    if (!showCompleted) {
+      list = list.filter((g) => getPct(g) < 100);
+    }
+
+    // Sort
+    const sorted = [...list];
+    switch (sortBy) {
+      case 'progress_asc':
+        sorted.sort((a, b) => getPct(a) - getPct(b));
+        break;
+      case 'progress_desc':
+        sorted.sort((a, b) => getPct(b) - getPct(a));
+        break;
+      case 'deadline_asc': {
+        const farFuture = Number.MAX_SAFE_INTEGER;
+        sorted.sort((a, b) => {
+          const da = a.deadline ? (parseLocalDate(a.deadline)?.getTime() ?? farFuture) : farFuture;
+          const db = b.deadline ? (parseLocalDate(b.deadline)?.getTime() ?? farFuture) : farFuture;
+          return da - db;
+        });
+        break;
+      }
+      case 'target_desc':
+        sorted.sort((a, b) => safeNumber(b.target, 0) - safeNumber(a.target, 0));
+        break;
+      case 'name_asc':
+        sorted.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+        break;
+      case 'created_desc':
+      default: {
+        const zero = 0;
+        sorted.sort((a, b) => {
+          const da = new Date(a.created_at || a.createdAt || zero).getTime() || 0;
+          const db = new Date(b.created_at || b.createdAt || zero).getTime() || 0;
+          return db - da;
+        });
+      }
+    }
+    return sorted;
+  }, [goals, searchQuery, activeCategoryFilter, showOverdueOnly, showCompleted, sortBy, getPct, isOverdue, t]);
 
   /** Auto-reset category if empty. */
   useEffect(() => {
@@ -1000,6 +1108,7 @@ export default function Goals() {
     <div className="masonry-layout-page goals-page-wrap">
   // Issue: When goals were loading, page immediately flashed 0 goals and empty state.
   */
+  /* Original single-box loading state causing jarring layout flash and layout shift:
   if (loading && goals.length === 0) {
     return (
       <div className="masonry-layout-page goals-page-wrap">
@@ -1014,6 +1123,10 @@ export default function Goals() {
         </div>
       </div>
     );
+  }
+  */
+  if (loading && goals.length === 0) {
+    return <GoalsSkeleton tr={tr} />;
   }
 
   return (
@@ -1116,7 +1229,7 @@ export default function Goals() {
         </div>
       </div>
 
-      {/* Toolbar — sort + completed/overdue toggles */}
+      {/* Toolbar — sort + search + completed/overdue toggles */}
       <div
         className="goals-toolbar glass"
         style={{
@@ -1130,7 +1243,7 @@ export default function Goals() {
           marginBottom: 16,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <label
             htmlFor="goals-sort"
             style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 500 }}
@@ -1151,6 +1264,64 @@ export default function Goals() {
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Search input matching Image 1 */}
+        <div style={{ position: 'relative', flex: '0 1 260px', minWidth: 180, maxWidth: 320 }}>
+          <Search
+            size={14}
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              left: 12,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--text-muted)',
+              pointerEvents: 'none',
+            }}
+          />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={tr('search_goals', 'Search goals…')}
+            aria-label={tr('search_goals', 'Search goals')}
+            style={{
+              width: '100%',
+              paddingLeft: 34,
+              paddingRight: searchQuery ? 30 : 12,
+              height: 36,
+              borderRadius: 9999,
+              border: '1px solid var(--glass-border)',
+              background: 'var(--glass-card)',
+              color: 'var(--text-primary)',
+              fontSize: '0.84rem',
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label={tr('clear_search', 'Clear search')}
+              style={{
+                position: 'absolute',
+                right: 8,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                padding: 4,
+              }}
+            >
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1228,23 +1399,26 @@ export default function Goals() {
           ) : (
             <>
               <p className="primary-msg">
-                {showOverdueOnly
-                  ? tr('no_overdue_goals', 'No overdue goals. Nice!')
-                  : showCompleted
-                    ? tr('no_completed_goals', 'No completed goals yet.')
-                    : tr('no_goals_match_filter', 'No goals match the current filters.')}
+                {searchQuery
+                  ? tr('no_matching_goals', 'No goals match your search.')
+                  : showOverdueOnly
+                    ? tr('no_overdue_goals', 'No overdue goals. Nice!')
+                    : showCompleted
+                      ? tr('no_completed_goals', 'No completed goals yet.')
+                      : tr('no_goals_match_filter', 'No goals match the current filters.')}
               </p>
               <motion.button
                 whileHover={{ scale: 1.04 }}
                 className="btn-secondary"
                 style={{ marginTop: 20 }}
                 onClick={() => {
+                  setSearchQuery('');
                   setActiveCategoryFilter('all');
                   setShowOverdueOnly(false);
                   setShowCompleted(false);
                 }}
               >
-                {tr('clear_filters', 'Clear filters')}
+                {searchQuery ? tr('clear_search', 'Clear search') : tr('clear_filters', 'Clear filters')}
               </motion.button>
             </>
           )}

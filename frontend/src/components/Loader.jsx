@@ -17,6 +17,7 @@ export default function Loader({ fullScreen = false, mode = 'inline', text }) {
     </span>;
   }
 
+  /* Original Loader with wireframe border rings, harsh check badge border, stuttering progress, and oversized inline layout:
   const isFull = fullScreen || mode === 'auth';
   const defaultStatus = t?.('loading_workspace') || (mode === 'auth' ? 'Securing your session' : 'Preparing your workspace');
   const statusText = text || defaultStatus;
@@ -40,4 +41,234 @@ export default function Loader({ fullScreen = false, mode = 'inline', text }) {
     </motion.div>
     <span style={visuallyHidden}>Loading, please wait.</span>
   </div>;
+  */
+
+  const isFull = fullScreen || mode === 'auth';
+  const defaultStatus = t?.('loading_workspace') || (mode === 'auth' ? 'Securing your session' : 'Preparing your workspace');
+  const statusText = text || defaultStatus;
+
+  // Proportionate inline mode for Suspense fallbacks and embedded widgets
+  if (!isFull) {
+    return (
+      <div
+        className={`loader loader--inline loader--${mode}`}
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        aria-label={statusText}
+        style={{
+          position: 'relative',
+          minHeight: 180,
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 14,
+          padding: 24,
+          boxSizing: 'border-box',
+          color: 'var(--text-primary)',
+        }}
+      >
+        <motion.div
+          aria-hidden="true"
+          animate={prefersReducedMotion ? {} : { scale: [1, 1.08, 1] }}
+          transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+          style={{
+            width: 46,
+            height: 46,
+            display: 'grid',
+            placeItems: 'center',
+            borderRadius: 14,
+            color: '#fff',
+            background: 'linear-gradient(135deg, #10b981, #06b6d4, #8b5cf6)',
+            boxShadow: '0 8px 24px rgba(16,185,129,0.3), inset 0 1px rgba(255,255,255,0.4)',
+            willChange: 'transform',
+          }}
+        >
+          <Zap size={22} strokeWidth={2.4} />
+        </motion.div>
+        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.86rem', fontWeight: 500 }}>
+          {statusText}
+        </p>
+        <div
+          style={{
+            height: 4,
+            width: 140,
+            overflow: 'hidden',
+            borderRadius: 99,
+            background: 'rgba(148,163,184,0.18)',
+          }}
+          aria-hidden="true"
+        >
+          <motion.div
+            animate={prefersReducedMotion ? { width: '40%' } : { x: ['-100%', '250%'] }}
+            transition={prefersReducedMotion ? {} : { duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              height: '100%',
+              width: '40%',
+              borderRadius: 99,
+              background: 'linear-gradient(90deg, #10b981, #38bdf8, #8b5cf6)',
+              boxShadow: '0 0 10px rgba(56,189,248,0.5)',
+              willChange: 'transform',
+            }}
+          />
+        </div>
+        <span style={visuallyHidden}>Loading, please wait.</span>
+      </div>
+    );
+  }
+
+  // Fullscreen / Authentication loading screen with soft ambient blurred glow
+  return (
+    <div
+      className={`loader loader--fullscreen loader--${mode}`}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label={statusText}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        minHeight: '100dvh',
+        width: '100%',
+        overflow: 'hidden',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
+        boxSizing: 'border-box',
+        color: 'var(--text-primary)',
+        background: 'radial-gradient(circle at 50% 30%, rgba(16,185,129,0.14), transparent 45%), radial-gradient(circle at 80% 80%, rgba(139,92,246,0.10), transparent 50%), var(--surface-0)',
+      }}
+    >
+      {/* Ambient background glow orbs without hard wireframe border lines */}
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }} aria-hidden="true">
+        <div
+          style={{
+            position: 'absolute',
+            width: 380,
+            height: 380,
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(59,130,246,0.16) 0%, transparent 70%)',
+            filter: 'blur(50px)',
+            top: '45%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            width: 520,
+            height: 520,
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 70%)',
+            filter: 'blur(60px)',
+            top: '52%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+          }}
+        />
+      </div>
+
+      <motion.div
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+        style={{
+          position: 'relative',
+          width: 'min(100%, 360px)',
+          textAlign: 'center',
+          zIndex: 2,
+          willChange: 'opacity, transform',
+        }}
+      >
+        <div style={{ display: 'inline-flex', position: 'relative', marginBottom: 26 }}>
+          <motion.div
+            aria-hidden="true"
+            animate={prefersReducedMotion ? {} : { scale: [1, 1.08, 1] }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              width: 76,
+              height: 76,
+              display: 'grid',
+              placeItems: 'center',
+              borderRadius: 24,
+              color: '#fff',
+              background: 'linear-gradient(135deg, #10b981, #06b6d4, #8b5cf6)',
+              boxShadow: '0 16px 42px rgba(16,185,129,0.35), inset 0 1px rgba(255,255,255,0.4)',
+              willChange: 'transform',
+            }}
+          >
+            <Zap size={32} strokeWidth={2.4} />
+          </motion.div>
+          <div
+            style={{
+              position: 'absolute',
+              right: -7,
+              bottom: -7,
+              width: 26,
+              height: 26,
+              display: 'grid',
+              placeItems: 'center',
+              borderRadius: '50%',
+              color: '#fff',
+              background: '#10b981',
+              boxShadow: '0 0 0 3px var(--surface-0, #0f172a), 0 4px 12px rgba(16,185,129,0.35)',
+            }}
+          >
+            <Check size={13} strokeWidth={3} />
+          </div>
+        </div>
+
+        <div style={{ fontFamily: 'var(--font-head)', fontSize: 'clamp(1.35rem, 4vw, 1.7rem)', fontWeight: 800, letterSpacing: '-0.04em' }}>
+          My<span style={{ color: 'var(--brand-primary)' }}>Coinwise</span>
+        </div>
+        <p style={{ margin: '8px 0 24px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{statusText}</p>
+
+        <div
+          style={{
+            height: 6,
+            width: '100%',
+            overflow: 'hidden',
+            borderRadius: 99,
+            background: 'rgba(148,163,184,0.16)',
+            boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.2)',
+          }}
+          aria-hidden="true"
+        >
+          <motion.div
+            animate={prefersReducedMotion ? { width: '40%' } : { x: ['-100%', '250%'] }}
+            transition={prefersReducedMotion ? {} : { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              height: '100%',
+              width: '40%',
+              borderRadius: 99,
+              background: 'linear-gradient(90deg, #10b981, #38bdf8, #8b5cf6)',
+              boxShadow: '0 0 14px rgba(56,189,248,0.55)',
+              willChange: 'transform',
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            gap: 6,
+            alignItems: 'center',
+            marginTop: 18,
+            color: 'var(--text-secondary)',
+            fontSize: '0.72rem',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}
+        >
+          <ArrowUpRight size={13} aria-hidden="true" /> <span>Building your financial view</span>
+        </div>
+      </motion.div>
+      <span style={visuallyHidden}>Loading, please wait.</span>
+    </div>
+  );
 }
