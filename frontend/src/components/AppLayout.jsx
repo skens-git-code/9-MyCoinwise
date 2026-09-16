@@ -1,7 +1,9 @@
 import React, { useState, useContext, useMemo, useCallback, useEffect, useRef } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence, MotionConfig } from 'framer-motion'; // [FIX #1] added MotionConfig
-import { useMediaQuery } from 'react-responsive';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
+// [OPTIMIZATION: Removed external 'react-responsive' dependency in favor of native window.matchMedia hook]
+// import { useMediaQuery } from 'react-responsive';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import {
   LayoutDashboard, ArrowLeftRight, BarChart3, Target, Activity, Briefcase,
   CreditCard, Settings, ChevronRight, TrendingUp, TrendingDown,
@@ -1364,6 +1366,7 @@ const Header = React.memo(({
             </AnimatePresence>
           </div>
 
+          {/* Original dropdown-container and nav-avatar-btn (Problematic - lacked inline-flex layout and display:block on image, resulting in vertical baseline offset):
           <div className="dropdown-container" style={{ position: 'relative' }}>
             <button
               type="button"
@@ -1387,6 +1390,40 @@ const Header = React.memo(({
                 />
               ) : (
                 userInfo.avatar
+              )}
+            </button>
+          </div>
+          */}
+          <div className="dropdown-container" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button
+              type="button"
+              className="theme-toggle nav-avatar-btn"
+              onClick={onOpenProfile}
+              title="User profile"
+              aria-expanded={activeDropdown === 'profile'}
+              aria-label="User profile"
+              style={{
+                background: userInfo.avatarColor,
+                overflow: 'hidden',
+                padding: 0,
+                border: '1px solid rgba(0, 212, 255, 0.35)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                verticalAlign: 'middle',
+              }}
+            >
+              {userInfo.isBase64Avatar ? (
+                <img
+                  src={userInfo.avatar}
+                  alt=""
+                  className="nav-avatar-img"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', borderRadius: '50%' }}
+                />
+              ) : (
+                <span className="nav-avatar-text" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', lineHeight: 1 }}>
+                  {userInfo.avatar}
+                </span>
               )}
             </button>
 

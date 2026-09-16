@@ -2107,9 +2107,14 @@
 .carousel-wrapper {
   overflow-x: auto;
   padding-bottom: 12px;
+  /* Original negative margin caused horizontal bleed and scrollbar jitter:
   margin: 0 -20px;
   padding-left: 20px;
   padding-right: 20px;
+  */
+  margin: 0;
+  padding-left: 0;
+  padding-right: 0;
   scroll-snap-type: x mandatory;
 
   &::-webkit-scrollbar {
@@ -2126,6 +2131,24 @@
   display: flex;
   gap: 16px;
   width: max-content;
+}
+
+/* Goals summary banner responsive layout - fill width on desktop */
+@media (min-width: 860px) {
+  .goals-page-wrap .carousel-wrapper {
+    overflow-x: visible;
+  }
+  .goals-page-wrap .carousel-track {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+    min-width: unset;
+  }
+  .goals-page-wrap .carousel-item {
+    flex: 1 1 0;
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 .carousel-item {
@@ -7248,6 +7271,7 @@ select {
     align-items: flex-end;
   }
 
+  /* Original .fab-option-row, .fab-option-btn, and .fab-trigger (Problematic - .fab-option-row lacked right offset causing 44px option buttons to sit 6px to the right of the 56px trigger, and .fab-trigger lacked padding/line-height resets causing '+' icon to be off-center):
   .fab-option-row {
     display: flex;
     align-items: center;
@@ -7300,6 +7324,103 @@ select {
     cursor: pointer;
     box-shadow: 0 10px 28px rgba(5, 150, 105, 0.45);
     transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &:hover {
+      box-shadow: 0 14px 34px rgba(5, 150, 105, 0.6);
+    }
+  }
+  */
+  .fab-option-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-right: 6px !important; // Centers 44px option button directly over the 56px trigger button: (56 - 44) / 2 = 6px
+
+    .fab-option-label {
+      padding: 6px 12px;
+      border-radius: 10px;
+      background: var(--glass-dropdown-bg);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .fab-option-btn {
+      width: 44px !important;
+      height: 44px !important;
+      min-width: 44px !important;
+      min-height: 44px !important;
+      border-radius: 50% !important;
+      border: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      line-height: 0 !important;
+      box-sizing: border-box !important;
+      color: #fff !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+      svg {
+        display: block !important;
+        margin: auto !important;
+        transform: translateZ(0);
+        backface-visibility: hidden;
+      }
+
+      &:hover {
+        transform: scale(1.12);
+      }
+    }
+  }
+
+  .fab-trigger {
+    position: relative;
+    z-index: 995;
+    width: 56px !important;
+    height: 56px !important;
+    min-width: 56px !important;
+    min-height: 56px !important;
+    border-radius: 50% !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    outline: none !important;
+    line-height: 0 !important;
+    box-sizing: border-box !important;
+    background: linear-gradient(135deg, var(--brand-primary), #0ea5e9);
+    color: #fff !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer;
+    box-shadow: 0 10px 28px rgba(5, 150, 105, 0.45);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+    .fab-trigger-icon {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 100% !important;
+      height: 100% !important;
+      line-height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+
+      svg {
+        display: block !important;
+        margin: auto !important;
+        transform: translateZ(0);
+        backface-visibility: hidden;
+      }
+    }
 
     &:hover {
       box-shadow: 0 14px 34px rgba(5, 150, 105, 0.6);
@@ -8334,10 +8455,17 @@ select {
   scrollbar-width: none;
   width: 100%;
   max-width: 100%;
+  /* Original nowrap caused categories like Education and Other to be clipped behind scroll on desktop:
   flex-wrap: nowrap;
+  */
+  flex-wrap: wrap;
 
   &::-webkit-scrollbar {
     display: none;
+  }
+
+  @media (max-width: 767px) {
+    flex-wrap: nowrap;
   }
 }
 

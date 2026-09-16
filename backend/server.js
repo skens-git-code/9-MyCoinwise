@@ -19,18 +19,32 @@ const cashflowRoutes = require('./routes/cashflow');
 const aiRoutes = require('./routes/ai');
 const securityRoutes = require('./routes/security');
 
-// ─── Environment Validation ─────────────────────────────────────────────────
-if (!process.env.MONGO_URI) {
-  console.error('FATAL ERROR: MONGO_URI is not defined in the environment variables.');
-  process.exit(1);
-}
-if (!process.env.JWT_SECRET) {
-  console.error('FATAL ERROR: JWT_SECRET is not defined in the environment variables.');
-  process.exit(1);
-}
-if (!process.env.GEMINI_API_KEY) {
-  console.warn('WARNING: GEMINI_API_KEY is not defined. AI features will be unavailable.');
-}
+const { cleanEnv, str, port } = require('envalid');
+const mongoSanitize = require('express-mongo-sanitize');
+
+// ─── Environment Validation (envalid) ───────────────────────────────────────
+// [ORIGINAL CODE PRESERVED - Manual process.env checking]
+// if (!process.env.MONGO_URI) {
+//   console.error('FATAL ERROR: MONGO_URI is not defined in the environment variables.');
+//   process.exit(1);
+// }
+// if (!process.env.JWT_SECRET) {
+//   console.error('FATAL ERROR: JWT_SECRET is not defined in the environment variables.');
+//   process.exit(1);
+// }
+// if (!process.env.GEMINI_API_KEY) {
+//   console.warn('WARNING: GEMINI_API_KEY is not defined. AI features will be unavailable.');
+// }
+
+cleanEnv(process.env, {
+  MONGO_URI: str({ desc: 'MongoDB connection string URI' }),
+  JWT_SECRET: str({ desc: 'Secret key for signing JSON Web Tokens' }),
+  PORT: port({ default: 5001, desc: 'HTTP port server listens on' }),
+  NODE_ENV: str({ choices: ['development', 'test', 'production'], default: 'development' }),
+  GEMINI_API_KEY: str({ default: '', desc: 'Google Gemini AI API Key' }),
+  GEMINI_MODEL: str({ default: 'gemini-2.5-flash', desc: 'Google Gemini Model version' }),
+  SENTRY_DSN: str({ default: '', desc: 'Sentry DSN for error monitoring' }),
+});
 
 const app = express();
 
@@ -85,6 +99,21 @@ app.use(helmet());
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Sanitize request data against MongoDB NoSQL injection attacks ($ and .)
+// ─────────────────────────────────────────────────────────────────────────────
+// [EXPRESS 5 COMPATIBILITY FIX]
+// Default `app.use(mongoSanitize())` attempts `req.query = target`, which throws
+// "Cannot set property query of #<IncomingMessage> which has only a getter" in Express 5.
+// We sanitize req.body, req.params, and req.query in-place using mongoSanitize.sanitize().
+// app.use(mongoSanitize());
+// ─────────────────────────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  if (req.body) mongoSanitize.sanitize(req.body);
+  if (req.params) mongoSanitize.sanitize(req.params);
+  if (req.query) mongoSanitize.sanitize(req.query);
+  next();
+});
 
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {

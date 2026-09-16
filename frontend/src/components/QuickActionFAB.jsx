@@ -92,6 +92,7 @@ export default function QuickActionFAB({ onAddTransaction }) {
         )}
       </AnimatePresence>
 
+      {/* Original fab-trigger button (Problematic - lacked inline padding reset and explicit flex container on inner motion.div, causing the '+' icon to be displaced off-center by 3.5px):
       <motion.button
         className={`fab-trigger ${isOpen ? 'open' : ''}`}
         onClick={() => setIsOpen(prev => !prev)}
@@ -102,6 +103,41 @@ export default function QuickActionFAB({ onAddTransaction }) {
       >
         <motion.div animate={{ rotate: isOpen ? 135 : 0 }} transition={{ duration: 0.2 }}>
           {isOpen ? <X size={24} /> : <Plus size={24} />}
+        </motion.div>
+      </motion.button>
+      */}
+      <motion.button
+        className={`fab-trigger ${isOpen ? 'open' : ''}`}
+        onClick={() => setIsOpen(prev => !prev)}
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.92 }}
+        aria-label={t?.('quick_actions') || 'Quick Actions Menu'}
+        aria-expanded={isOpen}
+        style={{
+          padding: 0,
+          margin: 0,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          lineHeight: 0,
+          boxSizing: 'border-box'
+        }}
+      >
+        <motion.div
+          className="fab-trigger-icon"
+          animate={{ rotate: isOpen ? 135 : 0 }}
+          transition={{ duration: 0.2 }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            height: '100%',
+            lineHeight: 0,
+            transformOrigin: 'center center'
+          }}
+        >
+          {isOpen ? <X size={24} style={{ display: 'block', margin: 'auto' }} /> : <Plus size={24} style={{ display: 'block', margin: 'auto' }} />}
         </motion.div>
       </motion.button>
     </div>

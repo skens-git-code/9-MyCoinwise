@@ -1079,6 +1079,7 @@ export default function Wealth() {
           role="search"
           aria-label={tr('search_portfolio', 'Search portfolio')}
         >
+          {/* Original search input with flex: '1 1 200px' without maxWidth, causing stretched input and active filter pill overlap glitch (Image 2):
           <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 180 }}>
             <Search
               size={14}
@@ -1094,6 +1095,64 @@ export default function Wealth() {
               aria-label={tr('search_portfolio', 'Search portfolio')}
               style={{ width: '100%', paddingLeft: 32, fontSize: '0.85rem' }}
             />
+          </div>
+          */}
+          <div style={{ position: 'relative', flex: '0 1 280px', minWidth: 200, maxWidth: 320 }}>
+            <Search
+              size={14}
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                left: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-muted)',
+                pointerEvents: 'none',
+              }}
+            />
+            <input
+              ref={searchRef}
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={tr('search_portfolio_placeholder', 'Search name, symbol, note…')}
+              aria-label={tr('search_portfolio', 'Search portfolio')}
+              style={{
+                width: '100%',
+                paddingLeft: 34,
+                paddingRight: search ? 30 : 12,
+                height: 36,
+                borderRadius: 9999,
+                border: '1px solid var(--glass-border)',
+                background: 'var(--glass-card)',
+                color: 'var(--text-primary)',
+                fontSize: '0.85rem',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label={tr('clear_search', 'Clear search')}
+                style={{
+                  position: 'absolute',
+                  right: 8,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: 4,
+                }}
+              >
+                <X size={13} />
+              </button>
+            )}
           </div>
 
           <div

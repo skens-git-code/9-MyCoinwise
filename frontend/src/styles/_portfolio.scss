@@ -325,6 +325,7 @@ h1, h2, h3, h4, h5, h6 {
   top: 8px !important;
 }
 */
+/* Original portfolio-header and nav-container styles (Problematic - top: 14px and height: 54px misaligned with sidebar's top: 12px and height: 64px, creating a staggered vertical jump):
 .portfolio-header {
   position: sticky !important;
   top: 14px !important;
@@ -355,6 +356,51 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0 auto !important;
   min-height: 54px !important;
   height: 54px !important;
+  padding: 0 12px 0 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 14px !important;
+  background: var(--nav-container-bg) !important;
+  backdrop-filter: var(--nav-container-backdrop) !important;
+  -webkit-backdrop-filter: var(--nav-container-backdrop) !important;
+  border: 1.5px solid var(--nav-container-border) !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 0 0 1px var(--nav-container-ring), var(--nav-container-shadow) !important;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, padding 0.2s ease, transform 0.2s ease !important;
+  box-sizing: border-box !important;
+}
+*/
+.portfolio-header {
+  position: sticky !important;
+  top: 12px !important; // Perfectly aligned with the sidebar's top edge (Y = 12px)
+  z-index: 1000 !important;
+  width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  pointer-events: none !important;
+  padding: 0 var(--content-padding-x, 28px) !important;
+  margin: 0 0 8px 0 !important;
+  box-sizing: border-box !important;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s ease !important;
+}
+
+.portfolio-header.is-scrolled {
+  transform: translate3d(0, -4px, 0) !important;
+}
+
+.nav-container {
+  pointer-events: auto !important;
+  width: fit-content !important;
+  max-width: calc(100% - 24px) !important;
+  margin: 0 auto !important;
+  min-height: 56px !important;
+  height: 56px !important; // Standardized to 56px to match the sidebar brand header on the exact same line
   padding: 0 12px 0 14px !important;
   display: flex !important;
   align-items: center !important;
@@ -486,6 +532,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* ── Action Buttons & Toggles ── */
+/* Original .nav-actions (Problematic - lacked explicit alignment rules for .dropdown-container children, causing baseline shifts on overflow:hidden avatar buttons):
 .nav-actions {
   display: flex;
   align-items: center;
@@ -493,6 +540,28 @@ h1, h2, h3, h4, h5, h6 {
   flex-shrink: 0;
   border-left: none;
   padding-left: 0;
+}
+*/
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  border-left: none;
+  padding-left: 0;
+
+  .dropdown-container {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    position: relative !important;
+    height: 36px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 0 !important;
+    vertical-align: middle !important;
+    flex-shrink: 0 !important;
+  }
 }
 
 /* Original .theme-toggle and .nav-avatar-btn rules (Problematic - lacked GPU layer promotion, causing emoji/icon subpixel vibration during hover, tap, and header transitions):
@@ -613,6 +682,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* Original .nav-avatar-btn (Problematic - lacked vertical-align: middle, explicit inline-flex centering, and text-centering, leading to 3px vertical baseline offset):
 .nav-avatar-btn {
   width: 36px !important;
   height: 36px !important;
@@ -634,6 +704,53 @@ h1, h2, h3, h4, h5, h6 {
     border-radius: 50%;
     transform: translateZ(0);
     backface-visibility: hidden;
+  }
+}
+*/
+.nav-avatar-btn {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  vertical-align: middle !important;
+  overflow: hidden !important;
+  line-height: 0 !important;
+  box-sizing: border-box !important;
+  transform: translate3d(0, 0, 0) !important;
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  -webkit-font-smoothing: subpixel-antialiased !important;
+  will-change: transform;
+  contain: layout paint;
+
+  img,
+  .nav-avatar-img {
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    border-radius: 50% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+
+  .nav-avatar-text {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    height: 100% !important;
+    font-size: 0.95rem !important;
+    line-height: 1 !important;
+    text-align: center !important;
   }
 }
 
@@ -807,11 +924,23 @@ body,
      COLLAPSED STATE (72px Rail) — Precise 36px Center Axis
      ======================================================== */
   &.collapsed {
-    /* Brand Header */
+    /* Original collapsed .island-brand (Problematic - height: 64px misaligned with navbar 56px):
     .island-brand {
       height: 64px !important;
       min-height: 64px !important;
       max-height: 64px !important;
+      padding: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border-bottom: 1px solid var(--glass-border) !important;
+      box-sizing: border-box !important;
+    }
+    */
+    .island-brand {
+      height: 56px !important; // Matches navbar capsule height (56px) for aligned one-line baseline
+      min-height: 56px !important;
+      max-height: 56px !important;
       padding: 0 !important;
       display: flex !important;
       align-items: center !important;
@@ -1027,11 +1156,23 @@ body,
      EXPANDED STATE (260px) — Balanced, Spacious, Left-Aligned
      ======================================================== */
   &.open {
-    /* Brand Header */
+    /* Original expanded .island-brand (Problematic - height: 64px misaligned with navbar 56px):
     .island-brand {
       height: 64px !important;
       min-height: 64px !important;
       max-height: 64px !important;
+      padding: 0 16px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      border-bottom: 1px solid var(--glass-border) !important;
+      box-sizing: border-box !important;
+    }
+    */
+    .island-brand {
+      height: 56px !important; // Standardized to 56px to match the navbar capsule on the exact same line
+      min-height: 56px !important;
+      max-height: 56px !important;
       padding: 0 16px !important;
       display: flex !important;
       align-items: center !important;
@@ -2190,6 +2331,15 @@ body,
   .nav-actions {
     gap: 5px !important;
 
+    .dropdown-container {
+      height: 32px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      line-height: 0 !important;
+      vertical-align: middle !important;
+    }
+
     .connection-toggle,
     button[title="Currency Converter"],
     button[title="AI Financial Assistant"] {
@@ -2214,6 +2364,12 @@ body,
     height: 32px !important;
     min-width: 32px !important;
     min-height: 32px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: middle !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* Content Wrapper — Balanced Spacing & Clearance Above Bottom Dock */
@@ -2502,6 +2658,17 @@ body,
     min-height: 34px !important;
   }
 
+  .nav-actions {
+    .dropdown-container {
+      height: 32px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      line-height: 0 !important;
+      vertical-align: middle !important;
+    }
+  }
+
   .theme-toggle {
     width: 32px !important;
     height: 32px !important;
@@ -2514,6 +2681,12 @@ body,
     height: 32px !important;
     min-width: 32px !important;
     min-height: 32px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: middle !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   .island-content-wrapper {
