@@ -16,10 +16,10 @@ function safeYearMonth(dateVal) {
 
 // ── Spending Prediction ──────────────────────────────────────────────────────
 export function predictNextMonthSpending(transactions) {
-  if (!transactions || transactions.length < 2) return null;
+  if (!Array.isArray(transactions) || transactions.length < 2) return null;
 
   const monthlyExpenses = {};
-  transactions.filter(t => t.type === 'expense').forEach(t => {
+  transactions.filter(t => t && t.type === 'expense' && t.is_deleted !== true).forEach(t => {
     const key = safeYearMonth(t.date); // YYYY-MM
     if (!key) return;
     const amount = Number(t.amount);
@@ -51,10 +51,10 @@ export function predictNextMonthSpending(transactions) {
 
 // ── Category Spending Anomaly Detection ─────────────────────────────────────
 export function detectAnomalies(transactions) {
-  if (!transactions || transactions.length < 5) return [];
+  if (!Array.isArray(transactions) || transactions.length < 5) return [];
 
   const catStats = {};
-  transactions.filter(t => t.type === 'expense').forEach(t => {
+  transactions.filter(t => t && t.type === 'expense' && t.is_deleted !== true).forEach(t => {
     const cat = t.category;
     if (!catStats[cat]) catStats[cat] = [];
     catStats[cat].push(Number(t.amount));
@@ -116,16 +116,20 @@ export function predictTimeToGoal(goal, transactions) {
 
 // ── Budget Alert Generation ───────────────────────────────────────────────────
 export function generateAlerts(transactions, user, goals = []) {
+  const safeTxs = Array.isArray(transactions) ? transactions : [];
+  const safeGoals = Array.isArray(goals) ? goals : [];
   const alerts = [];
   const monthlyGoal = Number(user?.monthly_goal || 0);
   const now = new Date();
   const thisMonth = safeYearMonth(now);
 
-  const thisMonthExpenses = transactions.filter(t => {
+  const thisMonthExpenses = safeTxs.filter(t => {
+    if (!t || t.is_deleted === true) return false;
     const m = safeYearMonth(t.date);
     return t.type === 'expense' && m === thisMonth;
   });
-  const thisMonthIncome = transactions.filter(t => {
+  const thisMonthIncome = safeTxs.filter(t => {
+    if (!t || t.is_deleted === true) return false;
     const m = safeYearMonth(t.date);
     return t.type === 'income' && m === thisMonth;
   });
@@ -190,7 +194,7 @@ export function generateAlerts(transactions, user, goals = []) {
   }
 
   // 5. Anomalies
-  const anomalies = detectAnomalies(transactions);
+  const anomalies = detectAnomalies(safeTxs);
   if (anomalies.length > 0) {
     alerts.push({
       type: 'info',
@@ -202,8 +206,8 @@ export function generateAlerts(transactions, user, goals = []) {
   }
 
   // 6. Stuck goal nudge — mirrors the isStuck logic on the Goals page
-  if (Array.isArray(goals) && goals.length > 0) {
-    const stuckGoals = goals.filter(g => {
+  if (safeGoals.length > 0) {
+    const stuckGoals = safeGoals.filter(g => {
       const pct = g.target > 0 ? (Number(g.saved) / Number(g.target)) * 100 : 0;
       const ageInDays = g.created_at ? (new Date() - new Date(g.created_at)) / (1000 * 60 * 60 * 24) : 0;
       return pct < 15 && ageInDays > 14 && pct < 100;
@@ -243,15 +247,16 @@ export function generateAlerts(transactions, user, goals = []) {
 
 // ── Spending Insights ─────────────────────────────────────────────────────────
 export function getSpendingInsights(transactions, fmt) {
-  if (!transactions || transactions.length === 0) return [];
+  if (!Array.isArray(transactions) || transactions.length === 0) return [];
 
-  const income = transactions.filter(t => t.type === 'income').reduce((a, c) => a + Number(c.amount), 0);
-  const expense = transactions.filter(t => t.type === 'expense').reduce((a, c) => a + Number(c.amount), 0);
+  const safeTxs = transactions.filter(t => t && t.is_deleted !== true);
+  const income = safeTxs.filter(t => t.type === 'income').reduce((a, c) => a + Number(c.amount), 0);
+  const expense = safeTxs.filter(t => t.type === 'expense').reduce((a, c) => a + Number(c.amount), 0);
   const savingsRate = income > 0 ? ((income - expense) / income * 100) : 0;
 
   // Find top spending category
   const catMap = {};
-  transactions.filter(t => t.type === 'expense').forEach(t => {
+  safeTxs.filter(t => t.type === 'expense').forEach(t => {
     catMap[t.category] = (catMap[t.category] || 0) + Number(t.amount);
   });
   const topCat = Object.entries(catMap).sort((a, b) => b[1] - a[1])[0];

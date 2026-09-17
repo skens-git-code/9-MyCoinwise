@@ -4,6 +4,11 @@
   "description": "Budget Tracker Full Stack App",
   "main": "backend/server.js",
   "type": "commonjs",
+  "scripts": {
+    "start": "node start.js",
+    "dev": "node start.js",
+    "test": "npm --prefix frontend test"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/skens-git-code/9-BudgetTracker.git"

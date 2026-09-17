@@ -26,9 +26,17 @@ axios.defaults.timeout = 30000;
 
 // --- Axios Request Interceptor for JWT ---
 axios.interceptors.request.use((config) => {
-  const token = getStoredToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  const requestUrl = String(config.url || '');
+  const isUnauthenticatedRoute =
+    requestUrl.includes('/auth/login') ||
+    requestUrl.includes('/auth/register') ||
+    requestUrl.includes('/health');
+
+  if (!isUnauthenticatedRoute) {
+    const token = getStoredToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
   }
   return config;
 }, (error) => {
@@ -73,6 +81,16 @@ export const AVATARS = ['user1', 'user2', 'user3', 'user4', 'user5'];
 export const AVATAR_COLORS = ['#059669', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#f97316', '#64748b'];
 
 export const api = {
+  // Health & Server Wake-up
+  healthCheck: async () => {
+    try {
+      const res = await axios.get(`${API_URL}/health`, { timeout: 15000 });
+      return res.data;
+    } catch {
+      return null;
+    }
+  },
+
   // Auth
   login: async (credentials) => {
     const res = await axios.post(`${API_URL}/auth/login`, credentials);

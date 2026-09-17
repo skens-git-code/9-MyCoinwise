@@ -509,7 +509,8 @@ export default function AppLayout({ children }) {
   }, []);
 
   const activeAlerts = useMemo(() => {
-    return alerts.filter(a => !dismissedAlertIds.has(a.id || a.title));
+    const safeAlerts = Array.isArray(alerts) ? alerts : [];
+    return safeAlerts.filter(a => a && !dismissedAlertIds.has(a.id || a.title));
   }, [alerts, dismissedAlertIds]);
 
   const urgentAlertsCount = useMemo(
@@ -518,7 +519,8 @@ export default function AppLayout({ children }) {
   );
 
   const handleDismissAllAlerts = useCallback(() => {
-    setDismissedAlertIds(new Set(alerts.map(a => a.id || a.title)));
+    const safeAlerts = Array.isArray(alerts) ? alerts : [];
+    setDismissedAlertIds(new Set(safeAlerts.map(a => a?.id || a?.title).filter(Boolean)));
   }, [alerts]);
 
   // [FIX #7] pageTitleKey is now derived from NAV_ITEMS so it can
@@ -563,7 +565,8 @@ export default function AppLayout({ children }) {
   // Issue: Excluded check for t.is_deleted === true, causing soft-deleted transactions to leak into top-level layout figures.
   */
   const financialSummary = useMemo(() => {
-    const liveTxs = transactions.filter(t => t && t.is_deleted !== true);
+    const safeTxs = Array.isArray(transactions) ? transactions : [];
+    const liveTxs = safeTxs.filter(t => t && t.is_deleted !== true);
     const income = liveTxs
       .filter(t => t.type === 'income')
       .reduce((sum, t) => {
@@ -1135,14 +1138,19 @@ const Header = React.memo(({
   const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
+    let lastVisibilityRefetch = 0;
     const handleOnline = () => {
       setIsOnline(true);
       if (syncEnabled) refetch?.();
     };
     const handleOffline = () => setIsOnline(false);
     const handleVisibilityChange = () => {
+      const now = Date.now();
       if (document.visibilityState === 'visible' && navigator.onLine && syncEnabled) {
-        refetch?.();
+        if (now - lastVisibilityRefetch > 15000) {
+          lastVisibilityRefetch = now;
+          refetch?.();
+        }
       }
     };
 
@@ -1225,25 +1233,25 @@ const Header = React.memo(({
         </div>
 
         <nav className="nav-links" aria-label="Main Navigation">
-          <NavLink to="/" end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <NavLink to="/" end className={({ isActive }) => `nav-link nav-link-core ${isActive ? 'active' : ''}`}>
             {t?.('dashboard') || 'Dashboard'}
           </NavLink>
-          <NavLink to="/transactions" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <NavLink to="/transactions" className={({ isActive }) => `nav-link nav-link-core ${isActive ? 'active' : ''}`}>
             {t?.('transactions') || 'Transactions'}
           </NavLink>
-          <NavLink to="/analytics" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <NavLink to="/analytics" className={({ isActive }) => `nav-link nav-link-core ${isActive ? 'active' : ''}`}>
             {t?.('analytics') || 'Analytics'}
           </NavLink>
-          <NavLink to="/budgets" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <NavLink to="/budgets" className={({ isActive }) => `nav-link nav-link-secondary ${isActive ? 'active' : ''}`}>
             {t?.('budgets') || 'Budgets'}
           </NavLink>
-          <NavLink to="/goals" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <NavLink to="/goals" className={({ isActive }) => `nav-link nav-link-secondary ${isActive ? 'active' : ''}`}>
             {t?.('goals') || 'Goals'}
           </NavLink>
-          <NavLink to="/wealth" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <NavLink to="/wealth" className={({ isActive }) => `nav-link nav-link-tertiary ${isActive ? 'active' : ''}`}>
             {t?.('wealth') || 'Wealth'}
           </NavLink>
-          <NavLink to="/about" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <NavLink to="/about" className={({ isActive }) => `nav-link nav-link-tertiary ${isActive ? 'active' : ''}`}>
             {t?.('about') || 'About'}
           </NavLink>
         </nav>
@@ -1253,7 +1261,7 @@ const Header = React.memo(({
         <div className="nav-actions">
           <button
             type="button"
-            className={`connection-toggle connection-toggle-${syncState}`}
+            className={`connection-toggle nav-btn-sync connection-toggle-${syncState}`}
             onClick={toggleSync}
             disabled={isBackgroundSyncing}
             aria-pressed={syncEnabled}
@@ -1265,7 +1273,7 @@ const Header = React.memo(({
 
           <button
             type="button"
-            className="theme-toggle"
+            className="theme-toggle nav-btn-search"
             onClick={onOpenCmdPalette}
             title="Search (Cmd+K)"
             aria-label="Search"
@@ -1275,7 +1283,7 @@ const Header = React.memo(({
 
           <button
             type="button"
-            className="theme-toggle"
+            className="theme-toggle nav-btn-converter"
             onClick={onShowConverter}
             title="Currency Converter"
             aria-label="Currency converter"
@@ -1285,7 +1293,7 @@ const Header = React.memo(({
 
           <button
             type="button"
-            className="theme-toggle"
+            className="theme-toggle nav-btn-ai"
             onClick={onShowAI}
             title="AI Financial Assistant"
             aria-label="AI Assistant"
@@ -1295,7 +1303,7 @@ const Header = React.memo(({
 
           <button
             type="button"
-            className="theme-toggle"
+            className="theme-toggle nav-btn-theme"
             id="themeToggle"
             onClick={onToggleTheme}
             title={`Switch to ${theme === 'dark' || theme === 'amoled' ? 'Light' : 'Dark'} theme`}
@@ -1304,10 +1312,10 @@ const Header = React.memo(({
             {theme === 'dark' || theme === 'amoled' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
 
-          <div className="dropdown-container" style={{ position: 'relative' }}>
+          <div className="dropdown-container nav-dropdown-alerts" style={{ position: 'relative' }}>
             <button
               type="button"
-              className="theme-toggle"
+              className="theme-toggle nav-btn-alerts"
               onClick={() => onDropdownToggle('notifications')}
               aria-expanded={activeDropdown === 'notifications'}
               aria-label={`Alerts${urgentAlertsCount > 0 ? `, ${urgentAlertsCount} urgent` : ''}`}
@@ -1392,10 +1400,10 @@ const Header = React.memo(({
             </button>
           </div>
           */}
-          <div className="dropdown-container" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="dropdown-container nav-dropdown-profile" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
             <button
               type="button"
-              className="theme-toggle nav-avatar-btn"
+              className="theme-toggle nav-avatar-btn nav-btn-profile"
               onClick={onOpenProfile}
               title="User profile"
               aria-expanded={activeDropdown === 'profile'}

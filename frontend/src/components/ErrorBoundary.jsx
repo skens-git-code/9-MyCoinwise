@@ -35,17 +35,18 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      const isFullScreen = this.props.fullScreen !== false;
       return (
         <div style={{ 
           padding: '40px', 
           textAlign: 'center', 
           color: 'var(--text-primary)', 
-          minHeight: '100vh', 
+          minHeight: isFullScreen ? '100vh' : '60vh', 
           display: 'flex', 
           flexDirection: 'column', 
           alignItems: 'center', 
           justifyContent: 'center',
-          background: 'var(--surface-0)'
+          background: isFullScreen ? 'var(--surface-0)' : 'transparent'
         }}>
           <h2 style={{ fontSize: '2rem', marginBottom: '16px', fontWeight: 800 }}>Oops, something went wrong.</h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '1.1rem' }}>

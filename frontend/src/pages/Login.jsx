@@ -192,6 +192,31 @@ export default function Login() {
   const closeForgotModal = useCallback(() => setShowForgotHelp(false), []);
   useFocusTrap(forgotModalRef, showForgotHelp, closeForgotModal);
 
+  /* ---------------- Pre-emptive server wake-up ---------------- */
+  useEffect(() => {
+    // Ping health check to wake up sleeping backends on Render
+    api.healthCheck();
+  }, []);
+
+  /* ---------------- Autofill synchronization ---------------- */
+  useEffect(() => {
+    const syncAutofill = () => {
+      const domEmail = emailInputRef.current?.value;
+      const domPassword = passwordInputRef.current?.value;
+      if (domEmail && !email) setEmail(domEmail);
+      if (domPassword && !password) setPassword(domPassword);
+    };
+
+    // Browsers often fill fields immediately or after a slight delay
+    syncAutofill();
+    const t1 = setTimeout(syncAutofill, 100);
+    const t2 = setTimeout(syncAutofill, 500);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [email, password]);
+
   /* ============================================================
    * Validation
    * ============================================================ */
@@ -210,10 +235,13 @@ export default function Login() {
     }
   }, [tr]);
 
-  const validateForm = useCallback(() => {
+  const validateForm = useCallback((customValues = {}) => {
+    const activeEmail = customValues.email !== undefined ? customValues.email : (email || emailInputRef.current?.value || '');
+    const activePassword = customValues.password !== undefined ? customValues.password : (password || passwordInputRef.current?.value || '');
+
     const errors = {};
-    const emailErr = validateField('email', email);
-    const pwdErr = validateField('password', password);
+    const emailErr = validateField('email', activeEmail);
+    const pwdErr = validateField('password', activePassword);
     if (emailErr) errors.email = emailErr;
     if (pwdErr) errors.password = pwdErr;
     setFieldErrors(errors);
@@ -252,7 +280,15 @@ export default function Login() {
     setError('');
     setErrorKind(null);
 
-    const validationErrors = validateForm();
+    // Resolve effective values from state or direct DOM inputs (autofill fallback)
+    const effectiveEmail = (email || emailInputRef.current?.value || '').trim();
+    const effectivePassword = password || passwordInputRef.current?.value || '';
+
+    // If DOM has autofilled values that were not in state, sync them
+    if (effectiveEmail && effectiveEmail !== email) setEmail(effectiveEmail);
+    if (effectivePassword && effectivePassword !== password) setPassword(effectivePassword);
+
+    const validationErrors = validateForm({ email: effectiveEmail, password: effectivePassword });
     if (Object.keys(validationErrors).length > 0) {
       // Mark all errored fields as touched so messages render.
       setTouched((prev) => {
@@ -267,13 +303,13 @@ export default function Login() {
       return;
     }
 
-    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedEmail = effectiveEmail.toLowerCase();
     setLoading(true);
 
     try {
       const { token, user: loggedUser } = await api.login({
         email: trimmedEmail,
-        password,
+        password: effectivePassword,
         rememberMe,
       });
 
@@ -452,6 +488,11 @@ export default function Login() {
                 type="email"
                 value={email}
                 onChange={handleChange}
+                onFocus={() => {
+                  if (emailInputRef.current?.value && !email) {
+                    setEmail(emailInputRef.current.value);
+                  }
+                }}
                 onBlur={handleBlur}
                 required
                 autoComplete="email"
@@ -482,6 +523,11 @@ export default function Login() {
                 type={showPwd ? 'text' : 'password'}
                 value={password}
                 onChange={handleChange}
+                onFocus={() => {
+                  if (passwordInputRef.current?.value && !password) {
+                    setPassword(passwordInputRef.current.value);
+                  }
+                }}
                 onBlur={handleBlur}
                 onKeyUp={handleKeyEvent}
                 onKeyDown={handleKeyEvent}
