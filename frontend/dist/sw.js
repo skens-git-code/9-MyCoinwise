@@ -1,6 +1,6 @@
 /* global clients */
 // MyCoinwise – Service Worker (PWA)
-const CACHE_NAME = 'mycoinwise-v2';
+const CACHE_NAME = 'mycoinwise-v3';
 const STATIC_ASSETS = ['/', '/index.html'];
 
 self.addEventListener('install', (e) => {
@@ -23,13 +23,8 @@ self.addEventListener('fetch', (e) => {
   // ✅ Never intercept non-GET requests (POST/PUT/DELETE go straight to network)
   if (e.request.method !== 'GET') return;
 
-  // ✅ Never cache API calls — always go to network, fallback to offline message
+  // ✅ Never intercept or cache API calls — bypass SW fetch handler so Axios/browser handle errors natively
   if (e.request.url.includes('/api/') || e.request.url.includes('onrender.com')) {
-    e.respondWith(
-      fetch(e.request).catch(() =>
-        new Response('{"error":"offline"}', { headers: { 'Content-Type': 'application/json' } })
-      )
-    );
     return;
   }
 

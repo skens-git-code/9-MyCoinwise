@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components, react-hooks/exhaustive-deps */
-import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
 import AppLayout from './components/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -31,9 +31,11 @@ const About = lazy(() => import('./pages/About'));
 const Calculator = lazy(() => import('./pages/Calculator'));
 
 function AppRoutes() {
+  const location = useLocation();
   return (
-    <Suspense fallback={<Loader />}>
-      <Routes>
+    <ErrorBoundary resetKeys={[location.pathname]} fullScreen={false}>
+      <Suspense fallback={<Loader />}>
+        <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/analytics" element={<Analytics />} />
@@ -50,6 +52,7 @@ function AppRoutes() {
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -307,7 +310,7 @@ export default function App() {
     setUser(userData);
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     api.logout().catch(() => { });
     localStorage.removeItem('mcw-token');
     sessionStorage.removeItem('mcw-token');
@@ -322,7 +325,12 @@ export default function App() {
     setAccounts([]);
     setSubscriptions([]);
     setEvents([]);
-  };
+  }, []);
+
+  const userRef = useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   useEffect(() => {
     const handleAuthExpired = () => {
@@ -345,7 +353,7 @@ export default function App() {
     return () => window.removeEventListener('mcw:auth-expired', handleAuthExpired);
   }, []);
 
-  const fetchData = async (overrideToken) => {
+  const fetchData = useCallback(async (overrideToken) => {
     const activeToken = overrideToken || token;
     if (!activeToken) {
       setIsInitialAuthLoad(false);
@@ -353,11 +361,14 @@ export default function App() {
     }
 
     try {
-      if (!user && !overrideToken) setIsInitialAuthLoad(true);
+      if (!userRef.current && !overrideToken) setIsInitialAuthLoad(true);
       else setIsBackgroundSyncing(true);
       setGlobalError(null);
 
       const me = await api.getMe();
+      if (!me || (!me._id && !me.id)) {
+        throw new Error('Invalid user profile response');
+      }
       const activeId = me._id || me.id;
 
       const results = await Promise.allSettled([
@@ -370,14 +381,14 @@ export default function App() {
         api.getAllUsers().catch(() => [])
       ]);
       const [txResult, goalsResult, subsResult, eventsResult, budgetsResult, accountsResult, usersResult] = results;
-      const settledValue = (result, fallback) => result.status === 'fulfilled' ? result.value : fallback;
-      const txData = settledValue(txResult, []);
-      const goalsData = settledValue(goalsResult, []);
-      const subsData = settledValue(subsResult, []);
-      const eventsData = settledValue(eventsResult, []);
-      const budgetsData = settledValue(budgetsResult, []);
-      const accountsData = settledValue(accountsResult, []);
-      const usersData = settledValue(usersResult, []);
+      const settledArray = (result) => (result?.status === 'fulfilled' && Array.isArray(result.value)) ? result.value : [];
+      const txData = settledArray(txResult);
+      const goalsData = settledArray(goalsResult);
+      const subsData = settledArray(subsResult);
+      const eventsData = settledArray(eventsResult);
+      const budgetsData = settledArray(budgetsResult);
+      const accountsData = settledArray(accountsResult);
+      const usersData = settledArray(usersResult);
       const localTheme = localStorage.getItem('mcw-theme');
       const backendTheme = normalizeTheme(me?.theme);
       const resolvedTheme = (localTheme && ['light', 'amoled'].includes(localTheme)) ? localTheme : backendTheme;
@@ -408,7 +419,7 @@ export default function App() {
       setIsInitialAuthLoad(false);
       setIsBackgroundSyncing(false);
     }
-  };
+  }, [token, logout, t]);
 
   useEffect(() => { fetchData(); }, [token]);
 

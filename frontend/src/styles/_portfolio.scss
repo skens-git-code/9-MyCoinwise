@@ -397,7 +397,7 @@ h1, h2, h3, h4, h5, h6 {
 .nav-container {
   pointer-events: auto !important;
   width: fit-content !important;
-  max-width: calc(100% - 24px) !important;
+  max-width: calc(100% - 16px) !important;
   margin: 0 auto !important;
   min-height: 56px !important;
   height: 56px !important; // Standardized to 56px to match the sidebar brand header on the exact same line
@@ -405,7 +405,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: 14px !important;
+  gap: 10px !important;
   background: var(--nav-container-bg) !important;
   backdrop-filter: var(--nav-container-backdrop) !important;
   -webkit-backdrop-filter: var(--nav-container-backdrop) !important;
@@ -414,6 +414,7 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 0 0 1px var(--nav-container-ring), var(--nav-container-shadow) !important;
   transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, padding 0.2s ease, transform 0.2s ease !important;
   box-sizing: border-box !important;
+  overflow: visible !important;
 }
 
 .nav-container:hover {
@@ -489,8 +490,8 @@ h1, h2, h3, h4, h5, h6 {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: 5px !important;
-  flex: 0 0 auto !important;
+  gap: 4px !important;
+  flex: 0 1 auto !important;
   min-width: 0 !important;
 }
 
@@ -2232,32 +2233,45 @@ body,
    8. MOBILE & TABLET RESPONSIVENESS (PERFECT EDGE-TO-EDGE FIT)
    ================================================================ */
 
-@media (max-width: 1360px) {
-  .nav-link {
-    font-size: 0.84rem !important;
-    padding: 6px 10px !important;
-  }
+/* ── RESPONSIVE NAVBAR: Multi-tier progressive disclosure & zero overflow ── */
+
+@media (max-width: 1280px) {
   .nav-container {
-    padding: 0 12px !important;
+    padding: 0 10px 0 12px !important;
     gap: 8px !important;
   }
-  .nav-actions {
-    button[title="Currency Converter"],
-    button[title="AI Financial Assistant"] {
-      display: none !important;
-    }
+  .nav-link {
+    font-size: 0.83rem !important;
+    padding: 5px 10px !important;
+  }
+  /* Hide tertiary links & secondary action buttons on laptops with sidebar open */
+  .nav-link-tertiary {
+    display: none !important;
+  }
+  .nav-btn-converter,
+  .nav-btn-ai,
+  button[title="Currency Converter"],
+  button[title="AI Financial Assistant"] {
+    display: none !important;
   }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1080px) {
   .nav-container {
+    padding: 0 8px 0 10px !important;
     gap: 6px !important;
-    padding: 0 10px !important;
   }
-
   .nav-link {
-    font-size: 0.79rem !important;
+    font-size: 0.80rem !important;
     padding: 5px 8px !important;
+  }
+  /* Hide secondary links (Budgets, Goals) so primary tabs never overflow */
+  .nav-link-secondary {
+    display: none !important;
+  }
+  .connection-toggle,
+  .nav-btn-sync {
+    display: none !important;
   }
 
   .inbox-split-pane {
@@ -2266,7 +2280,7 @@ body,
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 880px) {
   .portfolio-header {
     top: 8px !important;
     padding: 0 12px !important;
@@ -2285,6 +2299,8 @@ body,
     display: flex !important;
     justify-content: space-between !important;
     align-items: center !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
   }
 
   .nav-brand-group {
@@ -2306,7 +2322,7 @@ body,
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
-    max-width: 140px !important;
+    max-width: calc(100% - 42px) !important;
     line-height: 1 !important;
   }
 
@@ -2330,6 +2346,9 @@ body,
 
   .nav-actions {
     gap: 5px !important;
+    flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
 
     .dropdown-container {
       height: 32px !important;
@@ -2341,6 +2360,9 @@ body,
     }
 
     .connection-toggle,
+    .nav-btn-sync,
+    .nav-btn-converter,
+    .nav-btn-ai,
     button[title="Currency Converter"],
     button[title="AI Financial Assistant"] {
       display: none !important;
@@ -2647,18 +2669,35 @@ body,
   }
 
   .nav-container {
-    padding: 5px 8px !important;
+    min-height: 48px !important;
+    height: 48px !important;
+    padding: 0 8px 0 10px !important;
     gap: 6px !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   .port {
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
-    min-height: 34px !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+
+    .brand-logo-svg {
+      width: 18px !important;
+      height: 18px !important;
+    }
+  }
+
+  .mobile-header-title {
+    font-size: 0.88rem !important;
+    max-width: calc(100vw - 190px) !important;
   }
 
   .nav-actions {
+    gap: 4px !important;
+    flex-shrink: 0 !important;
+
     .dropdown-container {
       height: 32px !important;
       display: inline-flex !important;
@@ -2674,6 +2713,11 @@ body,
     height: 32px !important;
     min-width: 32px !important;
     min-height: 32px !important;
+
+    svg {
+      width: 14px !important;
+      height: 14px !important;
+    }
   }
 
   .nav-avatar-btn {
@@ -2687,6 +2731,13 @@ body,
     vertical-align: middle !important;
     margin: 0 !important;
     padding: 0 !important;
+  }
+
+  .header-profile-dropdown,
+  .header-alerts-dropdown {
+    width: calc(100vw - 24px) !important;
+    max-width: 320px !important;
+    right: -4px !important;
   }
 
   .island-content-wrapper {
@@ -2705,6 +2756,36 @@ body,
   .stat-card {
     padding: 16px 14px !important;
     border-radius: 18px !important;
+  }
+}
+
+@media (max-width: 375px) {
+  .portfolio-header {
+    padding: 0 4px !important;
+  }
+
+  .nav-container {
+    padding: 0 6px 0 8px !important;
+    gap: 4px !important;
+  }
+
+  .mobile-header-title {
+    font-size: 0.82rem !important;
+    max-width: calc(100vw - 148px) !important;
+  }
+
+  /* On screens under 375px, hide search from top pill so action buttons fit with 100% comfort */
+  .nav-btn-search,
+  button[title="Search (Cmd+K)"] {
+    display: none !important;
+  }
+
+  .theme-toggle,
+  .nav-avatar-btn {
+    width: 29px !important;
+    height: 29px !important;
+    min-width: 29px !important;
+    min-height: 29px !important;
   }
 }
 

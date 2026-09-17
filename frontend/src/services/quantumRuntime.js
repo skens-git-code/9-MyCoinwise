@@ -208,7 +208,6 @@ const QuantumRuntime = (() => {
       this.root = root;
       this.animation = new AnimationManager(root);
       this.interactive = new InteractiveElementsManager(root);
-      this.commands = new CommandPaletteManager(root);
     }
 
     init() {
@@ -219,14 +218,12 @@ const QuantumRuntime = (() => {
       AppState.currentTheme = storedTheme === 'amoled' ? 'amoled' : 'light';
       this.animation.init();
       this.interactive.init();
-      this.commands.init();
       return this;
     }
 
     destroy() {
       this.animation.destroy();
       this.interactive.destroy();
-      this.commands.destroy();
     }
   }
 
