@@ -573,3 +573,32 @@
     background: var(--glass-1);
   }
 }
+
+/* ── Paytm Transaction Ticket (AMOLED) ── */
+[data-theme="amoled"] {
+  .tx-ticket-card {
+    background: #0d0d0d !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.85) !important;
+  }
+
+  .tx-ticket-notch {
+    background: #000000 !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+  }
+
+  .tx-ticket-line {
+    border-top-color: rgba(255, 255, 255, 0.16) !important;
+  }
+
+  .tx-ticket-topbar .tx-ticket-badge,
+  .tx-ticket-topbar .tx-ticket-close-btn,
+  .tx-ticket-btn.duplicate,
+  .tx-ticket-btn.copy,
+  .tx-ticket-row .ttr-copy-btn,
+  .tx-ticket-row.note-row .ttr-note-box,
+  .tx-ticket-row.tags-row .ttr-tag-chip {
+    background: #151515 !important;
+    border-color: rgba(255, 255, 255, 0.10) !important;
+  }
+}

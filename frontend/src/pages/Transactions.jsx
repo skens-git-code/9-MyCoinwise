@@ -8,7 +8,7 @@ import {
   Download, Upload, Copy, CheckSquare, Square,
   FileSpreadsheet, FileCode, CheckCircle2, ChevronDown,
   Layers, RefreshCw, Undo2, AlertTriangle, Loader2, Tag,
-  Calendar, DollarSign, Keyboard,
+  Calendar, DollarSign, Keyboard, Receipt,
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
@@ -174,6 +174,13 @@ export default function Transactions() {
   const [undoState, setUndoState] = useState(null);
   const undoTimerRef = useRef(null);
   const searchInputRef = useRef(null);
+  const detailPaneRef = useRef(null);
+
+  useEffect(() => {
+    if (selectedTxId && detailPaneRef.current && window.innerWidth <= 992) {
+      detailPaneRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [selectedTxId]);
 
   useEffect(() => () => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
@@ -1181,77 +1188,127 @@ export default function Transactions() {
         </div>
 
         {/* RIGHT: details */}
-        <div className="inbox-detail-pane glass">
-          <AnimatePresence mode="wait">
+        <div
+          className={`inbox-detail-pane ${selectedTx ? 'has-ticket' : 'glass'}`}
+          ref={detailPaneRef}
+        >
+          <AnimatePresence>
             {selectedTx ? (
               <motion.div
                 key={getTransactionId(selectedTx)}
-                className="idp-content"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
+                className="tx-ticket-card"
+                initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -12, scale: 0.98 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
               >
-                <div className="idp-header">
-                  <div className={`idp-hero-icon ${selectedTx.type}`} aria-hidden>
-                    {selectedTx.type === 'income' ? <ArrowUpRight size={32} /> : <ArrowDownRight size={32} />}
+                {/* Top Bar: Receipt branding & Dismiss button */}
+                <div className="tx-ticket-topbar">
+                  <div className="tx-ticket-badge">
+                    <Receipt size={13} aria-hidden />
+                    <span>{tr('payment_receipt', 'PAYMENT RECEIPT')}</span>
                   </div>
-                  <h3 className={`idp-amount ${selectedTx.type}`}>
+                  <button
+                    type="button"
+                    className="tx-ticket-close-btn"
+                    onClick={() => setSelectedTxId(null)}
+                    aria-label={tr('close', 'Close')}
+                    title={tr('close', 'Close')}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+
+                {/* Hero section: Icon, Status, Amount, Category, Date */}
+                <div className="tx-ticket-hero">
+                  <div className={`tx-ticket-hero-icon ${selectedTx.type}`} aria-hidden>
+                    {selectedTx.type === 'income' ? <ArrowUpRight size={24} /> : <ArrowDownRight size={24} />}
+                  </div>
+
+                  <div className={`tx-ticket-status-pill ${selectedTx.type}`}>
+                    <span className="status-dot" />
+                    <span>
+                      {selectedTx.type === 'income'
+                        ? tr('received_successfully', 'Received Successfully')
+                        : tr('paid_successfully', 'Paid Successfully')}
+                    </span>
+                  </div>
+
+                  <h3 className={`tx-ticket-amount ${selectedTx.type}`}>
                     {selectedTx.type === 'income' ? '+' : '-'}{fmt(selectedTx.amount)}
                   </h3>
-                  <p className="idp-cat">{selectedTx.category}</p>
-                  {selectedTx.merchant && <p className="idp-merchant">{selectedTx.merchant}</p>}
-                  <p className="idp-date">
-                    {new Date(selectedTx.date).toLocaleDateString(locale, {
-                      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-                    })}
+
+                  <div className="tx-ticket-merchant-block">
+                    <p className="tx-ticket-cat">{selectedTx.category || tr('uncategorized', 'Uncategorized')}</p>
+                    {selectedTx.merchant && <p className="tx-ticket-merchant">{selectedTx.merchant}</p>}
+                  </div>
+
+                  <p className="tx-ticket-date">
+                    <Calendar size={12} aria-hidden />
+                    <span>
+                      {new Date(selectedTx.date).toLocaleDateString(locale, {
+                        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                      })}
+                    </span>
                   </p>
                 </div>
 
-                <div className="idp-body">
-                  <div className="idp-section">
-                    <label>{tr('type', 'Type')}</label>
-                    <p
-                      style={{
-                        textTransform: 'capitalize',
-                        color: selectedTx.type === 'income' ? 'var(--success)' : 'var(--danger)',
-                        fontWeight: 700,
-                      }}
-                    >
+                {/* Perforation divider with Paytm-style ticket punch notches */}
+                <div className="tx-ticket-divider" aria-hidden="true">
+                  <div className="tx-ticket-notch left" />
+                  <div className="tx-ticket-line" />
+                  <div className="tx-ticket-notch right" />
+                </div>
+
+                {/* Receipt Details Breakdown */}
+                <div className="tx-ticket-body">
+                  <div className="tx-ticket-row">
+                    <span className="ttr-label">{tr('type', 'Type')}</span>
+                    <span className={`ttr-pill ${selectedTx.type}`}>
                       {selectedTx.type === 'income'
                         ? tr('income_label', 'Income')
                         : tr('expense_label', 'Expense')}
-                    </p>
+                    </span>
                   </div>
 
-                  <div className="idp-section">
-                    <label><FileText size={14} aria-hidden /> {tr('description', 'Note')}</label>
-                    {selectedTx.note ? (
-                      <p className="idp-note-box">{selectedTx.note}</p>
-                    ) : (
-                      <p className="idp-note-empty">{tr('no_notes', 'No notes provided.')}</p>
-                    )}
+                  <div className="tx-ticket-row">
+                    <span className="ttr-label">{tr('category', 'Category')}</span>
+                    <span className="ttr-val">{selectedTx.category || tr('uncategorized', 'Uncategorized')}</span>
                   </div>
+
+                  {selectedTx.merchant && (
+                    <div className="tx-ticket-row">
+                      <span className="ttr-label">{tr('merchant', 'Merchant / Payee')}</span>
+                      <span className="ttr-val bold">{selectedTx.merchant}</span>
+                    </div>
+                  )}
+
+                  {selectedTx.note ? (
+                    <div className="tx-ticket-row note-row">
+                      <span className="ttr-label"><FileText size={12} aria-hidden /> {tr('description', 'Note')}</span>
+                      <span className="ttr-note-box">{selectedTx.note}</span>
+                    </div>
+                  ) : null}
 
                   {Array.isArray(selectedTx.tags) && selectedTx.tags.length > 0 && (
-                    <div className="idp-section">
-                      <label><Tag size={14} aria-hidden /> {tr('tags', 'Tags')}</label>
-                      <div className="idp-tags">
+                    <div className="tx-ticket-row tags-row">
+                      <span className="ttr-label"><Tag size={12} aria-hidden /> {tr('tags', 'Tags')}</span>
+                      <div className="ttr-tags">
                         {selectedTx.tags.map((tg) => (
-                          <span key={tg} className="idp-tag-chip">#{tg}</span>
+                          <span key={tg} className="ttr-tag-chip">#{tg}</span>
                         ))}
                       </div>
                     </div>
                   )}
 
                   {selectedTx.transaction_number && (
-                    <div className="idp-section">
-                      <label>{tr('transaction_number', 'Transaction Number')}</label>
-                      <p style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
-                        {selectedTx.transaction_number}
+                    <div className="tx-ticket-row ref-row">
+                      <span className="ttr-label">{tr('txn_id', 'Txn Ref ID')}</span>
+                      <div className="ttr-copy-val">
+                        <code>{selectedTx.transaction_number}</code>
                         <button
                           type="button"
-                          className="icon-btn"
+                          className="ttr-copy-btn"
                           onClick={async () => {
                             try {
                               await navigator.clipboard.writeText(selectedTx.transaction_number);
@@ -1262,37 +1319,54 @@ export default function Transactions() {
                           }}
                           title={tr('copy', 'Copy')}
                           aria-label={tr('copy_transaction_number', 'Copy transaction number')}
-                          style={{ padding: 4 }}
                         >
-                          <Copy size={14} aria-hidden />
+                          <Copy size={13} aria-hidden />
                         </button>
-                      </p>
+                      </div>
                     </div>
                   )}
                 </div>
 
-                <div className="idp-actions">
-                  <button type="button" className="idp-btn edit" onClick={() => setEditingTx(selectedTx)}>
-                    <Edit3 size={16} aria-hidden /> {tr('edit', 'Edit')}
-                  </button>
+                {/* Action options in responsive 2x2 grid */}
+                <div className="tx-ticket-actions">
                   <button
                     type="button"
-                    className="idp-btn duplicate"
+                    className="tx-ticket-btn edit"
+                    onClick={() => setEditingTx(selectedTx)}
+                    title={tr('edit', 'Edit')}
+                  >
+                    <Edit3 size={15} aria-hidden />
+                    <span>{tr('edit', 'Edit')}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="tx-ticket-btn duplicate"
                     onClick={() => prepareDuplicate(selectedTx)}
                     title={tr('duplicate', 'Duplicate')}
                   >
-                    <Copy size={16} aria-hidden /> {tr('duplicate', 'Duplicate')}
+                    <Copy size={15} aria-hidden />
+                    <span>{tr('duplicate', 'Duplicate')}</span>
                   </button>
+
                   <button
                     type="button"
-                    className="idp-btn"
+                    className="tx-ticket-btn copy"
                     onClick={() => copyTransactionSummary(selectedTx)}
                     title={tr('copy_summary', 'Copy summary')}
                   >
-                    <FileText size={16} aria-hidden /> {tr('copy_summary', 'Copy')}
+                    <FileText size={15} aria-hidden />
+                    <span>{tr('copy_summary', 'Copy')}</span>
                   </button>
-                  <button type="button" className="idp-btn delete" onClick={() => setDeletingTx(selectedTx)}>
-                    <Trash2 size={16} aria-hidden /> {tr('delete', 'Delete')}
+
+                  <button
+                    type="button"
+                    className="tx-ticket-btn delete"
+                    onClick={() => setDeletingTx(selectedTx)}
+                    title={tr('delete', 'Delete')}
+                  >
+                    <Trash2 size={15} aria-hidden />
+                    <span>{tr('delete', 'Delete')}</span>
                   </button>
                 </div>
               </motion.div>

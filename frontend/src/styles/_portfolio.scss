@@ -1917,9 +1917,17 @@ body,
 
 .inbox-detail-pane {
   border-radius: 24px !important;
-  min-height: 600px !important;
-  padding: 32px !important;
+  min-height: 520px !important;
+  padding: 24px !important;
   width: 100% !important;
+
+  &.has-ticket {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    min-height: auto !important;
+  }
 }
 
 .il-item {
@@ -2517,12 +2525,28 @@ body,
     width: 100% !important;
   }
 
-  .inbox-list-pane,
+  .inbox-list-pane {
+    width: 100% !important;
+    padding: 16px !important;
+    border-radius: 20px !important;
+    box-sizing: border-box !important;
+  }
+
   .inbox-detail-pane {
     width: 100% !important;
     padding: 16px !important;
     border-radius: 20px !important;
     box-sizing: border-box !important;
+    min-height: auto !important;
+
+    &.has-ticket {
+      padding: 0 !important;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      min-height: auto !important;
+      margin-bottom: 84px !important;
+    }
   }
 
   /* Mobile Search Bar Polish */

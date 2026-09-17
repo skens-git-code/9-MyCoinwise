@@ -2064,6 +2064,453 @@
 }
 
 /* ================================================================
+   PAYTM-STYLE TRANSACTION TICKET RECEIPT
+   ================================================================ */
+
+.inbox-detail-pane.has-ticket {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  min-height: auto !important;
+  display: flex;
+  justify-content: center;
+}
+
+.tx-ticket-card {
+  position: relative;
+  background: var(--surface-1, #ffffff);
+  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.08));
+  border-radius: 24px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px 18px;
+  box-sizing: border-box;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  @media (max-width: 640px) {
+    padding: 16px 14px 16px;
+    border-radius: 20px;
+  }
+}
+
+/* 1. Ticket Top Bar */
+.tx-ticket-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+
+  .tx-ticket-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.70rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    background: var(--surface-2, rgba(0, 0, 0, 0.04));
+    padding: 3px 9px;
+    border-radius: 10px;
+    border: 1px solid var(--glass-border);
+  }
+
+  .tx-ticket-close-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--glass-border);
+    background: var(--surface-2, rgba(0, 0, 0, 0.04));
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: var(--surface-3);
+      color: var(--text-primary);
+      transform: scale(1.06);
+    }
+  }
+}
+
+/* 2. Hero Section */
+.tx-ticket-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2px 0 8px;
+
+  .tx-ticket-hero-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+
+    &.income {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.06));
+      color: var(--success);
+      border: 1.5px solid rgba(16, 185, 129, 0.35);
+    }
+
+    &.expense {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.06));
+      color: var(--danger);
+      border: 1.5px solid rgba(239, 68, 68, 0.35);
+    }
+  }
+
+  .tx-ticket-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 14px;
+    margin-bottom: 4px;
+
+    &.income {
+      background: rgba(16, 185, 129, 0.10);
+      color: var(--success);
+      .status-dot { background: var(--success); }
+    }
+
+    &.expense {
+      background: rgba(239, 68, 68, 0.10);
+      color: var(--danger);
+      .status-dot { background: var(--danger); }
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+  }
+
+  .tx-ticket-amount {
+    font-size: clamp(1.9rem, 5vw, 2.25rem);
+    font-weight: 900;
+    font-family: var(--font-head);
+    letter-spacing: -0.5px;
+    margin: 2px 0 4px;
+    line-height: 1.15;
+
+    &.income {
+      color: var(--success);
+    }
+
+    &.expense {
+      color: var(--text-primary);
+    }
+  }
+
+  .tx-ticket-merchant-block {
+    margin-bottom: 4px;
+
+    .tx-ticket-cat {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .tx-ticket-merchant {
+      font-size: 0.84rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin: 2px 0 0;
+    }
+  }
+
+  .tx-ticket-date {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin: 0;
+  }
+}
+
+/* 3. Ticket Perforation Divider with Semicircular Cutout Notches */
+.tx-ticket-divider {
+  position: relative;
+  width: calc(100% + 40px);
+  margin-left: -20px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+
+  @media (max-width: 640px) {
+    width: calc(100% + 28px);
+    margin-left: -14px;
+  }
+
+  .tx-ticket-notch {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--surface-0);
+    z-index: 2;
+
+    &.left {
+      left: -10px;
+      border-right: 1px solid var(--glass-border);
+      box-shadow: inset -2px 0 3px rgba(0, 0, 0, 0.05);
+    }
+
+    &.right {
+      right: -10px;
+      border-left: 1px solid var(--glass-border);
+      box-shadow: inset 2px 0 3px rgba(0, 0, 0, 0.05);
+    }
+  }
+
+  .tx-ticket-line {
+    width: calc(100% - 24px);
+    border-top: 1.5px dashed var(--ticket-dash, rgba(140, 160, 180, 0.35));
+  }
+}
+
+/* 4. Ticket Breakdown Body */
+.tx-ticket-body {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 2px 6px;
+
+  .tx-ticket-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px dashed var(--glass-border);
+    font-size: 0.85rem;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    .ttr-label {
+      color: var(--text-secondary);
+      font-weight: 500;
+      font-size: 0.80rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .ttr-val {
+      color: var(--text-primary);
+      font-weight: 600;
+      text-align: right;
+
+      &.bold {
+        font-weight: 700;
+      }
+    }
+
+    .ttr-pill {
+      font-size: 0.74rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 10px;
+      text-transform: capitalize;
+
+      &.income {
+        background: rgba(16, 185, 129, 0.12);
+        color: var(--success);
+      }
+
+      &.expense {
+        background: rgba(239, 68, 68, 0.12);
+        color: var(--danger);
+      }
+    }
+
+    &.note-row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+
+      .ttr-note-box {
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--surface-2, rgba(0, 0, 0, 0.03));
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--glass-border);
+        font-size: 0.82rem;
+        line-height: 1.4;
+        color: var(--text-primary);
+        word-break: break-word;
+      }
+    }
+
+    &.tags-row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 5px;
+
+      .ttr-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+
+        .ttr-tag-chip {
+          font-size: 0.74rem;
+          font-weight: 600;
+          padding: 2px 7px;
+          border-radius: 6px;
+          background: var(--surface-2);
+          border: 1px solid var(--glass-border);
+          color: var(--brand-primary);
+        }
+      }
+    }
+
+    &.ref-row {
+      .ttr-copy-val {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+
+        code {
+          font-size: 0.78rem;
+          font-weight: 600;
+          font-family: monospace;
+          color: var(--text-secondary);
+        }
+
+        .ttr-copy-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          border-radius: 5px;
+          border: 1px solid var(--glass-border);
+          background: var(--surface-2);
+          color: var(--text-muted);
+          cursor: pointer;
+          transition: all 0.15s ease;
+
+          &:hover {
+            color: var(--text-primary);
+            border-color: var(--brand-primary);
+          }
+        }
+      }
+    }
+  }
+}
+
+/* 5. Ticket Action Options (2x2 Grid) */
+.tx-ticket-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--glass-border);
+  width: 100%;
+  box-sizing: border-box;
+
+  .tx-ticket-btn {
+    min-height: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 10px;
+    border-radius: 11px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--font-body);
+    transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 1px solid transparent;
+
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    &:active {
+      transform: scale(0.97);
+    }
+
+    &.edit {
+      background: rgba(var(--brand-primary-rgb), 0.10);
+      color: var(--brand-primary);
+      border-color: rgba(var(--brand-primary-rgb), 0.22);
+
+      &:hover {
+        background: rgba(var(--brand-primary-rgb), 0.18);
+        border-color: var(--brand-primary);
+      }
+    }
+
+    &.duplicate {
+      background: var(--surface-2);
+      color: var(--text-primary);
+      border-color: var(--glass-border);
+
+      &:hover {
+        background: var(--surface-3);
+        border-color: var(--c-border-hover, rgba(0, 0, 0, 0.15));
+      }
+    }
+
+    &.copy {
+      background: var(--surface-2);
+      color: var(--text-primary);
+      border-color: var(--glass-border);
+
+      &:hover {
+        background: var(--surface-3);
+        border-color: var(--c-border-hover, rgba(0, 0, 0, 0.15));
+      }
+    }
+
+    &.delete {
+      background: rgba(var(--danger-rgb), 0.08);
+      color: var(--danger);
+      border-color: rgba(var(--danger-rgb), 0.20);
+
+      &:hover {
+        background: rgba(var(--danger-rgb), 0.16);
+        border-color: var(--danger);
+      }
+    }
+  }
+}
+
+/* ================================================================
    MASONRY & CAROUSEL LAYOUTS (Goals & Subscriptions)
    ================================================================ */
 
