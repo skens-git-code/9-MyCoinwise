@@ -41,7 +41,7 @@
  *   - DELETE uses `checkOwnership('id', { household: true })` — this is
  *     the middleware's contract, and changing it would alter household
  *     semantics.
- *   - Import validation accepts backup versions 1–4. If you bump the
+ *   - Import validation accepts backup versions 1–5. If you bump the
  *     export version, update this list.
  */
 
@@ -61,6 +61,10 @@ const NetWorthHistory = require('../models/NetWorthHistory');
 const Budget = require('../models/Budget');
 const Account = require('../models/Account');
 const Calculation = require('../models/Calculation');
+const TaxProfile = require('../models/TaxProfile');
+const TaxTag = require('../models/TaxTag');
+const TaxPayment = require('../models/TaxPayment');
+const TaxDocument = require('../models/TaxDocument');
 const Session = require('../models/Session');
 const checkOwnership = require('../middleware/ownership');
 const auth = require('../middleware/auth');
@@ -107,6 +111,7 @@ const DEFAULT_NOTIFICATION_PREFS = {
   unusualSpending: false,
   pushNotifications: true,
   weeklyDigest: true,
+  taxAlerts: false,
   quietHoursEnabled: false,
   quietHoursStart: '22:00',
   quietHoursEnd: '08:00',
@@ -166,6 +171,7 @@ const normalizeNotificationPrefs = (value = {}) => {
     unusualSpending: normalizeBoolean(prefs.unusualSpending, DEFAULT_NOTIFICATION_PREFS.unusualSpending),
     pushNotifications: normalizeBoolean(prefs.pushNotifications, DEFAULT_NOTIFICATION_PREFS.pushNotifications),
     weeklyDigest: normalizeBoolean(prefs.weeklyDigest, DEFAULT_NOTIFICATION_PREFS.weeklyDigest),
+    taxAlerts: normalizeBoolean(prefs.taxAlerts, DEFAULT_NOTIFICATION_PREFS.taxAlerts),
     quietHoursEnabled: normalizeBoolean(prefs.quietHoursEnabled, DEFAULT_NOTIFICATION_PREFS.quietHoursEnabled),
     quietHoursStart: normalizeTime(prefs.quietHoursStart, DEFAULT_NOTIFICATION_PREFS.quietHoursStart),
     quietHoursEnd: normalizeTime(prefs.quietHoursEnd, DEFAULT_NOTIFICATION_PREFS.quietHoursEnd),
@@ -309,6 +315,10 @@ const USER_DATA_MODELS = [
   Budget,
   Account,
   Calculation,
+  TaxProfile,
+  TaxTag,
+  TaxPayment,
+  TaxDocument,
 ];
 
 const deleteUserAndData = async (userId) => {
@@ -893,7 +903,7 @@ router.post(
       !backup ||
       typeof backup !== 'object' ||
       Array.isArray(backup) ||
-      ![1, 2, 3, 4].includes(backup.version)
+      ![1, 2, 3, 4, 5].includes(backup.version)
     ) {
       return res.status(400).json({ message: 'Unsupported or malformed backup format.' });
     }
@@ -908,6 +918,10 @@ router.post(
       ['budgets', Budget],
       ['accounts', Account],
       ['calculations', Calculation],
+      ['taxProfiles', TaxProfile],
+      ['taxTags', TaxTag],
+      ['taxPayments', TaxPayment],
+      ['taxDocuments', TaxDocument],
     ];
 
     for (const [key] of collections) {

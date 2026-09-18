@@ -26,7 +26,7 @@ const formatDateForInput = (dateInput) => {
 };
 
 export default function TransactionForm({ isOpen = true, onClose, onSubmit, initialData = null }) {
-  const { currencyInfo, accounts = [], t } = useContext(AppContext);
+  const { currency, currencyInfo, accounts = [], t } = useContext(AppContext);
   const currSymbol = currencyInfo?.symbol || '₹';
 
   // State management with proper initialization
@@ -255,6 +255,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         payment_method: paymentMethod,
         transaction_number: transactionNumber.trim(),
         account_id: accountId || null,
+        currency: accounts.find((account) => String(account.id || account._id) === String(accountId))?.currency
+          || currency
+          || 'USD',
         is_recurring: isRecurring,
         recurrence_interval: isRecurring ? recurrenceInterval : null
       };
@@ -280,7 +283,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     } finally {
       setIsSubmitting(false);
     }
-  }, [validateForm, isSubmitting, amount, initialData, type, category, note, date, merchant, tags, paymentMethod, transactionNumber, accountId, isRecurring, recurrenceInterval, onSubmit, resetForm]);
+  }, [validateForm, isSubmitting, amount, initialData, type, category, note, date, merchant, tags, paymentMethod, transactionNumber, accountId, isRecurring, recurrenceInterval, onSubmit, resetForm, accounts, currency]);
 
   // Handle cancel with confirmation if form is dirty
   const handleCancel = useCallback(() => {
@@ -447,6 +450,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 <input
                   type="date"
                   value={date}
+                  max={formatDateForInput(new Date())}
                   onChange={e => setDate(e.target.value)}
                   disabled={isSubmitting}
                   aria-required="true"

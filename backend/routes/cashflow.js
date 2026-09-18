@@ -2,14 +2,15 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const axios = require('axios'); // <-- Install axios if not already
+const axios = require('axios');
+const { logger } = require('../utils/logger');
 
 // ---------- Helpers ----------
 const fetchGemini = async (prompt) => {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) throw new Error('Missing GEMINI_API_KEY environment variable.');
 
-  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash'; // Use 1.5-flash by default
+  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
   /* Original buggy code:
   const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
   const response = await axios.post(url, data, {
@@ -19,8 +20,15 @@ const fetchGemini = async (prompt) => {
   // Issue: Passing the Gemini API key in the URL query string leaks it to server access logs, proxies, and error messages.
   */
   const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`;
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      maxOutputTokens: 300,
+      temperature: 0.75,
+    },
+  };
 
-  const response = await axios.post(url, data, {
+  const response = await axios.post(url, payload, {
     timeout: 15000, // 15 seconds
     headers: {
       'Content-Type': 'application/json',
@@ -93,7 +101,10 @@ Provide an insight comparing their daily burn rate to income, taking subscriptio
       const insight = await fetchGemini(prompt);
       res.json({ insight });
     } catch (error) {
-      console.error('[Cashflow AI Insight] Error:', error.message);
+      logger.error('[Cashflow AI Insight] Error', {
+        error: error.message,
+        stack: error.stack,
+      });
       // Provide a graceful fallback instead of just 500
       const fallback = dangerDay
         ? `Your cashflow may hit a low point on day ${dangerDay}. Consider reducing variable expenses or adjusting subscriptions.`

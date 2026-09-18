@@ -37,6 +37,10 @@ const NetWorthHistory = require('../models/NetWorthHistory');
 const Budget = require('../models/Budget');
 const Account = require('../models/Account');
 const Calculation = require('../models/Calculation');
+const TaxProfile = require('../models/TaxProfile');
+const TaxTag = require('../models/TaxTag');
+const TaxPayment = require('../models/TaxPayment');
+const TaxDocument = require('../models/TaxDocument');
 const checkOwnership = require('../middleware/ownership');
 const auth = require('../middleware/auth');
 const { logger } = require('../utils/logger');
@@ -306,6 +310,10 @@ router.get(
         budgets,
         accounts,
         calculations,
+        taxProfiles,
+        taxTags,
+        taxPayments,
+        taxDocuments,
       ] = await Promise.all([
         Transaction.find({ user_id: userId, is_deleted: { $ne: true } })
           .limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
@@ -327,10 +335,14 @@ router.get(
           .sort({ created_at: -1 })
           .limit(MAX_BACKUP_DOCS_PER_COLLECTION)
           .lean(),
+        TaxProfile.find({ user_id: userId }).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        TaxTag.find({ user_id: userId }).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        TaxPayment.find({ user_id: userId }).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        TaxDocument.find({ user_id: userId }).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
       ]);
 
       const backup = {
-        version: 4,
+        version: 5,
         exportedAt: new Date().toISOString(),
         user: {
           id: user._id,
@@ -350,6 +362,10 @@ router.get(
         budgets: budgets.map(stripInternalFields),
         accounts: accounts.map(stripInternalFields),
         calculations: calculations.map(stripInternalFields),
+        taxProfiles: taxProfiles.map(stripInternalFields),
+        taxTags: taxTags.map(stripInternalFields),
+        taxPayments: taxPayments.map(stripInternalFields),
+        taxDocuments: taxDocuments.map(stripInternalFields),
       };
 
       const filename = `MyCoinwise_backup_${localDateStamp()}.json`;

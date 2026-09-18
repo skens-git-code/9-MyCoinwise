@@ -201,4 +201,16 @@
    --container-md: 768px;
    --container-lg: 1024px;
    --container-xl: 1280px;
+
+   /* ► Semantic Depth & Elevation Tokens */
+   --elev-0: 0 1px 2px rgba(0, 0, 0, 0.06);
+   --elev-1: 0 1px 2px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.06);
+   --elev-2: 0 2px 4px rgba(0, 0, 0, 0.06), 0 12px 28px rgba(0, 0, 0, 0.10);
+   --elev-3: 0 4px 8px rgba(0, 0, 0, 0.08), 0 24px 56px rgba(0, 0, 0, 0.16);
+   --elev-brand: 0 8px 24px rgba(var(--brand-primary-rgb), 0.18), 0 24px 60px rgba(var(--brand-primary-rgb), 0.10);
+   --rim-light: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+   --rim-dark: inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+   --dur-fast: 140ms;
+   --dur-base: 260ms;
 }

@@ -18,6 +18,7 @@ const wealthRoutes = require('./routes/wealth');
 const cashflowRoutes = require('./routes/cashflow');
 const aiRoutes = require('./routes/ai');
 const securityRoutes = require('./routes/security');
+const taxRoutes = require('./routes/tax');
 
 const { cleanEnv, str, port } = require('envalid');
 const mongoSanitize = require('express-mongo-sanitize');
@@ -169,6 +170,7 @@ app.use('/api/export', auth, exportLimiter, require('./routes/export'));
 app.use('/api/budgets', auth, writeLimiter, require('./routes/budgets'));
 app.use('/api/accounts', auth, writeLimiter, require('./routes/accounts'));
 app.use('/api/calculations', auth, writeLimiter, require('./routes/calculations'));
+app.use('/api/tax', taxRoutes);
 
 // Wealth & Cashflow (auth applied inside their own routers)
 app.use('/api/wealth', wealthRoutes);
@@ -210,6 +212,47 @@ connectToMongo().then(async () => {
     );
   } catch (healErr) {
     logger.warn(`Could not run household_id self-healing migration: ${healErr.message}`);
+  }
+
+  // Reconcile tax indexes after the module schema was introduced. In
+  // particular, an early prototype created a unique user_id index, which
+  // incorrectly prevented a user from comparing multiple profiles.
+  try {
+    const TaxProfile = require('./models/TaxProfile');
+    const TaxRuleSet = require('./models/TaxRuleSet');
+    const TaxTag = require('./models/TaxTag');
+    const TaxPayment = require('./models/TaxPayment');
+    const TaxDocument = require('./models/TaxDocument');
+    await TaxProfile.collection.dropIndex('user_id_1').catch((dropErr) => {
+      // MongoDB returns code 27 when the legacy index is absent; that is safe.
+      if (dropErr?.code !== 27 && dropErr?.codeName !== 'IndexNotFound') throw dropErr;
+    });
+    await Promise.all([
+      TaxProfile.syncIndexes(),
+      TaxRuleSet.syncIndexes(),
+      TaxTag.syncIndexes(),
+      TaxPayment.syncIndexes(),
+      TaxDocument.syncIndexes(),
+    ]);
+  } catch (taxIndexErr) {
+    logger.warn(`Could not reconcile tax indexes: ${taxIndexErr.message}`);
+  }
+
+  // Development convenience: keep the local Tax Center usable without a
+  // separate deployment migration. Production still uses the protected seed
+  // script/admin endpoint so rule changes remain an explicit release step.
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const TaxRuleSet = require('./models/TaxRuleSet');
+      const indiaRules = require('./services/taxRules/india-2024');
+      const usRules = require('./services/taxRules/us-federal-2024');
+      for (const rule of [...indiaRules, ...usRules]) {
+        await TaxRuleSet.updateOne({ rule_key: rule.rule_key }, { $set: rule }, { upsert: true, runValidators: true });
+      }
+      logger.info('Tax rule sets are available for local development.');
+    } catch (seedErr) {
+      logger.warn(`Could not seed development tax rules: ${seedErr.message}`);
+    }
   }
 
   server = app.listen(PORT, () => {

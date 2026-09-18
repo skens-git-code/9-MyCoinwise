@@ -57,6 +57,7 @@ const Account = require('../models/Account');
 const checkOwnership = require('../middleware/ownership');
 const auth = require('../middleware/auth');
 const { logger } = require('../utils/logger');
+const { dedupeTransactions } = require('../utils/transactionIntegrity');
 
 const router = express.Router();
 
@@ -68,6 +69,11 @@ const TRANSACTION_TYPES = new Set(['income', 'expense']);
 const IMPORT_LIMIT = 1000;
 const MAX_AMOUNT = 999_999_999.99;
 const RECURRING_SAFETY_CAP = 240;
+const FALLBACK_RATES_TO_INR = Object.freeze({
+  INR: 1, USD: 83.5, EUR: 90.2, GBP: 105.8, JPY: 0.56, CAD: 61.2,
+  AUD: 53.8, SGD: 61.5, AED: 22.7, CHF: 95, CNY: 11.5, MXN: 4.9,
+  BRL: 16.4, KRW: 0.063, THB: 2.35,
+});
 
 /* ============================================================
  * Text / amount / date parsing helpers
@@ -112,8 +118,43 @@ const parseTransactionAmount = (value) => {
 
 const parseTransactionDate = (value) => {
   if (value === undefined || value === null || value === '') return new Date();
+  const dateOnly = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    const year = Number(dateOnly[1]);
+    const month = Number(dateOnly[2]);
+    const day = Number(dateOnly[3]);
+    const date = new Date(year, month - 1, day, 12);
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day
+    ) return null;
+    return date;
+  }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const isFutureDate = (date) => {
+  if (!date) return false;
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+  return date.getTime() > endOfToday.getTime();
+};
+
+const normalizeCurrency = (value, fallback = 'USD') => {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized || fallback;
+};
+
+const convertToCurrency = (amount, fromCurrency, toCurrency) => {
+  const from = normalizeCurrency(fromCurrency);
+  const to = normalizeCurrency(toCurrency);
+  if (from === to) return Number(amount) || 0;
+  const fromRate = FALLBACK_RATES_TO_INR[from];
+  const toRate = FALLBACK_RATES_TO_INR[to];
+  if (!fromRate || !toRate) return Number(amount) || 0;
+  return (Number(amount) || 0) * fromRate / toRate;
 };
 
 /* ============================================================
@@ -303,7 +344,7 @@ const validateTransactionPayload = (payload) => {
   const {
     type, category, amount, date, note, merchant, tags, payment_method,
     account_id, is_recurring, recurrence_interval, recurrence_ends_at,
-    is_split, split_details, transaction_number,
+    is_split, split_details, transaction_number, currency,
   } = payload;
 
   const numericAmount = parseTransactionAmount(amount);
@@ -316,6 +357,10 @@ const validateTransactionPayload = (payload) => {
   }
   const parsedDate = parseTransactionDate(date);
   if (!parsedDate) return { error: 'Date must be valid.' };
+  if (isFutureDate(parsedDate)) return { error: 'Transaction date cannot be in the future.' };
+  if (currency !== undefined && currency !== null && currency !== '' && !/^[A-Z]{3}$/i.test(String(currency).trim())) {
+    return { error: 'Currency must be a valid 3-letter code.' };
+  }
   if (note !== undefined && note !== null && String(note).length > 500) {
     return { error: 'Note must be 500 characters or fewer.' };
   }
@@ -329,6 +374,7 @@ const validateTransactionPayload = (payload) => {
   }
 
   const parsed = { numericAmount, parsedDate };
+  if (currency !== undefined) parsed.currency = normalizeCurrency(currency);
   if (merchant !== undefined) parsed.merchant = merchant ? String(merchant).trim() : null;
   if (tags !== undefined) {
     parsed.tags = Array.isArray(tags) ? tags.map((t) => String(t).trim()).filter(Boolean) : [];
@@ -360,17 +406,24 @@ const validateTransactionPayload = (payload) => {
 
 const getTransactionBalance = async (userId) => {
   if (!mongoose.isValidObjectId(userId)) return 0;
-  const [result] = await Transaction.aggregate([
-    { $match: { user_id: new mongoose.Types.ObjectId(userId), is_deleted: { $ne: true } } },
-    {
-      $group: {
-        _id: null,
-        income: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
-        expense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
-      },
-    },
+  const [user, transactions, accounts] = await Promise.all([
+    User.findById(userId).select('currency').lean(),
+    Transaction.find({ user_id: userId, is_deleted: { $ne: true } })
+      .select('type amount currency account_id')
+      .lean(),
+    Account.find({ user_id: userId }).select('_id currency').lean(),
   ]);
-  return Number(((result?.income || 0) - (result?.expense || 0)).toFixed(2));
+  const displayCurrency = normalizeCurrency(user?.currency);
+  const accountCurrencies = new Map(accounts.map((account) => [String(account._id), normalizeCurrency(account.currency, displayCurrency)]));
+  const balance = transactions.reduce((sum, transaction) => {
+    const sourceCurrency = normalizeCurrency(
+      transaction.currency || accountCurrencies.get(String(transaction.account_id || '')),
+      displayCurrency
+    );
+    const amount = convertToCurrency(transaction.amount, sourceCurrency, displayCurrency);
+    return sum + (transaction.type === 'income' ? amount : -amount);
+  }, 0);
+  return Number(balance.toFixed(2));
 };
 
 const syncUserBalance = async (userId) => {
@@ -695,6 +748,8 @@ router.post('/statement/import', async (req, res) => {
 
     const batchKeys = new Set();
     const accepted = [];
+    const owner = await User.findById(req.userId).select('currency').lean();
+    const defaultCurrency = normalizeCurrency(owner?.currency);
     let skipped = 0;
 
     for (const item of requested) {
@@ -724,6 +779,7 @@ router.post('/statement/import', async (req, res) => {
         type: item.type,
         category: cleanText(item.category).slice(0, 80),
         amount: validation.numericAmount,
+        currency: validation.currency || defaultCurrency,
         date: validation.parsedDate,
         note: cleanText(item.note).slice(0, 500) || null,
         merchant,
@@ -844,7 +900,7 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
       .skip(skip)
       .limit(limit);
 
-    return res.json(transactions);
+    return res.json(dedupeTransactions(transactions.map((transaction) => transaction.toObject())));
   } catch (error) {
     logger.error('[Transactions] list error:', error);
     return res.status(500).json({ error: 'Unable to load transactions.' });
@@ -880,21 +936,27 @@ router.post('/', async (req, res) => {
     const validation = validateTransactionPayload(req.body);
     if (validation.error) return res.status(400).json({ error: validation.error });
 
+    let selectedAccount = null;
     if (validation.account_id) {
-      const account = await Account.exists({
+      selectedAccount = await Account.findOne({
         _id: validation.account_id,
         user_id: req.userId,
-      });
-      if (!account) {
+      }).select('currency').lean();
+      if (!selectedAccount) {
         return res.status(400).json({ error: 'Selected account was not found.' });
       }
     }
+    const owner = await User.findById(req.userId).select('currency').lean();
+    const transactionCurrency = normalizeCurrency(
+      validation.currency || selectedAccount?.currency || owner?.currency
+    );
 
     const transaction = await Transaction.create({
       user_id: req.userId,
       type: req.body.type,
       category: req.body.category.trim(),
       amount: validation.numericAmount,
+      currency: transactionCurrency,
       date: validation.parsedDate,
       note: req.body.note ? String(req.body.note).trim() : null,
       merchant: validation.merchant,
@@ -952,20 +1014,27 @@ router.put('/:id', async (req, res) => {
     const validation = validateTransactionPayload(next);
     if (validation.error) return res.status(400).json({ error: validation.error });
 
+    let selectedAccount = null;
     if (validation.account_id) {
-      const account = await Account.exists({
+      selectedAccount = await Account.findOne({
         _id: validation.account_id,
         user_id: req.userId,
-      });
-      if (!account) {
+      }).select('currency').lean();
+      if (!selectedAccount) {
         return res.status(400).json({ error: 'Selected account was not found.' });
       }
     }
+
+    const owner = await User.findById(req.userId).select('currency').lean();
+    const transactionCurrency = normalizeCurrency(
+      validation.currency || selectedAccount?.currency || t.currency || owner?.currency
+    );
 
     const previousAccountId = t.account_id;
 
     t.type = next.type;
     t.amount = validation.numericAmount;
+    t.currency = transactionCurrency;
     t.category = next.category.trim();
     t.note =
       next.note !== undefined ? (next.note ? String(next.note).trim() : null) : t.note;
