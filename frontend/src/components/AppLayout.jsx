@@ -9,7 +9,7 @@ import {
   CreditCard, Settings, ChevronRight, TrendingUp, TrendingDown,
   Bell, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon,
   Menu, X, Zap, Search, Keyboard, User, Users, Sun, Moon, Check, CheckCircle2,
-  HelpCircle, Shield, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon
+  HelpCircle, Shield, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon, ReceiptText
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
@@ -37,6 +37,7 @@ const NAV_ITEMS = [
   { to: '/calendar', icon: CalendarIcon, labelKey: 'calendar' },
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics' },
   { to: '/calculator', icon: CalculatorIcon, labelKey: 'calculator' },
+  { to: '/tax', icon: ReceiptText, labelKey: 'tax' },
   { to: '/accounts', icon: Landmark, labelKey: 'accounts' },
   { to: '/budgets', icon: PieChart, labelKey: 'budgets' },
   { to: '/goals', icon: Target, labelKey: 'goals' },
@@ -46,12 +47,13 @@ const NAV_ITEMS = [
   { to: '/about', icon: Info, labelKey: 'about' },
 ];
 
-// Mobile dock shows only core 4 + Settings (Apple HIG: max 5)
+// Mobile dock keeps the high-frequency calendar discoverable; long-term goals
+// remain available in More alongside the rest of the workspace.
 const MOBILE_NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, labelKey: 'dashboard', mobileLabel: 'Dashboard' },
   { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions', mobileLabel: 'Transactions' },
+  { to: '/calendar', icon: CalendarIcon, labelKey: 'calendar', mobileLabel: 'Calendar' },
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics', mobileLabel: 'Analytics' },
-  { to: '/goals', icon: Target, labelKey: 'goals', mobileLabel: 'Savings' },
 ];
 
 const USER_DISPLAY_RULES = {
@@ -83,6 +85,7 @@ const PAGE_TITLE_FALLBACKS = {
   calendar: 'Calendar',
   analytics: 'Analytics',
   calculator: 'Calculator',
+  tax: 'Tax Center',
   accounts: 'Accounts',
   budgets: 'Budgets',
   goals: 'Savings Goals',
@@ -466,7 +469,8 @@ export default function AppLayout({ children }) {
   const contextData = useContext(AppContext) || {};
   const {
     user, theme, toggleTheme, currencyInfo, alerts = [], transactions = [],
-    addTransaction, t, lang, setLanguage, logout, fmt, refetch, isBackgroundSyncing
+    addTransaction, t, lang, setLanguage, logout, fmt, refetch, isBackgroundSyncing,
+    globalError
   } = contextData;
 
   const location = useLocation();
@@ -712,6 +716,12 @@ export default function AppLayout({ children }) {
           so we don't nest a second one here. */}
       <div className="app-island-layout" data-theme={theme}>
           <div className="portfolio-bg-layer" aria-hidden="true" />
+          <div className="d3-ambient" aria-hidden="true">
+            <div className="d3-ambient__grid" />
+            <div className="d3-ambient__shard" />
+            <div className="d3-ambient__shard" />
+            <div className="d3-ambient__shard" />
+          </div>
 
           {/* Desktop Sidebar */}
           {deviceType === 'desktop' && (
@@ -777,6 +787,19 @@ export default function AppLayout({ children }) {
               isBackgroundSyncing={isBackgroundSyncing}
             />
 
+            {globalError && (
+              <div className="sync-error-banner" role="alert">
+                <div className="sync-error-copy">
+                  <AlertCircle size={16} aria-hidden="true" />
+                  <span>{globalError}</span>
+                </div>
+                <button type="button" className="sync-error-retry" onClick={() => refetch?.()} disabled={isBackgroundSyncing}>
+                  <RefreshCw size={14} aria-hidden="true" />
+                  {isBackgroundSyncing ? (t?.('loading') || 'Retrying…') : (t?.('retry') || 'Retry')}
+                </button>
+              </div>
+            )}
+
             <div className="island-content-wrapper">
               {/* Original route transition (Problematic - animated scale and vertical displacement simultaneously during route change, triggering layout shifts and animation queue bottlenecks):
               <AnimatePresence mode="wait">
@@ -800,15 +823,15 @@ export default function AppLayout({ children }) {
                 <motion.div
                   key={location.pathname}
                   className="island-page"
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
                   transition={{
-                    duration: 0.18,
+                    duration: 0.14,
                     ease: [0.16, 1, 0.3, 1]
                   }}
                   style={{
-                    willChange: 'opacity, transform',
+                    willChange: 'opacity',
                     backfaceVisibility: 'hidden',
                     WebkitBackfaceVisibility: 'hidden'
                   }}
@@ -1278,7 +1301,7 @@ const Header = React.memo(({
             title="Search (Cmd+K)"
             aria-label="Search"
           >
-            <Search size={16} />
+            <Search size={18} strokeWidth={1.75} />
           </button>
 
           <button
@@ -1288,7 +1311,7 @@ const Header = React.memo(({
             title="Currency Converter"
             aria-label="Currency converter"
           >
-            <Coins size={16} />
+            <Coins size={18} strokeWidth={1.75} />
           </button>
 
           <button
@@ -1298,7 +1321,7 @@ const Header = React.memo(({
             title="AI Financial Assistant"
             aria-label="AI Assistant"
           >
-            <Sparkles size={16} />
+            <Sparkles size={18} strokeWidth={1.75} />
           </button>
 
           <button
@@ -1309,7 +1332,11 @@ const Header = React.memo(({
             title={`Switch to ${theme === 'dark' || theme === 'amoled' ? 'Light' : 'Dark'} theme`}
             aria-label="Toggle theme"
           >
-            {theme === 'dark' || theme === 'amoled' ? <Sun size={16} /> : <Moon size={16} />}
+            {theme === 'dark' || theme === 'amoled' ? (
+              <Sun size={18} strokeWidth={1.75} />
+            ) : (
+              <Moon size={18} strokeWidth={1.75} />
+            )}
           </button>
 
           <div className="dropdown-container nav-dropdown-alerts" style={{ position: 'relative' }}>
@@ -1321,7 +1348,7 @@ const Header = React.memo(({
               aria-label={`Alerts${urgentAlertsCount > 0 ? `, ${urgentAlertsCount} urgent` : ''}`}
               title="Alerts"
             >
-              <Bell size={16} />
+              <Bell size={18} strokeWidth={1.75} />
               {urgentAlertsCount > 0 && <span className="nav-unread-dot" />}
             </button>
 

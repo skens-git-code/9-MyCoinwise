@@ -27,6 +27,10 @@ const wealthItemSchema = new mongoose.Schema({
   interest_rate: { type: Number, default: null }, // For debts
   acquisition_date: { type: Date, default: Date.now }, // For depreciation
   current_value_override: { type: Number, default: null, min: 0 },
+  // Tax reporting fields. Nullable so existing assets remain unchanged.
+  sold_at: { type: Date, default: null },
+  sale_price: { type: Number, default: null, min: 0 },
+  sale_fees: { type: Number, default: 0, min: 0 },
   note: { type: String, default: '', maxlength: 1000, trim: true }
 }, { timestamps: true });
 

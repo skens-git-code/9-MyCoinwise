@@ -13,6 +13,7 @@ import {
   ArrowUpRight, ArrowDownRight, X, Filter, RotateCcw, Loader2,
 } from 'lucide-react';
 import { useToast } from '../components/ToastProvider';
+import { dedupeTransactions } from '../utils/transactionIntegrity';
 
 /* ============================================================
  * Constants
@@ -67,6 +68,11 @@ const validateTransaction = (t) => {
 const safeParseAmount = (amount) => {
   const num = Number(amount);
   return Number.isFinite(num) && num >= 0 ? num : 0;
+};
+
+const canonicalCategoryName = (value) => {
+  const text = String(value || '').trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'Other';
 };
 
 /** Stable hash so the same anomaly keeps the same id across renders. */
@@ -419,7 +425,12 @@ export default function Analytics() {
 
   /* ---------------- Valid transactions ---------------- */
   const validTransactions = useMemo(
-    () => (Array.isArray(transactions) ? transactions.filter(validateTransaction) : []),
+    () => dedupeTransactions(Array.isArray(transactions) ? transactions : [])
+      .filter(validateTransaction)
+      .map((transaction) => ({
+        ...transaction,
+        category: canonicalCategoryName(transaction.category),
+      })),
     [transactions]
   );
 
@@ -1291,7 +1302,7 @@ export default function Analytics() {
             </div>
           </div>
           {monthlyData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={300} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
               {chartType === 'bar' ? (
                 <BarChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
@@ -1337,7 +1348,7 @@ export default function Analytics() {
             </button>
           </div>
           {categoryEvolution.data.length > 0 && categoryEvolution.categories.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
+            <ResponsiveContainer width="100%" height={280} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
               <LineChart data={categoryEvolution.data} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                 <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
@@ -1368,7 +1379,7 @@ export default function Analytics() {
             <h3>Day of Week Outflow</h3>
             <span className="chart-badge">{dayOfWeekData.weekendPct}% Weekend</span>
           </div>
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height={260} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
             <BarChart data={dayOfWeekData.days} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
               <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
@@ -1386,7 +1397,7 @@ export default function Analytics() {
             <span className="chart-badge">By Category</span>
           </div>
           {expenseCategories.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={260} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
               <PieChart>
                 <Pie
                   data={expenseCategories}
@@ -1435,4 +1446,3 @@ export default function Analytics() {
     </div>
   );
 }
-

@@ -1,0 +1,32 @@
+module.exports = [{
+  rule_key: 'US-2024-FED',
+  jurisdiction: 'US',
+  fiscal_year: 2024,
+  regime: 'federal',
+  currency: 'USD',
+  standard_deduction: 14600,
+  brackets: [
+    { min: 0, max: 11600, rate: 0.10 },
+    { min: 11600, max: 47150, rate: 0.12 },
+    { min: 47150, max: 100525, rate: 0.22 },
+    { min: 100525, max: 191950, rate: 0.24 },
+    { min: 191950, max: 243725, rate: 0.32 },
+    { min: 243725, max: 609350, rate: 0.35 },
+    { min: 609350, max: null, rate: 0.37 },
+  ],
+  capital_gains: { short_term_rate: 0.22, long_term_rate: 0.15, holding_period_days: 365 },
+  cess_rate: 0,
+  sales_tax_default: 0,
+  advance_tax_dates: [
+    new Date('2024-04-15T00:00:00.000Z'),
+    new Date('2024-06-15T00:00:00.000Z'),
+    new Date('2024-09-15T00:00:00.000Z'),
+    new Date('2025-01-15T00:00:00.000Z'),
+  ],
+  metadata: {
+    source: 'https://www.irs.gov/filing/federal-income-tax-rates-and-brackets',
+    effective_date: new Date('2024-01-01T00:00:00.000Z'),
+    version: '2024.1',
+    notes: '2024 single-filer federal brackets only; state tax and AMT are not included.',
+  },
+}];

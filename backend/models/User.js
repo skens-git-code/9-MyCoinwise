@@ -58,6 +58,7 @@ const userSchema = new mongoose.Schema({
       unusualSpending:  false,
       pushNotifications: true,
       weeklyDigest:     true,
+      taxAlerts:        false,
       quietHoursEnabled: false,
       quietHoursStart:  '22:00',
       quietHoursEnd:    '08:00'

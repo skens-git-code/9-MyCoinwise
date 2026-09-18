@@ -13,6 +13,7 @@ import { AppContext } from '../contexts/AppContext';
 import { api } from '../services/api';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
+import { convertCurrency, getFallbackRatesToInr } from '../utils/currencyRates';
 
 /* ============================================================
  * Constants
@@ -40,7 +41,7 @@ const PAYMENT_METHODS = [
   { value: 'other', labelKey: 'pm_other', fallback: 'Other' },
 ];
 
-// Presets are currency-agnostic — the UI applies the symbol from `fmt`
+// Preset prices are sourced in USD and converted before they are shown or saved.
 const PRESETS = [
   { name: 'Netflix', amount: 15.99, icon: 'Tv', color: '#ef4444' },
   { name: 'Spotify', amount: 9.99, icon: 'Music', color: '#10b981' },
@@ -206,6 +207,7 @@ const getNextBillDates = (sub, count = 3, now = new Date()) => {
 export default function Subscriptions() {
   const {
     fmt,
+    currency,
     subscriptions: subs = [],
     transactions = [],
     refetch,
@@ -221,6 +223,11 @@ export default function Subscriptions() {
     const map = { en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN' };
     return map[lang] || undefined;
   }, [lang]);
+  const presetRates = useMemo(() => getFallbackRatesToInr(), []);
+  const presetAmount = useCallback(
+    (preset) => convertCurrency(preset.amount, 'USD', currency || 'USD', presetRates) ?? preset.amount,
+    [currency, presetRates]
+  );
 
   /* ---------------- UI state ---------------- */
   const [showAdd, setShowAdd] = useState(false);
@@ -410,7 +417,7 @@ export default function Subscriptions() {
   const handlePresetClick = useCallback((preset) => {
     resetForm();
     setName(preset.name);
-    setAmount(String(preset.amount));
+    setAmount(String(toFixed2(presetAmount(preset))));
     setCycle('monthly');
     setIcon(preset.icon);
     setColor(preset.color);
@@ -419,7 +426,7 @@ export default function Subscriptions() {
     d.setDate(d.getDate() + 30);
     setNextBillingDate(toLocalDateInput(d));
     setShowAdd(true);
-  }, [resetForm]);
+  }, [presetAmount, resetForm]);
 
   const openEdit = useCallback((sub) => {
     if (!sub) return;
@@ -814,7 +821,7 @@ export default function Subscriptions() {
                       background: `${p.color}15`, padding: '2px 8px', borderRadius: 100,
                     }}
                   >
-                    {fmt(p.amount)}/{tr('per_month', 'mo')}
+                    {fmt(presetAmount(p))}/{tr('per_month', 'mo')}
                   </span>
                 </motion.button>
               );

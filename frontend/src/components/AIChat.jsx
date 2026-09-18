@@ -20,7 +20,7 @@ const AIChat = () => {
 
     const userMessage = { role: 'user', text: input.trim() };
     const chatHistory = [...messages];
-    
+
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
@@ -81,8 +81,8 @@ const AIChat = () => {
       </div>
 
       <form className="ai-chat-input-area" onSubmit={handleSend}>
-        <input 
-          type="text" 
+        <input
+          type="text"
           placeholder="Ask a financial question..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
