@@ -35,7 +35,7 @@ describe('Paytm Transaction Ticket Component & Mobile Polish', () => {
     note: 'etg',
     tags: ['gadgets'],
     transaction_number: 'TXN-987654321',
-    date: '2026-09-23T12:00:00.000Z',
+    date: '2026-09-16T12:00:00.000Z',
     is_deleted: false,
   };
 
@@ -94,12 +94,12 @@ describe('Paytm Transaction Ticket Component & Mobile Polish', () => {
     // Verify all 4 action buttons are present inside .tx-ticket-actions
     const editBtn = container.querySelector('.tx-ticket-btn.edit');
     const duplicateBtn = container.querySelector('.tx-ticket-btn.duplicate');
-    const copyBtn = container.querySelector('.tx-ticket-btn.copy');
+    const shareBtn = container.querySelector('.tx-ticket-btn.share');
     const deleteBtn = container.querySelector('.tx-ticket-btn.delete');
 
     expect(editBtn).toBeTruthy();
     expect(duplicateBtn).toBeTruthy();
-    expect(copyBtn).toBeTruthy();
+    expect(shareBtn).toBeTruthy();
     expect(deleteBtn).toBeTruthy();
 
     // Verify close (✕) button dismisses the ticket
@@ -112,5 +112,30 @@ describe('Paytm Transaction Ticket Component & Mobile Polish', () => {
     await waitFor(() => {
       expect(container.querySelector('.tx-ticket-card')).toBeNull();
     });
+  });
+
+  it('triggers share picture action when share button is clicked', async () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ToastProvider>
+          <AppContext.Provider value={mockContext}>
+            <Transactions />
+          </AppContext.Provider>
+        </ToastProvider>
+      </MemoryRouter>
+    );
+
+    const txItem = container.querySelector('.il-item');
+    fireEvent.click(txItem);
+
+    const shareBtn = container.querySelector('.tx-ticket-btn.share');
+    expect(shareBtn).toBeTruthy();
+    expect(shareBtn.textContent).toContain('Share');
+
+    // Click the share button
+    fireEvent.click(shareBtn);
+
+    // Verify it doesn't throw and remains interactive
+    expect(shareBtn).toBeInTheDocument();
   });
 });

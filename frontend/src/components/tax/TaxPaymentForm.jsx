@@ -1,0 +1,8 @@
+import React, { useState } from 'react';
+
+export default function TaxPaymentForm({ currency, onSubmit, onCancel, isSaving }) {
+  const [form, setForm] = useState({ amount: '', payment_date: new Date().toISOString().slice(0, 10), payment_type: 'advance_tax', reference: '', notes: '' });
+  const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const submit = (event) => { event.preventDefault(); onSubmit({ ...form, amount: Number(form.amount), currency }); };
+  return <form className="tax-form" onSubmit={submit}><div className="tax-form-grid"><label>Amount<input type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => set('amount', e.target.value)} required /></label><label>Payment date<input type="date" value={form.payment_date} onChange={(e) => set('payment_date', e.target.value)} required /></label><label>Payment type<select value={form.payment_type} onChange={(e) => set('payment_type', e.target.value)}><option value="advance_tax">Advance tax</option><option value="tds">TDS</option><option value="quarterly">Quarterly</option><option value="self_assessment">Self-assessment</option><option value="other">Other</option></select></label><label>Reference<input value={form.reference} onChange={(e) => set('reference', e.target.value)} maxLength={100} /></label></div><label>Notes<textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} maxLength={500} rows={2} /></label><div className="tax-form-actions"><button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button><button className="btn-primary" type="submit" disabled={isSaving}>{isSaving ? 'Saving…' : 'Record payment'}</button></div></form>;
+}

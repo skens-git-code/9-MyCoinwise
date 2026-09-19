@@ -17,6 +17,13 @@ import { AppContext } from '../contexts/AppContext';
 import { api, CURRENCIES } from '../services/api';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
+import {
+  convertCurrency as convertFxCurrency,
+  fetchRatesToInr,
+  getFallbackRatesToInr,
+  readCachedRatesToInr,
+  resolveCurrency,
+} from '../utils/currencyRates';
 
 /* ============================================================
  * Constants
@@ -36,27 +43,6 @@ const COLOR_PRESETS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
   '#8b5cf6', '#ec4899', '#14b8a6', '#6b7280',
 ];
-
-/**
- * Mock exchange rates.
- *
- * Each value is how many units of that currency equal ONE US dollar.
- *   USD: 1     → 1 USD = 1 USD
- *   EUR: 0.92  → 1 USD = 0.92 EUR  →  1 EUR ≈ 1.087 USD
- *
- * Replace with a live rate API in production.
- */
-const EXCHANGE_RATES = {
-  USD: 1,
-  EUR: 0.92,
-  GBP: 0.79,
-  JPY: 149.5,
-  CAD: 1.36,
-  AUD: 1.55,
-  INR: 0.012,
-  CHF: 1.12,
-  CNY: 0.14,
-};
 
 const SORT_OPTIONS = [
   { value: 'name_asc', label: 'Name (A–Z)' },
@@ -79,29 +65,12 @@ const CUSTOM_TYPE_REGEX = /^[a-z][a-z0-9_]*$/;
  * Helpers
  * ============================================================ */
 
-/** Convert amount between currencies. Returns null if a rate is missing. */
-const convertCurrency = (amount, fromCurrency, toCurrency) => {
-  if (fromCurrency === toCurrency) return amount;
-  const fromRate = EXCHANGE_RATES[fromCurrency];
-  const toRate = EXCHANGE_RATES[toCurrency];
-  if (fromRate == null || toRate == null) return null;
-  return amount * (toRate / fromRate);
-};
-
 /**
  * Format a value as currency.
- * Uses the context's `fmt` when available so the entire app stays consistent.
+ * Account cards use their own currency; the summary uses the user's base
+ * currency. This prevents a EUR account from being rendered as INR.
  */
-const formatCurrency = (value, currencyCode = 'USD', locale, contextFmt) => {
-  if (typeof contextFmt === 'function') {
-    // Prefer context formatter; pass currency if it accepts a second arg.
-    try {
-      const out = contextFmt(value, currencyCode);
-      if (out != null) return out;
-    } catch {
-      /* fall through */
-    }
-  }
+const formatCurrency = (value, currencyCode = 'USD', locale) => {
   const num = Number(value);
   if (!Number.isFinite(num)) return '—';
   try {
@@ -178,6 +147,19 @@ const StatCard = ({ icon, label, value, sub, tone = 'default' }) => (
   </motion.div>
 );
 
+const AccountsSkeleton = () => (
+  <div className="account-page" style={{ padding: 'var(--spacing-lg, 24px)', maxWidth: 'var(--content-max-width, 1240px)', margin: '0 auto' }} role="status" aria-label="Loading accounts">
+    <div className="shimmer" style={{ width: 220, height: 32, borderRadius: 10, marginBottom: 10 }} />
+    <div className="shimmer" style={{ width: 360, maxWidth: '80%', height: 16, borderRadius: 8, marginBottom: 28 }} />
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
+      {[1, 2, 3, 4].map((item) => (
+        <div key={item} className="glass shimmer" style={{ height: 116, borderRadius: 18 }} />
+      ))}
+    </div>
+    <div className="glass shimmer" style={{ height: 180, borderRadius: 18 }} />
+  </div>
+);
+
 /* ============================================================
  * Main Component
  * ============================================================ */
@@ -185,8 +167,8 @@ const StatCard = ({ icon, label, value, sub, tone = 'default' }) => (
 export default function Accounts() {
   const {
     accounts = [],
+    transactions: rawTransactions = [],
     refetch,
-    fmt: contextFmt,
     currency: userCurrency = 'USD',
     lang,
     loading,
@@ -202,6 +184,18 @@ export default function Accounts() {
           : undefined;
 
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
+
+  const [fxRatesToInr, setFxRatesToInr] = useState(() => (
+    readCachedRatesToInr() || getFallbackRatesToInr()
+  ));
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchRatesToInr(controller.signal)
+      .then((rates) => setFxRatesToInr(rates))
+      .catch(() => { /* Keep bundled rates while offline. */ });
+    return () => controller.abort();
+  }, []);
 
   /* ---------------- UI state ---------------- */
   const [showAdd, setShowAdd] = useState(false);
@@ -383,7 +377,12 @@ export default function Accounts() {
         const bal = Number(a.current_balance) || 0;
         totals[curr] = (totals[curr] || 0) + bal;
 
-        const converted = convertCurrency(bal, curr, base);
+        const converted = convertFxCurrency(
+          bal,
+          resolveCurrency(curr, base),
+          resolveCurrency(base),
+          fxRatesToInr
+        );
         if (converted == null) {
           unknownRates.add(curr);
         } else {
@@ -391,13 +390,30 @@ export default function Accounts() {
         }
       });
 
+    // Account balances already include linked transactions. Include only
+    // unassigned transactions here so Accounts and Dashboard reconcile without
+    // double-counting account-linked activity.
+    for (const transaction of Array.isArray(rawTransactions) ? rawTransactions : []) {
+      if (!transaction || transaction.is_deleted === true || transaction.account_id) continue;
+      const amount = Number(transaction.amount);
+      if (!Number.isFinite(amount)) continue;
+      const converted = convertFxCurrency(
+        amount,
+        resolveCurrency(transaction.currency, base),
+        resolveCurrency(base),
+        fxRatesToInr
+      );
+      if (converted === null) continue;
+      totalBase += String(transaction.type).toLowerCase() === 'income' ? converted : -converted;
+    }
+
     return {
       totalsByCurrency: totals,
       totalInBase: totalBase,
       allCurrencies: Object.keys(totals),
       unknownRateCurrencies: Array.from(unknownRates),
     };
-  }, [accounts, userCurrency]);
+  }, [accounts, rawTransactions, userCurrency, fxRatesToInr]);
 
   /* ---------------- Summary stats ---------------- */
   const stats = useMemo(() => {
@@ -740,28 +756,7 @@ export default function Accounts() {
    * ============================================================ */
 
   if (loading && accounts.length === 0) {
-    return (
-      <div
-        className="account-page"
-        style={{ padding: 'var(--spacing-lg, 24px)', maxWidth: 'var(--content-max-width, 1240px)', margin: '0 auto' }}
-      >
-        <div style={{ textAlign: 'center', padding: '3rem' }}>
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              border: '4px solid var(--bg-color)',
-              borderTop: '4px solid var(--primary-color)',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite',
-              margin: '0 auto 1rem',
-            }}
-            aria-hidden
-          />
-          <p>{tr('loading', 'Loading your accounts…')}</p>
-        </div>
-      </div>
-    );
+    return <AccountsSkeleton />;
   }
 
   const isEditing = Boolean(editingAccount);
@@ -896,7 +891,7 @@ export default function Accounts() {
         <StatCard
           icon={<DollarSign size={14} />}
           label={`${tr('net_worth', 'Net Worth')} (${userCurrency})`}
-          value={formatCurrency(totalInBase, userCurrency, locale, contextFmt)}
+          value={formatCurrency(totalInBase, userCurrency, locale)}
           sub={
             unknownRateCurrencies.length > 0
               ? `⚠ Excluded: ${unknownRateCurrencies.join(', ')} (no rate)`
@@ -949,7 +944,7 @@ export default function Accounts() {
           </span>
           {allCurrencies.map((curr) => (
             <span key={curr} style={{ fontWeight: 600 }}>
-              {formatCurrency(totalsByCurrency[curr], curr, locale, contextFmt)}
+              {formatCurrency(totalsByCurrency[curr], curr, locale)}
             </span>
           ))}
         </div>
@@ -1329,7 +1324,7 @@ export default function Accounts() {
                                 : 'var(--text-main)',
                           }}
                         >
-                          {formatCurrency(balanceNum, accCurrency, locale, contextFmt)}
+                          {formatCurrency(balanceNum, accCurrency, locale)}
                         </span>
                       </div>
 

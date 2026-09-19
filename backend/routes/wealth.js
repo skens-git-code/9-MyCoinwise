@@ -328,6 +328,12 @@ router.post(
     /* Original POST /items validation without note:
     body('current_value_override').optional({ nullable: true }).isFloat({ min: 0 })
       .withMessage('Override must be a non-negative number.'),
+    body('sold_at').optional({ nullable: true }).isISO8601().toDate()
+      .withMessage('Invalid sale date.'),
+    body('sale_price').optional({ nullable: true }).isFloat({ min: 0 })
+      .withMessage('Sale price must be non-negative.'),
+    body('sale_fees').optional({ nullable: true }).isFloat({ min: 0 })
+      .withMessage('Sale fees must be non-negative.'),
     // Issue: Omitted 'note' validator, dropping notes entered in UI on wealth items.
     */
     body('current_value_override').optional({ nullable: true }).isFloat({ min: 0 })
@@ -360,6 +366,9 @@ router.post(
       interest_rate,
       acquisition_date,
       current_value_override,
+      sold_at,
+      sale_price,
+      sale_fees,
       note,
     } = req.body;
 
@@ -383,8 +392,15 @@ router.post(
         */
         acquisition_date: acquisition_date ? new Date(acquisition_date) : new Date(),
         current_value_override: normalizeOptionalNumber(current_value_override),
+        sold_at: sold_at ? new Date(sold_at) : null,
+        sale_price: normalizeOptionalNumber(sale_price),
+        sale_fees: normalizeOptionalNumber(sale_fees) ?? 0,
         note: note ? String(note).trim().slice(0, 1000) : '',
       });
+
+      if (newItem.sold_at && newItem.sold_at < newItem.acquisition_date) {
+        return res.status(400).json({ error: 'Sale date must be on or after the acquisition date.', code: 'TAX_INVALID_DATE' });
+      }
 
       const savedItem = await newItem.save();
 
@@ -423,6 +439,9 @@ router.put(
     body('acquisition_date').optional({ nullable: true }).isISO8601().toDate(),
     /* Original PUT validation without note:
     body('current_value_override').optional({ nullable: true }).isFloat({ min: 0 }),
+    body('sold_at').optional({ nullable: true }).isISO8601().toDate(),
+    body('sale_price').optional({ nullable: true }).isFloat({ min: 0 }),
+    body('sale_fees').optional({ nullable: true }).isFloat({ min: 0 }),
     // Issue: PUT endpoint omitted note validation.
     */
     body('current_value_override').optional({ nullable: true }).isFloat({ min: 0 }),
@@ -458,6 +477,9 @@ router.put(
         interest_rate,
         acquisition_date,
         current_value_override,
+        sold_at,
+        sale_price,
+        sale_fees,
         note,
       } = req.body;
 
@@ -473,6 +495,12 @@ router.put(
       /* Original PUT update logic omitting note:
       if (current_value_override !== undefined) {
         item.current_value_override = normalizeOptionalNumber(current_value_override);
+      }
+      if (sold_at !== undefined) item.sold_at = sold_at ? new Date(sold_at) : null;
+      if (sale_price !== undefined) item.sale_price = normalizeOptionalNumber(sale_price);
+      if (sale_fees !== undefined) item.sale_fees = normalizeOptionalNumber(sale_fees) ?? 0;
+      if (item.sold_at && item.acquisition_date && item.sold_at < item.acquisition_date) {
+        return res.status(400).json({ error: 'Sale date must be on or after the acquisition date.', code: 'TAX_INVALID_DATE' });
       }
       // Issue: note field was never updated on existing items.
       */

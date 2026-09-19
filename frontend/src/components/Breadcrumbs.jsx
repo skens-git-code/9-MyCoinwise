@@ -36,6 +36,8 @@ export default function Breadcrumbs() {
         return t?.('about') || 'About Us';
       case '/calculator':
         return t?.('calculator') || 'Calculator';
+      case '/tax':
+        return t?.('tax_center') || 'Tax Center';
       default:
         return path.replace('/', '').replace(/-/g, ' ');
     }

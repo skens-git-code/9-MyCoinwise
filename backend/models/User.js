@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema({
   // ── Financial Profile ──────────────────────────────────────────────────────
   balance:      { type: Number, default: 0.00 },
   monthly_goal: { type: Number, default: 0.00 },
-  currency:     { type: String, default: 'USD', maxlength: 10 },
+  currency:     { type: String, default: 'INR', maxlength: 10 },
 
   // ── Appearance ─────────────────────────────────────────────────────────────
   theme:          { type: String, enum: ['light', 'amoled'], default: 'light' },
@@ -58,6 +58,7 @@ const userSchema = new mongoose.Schema({
       unusualSpending:  false,
       pushNotifications: true,
       weeklyDigest:     true,
+      taxAlerts:        false,
       quietHoursEnabled: false,
       quietHoursStart:  '22:00',
       quietHoursEnd:    '08:00'

@@ -11,3 +11,12 @@
 @use 'plain-ui';
 @use 'custom';
 @use 'portfolio';
+@use 'depth';
+
+@media print {
+  .app-sidebar, .mobile-bottom-nav, .app-header, .breadcrumb-wrapper,
+  .tax-tabs, .tax-page > .tax-header .tax-header-actions,
+  .tax-profile-strip > .icon-button, .tax-modal-backdrop { display: none !important; }
+  .tax-page { max-width: none !important; padding: 0 !important; color: #111 !important; background: #fff !important; }
+  .tax-page .glass { box-shadow: none !important; border-color: #ddd !important; }
+}

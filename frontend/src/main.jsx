@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/main.scss'
+import './utils/d3-tilt.js'
 import App from './App.jsx'
 import { initClarity } from './services/clarity.js'
 import * as Sentry from '@sentry/react';

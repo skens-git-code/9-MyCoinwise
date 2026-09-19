@@ -41,7 +41,8 @@ export function formatCurrency(amount, currency = 'USD', localeOrLang = 'en-US')
   const parsedAmount = Number(amount);
   const val = Number.isFinite(parsedAmount) ? parsedAmount : 0;
   const isNeg = val < 0;
-  const resolvedLocale = LOCALE_MAP[localeOrLang] || localeOrLang || 'en-US';
+  const defaultLocale = currency === 'INR' ? 'en-IN' : 'en-US';
+  const resolvedLocale = currency === 'INR' ? 'en-IN' : (LOCALE_MAP[localeOrLang] || localeOrLang || defaultLocale);
 
   const numStr = Math.abs(val).toLocaleString(resolvedLocale, {
     minimumFractionDigits: 2,
@@ -64,7 +65,8 @@ export function formatCurrencyParts(amount, currency = 'USD', localeOrLang = 'en
   const parsedAmount = Number(amount);
   const val = Number.isFinite(parsedAmount) ? parsedAmount : 0;
   const isNegative = val < 0;
-  const resolvedLocale = LOCALE_MAP[localeOrLang] || localeOrLang || 'en-US';
+  const defaultLocale = currency === 'INR' ? 'en-IN' : 'en-US';
+  const resolvedLocale = currency === 'INR' ? 'en-IN' : (LOCALE_MAP[localeOrLang] || localeOrLang || defaultLocale);
 
   const numStr = Math.abs(val).toLocaleString(resolvedLocale, {
     minimumFractionDigits: 2,
