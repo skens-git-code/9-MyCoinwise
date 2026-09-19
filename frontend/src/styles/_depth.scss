@@ -646,17 +646,17 @@ body,
 
 .bento-recent,
 .bento-chart {
-  height: 270px !important;
-  min-height: 270px !important;
-  padding: 16px 20px !important;
+  min-height: 290px !important;
+  height: auto !important;
+  padding: 18px 20px !important;
 }
 
 .bento-networth,
 .bento-goal,
 .bento-pie {
-  height: 190px !important;
-  min-height: 190px !important;
-  padding: 16px 20px !important;
+  min-height: 240px !important;
+  height: auto !important;
+  padding: 18px 20px !important;
 }
 
 /* ── Sidebar (slider bar) Brand Polish — No Truncation ─────────── */
@@ -697,6 +697,7 @@ body,
 /* ── Savings Goal Slider Bar ──────────────────────────────────── */
 .bg-track {
   height: 10px !important;
+  margin: 14px 0 12px 0 !important;
   overflow: visible !important;
   border-radius: 999px !important;
   position: relative !important;
@@ -713,23 +714,35 @@ body,
   right: -5px !important;
   top: 50% !important;
   transform: translateY(-50%) !important;
-  width: 14px !important;
-  height: 14px !important;
+  width: 12px !important;
+  height: 12px !important;
   background: #ffffff !important;
   border-radius: 50% !important;
   box-shadow: 0 0 10px rgba(0, 212, 255, 0.95), 0 2px 5px rgba(0, 0, 0, 0.35) !important;
   z-index: 5 !important;
 }
 
+.bg-safe-spend {
+  margin: 10px 0 0 0 !important;
+  font-size: 0.76rem !important;
+  line-height: 1.4 !important;
+  color: var(--text-muted) !important;
+}
+
+.bt-pie-wrap {
+  height: 155px !important;
+  width: 100% !important;
+}
+
 /* Compact layout tokens (Section 5) */
 .cal-grid {
-  grid-auto-rows: minmax(72px, auto) !important;
+  grid-auto-rows: minmax(62px, auto) !important;
   gap: 4px !important;
 }
 
 .cal-day {
-  padding: 5px 6px !important;
-  min-height: 72px !important;
+  padding: 4px 6px !important;
+  min-height: 62px !important;
 
   &.empty-day {
     opacity: 0.7;
@@ -891,8 +904,8 @@ $card-radius-uniform: 14px;
 .bento-networth,
 .bento-goal,
 .bento-pie {
-  height: 200px !important;
-  min-height: 200px !important;
+  min-height: 240px !important;
+  height: auto !important;
 }
 
 /* ── Typography & Visual Hierarchy Refinements ───────────────────── */
