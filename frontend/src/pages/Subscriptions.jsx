@@ -208,6 +208,7 @@ export default function Subscriptions() {
   const {
     fmt,
     currency,
+    user,
     subscriptions: subs = [],
     transactions = [],
     refetch,
@@ -220,13 +221,14 @@ export default function Subscriptions() {
 
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
   const locale = useMemo(() => {
-    const map = { en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN' };
-    return map[lang] || undefined;
+    const map = { en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN' };
+    return map[lang] || 'en-IN';
   }, [lang]);
+  const targetCurrency = currency || user?.currency || 'INR';
   const presetRates = useMemo(() => getFallbackRatesToInr(), []);
   const presetAmount = useCallback(
-    (preset) => convertCurrency(preset.amount, 'USD', currency || 'USD', presetRates) ?? preset.amount,
-    [currency, presetRates]
+    (preset) => convertCurrency(preset.amount, 'USD', targetCurrency, presetRates) ?? preset.amount,
+    [targetCurrency, presetRates]
   );
 
   /* ---------------- UI state ---------------- */

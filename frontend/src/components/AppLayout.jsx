@@ -22,7 +22,6 @@ import CommandPalette from './CommandPalette';
 import KeyboardShortcutsModal from './KeyboardShortcutsModal';
 import HelpModal from './HelpModal';
 import OnboardingTour from './OnboardingTour';
-import QuickActionFAB from './QuickActionFAB';
 import TransactionForm from './TransactionForm';
 import DOMPurify from 'dompurify';
 import QuantumRuntime from '../services/quantumRuntime';
@@ -50,8 +49,8 @@ const NAV_ITEMS = [
 // Mobile dock keeps the high-frequency calendar discoverable; long-term goals
 // remain available in More alongside the rest of the workspace.
 const MOBILE_NAV_ITEMS = [
-  { to: '/', icon: LayoutDashboard, labelKey: 'dashboard', mobileLabel: 'Dashboard' },
-  { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions', mobileLabel: 'Transactions' },
+  { to: '/', icon: LayoutDashboard, labelKey: 'dashboard', mobileLabel: 'Home' },
+  { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions', mobileLabel: 'Txns' },
   { to: '/calendar', icon: CalendarIcon, labelKey: 'calendar', mobileLabel: 'Calendar' },
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics', mobileLabel: 'Analytics' },
 ];
@@ -619,7 +618,6 @@ export default function AppLayout({ children }) {
     closeAll();
     setShowShortcuts(true);
   }, [closeAll]);
-  const handleOpenAddTx = useCallback(() => setShowAddTx(true), []);
 
   const handleOpenProfile = useCallback(() => {
     toggleDropdown('profile');
@@ -843,8 +841,6 @@ export default function AppLayout({ children }) {
             </div>
           </main>
 
-          <QuickActionFAB onAddTransaction={handleOpenAddTx} />
-
           <MobileBottomNav
             t={t}
             onOpenDrawer={handleOpenDrawer}
@@ -962,7 +958,7 @@ const DesktopSidebar = React.memo(({
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <Zap size={22} />
+          <Zap size={18} />
         </motion.div>
         <AnimatePresence>
           {isOpen && (
@@ -971,7 +967,7 @@ const DesktopSidebar = React.memo(({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              style={{ overflow: 'hidden', whiteSpace: 'nowrap', display: 'inline-block' }}
+              style={{ overflow: 'visible', whiteSpace: 'nowrap', display: 'inline-block' }}
             >
               MyCoinwise
             </motion.span>
@@ -991,7 +987,7 @@ const DesktopSidebar = React.memo(({
             : (t?.('expand_sidebar') || 'Expand sidebar')}
         >
           <motion.span animate={{ rotate: isOpen ? 180 : 0 }}>
-            <ChevronRight size={16} />
+            <ChevronRight size={14} />
           </motion.span>
         </button>
       </div>
@@ -1308,8 +1304,8 @@ const Header = React.memo(({
             type="button"
             className="theme-toggle nav-btn-converter"
             onClick={onShowConverter}
-            title="Currency Converter"
-            aria-label="Currency converter"
+            title="Currency Converter (FX Rates)"
+            aria-label="Currency converter (FX rates)"
           >
             <Coins size={18} strokeWidth={1.75} />
           </button>

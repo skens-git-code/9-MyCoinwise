@@ -312,32 +312,43 @@
   transform: translateZ(50px) rotate(-6deg) scale(1.06) !important;
 }
 
-/* ── 5. Buttons — Extruded & Pressable ───────────────────────── */
+/* ── 5. Buttons — Strict 8px Border Radius System & Flex Alignment ─── */
+.btn,
 .bbtn-pri,
-.btn-primary {
+.btn-primary,
+.btn-primary-pill,
+.btn-gradient,
+.bbtn-sec,
+.btn-secondary,
+.btn-danger,
+.cal-new-btn,
+.cal-csv-btn {
+  border-radius: 8px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+}
+
+.bbtn-pri,
+.btn-primary,
+.btn-primary-pill,
+.btn-gradient {
+  background: var(--brand-gradient) !important;
+  color: #fff !important;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(0, 212, 255, 0.35) !important;
   transform-style: preserve-3d;
-  box-shadow:
-    0 6px 0 0 rgba(var(--brand-primary-rgb), 0.85),
-    0 10px 22px rgba(var(--brand-primary-rgb), 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    inset 0 -2px 0 rgba(0, 0, 0, 0.15) !important;
-  transition: transform 0.12s var(--d3-ease), box-shadow 0.12s var(--d3-ease) !important;
+  transition: transform 0.15s var(--d3-ease), box-shadow 0.15s var(--d3-ease) !important;
 
   &:hover {
     transform: translateY(-2px) !important;
-    box-shadow:
-      0 8px 0 0 rgba(var(--brand-primary-rgb), 0.85),
-      0 16px 32px rgba(var(--brand-primary-rgb), 0.45),
-      inset 0 1px 0 rgba(255, 255, 255, 0.40),
-      inset 0 -2px 0 rgba(0, 0, 0, 0.15) !important;
+    box-shadow: 0 6px 24px rgba(0, 212, 255, 0.50) !important;
   }
 
   &:active {
-    transform: translateY(4px) scale(0.985) !important;
-    box-shadow:
-      0 2px 0 0 rgba(var(--brand-primary-rgb), 0.85),
-      0 4px 10px rgba(var(--brand-primary-rgb), 0.30),
-      inset 0 2px 4px rgba(0, 0, 0, 0.20) !important;
+    transform: translateY(2px) scale(0.985) !important;
+    box-shadow: 0 2px 8px rgba(0, 212, 255, 0.30) !important;
   }
 }
 
@@ -357,6 +368,20 @@
     transform: translateY(3px) !important;
     box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.10), inset 0 2px 4px rgba(0, 0, 0, 0.12) !important;
   }
+}
+
+/* Exclusively pill-shaped: Tags, Status Indicators & Badges */
+.badge,
+.dqs-pill,
+.dqs-badge,
+.status-chip,
+.cal-delta-badge,
+.bt-badge,
+.tax-next-badge,
+.cal-filter-chip,
+.il-pill,
+.cal-support-count-pill {
+  border-radius: 9999px !important;
 }
 
 /* Icon button becomes a physical "key cap" */
@@ -566,31 +591,167 @@ body,
 }
 
 :root {
-  --sidebar-width: 220px;
+  --sidebar-width: 248px;
   --sidebar-collapsed: 64px;
+  --content-max-width: 1240px;
+  --content-padding-x: 20px;
+  --spacing-lg: 14px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 28px;
 }
 
-/* Compact density pass: preserve touch targets while removing decorative
-   whitespace from the primary financial views. */
+/* ── Centered Compact Island Layout (matches reference images) ── */
+.island-content-wrapper {
+  max-width: 1240px !important;
+  margin: 0 auto !important;
+  width: 100% !important;
+  padding: 12px 20px 48px !important;
+  box-sizing: border-box !important;
+}
+
+.island-page,
+.bento-dashboard,
+.calendar-container,
+.tx-page,
+.analytics-dashboard {
+  max-width: 1240px !important;
+  width: 100% !important;
+  margin: 0 auto !important;
+}
+
+/* ── Compact Dashboard Rhythm (All 3 Rows Visible) ─────────────── */
+.bento-dashboard {
+  gap: 14px !important;
+}
+
+.dashboard-quick-stats-strip {
+  margin-bottom: 0px !important;
+  padding: 6px 14px !important;
+}
+
+.bento-filters {
+  margin-bottom: 10px !important;
+}
+
 .bento-hero,
 .bento-income,
 .bento-expense {
-  min-height: 130px !important;
-  padding: 18px 20px !important;
+  min-height: 110px !important;
+  padding: 16px 20px !important;
 }
 
 .bento-hero .bh-sparkline-wrap {
   height: 24px !important;
 }
 
+.bento-recent,
+.bento-chart {
+  height: 270px !important;
+  min-height: 270px !important;
+  padding: 16px 20px !important;
+}
+
+.bento-networth,
+.bento-goal,
+.bento-pie {
+  height: 190px !important;
+  min-height: 190px !important;
+  padding: 16px 20px !important;
+}
+
+/* ── Sidebar (slider bar) Brand Polish — No Truncation ─────────── */
+.island-sidebar {
+  &.open {
+    width: 248px !important;
+
+    .island-brand {
+      padding: 0 14px !important;
+      gap: 10px !important;
+      display: flex !important;
+      align-items: center !important;
+
+      .brand-icon {
+        flex-shrink: 0 !important;
+      }
+
+      .brand-name {
+        font-size: 0.95rem !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.01em !important;
+        white-space: nowrap !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        flex: 1 1 auto !important;
+      }
+
+      .collapse-toggle {
+        margin-left: auto !important;
+        flex-shrink: 0 !important;
+        width: 26px !important;
+        height: 26px !important;
+      }
+    }
+  }
+}
+
+/* ── Savings Goal Slider Bar ──────────────────────────────────── */
+.bg-track {
+  height: 10px !important;
+  overflow: visible !important;
+  border-radius: 999px !important;
+  position: relative !important;
+}
+
+.bg-fill {
+  height: 100% !important;
+  border-radius: 999px !important;
+  position: relative !important;
+}
+
+.bg-glow-dot {
+  position: absolute !important;
+  right: -5px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 14px !important;
+  height: 14px !important;
+  background: #ffffff !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.95), 0 2px 5px rgba(0, 0, 0, 0.35) !important;
+  z-index: 5 !important;
+}
+
+/* Compact layout tokens (Section 5) */
 .cal-grid {
   grid-auto-rows: minmax(72px, auto) !important;
-  gap: 6px !important;
+  gap: 4px !important;
 }
 
 .cal-day {
+  padding: 5px 6px !important;
   min-height: 72px !important;
-  padding: 6px !important;
+
+  &.empty-day {
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+    &:hover {
+      opacity: 1;
+    }
+  }
+}
+
+.il-item {
+  padding: 10px 14px !important;
+  margin-bottom: 6px !important;
+}
+
+.empty-state {
+  min-height: 220px !important;
+  padding: 32px 24px !important;
+}
+
+.chart-card-large .recharts-responsive-container {
+  height: 260px !important;
 }
 
 .cal-date-num {
@@ -612,9 +773,7 @@ body,
   font-size: 0.82rem !important;
 }
 
-.island-main,
-.island-content-wrapper,
-.island-page {
+.island-main {
   min-width: 0;
   max-width: 100%;
 }
@@ -711,5 +870,227 @@ body,
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Universal Card Consistency Tokens ───────────────────────────── */
+$card-padding-uniform: 20px;
+$card-radius-uniform: 14px;
+
+.stat-card,
+.bento-tile,
+.calendar-card,
+.tax-card,
+.tax-panel,
+.tax-tab-panel {
+  padding: $card-padding-uniform !important;
+  border-radius: $card-radius-uniform !important;
+}
+
+/* Dashboard bottom-row consistent height */
+.bento-networth,
+.bento-goal,
+.bento-pie {
+  height: 200px !important;
+  min-height: 200px !important;
+}
+
+/* ── Typography & Visual Hierarchy Refinements ───────────────────── */
+.stat-value,
+.bento-hero .bh-mid h2,
+.cal-hero-value {
+  font-size: clamp(1.75rem, 2.5vw, 2.1rem) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.02em !important;
+}
+
+.bh-label,
+.stat-label,
+.dqs-label,
+.stat-lbl,
+.apb-label {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #64748B !important;
+}
+
+[data-theme="dark"] .bh-label,
+[data-theme="dark"] .stat-label,
+[data-theme="dark"] .dqs-label,
+[data-theme="dark"] .stat-lbl,
+[data-theme="dark"] .apb-label {
+  color: #94A3B8 !important;
+}
+
+.stat-subtitle,
+.cal-hero-subtext,
+.bt-date,
+.bento-empty-sub,
+.bh-mid span {
+  font-size: 12px !important;
+  color: #64748B !important;
+}
+
+[data-theme="dark"] .stat-subtitle,
+[data-theme="dark"] .cal-hero-subtext,
+[data-theme="dark"] .bt-date,
+[data-theme="dark"] .bento-empty-sub,
+[data-theme="dark"] .bh-mid span {
+  color: #94A3B8 !important;
+}
+
+/* ── Standardized Circular Metric Icons ──────────────────────────── */
+.bh-icon-wrap,
+.stat-header .stat-icon {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+/* ── Quick Stats Strip ───────────────────────────────────────────── */
+.dqs-pill {
+  padding: 6px 14px !important;
+  gap: 8px !important;
+  font-size: 0.85rem !important;
+}
+
+.dqs-badge.pos {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #10b981 !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+  font-weight: 700 !important;
+}
+
+/* ── Transactions List Density & Summary Cards ───────────────────── */
+.tx-list-item,
+.il-item {
+  padding: 8px 12px !important;
+  min-height: 52px !important;
+}
+
+.idp-empty {
+  min-height: 380px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+.idp-quick-stats {
+  display: flex !important;
+  gap: 12px !important;
+  width: 100% !important;
+  max-width: 480px !important;
+  margin-top: 24px !important;
+
+  .iqs-box {
+    flex: 1 !important;
+    padding: 12px 8px !important;
+    border-radius: 10px !important;
+    text-align: center !important;
+
+    label {
+      font-size: 11px !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.05em !important;
+      color: #64748B !important;
+      display: block !important;
+      margin-bottom: 4px !important;
+    }
+
+    span {
+      font-size: 1.12rem !important;
+      font-weight: 800 !important;
+      letter-spacing: -0.01em !important;
+      display: block !important;
+    }
+
+    &:nth-child(1) {
+      background: rgba(16, 185, 129, 0.08) !important;
+      border: 1px solid rgba(16, 185, 129, 0.22) !important;
+      span { color: #10b981 !important; }
+    }
+
+    &:nth-child(2) {
+      background: rgba(239, 68, 68, 0.08) !important;
+      border: 1px solid rgba(239, 68, 68, 0.22) !important;
+      span { color: #ef4444 !important; }
+    }
+
+    &:nth-child(3) {
+      background: rgba(59, 130, 246, 0.08) !important;
+      border: 1px solid rgba(59, 130, 246, 0.22) !important;
+      span { color: #3b82f6 !important; }
+    }
+  }
+}
+
+/* ── Calendar Grid Borders & Structural Cohesion ─────────────────── */
+.cal-grid {
+  border: 1px solid #E2E8F0 !important;
+  border-radius: 12px !important;
+  padding: 6px !important;
+  background: rgba(255, 255, 255, 0.4) !important;
+}
+
+[data-theme="dark"] .cal-grid {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+.cal-day {
+  border: 1px solid #E2E8F0 !important;
+  border-radius: 8px !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+}
+
+[data-theme="dark"] .cal-day {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.cal-date-num {
+  font-size: 0.95rem !important;
+  font-weight: 700 !important;
+}
+
+.cal-delta-badge.positive {
+  background: rgba(59, 130, 246, 0.12) !important;
+  color: #2563eb !important;
+  border: 1px solid rgba(59, 130, 246, 0.25) !important;
+}
+
+/* Tax Readiness status chip */
+.tax-next-badge {
+  background: rgba(0, 212, 255, 0.12) !important;
+  color: var(--brand-primary, #00d4ff) !important;
+  font-size: 0.68rem !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  border: 1px solid rgba(0, 212, 255, 0.25) !important;
+  display: inline-block !important;
+}
+
+/* Numeric Table Alignment */
+.tax-bracket-table {
+  th:nth-child(1), td:nth-child(1),
+  th:nth-child(2), td:nth-child(2),
+  th:nth-child(3), td:nth-child(3) {
+    text-align: right !important;
+  }
+}
+
+.tax-data-table {
+  th:nth-child(4), td:nth-child(4),
+  th:nth-child(5), td:nth-child(5) {
+    text-align: right !important;
   }
 }

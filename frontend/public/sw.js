@@ -23,8 +23,14 @@ self.addEventListener('fetch', (e) => {
   // ✅ Never intercept non-GET requests (POST/PUT/DELETE go straight to network)
   if (e.request.method !== 'GET') return;
 
-  // ✅ Never intercept or cache API calls — bypass SW fetch handler so Axios/browser handle errors natively
-  if (e.request.url.includes('/api/') || e.request.url.includes('onrender.com')) {
+  // ✅ Never intercept or cache API calls or local development/Vite assets
+  if (
+    e.request.url.includes('/api/') ||
+    e.request.url.includes('onrender.com') ||
+    e.request.url.includes('localhost') ||
+    e.request.url.includes('127.0.0.1') ||
+    e.request.url.includes('/@')
+  ) {
     return;
   }
 

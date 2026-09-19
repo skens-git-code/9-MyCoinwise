@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema({
   // ── Financial Profile ──────────────────────────────────────────────────────
   balance:      { type: Number, default: 0.00 },
   monthly_goal: { type: Number, default: 0.00 },
-  currency:     { type: String, default: 'USD', maxlength: 10 },
+  currency:     { type: String, default: 'INR', maxlength: 10 },
 
   // ── Appearance ─────────────────────────────────────────────────────────────
   theme:          { type: String, enum: ['light', 'amoled'], default: 'light' },

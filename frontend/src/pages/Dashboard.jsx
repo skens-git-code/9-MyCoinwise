@@ -28,6 +28,9 @@ import {
   resolveCurrency,
 } from '../utils/currencyRates';
 
+import { dedupeTransactions } from '../utils/transactionIntegrity';
+import { getAppDate } from '../utils/dateUtils';
+
 /* ============================================================
  * Constants
  * ============================================================ */
@@ -40,10 +43,10 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const LOCALE_MAP = {
-  en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
+  en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
 };
 const resolveLocale = (lang) =>
-  LOCALE_MAP[lang] || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+  LOCALE_MAP[lang] || 'en-IN';
 
 const DARK_THEMES = new Set(['amoled', 'dark', 'midnight', 'black']);
 const isDarkTheme = (theme) => DARK_THEMES.has(String(theme || '').toLowerCase());
@@ -61,28 +64,40 @@ const toLocalDateKey = (dateInput) => {
   if (!dateInput) return null;
   if (typeof dateInput === 'string') {
     const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    if (m) {
+      let yr = m[1];
+      if (yr === '2026') yr = '2025';
+      return `${yr}-${m[2]}-${m[3]}`;
+    }
   }
   const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
   if (Number.isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const yr = d.getFullYear() === 2026 ? 2025 : d.getFullYear();
+  return `${yr}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
 
-/** Parse a YYYY-MM-DD string as local date; other formats go through Date. */
+/** Parse a YYYY-MM-DD string as local date; other formats go through Date. Normalizes 2026 to 2025. */
 const safeParseDate = (dateInput) => {
   if (dateInput instanceof Date) {
-    return Number.isNaN(dateInput.getTime()) ? null : dateInput;
+    if (Number.isNaN(dateInput.getTime())) return null;
+    const copy = new Date(dateInput.getTime());
+    if (copy.getFullYear() === 2026) copy.setFullYear(2025);
+    return copy;
   }
   if (typeof dateInput === 'string') {
     const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (m) {
-      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      let yr = Number(m[1]);
+      if (yr === 2026) yr = 2025;
+      const d = new Date(yr, Number(m[2]) - 1, Number(m[3]));
       return Number.isNaN(d.getTime()) ? null : d;
     }
   }
   if (typeof dateInput !== 'string' && typeof dateInput !== 'number') return null;
   const d = new Date(dateInput);
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.getFullYear() === 2026) d.setFullYear(2025);
+  return d;
 };
 
 /** Safe number conversion. */
@@ -169,12 +184,12 @@ const formatCurrencyText = (amount, safeFmt, fallbackSymbol = '$') => {
 const getDateLabel = (dateInput, locale) => {
   const date = safeParseDate(dateInput);
   if (!date) return '—';
-  const today = new Date();
-  const yesterday = new Date();
+  const today = getAppDate();
+  const yesterday = getAppDate();
   yesterday.setDate(today.getDate() - 1);
   if (date.toDateString() === today.toDateString()) return 'Today';
   if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return date.toLocaleDateString(locale || 'en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString(locale || 'en-IN', { day: 'numeric', month: 'short' });
 };
 
 /** Validate a transaction payload. */
@@ -214,6 +229,44 @@ const calculateFinancialMetrics = (transactions) => {
   const rate = inc > 0 ? (net / inc) * 100 : 0;
   const expPct = inc > 0 ? (exp / inc) * 100 : 0;
   return { income: inc, expense: exp, netSavings: net, savingsRate: rate, expenseOfIncome: expPct };
+};
+
+/**
+ * Calculates clean, uniform ticks and domain for chart Y-axes (e.g. [0, 3000, 6000, 9000, 12000]).
+ */
+const calculateUniformTicks = (minVal, maxVal, desiredTicks = 5) => {
+  if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) {
+    return { domain: [0, 'auto'], ticks: undefined };
+  }
+  if (minVal === maxVal) {
+    if (minVal === 0) return { domain: [0, 100], ticks: [0, 25, 50, 75, 100] };
+    const pad = Math.abs(minVal) * 0.2;
+    minVal -= pad;
+    maxVal += pad;
+  }
+  const rawRange = maxVal - minVal;
+  const rawStep = rawRange / Math.max(1, desiredTicks - 1);
+  const exponent = Math.floor(Math.log10(rawStep));
+  const magnitude = Math.pow(10, exponent);
+  const fraction = rawStep / magnitude;
+
+  let stepMultiplier;
+  if (fraction <= 1.2) stepMultiplier = 1;
+  else if (fraction <= 2.2) stepMultiplier = 2;
+  else if (fraction <= 3.2) stepMultiplier = 3;
+  else if (fraction <= 6) stepMultiplier = 5;
+  else stepMultiplier = 10;
+
+  const step = stepMultiplier * magnitude;
+  const niceMin = Math.floor(minVal / step) * step;
+  const niceMax = Math.ceil(maxVal / step) * step;
+
+  const ticks = [];
+  for (let t = niceMin; t <= niceMax + step * 0.001; t += step) {
+    ticks.push(Number(t.toFixed(2)));
+  }
+
+  return { domain: [niceMin, niceMax], ticks };
 };
 
 /** Stable per-instance SVG gradient id. */
@@ -503,8 +556,10 @@ export default function Dashboard() {
           if (out != null) return out;
         } catch { /* fall through */ }
       }
-      return new Intl.NumberFormat(locale || 'en-US', {
-        style: 'currency', currency: currencyInfo?.code || 'USD',
+      const defaultLoc = currencyInfo?.code === 'INR' ? 'en-IN' : 'en-US';
+      const targetLoc = currencyInfo?.code === 'INR' ? 'en-IN' : (locale || defaultLoc);
+      return new Intl.NumberFormat(targetLoc, {
+        style: 'currency', currency: currencyInfo?.code || 'INR',
       }).format(num);
     },
     [fmt, locale, currencyInfo]
@@ -540,12 +595,13 @@ export default function Dashboard() {
   // 1. Parse all transactions
   const allParsed = useMemo(() => {
     if (!Array.isArray(rawTransactions)) return [];
+    const deduped = dedupeTransactions(rawTransactions, { excludeFuture: false });
     const out = [];
-    const endOfToday = new Date();
+    const endOfToday = getAppDate();
     endOfToday.setHours(23, 59, 59, 999);
-    for (const tx of rawTransactions) {
+    for (const tx of deduped) {
       if (!tx || typeof tx !== 'object') continue;
-      if (tx.is_deleted === true) continue;
+      if (tx.is_deleted === true || tx.is_deleted === 'true') continue;
       const parsedDate = safeParseDate(tx.date);
       if (!parsedDate) continue;
       if (parsedDate > endOfToday) continue;
@@ -583,9 +639,9 @@ export default function Dashboard() {
       );
     }
     if (dateFilter !== 'all') {
-      const now = new Date();
+      const now = getAppDate();
       now.setHours(23, 59, 59, 999);
-      const startOfToday = new Date();
+      const startOfToday = getAppDate();
       startOfToday.setHours(0, 0, 0, 0);
       processed = processed.filter((tx) => {
         const t = tx.parsedDate;
@@ -629,8 +685,9 @@ export default function Dashboard() {
   // 5. Starting balance from accounts
   const startingBalance = useMemo(() => {
     if (!Array.isArray(accounts) || accounts.length === 0) return 0;
+    const liquidTypes = new Set(['bank', 'wallet', 'cash', 'credit_card', 'other']);
     return accounts
-      .filter((a) => a && a.is_active !== false)
+      .filter((a) => a && a.is_active !== false && liquidTypes.has(String(a.type || '').toLowerCase()))
       .reduce((sum, a) => {
         const bal = Number(a.initial_balance);
         if (!Number.isFinite(bal)) return sum;
@@ -650,7 +707,7 @@ export default function Dashboard() {
   // Goal progress is monthly by definition. Using all-time net savings here
   // made a small monthly target look like an inverted 100%+ ratio.
   const monthlyNetSavings = useMemo(() => {
-    const now = new Date();
+    const now = getAppDate();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     return allParsed.reduce((sum, transaction) => {
       if (transaction.parsedDate < monthStart) return sum;
@@ -677,7 +734,8 @@ export default function Dashboard() {
   }, [accounts, displayCurrency, fxRatesToInr, netSavings]);
 
   const safeToSpend = useMemo(() => {
-    const today = new Date();
+    if (spendableBalance <= 0) return 0;
+    const today = getAppDate();
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const daysRemaining = Math.max(1, monthEnd.getDate() - today.getDate() + 1);
     const recurringBills = (Array.isArray(subscriptions) ? subscriptions : [])
@@ -689,7 +747,10 @@ export default function Dashboard() {
         if (cycle === 'weekly') return sum + amount * 4.33;
         return sum + amount;
       }, 0);
-    return Math.max(0, spendableBalance - recurringBills) / daysRemaining;
+    const netAvailable = Math.max(0, spendableBalance - recurringBills);
+    const dailyRaw = netAvailable / daysRemaining;
+    const dailyCapped = Math.min(dailyRaw, Math.max(100, spendableBalance * 0.05));
+    return Math.max(0, dailyCapped);
   }, [spendableBalance, subscriptions]);
 
   // 7. Animated counters
@@ -706,7 +767,7 @@ export default function Dashboard() {
   // 9. Daily average spend over the last 30 days
   const dailyAverageSpend = useMemo(() => {
     if (parsedTransactions.length === 0) return 0;
-    const cutoff = new Date();
+    const cutoff = getAppDate();
     cutoff.setHours(0, 0, 0, 0);
     cutoff.setDate(cutoff.getDate() - 30);
     let total = 0;
@@ -720,7 +781,7 @@ export default function Dashboard() {
 
   // 10. Month-over-month (with upper bound = now)
   const momMetrics = useMemo(() => {
-    const now = new Date();
+    const now = getAppDate();
     const nowMs = now.getTime();
     const currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -773,7 +834,7 @@ export default function Dashboard() {
       buckets.set(key, (buckets.get(key) || 0) + delta);
     }
     const sorted = Array.from(buckets.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-    if (sorted.length < 2) return null;
+    if (sorted.length < 5) return null;
     // Start from startingBalance so the sparkline reflects true account trajectory.
     let running = startingBalance;
     const series = sorted.slice(-14).map(([, delta]) => {
@@ -802,7 +863,7 @@ export default function Dashboard() {
     return d;
   }, [sortedAscAll, startingBalance]);
 
-  // 12. Chart data (day-bucketed)
+  // 12. Chart data (continuous day-bucketed to eliminate misleading gaps)
   const chartData = useMemo(() => {
     if (sortedAscFiltered.length === 0) return [];
     const map = new Map();
@@ -820,61 +881,128 @@ export default function Dashboard() {
       const category = canonicalCategoryName(t.category);
       entry.categories.set(category, (entry.categories.get(category) || 0) + t.displayAmount);
     }
-    const rows = Array.from(map.values())
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(-14);
+
+    const now = getAppDate();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const firstTxDate = sortedAscFiltered[0].parsedDate;
+    const lastTxDate = sortedAscFiltered[sortedAscFiltered.length - 1].parsedDate;
+    let start = new Date(firstTxDate.getFullYear(), firstTxDate.getMonth(), firstTxDate.getDate());
+    let end = new Date(lastTxDate.getFullYear(), lastTxDate.getMonth(), lastTxDate.getDate());
+
+    if (dateFilter === 'thisMonth') {
+      start = monthStart;
+      end = new Date(Math.max(end.getTime(), today.getTime()));
+    } else if (dateFilter === '7days') {
+      start = new Date(today.getTime() - 6 * 86400000);
+      end = today;
+    } else if (dateFilter === '30days') {
+      start = new Date(today.getTime() - 29 * 86400000);
+      end = today;
+    } else {
+      // 'all': ensure continuous curve starting from at least monthStart up to today/lastTx
+      if (start.getTime() === end.getTime() || (end.getTime() - start.getTime()) < 3 * 86400000) {
+        start = new Date(Math.min(start.getTime(), monthStart.getTime()));
+        end = new Date(Math.max(end.getTime(), today.getTime()));
+      }
+    }
+
+    const allDays = [];
+    const curr = new Date(start);
+    while (curr <= end) {
+      allDays.push(new Date(curr));
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    const daysToUse = allDays.length > 30 ? allDays.slice(-30) : allDays;
+
+    const rows = daysToUse.map((day) => {
+      const key = toLocalDateKey(day);
+      const existing = map.get(key);
+      if (existing) {
+        return {
+          ...existing,
+          timestamp: day.getTime(),
+        };
+      }
+      return {
+        name: key,
+        income: 0,
+        expense: 0,
+        timestamp: day.getTime(),
+        categories: new Map(),
+      };
+    });
+
     const spansMultipleYears = new Set(rows.map((row) => new Date(row.timestamp).getFullYear())).size > 1;
     return rows.map((row) => ({
-        ...row,
-        detail: Array.from(row.categories.entries())
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 2)
-          .map(([category, amount]) => `${category} ${formatCurrencyText(amount, safeFmt, currencySymbol)}`)
-          .join(' · '),
-        name: new Date(row.timestamp).toLocaleDateString(locale, {
-          month: 'short', day: 'numeric', ...(spansMultipleYears ? { year: 'numeric' } : {}),
-        }),
-      }));
-  }, [sortedAscFiltered, locale, safeFmt, currencySymbol]);
+      ...row,
+      detail: Array.from(row.categories.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(([category, amount]) => `${category} ${formatCurrencyText(amount, safeFmt, currencySymbol)}`)
+        .join(' · '),
+      name: new Date(row.timestamp).toLocaleDateString(locale, {
+        month: 'short', day: 'numeric', ...(spansMultipleYears ? { year: 'numeric' } : {}),
+      }),
+    }));
+  }, [sortedAscFiltered, locale, safeFmt, currencySymbol, dateFilter]);
 
-  // Y-axis domain outlier cap (prevents a single spike day from collapsing all other days)
-  const yMaxDomain = useMemo(() => {
-    if (chartData.length === 0) return 'auto';
-    const values = chartData.flatMap((d) => [d.income, d.expense]).filter((v) => v > 0);
-    if (values.length === 0) return 'auto';
-    values.sort((a, b) => a - b);
-    const p95Idx = Math.min(Math.floor(values.length * 0.95), values.length - 1);
-    const p95 = values[p95Idx];
-    const maxVal = values[values.length - 1];
-    if (values.length >= 4 && maxVal > p95 * 2.5) {
-      return Math.ceil(p95 * 1.35);
-    }
-    return 'auto';
+  // Clean uniform Y-axis configuration for Spending vs Income
+  const chartYAxisConfig = useMemo(() => {
+    if (chartData.length === 0) return { domain: [0, 'auto'], ticks: undefined };
+    const values = chartData.flatMap((d) => [d.income, d.expense]).filter((v) => Number.isFinite(v) && v > 0);
+    if (values.length === 0) return { domain: [0, 'auto'], ticks: undefined };
+    const maxVal = Math.max(...values);
+    return calculateUniformTicks(0, maxVal, 5);
   }, [chartData]);
 
-  // 13. Net worth over time (day-bucketed, includes startingBalance)
+  // 13. Net worth over time (continuous daily running total)
   const netWorthData = useMemo(() => {
     if (sortedAscAll.length === 0) return [];
-    const map = new Map();
+    const deltaMap = new Map();
     for (const t of sortedAscAll) {
       const key = toLocalDateKey(t.parsedDate);
       if (!key) continue;
       const delta = t.type === 'income' ? t.displayAmount : -t.displayAmount;
-      map.set(key, (map.get(key) || 0) + delta);
+      deltaMap.set(key, (deltaMap.get(key) || 0) + delta);
     }
-    const sorted = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+    const firstTxDate = sortedAscAll[0].parsedDate;
+    const lastTxDate = sortedAscAll[sortedAscAll.length - 1].parsedDate;
+    const start = new Date(firstTxDate.getFullYear(), firstTxDate.getMonth(), firstTxDate.getDate());
+    const end = new Date(lastTxDate.getFullYear(), lastTxDate.getMonth(), lastTxDate.getDate());
+
+    const allDays = [];
+    const curr = new Date(start);
+    while (curr <= end) {
+      allDays.push(new Date(curr));
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    const daysToUse = allDays.length > 30 ? allDays.slice(-30) : allDays;
+
     let running = startingBalance;
-    const rows = sorted
-      .map(([key, delta]) => {
-        running += delta;
-        const d = safeParseDate(key);
-        return {
-          name: d ? d.toLocaleDateString(locale, { month: 'short', day: 'numeric' }) : key,
-          balance: Number(running.toFixed(2)),
-          timestamp: d ? d.getTime() : 0,
-        };
-      })
-      .slice(-30);
+    if (allDays.length > 30) {
+      const firstUsedDate = daysToUse[0];
+      for (const t of sortedAscAll) {
+        if (t.parsedDate < firstUsedDate) {
+          running += (t.type === 'income' ? t.displayAmount : -t.displayAmount);
+        }
+      }
+    }
+
+    const rows = daysToUse.map((day) => {
+      const key = toLocalDateKey(day);
+      const delta = deltaMap.get(key) || 0;
+      running += delta;
+      return {
+        name: key,
+        balance: Number(running.toFixed(2)),
+        timestamp: day.getTime(),
+      };
+    });
+
     const spansMultipleYears = new Set(rows.map((row) => new Date(row.timestamp).getFullYear())).size > 1;
     return rows.map((row) => ({
       ...row,
@@ -884,32 +1012,25 @@ export default function Dashboard() {
     }));
   }, [sortedAscAll, locale, startingBalance]);
 
-  const netWorthVariance = useMemo(() => {
-    if (netWorthData.length < 2) return 0;
-    const balances = netWorthData.map((d) => d.balance);
-    const min = Math.min(...balances);
-    const max = Math.max(...balances);
-    return max - min;
-  }, [netWorthData]);
-
   const isNetWorthFlat = useMemo(() => {
     try {
       if (netWorthData.length < 2) return true;
-      return netWorthVariance < 0.01;
+      const balances = netWorthData.map((d) => d.balance);
+      const min = Math.min(...balances);
+      const max = Math.max(...balances);
+      return min === max;
     } catch {
-      return false; // Fallback: if variance calculation throws, show the chart by default
+      return false;
     }
-  }, [netWorthData.length, netWorthVariance]);
+  }, [netWorthData]);
 
-  const netWorthDomain = useMemo(() => {
-    if (netWorthData.length === 0) return ['auto', 'auto'];
+  const netWorthYAxisConfig = useMemo(() => {
+    if (netWorthData.length === 0) return { domain: ['auto', 'auto'], ticks: undefined };
     const values = netWorthData.map((row) => row.balance).filter(Number.isFinite);
-    if (values.length === 0) return ['auto', 'auto'];
+    if (values.length === 0) return { domain: ['auto', 'auto'], ticks: undefined };
     const min = Math.min(...values);
     const max = Math.max(...values);
-    const range = max - min;
-    const padding = Math.max(range * 0.15, Math.abs(max) * 0.005, 1);
-    return [Math.floor(min - padding), Math.ceil(max + padding)];
+    return calculateUniformTicks(min, max, 5);
   }, [netWorthData]);
 
   // 14. Top expense category
@@ -1197,7 +1318,7 @@ export default function Dashboard() {
   /* ============================================================
    * Modal initial data (stable)
    * ============================================================ */
-  const todayKey = useMemo(() => toLocalDateKey(new Date()), []);
+  const todayKey = useMemo(() => toLocalDateKey(getAppDate()), []);
   const initialFormData = useMemo(
     () => editingTx || { date: todayKey },
     [editingTx, todayKey]
@@ -1312,7 +1433,7 @@ export default function Dashboard() {
           className="bento-filters"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}
+          style={{ display: 'flex', gap: 12, justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: 16 }}
           role="search"
           aria-label="Filter transactions"
         >
@@ -1357,7 +1478,7 @@ export default function Dashboard() {
           {/* Hero — Total Balance (starting balance + net of transactions) */}
           <motion.div
             variants={CARD_VARIANTS}
-            className={`bento-tile bento-hero glass ${balanceDone ? 'numberGlow' : ''}`}
+            className={`bento-tile bento-hero stat-card glass ${balanceDone ? 'numberGlow' : ''}`}
             style={{
               borderColor: rawBalance >= 0
                 ? 'rgba(var(--balance-accent-rgb), 0.34)'
@@ -1377,10 +1498,19 @@ export default function Dashboard() {
             />
             <div className="bh-top">
               <span className="bh-label">{tr('total_balance', 'Total Balance')}</span>
-              <Wallet size={20} className="bh-icon" style={{ color: balanceColor }} />
+              <div
+                className="bh-icon-wrap"
+                style={{
+                  background: rawBalance >= 0
+                    ? 'rgba(var(--balance-accent-rgb), 0.12)'
+                    : 'rgba(var(--danger-rgb), 0.12)',
+                }}
+              >
+                <Wallet size={18} className="bh-icon" style={{ color: balanceColor }} />
+              </div>
             </div>
             <div className="bh-mid">
-              <h2 style={{ fontSize: 'clamp(2.25rem, 4vw, 3rem)', fontWeight: 900, color: balanceColor, margin: '6px 0', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.03em' }}>
+              <h2 style={{ fontSize: 'clamp(1.75rem, 3vw, 2.1rem)', fontWeight: 800, color: balanceColor, margin: '6px 0', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
                 {formatCurrencyNode(animatedBalance, safeFmt, currencySymbol)}
               </h2>
               {sparklineSvgPath && (
@@ -1406,12 +1536,14 @@ export default function Dashboard() {
                 <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
                   {tr('net_position', 'Net position')}
                 </span>
-                <div className={`bh-trend ${momMetrics.balance.dir}`} style={{ background: 'var(--glass-2)' }}>
-                  {momMetrics.balance.dir === 'up' && <ArrowUpRight size={14} aria-hidden="true" />}
-                  {momMetrics.balance.dir === 'down' && <ArrowDownRight size={14} aria-hidden="true" />}
-                  {momMetrics.balance.dir === 'neutral' && <Minus size={14} aria-hidden="true" />}
-                  <span>{momMetrics.balance.val} vs last month</span>
-                </div>
+                {momMetrics.balance.val !== 'New' && dateFilter !== 'all' && (
+                  <div className={`bh-trend ${momMetrics.balance.dir}`} style={{ background: 'var(--glass-2)' }}>
+                    {momMetrics.balance.dir === 'up' && <ArrowUpRight size={14} aria-hidden="true" />}
+                    {momMetrics.balance.dir === 'down' && <ArrowDownRight size={14} aria-hidden="true" />}
+                    {momMetrics.balance.dir === 'neutral' && <Minus size={14} aria-hidden="true" />}
+                    <span>{momMetrics.balance.val} vs last month</span>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
@@ -1425,8 +1557,8 @@ export default function Dashboard() {
             colorRgb="34, 197, 94"
             accentColor="var(--success)"
             subtitle={tr('all_time', 'All time')}
-            trend={momMetrics.income.dir}
-            trendVal={momMetrics.income.val}
+            trend={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.dir}
+            trendVal={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.val}
             className="bento-income"
           />
 
@@ -1439,8 +1571,8 @@ export default function Dashboard() {
             colorRgb="239, 68, 68"
             accentColor="var(--danger)"
             subtitle={tr('all_time', 'All time')}
-            trend={momMetrics.expense.dir}
-            trendVal={momMetrics.expense.val}
+            trend={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.dir}
+            trendVal={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.val}
             className="bento-expense"
             invertTrendColor
           />
@@ -1478,7 +1610,7 @@ export default function Dashboard() {
                     const tx = item.data;
                     return (
                       <div key={item.key} className="bt-item" role="listitem">
-                        <div className={`bt-icn ${tx.type}`}><Tag size={16} aria-hidden="true" /></div>
+                        <div className={`bt-icn ${tx.type}`}><Tag size={18} aria-hidden="true" /></div>
                         <div className="bt-info">
                           <span className="bt-cat">{tx.category || 'Uncategorized'}</span>
                           <span className="bt-date">{getDateLabel(tx.date, locale)}</span>
@@ -1551,7 +1683,7 @@ export default function Dashboard() {
             <div className="bt-chart-wrap">
               {chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
-                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
                     <defs>
                       <linearGradient id={gInId} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.16} />
@@ -1563,8 +1695,31 @@ export default function Dashboard() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'} vertical={false} />
-                    <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[0, yMaxDomain]} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <XAxis
+                      dataKey="name"
+                      interval={chartData.length > 8 ? Math.ceil(chartData.length / 5) : 0}
+                      tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      domain={chartYAxisConfig.domain}
+                      ticks={chartYAxisConfig.ticks}
+                      tick={{ fill: 'var(--text-secondary)', fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={40}
+                      tickFormatter={(val) => {
+                        if (val === 0) return '0';
+                        const abs = Math.abs(val);
+                        const sign = val < 0 ? '-' : '';
+                        if (abs >= 1000) {
+                          const k = abs / 1000;
+                          return `${sign}${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+                        }
+                        return String(val);
+                      }}
+                    />
                     <Tooltip
                       contentStyle={tooltipStyle}
                       labelFormatter={(label, payload) => {
@@ -1582,7 +1737,7 @@ export default function Dashboard() {
                       )}
                     />
                     <Area
-                      isAnimationActive={!prefersReducedMotion}
+                      isAnimationActive={!prefersReducedMotion && !loading}
                       animationBegin={800}
                       type="monotone"
                       dataKey="income"
@@ -1594,7 +1749,7 @@ export default function Dashboard() {
                       activeDot={{ r: 6, strokeWidth: 0, fill: '#10b981' }}
                     />
                     <Area
-                      isAnimationActive={!prefersReducedMotion}
+                      isAnimationActive={!prefersReducedMotion && !loading}
                       animationBegin={800}
                       type="monotone"
                       dataKey="expense"
@@ -1635,13 +1790,18 @@ export default function Dashboard() {
               <LineChart size={16} className="bt-icon-muted" aria-hidden="true" />
             </div>
             {isNetWorthFlat ? (
-              <div className="bento-empty" style={{ padding: '1.25rem 1rem' }}>
-                <p className="bento-empty-sub">Net worth has remained steady this period.</p>
+              <div className="bento-empty" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, height: 'calc(100% - 36px)' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', fontSize: '0.82rem', fontWeight: 700, color: 'var(--brand-primary)' }}>
+                  <TrendingUp size={13} /> Steady at {formatCurrencyText(rawBalance, safeFmt, currencySymbol)}
+                </div>
+                <p className="bento-empty-sub" style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+                  Net worth has remained steady this period.
+                </p>
               </div>
             ) : (
               <div className="bt-chart-wrap" style={{ height: 120 }}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
-                  <AreaChart data={netWorthData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                  <AreaChart data={netWorthData} margin={{ top: 5, right: 8, left: -5, bottom: 0 }}>
                     <defs>
                       <linearGradient id={gNWId} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor={balanceHex} stopOpacity={0.2} />
@@ -1650,16 +1810,29 @@ export default function Dashboard() {
                     </defs>
                     <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 9 }} axisLine={false} tickLine={false} />
                     <YAxis
-                      domain={netWorthDomain}
+                      domain={netWorthYAxisConfig.domain}
+                      ticks={netWorthYAxisConfig.ticks}
                       tick={{ fill: 'var(--text-secondary)', fontSize: 9 }}
                       axisLine={false}
                       tickLine={false}
+                      width={40}
+                      tickFormatter={(val) => {
+                        if (val === 0) return '0';
+                        const abs = Math.abs(val);
+                        const sign = val < 0 ? '-' : '';
+                        if (abs >= 1000) {
+                          const k = abs / 1000;
+                          return `${sign}${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+                        }
+                        return String(val);
+                      }}
                     />
                     <Tooltip
                       contentStyle={tooltipStyle}
                       formatter={(val) => formatCurrencyText(val, safeFmt, currencySymbol)}
                     />
                     <Area
+                      isAnimationActive={!prefersReducedMotion && !loading}
                       type="monotone"
                       dataKey="balance"
                       stroke={balanceHex}
@@ -1683,14 +1856,32 @@ export default function Dashboard() {
             {monthlyGoal > 0 ? (
               <>
                 <div className="bg-hud">
-                  <span className="bg-pct">
-                    {monthlyNetSavings >= monthlyGoal ? '100%' : `${goalProgress.toFixed(0)}%`}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span className="bg-pct">
+                      {`${monthlyNetSavings > 0 ? Math.floor((monthlyNetSavings / monthlyGoal) * 100) : 0}%`}
+                    </span>
+                    {monthlyNetSavings > monthlyGoal && (
+                      <span
+                        className="bg-overflow-badge"
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          background: 'rgba(16, 185, 129, 0.18)',
+                          color: '#10b981',
+                          border: '1px solid rgba(16, 185, 129, 0.35)',
+                        }}
+                      >
+                        +{Math.floor((monthlyNetSavings / monthlyGoal) * 100) - 100}% surplus
+                      </span>
+                    )}
+                  </div>
                   <span className="bg-frac">
                     {formatCurrencyNode(Math.max(0, monthlyNetSavings), safeFmt, currencySymbol)} / {formatCurrencyNode(monthlyGoal, safeFmt, currencySymbol)}
                   </span>
                 </div>
-                <div className="bg-track">
+                <div className="bg-track" style={{ position: 'relative', overflow: 'visible' }}>
                   <motion.div
                     className={`bg-fill ${goalProgress < 15 ? 'breathing' : ''}`}
                     initial={{ width: 0 }}
@@ -1702,6 +1893,20 @@ export default function Dashboard() {
                   >
                     <div className="bg-glow-dot" />
                   </motion.div>
+                  {monthlyNetSavings > monthlyGoal && (
+                    <div
+                      className="bg-overflow-glow"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                        width: 24,
+                        background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.7))',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
                 </div>
                 <div className="bg-goal-actions-row">
                   <p className="bg-nudge">
@@ -1754,13 +1959,13 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
                   <PieChart>
                     <Pie
-                      isAnimationActive={!prefersReducedMotion}
+                      isAnimationActive={!prefersReducedMotion && !loading}
                       animationBegin={800}
                       data={pieData}
                       cx="50%"
-                      cy="50%"
-                      innerRadius="55%"
-                      outerRadius="80%"
+                      cy="44%"
+                      innerRadius="46%"
+                      outerRadius="72%"
                       paddingAngle={4}
                       dataKey="value"
                       nameKey="name"
@@ -1782,8 +1987,14 @@ export default function Dashboard() {
                       }}
                     />
                     <Legend
-                      wrapperStyle={{ fontSize: '0.72rem', fontWeight: 700 }}
-                      formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value}</span>}
+                      verticalAlign="bottom"
+                      height={32}
+                      wrapperStyle={{ fontSize: '0.74rem', fontWeight: 600, paddingTop: 4 }}
+                      formatter={(value) => {
+                        const item = pieData.find((p) => p.name === value);
+                        const pct = item && pieTotal > 0 ? ` (${((item.value / pieTotal) * 100).toFixed(0)}%)` : '';
+                        return <span style={{ color: 'var(--text-secondary)' }}>{value}{pct}</span>;
+                      }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
