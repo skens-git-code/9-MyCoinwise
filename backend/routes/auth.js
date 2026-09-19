@@ -36,9 +36,11 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const LoginLog = require('../models/LoginLog');
 const Transaction = require('../models/Transaction');
+const Account = require('../models/Account');
 const Session = require('../models/Session');
 const auth = require('../middleware/auth');
 const { logger, auditLogger } = require('../utils/logger');
+const { dedupeTransactions } = require('../utils/transactionIntegrity');
 
 const router = express.Router();
 
@@ -50,6 +52,27 @@ const CURRENCY_CODES = new Set([
   'USD', 'INR', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SGD', 'AED',
   'CHF', 'CNY', 'MXN', 'BRL', 'KRW', 'THB',
 ]);
+
+const FALLBACK_RATES_TO_INR = Object.freeze({
+  INR: 1, USD: 83.5, EUR: 90.2, GBP: 105.8, JPY: 0.56, CAD: 61.2,
+  AUD: 53.8, SGD: 61.5, AED: 22.7, CHF: 95, CNY: 11.5, MXN: 4.9,
+  BRL: 16.4, KRW: 0.063, THB: 2.35,
+});
+
+const normalizeCurrency = (value, fallback = 'USD') => {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized || fallback;
+};
+
+const convertToCurrency = (amount, fromCurrency, toCurrency) => {
+  const from = normalizeCurrency(fromCurrency);
+  const to = normalizeCurrency(toCurrency);
+  if (from === to) return Number(amount) || 0;
+  const fromRate = FALLBACK_RATES_TO_INR[from];
+  const toRate = FALLBACK_RATES_TO_INR[to];
+  if (!fromRate || !toRate) return Number(amount) || 0;
+  return (Number(amount) || 0) * fromRate / toRate;
+};
 
 // Register and login use separate limiters. Sharing one meant a
 // shared-IP office could exhaust login attempts and block all new
@@ -140,17 +163,24 @@ const createSessionToken = async (user, req, { rememberMe = true, browser, os, d
 /** Aggregate transaction net for a user. Returns 0 for invalid ids. */
 const getTransactionBalance = async (userId) => {
   if (!mongoose.isValidObjectId(userId)) return 0;
-  const [result] = await Transaction.aggregate([
-    { $match: { user_id: new mongoose.Types.ObjectId(userId), is_deleted: { $ne: true } } },
-    {
-      $group: {
-        _id: null,
-        income: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
-        expense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
-      },
-    },
+  const [user, transactions, accounts] = await Promise.all([
+    User.findById(userId).select('currency').lean(),
+    Transaction.find({ user_id: userId, is_deleted: { $ne: true } })
+      .select('type amount currency account_id')
+      .lean(),
+    Account.find({ user_id: userId }).select('_id currency').lean(),
   ]);
-  return Number(((result?.income || 0) - (result?.expense || 0)).toFixed(2));
+  const displayCurrency = normalizeCurrency(user?.currency);
+  const accountCurrencies = new Map(accounts.map((account) => [String(account._id), normalizeCurrency(account.currency, displayCurrency)]));
+  const balance = dedupeTransactions(transactions).reduce((sum, transaction) => {
+    const sourceCurrency = normalizeCurrency(
+      transaction.currency || accountCurrencies.get(String(transaction.account_id || '')),
+      displayCurrency
+    );
+    const amount = convertToCurrency(transaction.amount, sourceCurrency, displayCurrency);
+    return sum + (transaction.type === 'income' ? amount : -amount);
+  }, 0);
+  return Number(balance.toFixed(2));
 };
 
 /** Recalculate and persist the user's balance. */

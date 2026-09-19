@@ -8,7 +8,7 @@ import {
   Download, Upload, Copy, CheckSquare, Square,
   FileSpreadsheet, FileCode, CheckCircle2, ChevronDown,
   Layers, RefreshCw, Undo2, AlertTriangle, Loader2, Tag,
-  Calendar, DollarSign, Keyboard, Receipt,
+  Calendar, DollarSign, Keyboard, Receipt, Share2,
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
@@ -79,6 +79,12 @@ const getTransactionId = (transaction) => {
 
 const isLiveTransaction = (tx) => tx && typeof tx === 'object' && tx.is_deleted !== true;
 
+const isFutureTransaction = (tx) => {
+  const dateKey = toLocalDateKey(tx?.date);
+  const todayKey = toLocalDateKey(new Date());
+  return Boolean(dateKey && todayKey && dateKey > todayKey);
+};
+
 /** Highlight a search term inside text (returns JSX fragments). */
 const highlight = (text, query) => {
   const str = String(text || '');
@@ -106,6 +112,7 @@ export default function Transactions() {
     addTransaction,
     fmt,
     user,
+    theme = 'dark',
     currencyInfo,
     USER_ID,
     refetch,
@@ -120,7 +127,9 @@ export default function Transactions() {
 
   /* ---------------- Live transactions ---------------- */
   const transactions = useMemo(
-    () => (Array.isArray(rawTransactions) ? rawTransactions.filter(isLiveTransaction) : []),
+    () => (Array.isArray(rawTransactions)
+      ? rawTransactions.filter((tx) => isLiveTransaction(tx) && !isFutureTransaction(tx))
+      : []),
     [rawTransactions]
   );
 
@@ -175,6 +184,8 @@ export default function Transactions() {
   const undoTimerRef = useRef(null);
   const searchInputRef = useRef(null);
   const detailPaneRef = useRef(null);
+  const ticketCardRef = useRef(null);
+  const [isSharingTicket, setIsSharingTicket] = useState(false);
 
   useEffect(() => {
     if (selectedTxId && detailPaneRef.current && window.innerWidth <= 992) {
@@ -670,29 +681,96 @@ export default function Transactions() {
     }
   }, [statementRows, isImporting, showToast, tr, refetch]);
 
+
   /* ============================================================
-   * Copy transaction summary
+   * Share ticket picture
    * ============================================================ */
-  const copyTransactionSummary = useCallback(async (tx) => {
-    const summary = [
-      `${tx.type === 'income' ? '+' : '-'}${fmt(tx.amount)}`,
-      tx.category,
-      toLocalDateKey(tx.date),
-      tx.merchant || null,
-      tx.note || null,
-    ].filter(Boolean).join(' · ');
+  const handleShareTicketPic = useCallback(async () => {
+    if (!selectedTx || !ticketCardRef.current || isSharingTicket) return;
+    setIsSharingTicket(true);
+    const cardEl = ticketCardRef.current;
+    cardEl.classList.add('is-capturing-ticket');
 
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(summary);
-        showToast('success', tr('copied', 'Copied to clipboard'));
-      } else {
-        showToast('error', tr('clipboard_unavailable', 'Clipboard not available'));
+      const { default: html2canvas } = await import('html2canvas');
+      const isDarkTheme = theme === 'dark' || theme === 'amoled';
+      const bgColor = theme === 'amoled' ? '#000000' : isDarkTheme ? '#080a0a' : '#ffffff';
+
+      const canvas = await html2canvas(cardEl, {
+        scale: 2,
+        backgroundColor: bgColor,
+        useCORS: true,
+        logging: false,
+      });
+
+      const txNum = selectedTx.transaction_number || getTransactionId(selectedTx) || 'receipt';
+      const fileName = `coinwise_receipt_${txNum}.png`;
+
+      const blob = await new Promise((resolve) => {
+        if (typeof canvas.toBlob === 'function') {
+          canvas.toBlob(resolve, 'image/png');
+        } else {
+          // Fallback if toBlob is not available
+          try {
+            const dataUrl = canvas.toDataURL('image/png');
+            const arr = dataUrl.split(',');
+            const mime = arr[0].match(/:(.*?);/)[1];
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) u8arr[n] = bstr.charCodeAt(n);
+            resolve(new Blob([u8arr], { type: mime }));
+          } catch {
+            resolve(null);
+          }
+        }
+      });
+
+      if (!blob) {
+        showToast('error', tr('receipt_share_failed', 'Failed to capture receipt picture'));
+        return;
       }
-    } catch {
-      showToast('error', tr('copy_failed', 'Failed to copy'));
+
+      const file = new File([blob], fileName, { type: 'image/png' });
+      const canWebShare = typeof navigator !== 'undefined' &&
+                          typeof navigator.canShare === 'function' &&
+                          navigator.canShare({ files: [file] });
+
+      if (canWebShare) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: `${tr('payment_receipt', 'Payment Receipt')} - ${fmt(selectedTx.amount)}`,
+            text: `${selectedTx.type === 'income' ? '+' : '-'}${fmt(selectedTx.amount)} · ${selectedTx.category || 'Transaction'} (${new Date(selectedTx.date).toLocaleDateString(locale)})`,
+          });
+          showToast('success', tr('receipt_shared', 'Receipt picture shared!'));
+          return;
+        } catch (shareErr) {
+          if (shareErr.name === 'AbortError') {
+            // User dismissed the native share sheet
+            return;
+          }
+        }
+      }
+
+      // Direct download fallback
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast('success', tr('receipt_downloaded', 'Receipt picture downloaded!'));
+    } catch (err) {
+      console.error('Failed to capture ticket picture:', err);
+      showToast('error', tr('receipt_share_failed', 'Failed to capture receipt picture'));
+    } finally {
+      cardEl.classList.remove('is-capturing-ticket');
+      setIsSharingTicket(false);
     }
-  }, [fmt, showToast, tr]);
+  }, [selectedTx, isSharingTicket, theme, tr, fmt, locale, showToast]);
 
   /* ============================================================
    * Keyboard shortcuts
@@ -969,7 +1047,7 @@ export default function Transactions() {
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
               >
-                <option value="all">{tr('all_categories', 'All Categories')}</option>
+                <option value="all">{tr('category', 'Category')}</option>
                 {categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
 
@@ -1196,6 +1274,7 @@ export default function Transactions() {
             {selectedTx ? (
               <motion.div
                 key={getTransactionId(selectedTx)}
+                ref={ticketCardRef}
                 className="tx-ticket-card"
                 initial={{ opacity: 0, y: 12, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -1351,12 +1430,17 @@ export default function Transactions() {
 
                   <button
                     type="button"
-                    className="tx-ticket-btn copy"
-                    onClick={() => copyTransactionSummary(selectedTx)}
-                    title={tr('copy_summary', 'Copy summary')}
+                    className="tx-ticket-btn share"
+                    onClick={handleShareTicketPic}
+                    disabled={isSharingTicket}
+                    title={tr('share_ticket_pic', 'Share receipt picture')}
                   >
-                    <FileText size={15} aria-hidden />
-                    <span>{tr('copy_summary', 'Copy')}</span>
+                    {isSharingTicket ? (
+                      <Loader2 size={15} className="spin" aria-hidden />
+                    ) : (
+                      <Share2 size={15} aria-hidden />
+                    )}
+                    <span>{isSharingTicket ? tr('analyzing', 'Sharing…') : tr('share_ticket_pic', 'Share')}</span>
                   </button>
 
                   <button
@@ -1378,25 +1462,29 @@ export default function Transactions() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
-                <Wallet size={48} className="idp-empty-icon" aria-hidden />
-                <h3>{tr('select_a_transaction', 'Select a Transaction')}</h3>
-                <p>
+                <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(59, 130, 246, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <Wallet size={40} className="idp-empty-icon" style={{ color: 'var(--brand-primary)', margin: 0 }} aria-hidden />
+                </div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 6px', color: 'var(--text-primary)' }}>
+                  {tr('select_a_transaction', 'Select a Transaction')}
+                </h3>
+                <p style={{ fontSize: '0.88rem', color: '#64748B', maxWidth: 320, lineHeight: 1.5, margin: '0 auto 12px' }}>
                   {tr('click_transaction_to_inspect', 'Click on any transaction to view, edit, duplicate, or inspect its details.')}
                 </p>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 8 }}>
-                  <Keyboard size={12} aria-hidden /> {tr('shortcuts_hint', 'Press / to search, N for new')}
-                </p>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: 'var(--glass-2)', border: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: '#64748B', marginBottom: 20 }}>
+                  <Keyboard size={13} aria-hidden /> {tr('shortcuts_hint', 'Press / to search, N for new')}
+                </div>
 
                 <div className="idp-quick-stats">
-                  <div className="iqs-box glass">
+                  <div className="iqs-box iqs-earned glass">
                     <label>{tr('earned', 'EARNED')}</label>
                     <span className="success">{fmt(totals.income)}</span>
                   </div>
-                  <div className="iqs-box glass">
+                  <div className="iqs-box iqs-spent glass">
                     <label>{tr('spent_upper', 'SPENT')}</label>
                     <span className="danger">{fmt(totals.expense)}</span>
                   </div>
-                  <div className="iqs-box glass">
+                  <div className="iqs-box iqs-net glass">
                     <label>{tr('net_upper', 'NET')}</label>
                     <span className="primary">{fmt(totals.net)}</span>
                   </div>

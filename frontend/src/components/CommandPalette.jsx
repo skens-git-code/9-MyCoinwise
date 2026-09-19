@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, ArrowRight, Wallet, Target, CreditCard,
   Briefcase, Calendar, Settings, BarChart3,
-  ArrowLeftRight, X, Zap, Tag
+  ArrowLeftRight, X, Zap, Tag, ReceiptText
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 
@@ -42,6 +42,7 @@ export default function CommandPalette({ isOpen, onClose }) {
     { id: 'nav-sub', type: 'page', title: 'Subscriptions', subtitle: 'Recurring monthly & annual bills', icon: CreditCard, to: '/subscriptions' },
     { id: 'nav-wealth', type: 'page', title: 'Wealth & Assets', subtitle: 'Net worth & asset management', icon: Briefcase, to: '/wealth' },
     { id: 'nav-set', type: 'page', title: 'Settings', subtitle: 'Preferences, security & profile', icon: Settings, to: '/settings' },
+    { id: 'nav-tax', type: 'page', title: 'Tax Center', subtitle: 'Profiles, estimates & reports', icon: ReceiptText, to: '/tax' },
   ], []);
 
   // Search indexing & fuzzy filtering

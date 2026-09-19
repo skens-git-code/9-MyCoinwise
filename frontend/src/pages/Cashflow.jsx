@@ -14,6 +14,13 @@ import {
 import { AppContext } from '../contexts/AppContext';
 import { useToast } from '../components/ToastProvider';
 import { api } from '../services/api';
+import {
+  convertCurrency,
+  fetchRatesToInr,
+  getFallbackRatesToInr,
+  readCachedRatesToInr,
+  resolveCurrency,
+} from '../utils/currencyRates';
 
 /* ============================================================
  * Constants
@@ -214,6 +221,7 @@ export default function Cashflow() {
     transactions = [],
     subscriptions = [],
     accounts = [],
+    currency = 'USD',
     fmt,
     t,
     token,
@@ -229,11 +237,34 @@ export default function Cashflow() {
   }, [lang]);
 
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
+  const displayCurrency = useMemo(() => resolveCurrency(currency, 'USD'), [currency]);
 
   const isDark = useMemo(() => {
     const themes = new Set(['amoled', 'dark', 'midnight', 'black']);
     return themes.has(String(theme || '').toLowerCase());
   }, [theme]);
+
+  const [fxRatesToInr, setFxRatesToInr] = useState(() => (
+    readCachedRatesToInr() || getFallbackRatesToInr()
+  ));
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchRatesToInr(controller.signal)
+      .then((rates) => setFxRatesToInr(rates))
+      .catch(() => { /* Keep bundled rates while offline. */ });
+    return () => controller.abort();
+  }, []);
+
+  const accountCurrencies = useMemo(() => {
+    const result = new Map();
+    for (const account of accounts) {
+      if (account?.id || account?._id) {
+        result.set(String(account.id || account._id), resolveCurrency(account.currency, displayCurrency));
+      }
+    }
+    return result;
+  }, [accounts, displayCurrency]);
 
   /* ---------------- State ---------------- */
   const [forecastHorizon, setForecastHorizon] = useState(() =>
@@ -269,6 +300,7 @@ export default function Cashflow() {
   const aiTriggerRef = useRef('');
 
   const gradientId = useStableId('cashflow-gradient');
+  const uncertaintyId = useStableId('cashflow-uncertainty');
 
   /* ---------------- Persist settings ---------------- */
   useEffect(() => {
@@ -289,8 +321,29 @@ export default function Cashflow() {
 
   /* ---------------- Live transactions ---------------- */
   const liveTransactions = useMemo(
-    () => (Array.isArray(transactions) ? transactions.filter(isLiveTx) : []),
-    [transactions]
+    () => {
+      if (!Array.isArray(transactions)) return [];
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
+      return transactions
+        .filter(isLiveTx)
+        .map((tx) => {
+          const date = new Date(tx.date);
+          if (Number.isNaN(date.getTime()) || date > endOfToday) return null;
+          const sourceCurrency = resolveCurrency(
+            tx.currency || accountCurrencies.get(String(tx.account_id || '')) || displayCurrency,
+            displayCurrency
+          );
+          const displayAmount = convertCurrency(
+            safeNumber(tx.amount, 0),
+            sourceCurrency,
+            displayCurrency,
+            fxRatesToInr
+          );
+          return displayAmount === null ? null : { ...tx, displayAmount };
+        })
+        .filter(Boolean);
+    }, [transactions, accountCurrencies, displayCurrency, fxRatesToInr]
   );
 
   /* ---------------- Current Balance ---------------- */
@@ -303,16 +356,23 @@ export default function Cashflow() {
         .filter((a) => a && a.is_active !== false)
         .reduce((sum, a) => {
           const bal = Number(a.initial_balance);
-          return sum + (Number.isFinite(bal) ? bal : 0);
+          if (!Number.isFinite(bal)) return sum;
+          const converted = convertCurrency(
+            bal,
+            resolveCurrency(a.currency, displayCurrency),
+            displayCurrency,
+            fxRatesToInr
+          );
+          return sum + (converted === null ? 0 : converted);
         }, 0);
     }
     return base;
-  }, [accounts]);
+  }, [accounts, displayCurrency, fxRatesToInr]);
 
   const transactionNet = useMemo(() => {
     let net = 0;
     for (const tx of liveTransactions) {
-      const amt = safeNumber(tx.amount, 0);
+      const amt = safeNumber(tx.displayAmount, 0);
       if (tx.type === 'income') net += amt;
       else if (tx.type === 'expense') net -= amt;
     }
@@ -363,13 +423,13 @@ export default function Cashflow() {
     const variableExpenses = [];
     for (const tx of recent) {
       if (tx.type === 'income') {
-        recentIncome += safeNumber(tx.amount, 0);
+        recentIncome += safeNumber(tx.displayAmount, 0);
       } else if (
         tx.type === 'expense' &&
         !(tx.name && subNames.has(String(tx.name).toLowerCase())) &&
         !tx.is_one_time
       ) {
-        variableExpenses.push(safeNumber(tx.amount, 0));
+        variableExpenses.push(safeNumber(tx.displayAmount, 0));
       }
     }
 
@@ -396,6 +456,7 @@ export default function Cashflow() {
     // Enumerate days
     const data = [];
     const baseData = [];
+    const dailyVolatility = Math.max(dailyVariableBurn, dailyIncome, 1) * 0.35;
     let balance = currentBalance;
     let baselineBalance = currentBalance;
     let dangerHit = null;
@@ -463,6 +524,8 @@ export default function Cashflow() {
         dateStr: formatShortDate(d, locale),
         balance: Number(balance.toFixed(2)),
         baseline: Number(baselineBalance.toFixed(2)),
+        uncertaintyBase: Number((balance - dailyVolatility * Math.sqrt(i)).toFixed(2)),
+        uncertaintyBand: Number((2 * dailyVolatility * Math.sqrt(i)).toFixed(2)),
         isDanger,
         isCritical,
       };
@@ -493,6 +556,15 @@ export default function Cashflow() {
   const worstCaseFinal = projectedFinal - volatility;
   // Healthy only if neither a danger NOR a critical breach was predicted.
   const isSafe = !dangerZone && !criticalZone;
+  const localAiFallback = dangerZone
+    ? tr(
+      'ai_fallback_danger',
+      `${forecastHorizon}-day projection approaches the safety floor around day ${dangerZone.day}. Consider deferring discretionary purchases.`,
+    )
+    : tr(
+      'ai_fallback_safe',
+      `${forecastHorizon}-day projection remains above the safety floor. Keep maintaining consistent cash reserves.`,
+    );
 
   /* ============================================================
    * AI insights (with proper trigger key + cleanup)
@@ -785,12 +857,16 @@ export default function Cashflow() {
             </div>
 
             <div style={{ height: 340, width: '100%', marginTop: 20 }}>
-              <ResponsiveContainer>
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
                 <AreaChart data={projectionData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={gradientColor} stopOpacity={0.7} />
                       <stop offset="95%" stopColor={gradientColor} stopOpacity={0.05} />
+                    </linearGradient>
+                    <linearGradient id={uncertaintyId} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.22} />
+                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.04} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
@@ -822,7 +898,11 @@ export default function Cashflow() {
                       fmt(val),
                       name === 'baseline'
                         ? tr('baseline', 'Baseline')
-                        : tr('scenario_forecast', 'Scenario / Forecast'),
+                        : name === 'uncertaintyBand'
+                          ? tr('uncertainty', 'Uncertainty range')
+                          : name === 'balance'
+                            ? tr('scenario_forecast', 'Scenario / Forecast')
+                            : name,
                     ]}
                     labelStyle={{ color: 'var(--text-secondary)' }}
                   />
@@ -864,6 +944,25 @@ export default function Cashflow() {
                       name="baseline"
                     />
                   )}
+
+                  <Area
+                    type="monotone"
+                    dataKey="uncertaintyBase"
+                    stackId="uncertainty"
+                    stroke="none"
+                    fill="transparent"
+                    isAnimationActive={false}
+                    name="uncertaintyBase"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="uncertaintyBand"
+                    stackId="uncertainty"
+                    stroke="none"
+                    fill={`url(#${uncertaintyId})`}
+                    isAnimationActive
+                    name="uncertaintyBand"
+                  />
 
                   <Area
                     type="monotone"
@@ -942,7 +1041,7 @@ export default function Cashflow() {
                   {tr('analyzing', 'Analyzing financial trajectory…')}
                 </span>
               ) : (
-                <p>{aiSummary}</p>
+                <p>{aiSummary || localAiFallback}</p>
               )}
               <div style={{ display: 'flex', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
                 <div

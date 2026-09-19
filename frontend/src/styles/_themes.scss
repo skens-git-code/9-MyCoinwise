@@ -58,6 +58,14 @@
   --orb-goal-color: rgba(5, 150, 105, 0.12);
   --orb-chart-color: rgba(8, 145, 178, 0.10);
 
+  // ── Semantic Depth & Elevation Tokens ──
+  --elev-0: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --elev-1: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05);
+  --elev-2: 0 2px 4px rgba(15, 23, 42, 0.05), 0 12px 28px rgba(15, 23, 42, 0.08);
+  --elev-3: 0 4px 8px rgba(15, 23, 42, 0.06), 0 24px 56px rgba(15, 23, 42, 0.12);
+  --rim-light: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --rim-dark: inset 0 -1px 0 rgba(15, 23, 42, 0.05);
+
   // ── Background ──
   --bg-gradient:
     radial-gradient(ellipse at 15% 15%, rgba(16, 185, 129, 0.09) 0%, transparent 45%),
@@ -123,6 +131,14 @@
   --orb-ai-color: rgba(167, 139, 250, 0.16);
   --orb-goal-color: rgba(16, 185, 129, 0.16);
   --orb-chart-color: rgba(52, 211, 153, 0.10);
+
+  // ── Semantic Depth & Elevation Tokens ──
+  --elev-0: 0 1px 2px rgba(0, 0, 0, 0.85);
+  --elev-1: 0 2px 8px rgba(0, 0, 0, 0.92);
+  --elev-2: 0 8px 24px rgba(0, 0, 0, 0.96);
+  --elev-3: 0 16px 48px rgba(0, 0, 0, 0.98);
+  --rim-light: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --rim-dark: inset 0 -1px 0 rgba(0, 0, 0, 0.85);
 
   // ── Background ──
   --bg-gradient: #000000;

@@ -394,4 +394,76 @@ export const api = {
     const res = await axios.delete(`${API_URL}/users/${userId}`);
     return res.data;
   },
+
+  // Tax Center (feature-flagged on the server)
+  getTaxProfiles: async () => {
+    const res = await axios.get(`${API_URL}/tax/profiles`);
+    return res.data;
+  },
+  createTaxProfile: async (data) => {
+    const res = await axios.post(`${API_URL}/tax/profiles`, data);
+    return res.data;
+  },
+  updateTaxProfile: async (id, data) => {
+    const res = await axios.put(`${API_URL}/tax/profiles/${id}`, data);
+    return res.data;
+  },
+  deleteTaxProfile: async (id) => {
+    const res = await axios.delete(`${API_URL}/tax/profiles/${id}`);
+    return res.data;
+  },
+  estimateTax: async (profileId, incomeOverride) => {
+    const payload = { profile_id: profileId };
+    if (incomeOverride !== undefined && incomeOverride !== '') payload.income_override = incomeOverride;
+    const res = await axios.post(`${API_URL}/tax/estimate`, payload);
+    return res.data;
+  },
+  compareIndiaTaxRegimes: async (profileId) => {
+    const res = await axios.post(`${API_URL}/tax/estimate/compare`, { profile_id: profileId });
+    return res.data;
+  },
+  estimateCapitalGainsTax: async (profileId) => {
+    const res = await axios.post(`${API_URL}/tax/estimate/capital-gains`, { profile_id: profileId });
+    return res.data;
+  },
+  getTaxTaggedTransactions: async (params = {}) => {
+    const res = await axios.get(`${API_URL}/tax/tagged-transactions`, { params });
+    return res.data;
+  },
+  tagTransactionForTax: async (data) => {
+    const res = await axios.post(`${API_URL}/tax/tag`, data);
+    return res.data;
+  },
+  removeTaxTag: async (transactionId) => {
+    const res = await axios.delete(`${API_URL}/tax/tag/${transactionId}`);
+    return res.data;
+  },
+  getTaxPayments: async (params = {}) => {
+    const res = await axios.get(`${API_URL}/tax/payments`, { params });
+    return res.data;
+  },
+  createTaxPayment: async (data) => {
+    const res = await axios.post(`${API_URL}/tax/payments`, data);
+    return res.data;
+  },
+  deleteTaxPayment: async (id) => {
+    const res = await axios.delete(`${API_URL}/tax/payments/${id}`);
+    return res.data;
+  },
+  getTaxDocuments: async (params = {}) => {
+    const res = await axios.get(`${API_URL}/tax/documents`, { params });
+    return res.data;
+  },
+  createTaxDocument: async (data) => {
+    const res = await axios.post(`${API_URL}/tax/documents`, data);
+    return res.data;
+  },
+  deleteTaxDocument: async (id) => {
+    const res = await axios.delete(`${API_URL}/tax/documents/${id}`);
+    return res.data;
+  },
+  getTaxReport: async (profileId, format = 'json') => {
+    const res = await axios.get(`${API_URL}/tax/report/${profileId}`, { params: { format } });
+    return res.data;
+  },
 };

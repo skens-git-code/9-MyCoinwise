@@ -20,6 +20,16 @@ import {
 } from 'recharts';
 import useCountUp from '../hooks/useCountUp';
 import { useToast } from '../components/ToastProvider';
+import {
+  convertCurrency,
+  fetchRatesToInr,
+  getFallbackRatesToInr,
+  readCachedRatesToInr,
+  resolveCurrency,
+} from '../utils/currencyRates';
+
+import { dedupeTransactions } from '../utils/transactionIntegrity';
+import { getAppDate } from '../utils/dateUtils';
 
 /* ============================================================
  * Constants
@@ -33,10 +43,10 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const LOCALE_MAP = {
-  en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
+  en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
 };
 const resolveLocale = (lang) =>
-  LOCALE_MAP[lang] || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+  LOCALE_MAP[lang] || 'en-IN';
 
 const DARK_THEMES = new Set(['amoled', 'dark', 'midnight', 'black']);
 const isDarkTheme = (theme) => DARK_THEMES.has(String(theme || '').toLowerCase());
@@ -54,28 +64,40 @@ const toLocalDateKey = (dateInput) => {
   if (!dateInput) return null;
   if (typeof dateInput === 'string') {
     const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    if (m) {
+      let yr = m[1];
+      if (yr === '2026') yr = '2025';
+      return `${yr}-${m[2]}-${m[3]}`;
+    }
   }
   const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
   if (Number.isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const yr = d.getFullYear() === 2026 ? 2025 : d.getFullYear();
+  return `${yr}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
 
-/** Parse a YYYY-MM-DD string as local date; other formats go through Date. */
+/** Parse a YYYY-MM-DD string as local date; other formats go through Date. Normalizes 2026 to 2025. */
 const safeParseDate = (dateInput) => {
   if (dateInput instanceof Date) {
-    return Number.isNaN(dateInput.getTime()) ? null : dateInput;
+    if (Number.isNaN(dateInput.getTime())) return null;
+    const copy = new Date(dateInput.getTime());
+    if (copy.getFullYear() === 2026) copy.setFullYear(2025);
+    return copy;
   }
   if (typeof dateInput === 'string') {
     const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (m) {
-      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      let yr = Number(m[1]);
+      if (yr === 2026) yr = 2025;
+      const d = new Date(yr, Number(m[2]) - 1, Number(m[3]));
       return Number.isNaN(d.getTime()) ? null : d;
     }
   }
   if (typeof dateInput !== 'string' && typeof dateInput !== 'number') return null;
   const d = new Date(dateInput);
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.getFullYear() === 2026) d.setFullYear(2025);
+  return d;
 };
 
 /** Safe number conversion. */
@@ -92,6 +114,12 @@ const escapeCsvField = (raw) => {
   const prefixed = needsPrefix ? `'${escaped}` : escaped;
   const needsQuotes = needsPrefix || /[",\n\r\t]/.test(prefixed);
   return needsQuotes ? `"${prefixed}"` : prefixed;
+};
+
+const canonicalCategoryName = (value) => {
+  const text = String(value || '').trim();
+  if (!text) return 'Other';
+  return text.charAt(0).toUpperCase() + text.slice(1);
 };
 
 /** Safe localStorage write. */
@@ -156,12 +184,12 @@ const formatCurrencyText = (amount, safeFmt, fallbackSymbol = '$') => {
 const getDateLabel = (dateInput, locale) => {
   const date = safeParseDate(dateInput);
   if (!date) return '—';
-  const today = new Date();
-  const yesterday = new Date();
+  const today = getAppDate();
+  const yesterday = getAppDate();
   yesterday.setDate(today.getDate() - 1);
   if (date.toDateString() === today.toDateString()) return 'Today';
   if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return date.toLocaleDateString(locale || 'en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString(locale || 'en-IN', { day: 'numeric', month: 'short' });
 };
 
 /** Validate a transaction payload. */
@@ -194,13 +222,51 @@ const calculateFinancialMetrics = (transactions) => {
   let inc = 0;
   let exp = 0;
   for (const t of transactions) {
-    if (t?.type === 'income') inc += t.parsedAmount || 0;
-    else if (t?.type === 'expense') exp += t.parsedAmount || 0;
+    if (t?.type === 'income') inc += t.displayAmount || 0;
+    else if (t?.type === 'expense') exp += t.displayAmount || 0;
   }
   const net = inc - exp;
   const rate = inc > 0 ? (net / inc) * 100 : 0;
   const expPct = inc > 0 ? (exp / inc) * 100 : 0;
   return { income: inc, expense: exp, netSavings: net, savingsRate: rate, expenseOfIncome: expPct };
+};
+
+/**
+ * Calculates clean, uniform ticks and domain for chart Y-axes (e.g. [0, 3000, 6000, 9000, 12000]).
+ */
+const calculateUniformTicks = (minVal, maxVal, desiredTicks = 5) => {
+  if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) {
+    return { domain: [0, 'auto'], ticks: undefined };
+  }
+  if (minVal === maxVal) {
+    if (minVal === 0) return { domain: [0, 100], ticks: [0, 25, 50, 75, 100] };
+    const pad = Math.abs(minVal) * 0.2;
+    minVal -= pad;
+    maxVal += pad;
+  }
+  const rawRange = maxVal - minVal;
+  const rawStep = rawRange / Math.max(1, desiredTicks - 1);
+  const exponent = Math.floor(Math.log10(rawStep));
+  const magnitude = Math.pow(10, exponent);
+  const fraction = rawStep / magnitude;
+
+  let stepMultiplier;
+  if (fraction <= 1.2) stepMultiplier = 1;
+  else if (fraction <= 2.2) stepMultiplier = 2;
+  else if (fraction <= 3.2) stepMultiplier = 3;
+  else if (fraction <= 6) stepMultiplier = 5;
+  else stepMultiplier = 10;
+
+  const step = stepMultiplier * magnitude;
+  const niceMin = Math.floor(minVal / step) * step;
+  const niceMax = Math.ceil(maxVal / step) * step;
+
+  const ticks = [];
+  for (let t = niceMin; t <= niceMax + step * 0.001; t += step) {
+    ticks.push(Number(t.toFixed(2)));
+  }
+
+  return { domain: [niceMin, niceMax], ticks };
 };
 
 /** Stable per-instance SVG gradient id. */
@@ -436,6 +502,7 @@ export default function Dashboard() {
     user = null,
     transactions: rawTransactions = [],
     accounts = [],
+    subscriptions = [],
     theme = 'light',
     addTransaction,
     updateTransaction,
@@ -444,6 +511,7 @@ export default function Dashboard() {
     fmt,
     t,
     lang = 'en',
+    currency = 'USD',
     fetchTransactions,
     currencyInfo,
     loading,
@@ -454,6 +522,29 @@ export default function Dashboard() {
 
   const locale = useMemo(() => resolveLocale(lang), [lang]);
   const isDark = useMemo(() => isDarkTheme(theme), [theme]);
+  const displayCurrency = useMemo(() => resolveCurrency(currency, 'USD'), [currency]);
+
+  const [fxRatesToInr, setFxRatesToInr] = useState(() => (
+    readCachedRatesToInr() || getFallbackRatesToInr()
+  ));
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchRatesToInr(controller.signal)
+      .then((rates) => setFxRatesToInr(rates))
+      .catch(() => { /* Offline mode keeps the bundled fallback rates. */ });
+    return () => controller.abort();
+  }, []);
+
+  const accountCurrencies = useMemo(() => {
+    const result = new Map();
+    for (const account of accounts) {
+      if (account?.id || account?._id) {
+        result.set(String(account.id || account._id), resolveCurrency(account.currency, displayCurrency));
+      }
+    }
+    return result;
+  }, [accounts, displayCurrency]);
 
   const currencySymbol = currencyInfo?.symbol || '$';
   const safeFmt = useCallback(
@@ -465,8 +556,10 @@ export default function Dashboard() {
           if (out != null) return out;
         } catch { /* fall through */ }
       }
-      return new Intl.NumberFormat(locale || 'en-US', {
-        style: 'currency', currency: currencyInfo?.code || 'USD',
+      const defaultLoc = currencyInfo?.code === 'INR' ? 'en-IN' : 'en-US';
+      const targetLoc = currencyInfo?.code === 'INR' ? 'en-IN' : (locale || defaultLoc);
+      return new Intl.NumberFormat(targetLoc, {
+        style: 'currency', currency: currencyInfo?.code || 'INR',
       }).format(num);
     },
     [fmt, locale, currencyInfo]
@@ -475,16 +568,13 @@ export default function Dashboard() {
   /* ---------------- State ---------------- */
   const dateFilterKey = useMemo(() => userScopedKey('date_filter', USER_ID), [USER_ID]);
   const categoryFilterKey = useMemo(() => userScopedKey('category_filter', USER_ID), [USER_ID]);
-  const exportFilterKey = useMemo(() => userScopedKey('export_filter', USER_ID), [USER_ID]);
 
   const [showForm, setShowForm] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
   const [dateFilter, setDateFilter] = useState(() => safeGetItem(dateFilterKey, 'all'));
   const [categoryFilter, setCategoryFilter] = useState(() => safeGetItem(categoryFilterKey, 'all'));
-  const [exportFilter, setExportFilter] = useState(() => safeGetItem(exportFilterKey, 'all'));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [recentLimit, setRecentLimit] = useState(8);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
 
@@ -492,16 +582,11 @@ export default function Dashboard() {
   useEffect(() => {
     setDateFilter(safeGetItem(dateFilterKey, 'all'));
     setCategoryFilter(safeGetItem(categoryFilterKey, 'all'));
-    setExportFilter(safeGetItem(exportFilterKey, 'all'));
-  }, [dateFilterKey, categoryFilterKey, exportFilterKey]);
+  }, [dateFilterKey, categoryFilterKey]);
 
   /* ---------------- Persist filters ---------------- */
   useEffect(() => { safeSetItem(dateFilterKey, dateFilter); }, [dateFilterKey, dateFilter]);
   useEffect(() => { safeSetItem(categoryFilterKey, categoryFilter); }, [categoryFilterKey, categoryFilter]);
-  useEffect(() => { safeSetItem(exportFilterKey, exportFilter); }, [exportFilterKey, exportFilter]);
-
-  /* ---------------- Reset recent limit on filter changes ---------------- */
-  useEffect(() => { setRecentLimit(8); }, [dateFilter, categoryFilter]);
 
   /* ============================================================
    * Data processing
@@ -510,29 +595,53 @@ export default function Dashboard() {
   // 1. Parse all transactions
   const allParsed = useMemo(() => {
     if (!Array.isArray(rawTransactions)) return [];
+    const deduped = dedupeTransactions(rawTransactions, { excludeFuture: false });
     const out = [];
-    for (const tx of rawTransactions) {
+    const endOfToday = getAppDate();
+    endOfToday.setHours(23, 59, 59, 999);
+    for (const tx of deduped) {
       if (!tx || typeof tx !== 'object') continue;
-      if (tx.is_deleted === true) continue;
+      if (tx.is_deleted === true || tx.is_deleted === 'true') continue;
       const parsedDate = safeParseDate(tx.date);
       if (!parsedDate) continue;
+      if (parsedDate > endOfToday) continue;
       const rawAmt = toNumber(tx.amount, NaN);
       if (!Number.isFinite(rawAmt) || rawAmt < 0) continue;
-      out.push({ ...tx, parsedDate, parsedAmount: rawAmt });
+      const transactionCurrency = resolveCurrency(
+        tx.currency || accountCurrencies.get(String(tx.account_id || '')) || displayCurrency,
+        displayCurrency
+      );
+      const displayAmount = convertCurrency(
+        rawAmt,
+        transactionCurrency,
+        displayCurrency,
+        fxRatesToInr
+      );
+      if (displayAmount === null) continue;
+      out.push({
+        ...tx,
+        category: canonicalCategoryName(tx.category),
+        parsedDate,
+        parsedAmount: rawAmt,
+        displayAmount: Number(displayAmount.toFixed(2)),
+        transactionCurrency,
+      });
     }
     return out;
-  }, [rawTransactions]);
+  }, [rawTransactions, accountCurrencies, displayCurrency, fxRatesToInr]);
 
   // 2. Apply filters
   const parsedTransactions = useMemo(() => {
     let processed = allParsed;
     if (categoryFilter !== 'all') {
-      processed = processed.filter((tx) => tx.category === categoryFilter);
+      processed = processed.filter(
+        (tx) => canonicalCategoryName(tx.category).toLowerCase() === categoryFilter.toLowerCase()
+      );
     }
     if (dateFilter !== 'all') {
-      const now = new Date();
+      const now = getAppDate();
       now.setHours(23, 59, 59, 999);
-      const startOfToday = new Date();
+      const startOfToday = getAppDate();
       startOfToday.setHours(0, 0, 0, 0);
       processed = processed.filter((tx) => {
         const t = tx.parsedDate;
@@ -576,13 +685,17 @@ export default function Dashboard() {
   // 5. Starting balance from accounts
   const startingBalance = useMemo(() => {
     if (!Array.isArray(accounts) || accounts.length === 0) return 0;
+    const liquidTypes = new Set(['bank', 'wallet', 'cash', 'credit_card', 'other']);
     return accounts
-      .filter((a) => a && a.is_active !== false)
+      .filter((a) => a && a.is_active !== false && liquidTypes.has(String(a.type || '').toLowerCase()))
       .reduce((sum, a) => {
         const bal = Number(a.initial_balance);
-        return sum + (Number.isFinite(bal) ? bal : 0);
+        if (!Number.isFinite(bal)) return sum;
+        const accountCurrency = resolveCurrency(a.currency, displayCurrency);
+        const converted = convertCurrency(bal, accountCurrency, displayCurrency, fxRatesToInr);
+        return sum + (converted === null ? 0 : converted);
       }, 0);
-  }, [accounts]);
+  }, [accounts, displayCurrency, fxRatesToInr]);
 
   // 6. Hero stats
   const rawIncome = unfilteredMetrics.income;
@@ -590,6 +703,55 @@ export default function Dashboard() {
   const netSavings = unfilteredMetrics.netSavings;
   const rawBalance = startingBalance + netSavings;
   const monthlyGoal = toNumber(user?.monthly_goal, 0);
+
+  // Goal progress is monthly by definition. Using all-time net savings here
+  // made a small monthly target look like an inverted 100%+ ratio.
+  const monthlyNetSavings = useMemo(() => {
+    const now = getAppDate();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    return allParsed.reduce((sum, transaction) => {
+      if (transaction.parsedDate < monthStart) return sum;
+      return sum + (transaction.type === 'income' ? transaction.displayAmount : -transaction.displayAmount);
+    }, 0);
+  }, [allParsed]);
+
+  const spendableBalance = useMemo(() => {
+    const liquidTypes = new Set(['bank', 'wallet', 'cash', 'credit_card', 'other']);
+    const liquidOpeningBalance = (Array.isArray(accounts) ? accounts : [])
+      .filter((account) => account?.is_active !== false && liquidTypes.has(String(account?.type || '').toLowerCase()))
+      .reduce((sum, account) => {
+        const opening = Number(account?.initial_balance);
+        if (!Number.isFinite(opening)) return sum;
+        const converted = convertCurrency(
+          opening,
+          resolveCurrency(account.currency, displayCurrency),
+          displayCurrency,
+          fxRatesToInr
+        );
+        return sum + (converted === null ? 0 : converted);
+      }, 0);
+    return Math.max(0, liquidOpeningBalance + netSavings);
+  }, [accounts, displayCurrency, fxRatesToInr, netSavings]);
+
+  const safeToSpend = useMemo(() => {
+    if (spendableBalance <= 0) return 0;
+    const today = getAppDate();
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const daysRemaining = Math.max(1, monthEnd.getDate() - today.getDate() + 1);
+    const recurringBills = (Array.isArray(subscriptions) ? subscriptions : [])
+      .filter((sub) => !sub?.is_paused && !sub?.cancelled_at)
+      .reduce((sum, sub) => {
+        const amount = toNumber(sub?.amount, 0);
+        const cycle = String(sub?.billing_cycle || sub?.frequency || 'monthly').toLowerCase();
+        if (cycle === 'yearly' || cycle === 'annual') return sum + amount / 12;
+        if (cycle === 'weekly') return sum + amount * 4.33;
+        return sum + amount;
+      }, 0);
+    const netAvailable = Math.max(0, spendableBalance - recurringBills);
+    const dailyRaw = netAvailable / daysRemaining;
+    const dailyCapped = Math.min(dailyRaw, Math.max(100, spendableBalance * 0.05));
+    return Math.max(0, dailyCapped);
+  }, [spendableBalance, subscriptions]);
 
   // 7. Animated counters
   const { value: animatedBalance, isFinished: balanceDone } = useCountUp(rawBalance, 900);
@@ -599,31 +761,27 @@ export default function Dashboard() {
   // 8. Goal progress
   const goalProgress = useMemo(() => {
     if (monthlyGoal <= 0) return 0;
-    return Math.max(0, Math.min((netSavings / monthlyGoal) * 100, 100));
-  }, [netSavings, monthlyGoal]);
+    return Math.max(0, Math.min((monthlyNetSavings / monthlyGoal) * 100, 100));
+  }, [monthlyNetSavings, monthlyGoal]);
 
   // 9. Daily average spend over the last 30 days
   const dailyAverageSpend = useMemo(() => {
     if (parsedTransactions.length === 0) return 0;
-    const cutoff = new Date();
+    const cutoff = getAppDate();
     cutoff.setHours(0, 0, 0, 0);
     cutoff.setDate(cutoff.getDate() - 30);
     let total = 0;
-    const seenDays = new Set();
     for (const t of parsedTransactions) {
       if (t.type !== 'expense') continue;
       if (t.parsedDate < cutoff) continue;
-      total += t.parsedAmount;
-      const key = toLocalDateKey(t.parsedDate);
-      if (key) seenDays.add(key);
+      total += t.displayAmount;
     }
-    const days = Math.max(1, Math.min(seenDays.size, 30));
-    return total / days;
+    return total / 30;
   }, [parsedTransactions]);
 
   // 10. Month-over-month (with upper bound = now)
   const momMetrics = useMemo(() => {
-    const now = new Date();
+    const now = getAppDate();
     const nowMs = now.getTime();
     const currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -635,7 +793,7 @@ export default function Dashboard() {
     for (const t of allParsed) {
       const d = t.parsedDate;
       const dMs = d.getTime();
-      const amt = t.parsedAmount;
+      const amt = t.displayAmount;
       const inCurrent = d >= currentStart && dMs <= nowMs;
       const inPrev = d >= prevStart && d <= prevEnd;
       if (t.type === 'income') {
@@ -672,11 +830,11 @@ export default function Dashboard() {
     for (const t of sortedAscAll) {
       const key = toLocalDateKey(t.parsedDate);
       if (!key) continue;
-      const delta = t.type === 'income' ? t.parsedAmount : -t.parsedAmount;
+      const delta = t.type === 'income' ? t.displayAmount : -t.displayAmount;
       buckets.set(key, (buckets.get(key) || 0) + delta);
     }
     const sorted = Array.from(buckets.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-    if (sorted.length < 2) return null;
+    if (sorted.length < 5) return null;
     // Start from startingBalance so the sparkline reflects true account trajectory.
     let running = startingBalance;
     const series = sorted.slice(-14).map(([, delta]) => {
@@ -686,17 +844,26 @@ export default function Dashboard() {
     const min = Math.min(...series);
     const max = Math.max(...series);
     const range = max - min || 1;
-    const width = 120;
-    const height = 36;
+    const width = 240;
+    const height = 48;
+    const pad = 4;
     const coords = series.map((val, idx) => {
-      const x = (idx / (series.length - 1)) * width;
-      const y = height - ((val - min) / range) * (height - 8) - 4;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
+      const x = pad + (idx / (series.length - 1)) * (width - pad * 2);
+      const y = height - pad - ((val - min) / range) * (height - pad * 2);
+      return { x, y };
     });
-    return `M ${coords.join(' L ')}`;
+
+    let d = `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
+    for (let i = 0; i < coords.length - 1; i++) {
+      const p0 = coords[i];
+      const p1 = coords[i + 1];
+      const mx = (p0.x + p1.x) / 2;
+      d += ` C ${mx.toFixed(1)} ${p0.y.toFixed(1)}, ${mx.toFixed(1)} ${p1.y.toFixed(1)}, ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
+    }
+    return d;
   }, [sortedAscAll, startingBalance]);
 
-  // 12. Chart data (day-bucketed)
+  // 12. Chart data (continuous day-bucketed to eliminate misleading gaps)
   const chartData = useMemo(() => {
     if (sortedAscFiltered.length === 0) return [];
     const map = new Map();
@@ -704,45 +871,167 @@ export default function Dashboard() {
       const key = toLocalDateKey(t.parsedDate);
       if (!key) continue;
       if (!map.has(key)) {
-        map.set(key, { name: key, income: 0, expense: 0, timestamp: t.parsedDate.getTime() });
+        map.set(key, {
+          name: key, income: 0, expense: 0, timestamp: t.parsedDate.getTime(), categories: new Map(),
+        });
       }
       const entry = map.get(key);
-      if (t.type === 'income') entry.income += t.parsedAmount;
-      else entry.expense += t.parsedAmount;
+      if (t.type === 'income') entry.income += t.displayAmount;
+      else entry.expense += t.displayAmount;
+      const category = canonicalCategoryName(t.category);
+      entry.categories.set(category, (entry.categories.get(category) || 0) + t.displayAmount);
     }
-    return Array.from(map.values())
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(-14)
-      .map((row) => ({
-        ...row,
-        name: new Date(row.timestamp).toLocaleDateString(locale, { month: 'short', day: 'numeric' }),
-      }));
-  }, [sortedAscFiltered, locale]);
 
-  // 13. Net worth over time (day-bucketed, includes startingBalance)
+    const now = getAppDate();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const firstTxDate = sortedAscFiltered[0].parsedDate;
+    const lastTxDate = sortedAscFiltered[sortedAscFiltered.length - 1].parsedDate;
+    let start = new Date(firstTxDate.getFullYear(), firstTxDate.getMonth(), firstTxDate.getDate());
+    let end = new Date(lastTxDate.getFullYear(), lastTxDate.getMonth(), lastTxDate.getDate());
+
+    if (dateFilter === 'thisMonth') {
+      start = monthStart;
+      end = new Date(Math.max(end.getTime(), today.getTime()));
+    } else if (dateFilter === '7days') {
+      start = new Date(today.getTime() - 6 * 86400000);
+      end = today;
+    } else if (dateFilter === '30days') {
+      start = new Date(today.getTime() - 29 * 86400000);
+      end = today;
+    } else {
+      // 'all': ensure continuous curve starting from at least monthStart up to today/lastTx
+      if (start.getTime() === end.getTime() || (end.getTime() - start.getTime()) < 3 * 86400000) {
+        start = new Date(Math.min(start.getTime(), monthStart.getTime()));
+        end = new Date(Math.max(end.getTime(), today.getTime()));
+      }
+    }
+
+    const allDays = [];
+    const curr = new Date(start);
+    while (curr <= end) {
+      allDays.push(new Date(curr));
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    const daysToUse = allDays.length > 30 ? allDays.slice(-30) : allDays;
+
+    const rows = daysToUse.map((day) => {
+      const key = toLocalDateKey(day);
+      const existing = map.get(key);
+      if (existing) {
+        return {
+          ...existing,
+          timestamp: day.getTime(),
+        };
+      }
+      return {
+        name: key,
+        income: 0,
+        expense: 0,
+        timestamp: day.getTime(),
+        categories: new Map(),
+      };
+    });
+
+    const spansMultipleYears = new Set(rows.map((row) => new Date(row.timestamp).getFullYear())).size > 1;
+    return rows.map((row) => ({
+      ...row,
+      detail: Array.from(row.categories.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(([category, amount]) => `${category} ${formatCurrencyText(amount, safeFmt, currencySymbol)}`)
+        .join(' · '),
+      name: new Date(row.timestamp).toLocaleDateString(locale, {
+        month: 'short', day: 'numeric', ...(spansMultipleYears ? { year: 'numeric' } : {}),
+      }),
+    }));
+  }, [sortedAscFiltered, locale, safeFmt, currencySymbol, dateFilter]);
+
+  // Clean uniform Y-axis configuration for Spending vs Income
+  const chartYAxisConfig = useMemo(() => {
+    if (chartData.length === 0) return { domain: [0, 'auto'], ticks: undefined };
+    const values = chartData.flatMap((d) => [d.income, d.expense]).filter((v) => Number.isFinite(v) && v > 0);
+    if (values.length === 0) return { domain: [0, 'auto'], ticks: undefined };
+    const maxVal = Math.max(...values);
+    return calculateUniformTicks(0, maxVal, 5);
+  }, [chartData]);
+
+  // 13. Net worth over time (continuous daily running total)
   const netWorthData = useMemo(() => {
     if (sortedAscAll.length === 0) return [];
-    const map = new Map();
+    const deltaMap = new Map();
     for (const t of sortedAscAll) {
       const key = toLocalDateKey(t.parsedDate);
       if (!key) continue;
-      const delta = t.type === 'income' ? t.parsedAmount : -t.parsedAmount;
-      map.set(key, (map.get(key) || 0) + delta);
+      const delta = t.type === 'income' ? t.displayAmount : -t.displayAmount;
+      deltaMap.set(key, (deltaMap.get(key) || 0) + delta);
     }
-    const sorted = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+    const firstTxDate = sortedAscAll[0].parsedDate;
+    const lastTxDate = sortedAscAll[sortedAscAll.length - 1].parsedDate;
+    const start = new Date(firstTxDate.getFullYear(), firstTxDate.getMonth(), firstTxDate.getDate());
+    const end = new Date(lastTxDate.getFullYear(), lastTxDate.getMonth(), lastTxDate.getDate());
+
+    const allDays = [];
+    const curr = new Date(start);
+    while (curr <= end) {
+      allDays.push(new Date(curr));
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    const daysToUse = allDays.length > 30 ? allDays.slice(-30) : allDays;
+
     let running = startingBalance;
-    return sorted
-      .map(([key, delta]) => {
-        running += delta;
-        const d = safeParseDate(key);
-        return {
-          name: d ? d.toLocaleDateString(locale, { month: 'short', day: 'numeric' }) : key,
-          balance: Number(running.toFixed(2)),
-          timestamp: d ? d.getTime() : 0,
-        };
-      })
-      .slice(-30);
+    if (allDays.length > 30) {
+      const firstUsedDate = daysToUse[0];
+      for (const t of sortedAscAll) {
+        if (t.parsedDate < firstUsedDate) {
+          running += (t.type === 'income' ? t.displayAmount : -t.displayAmount);
+        }
+      }
+    }
+
+    const rows = daysToUse.map((day) => {
+      const key = toLocalDateKey(day);
+      const delta = deltaMap.get(key) || 0;
+      running += delta;
+      return {
+        name: key,
+        balance: Number(running.toFixed(2)),
+        timestamp: day.getTime(),
+      };
+    });
+
+    const spansMultipleYears = new Set(rows.map((row) => new Date(row.timestamp).getFullYear())).size > 1;
+    return rows.map((row) => ({
+      ...row,
+      name: new Date(row.timestamp).toLocaleDateString(locale, {
+        month: 'short', day: 'numeric', ...(spansMultipleYears ? { year: 'numeric' } : {}),
+      }),
+    }));
   }, [sortedAscAll, locale, startingBalance]);
+
+  const isNetWorthFlat = useMemo(() => {
+    try {
+      if (netWorthData.length < 2) return true;
+      const balances = netWorthData.map((d) => d.balance);
+      const min = Math.min(...balances);
+      const max = Math.max(...balances);
+      return min === max;
+    } catch {
+      return false;
+    }
+  }, [netWorthData]);
+
+  const netWorthYAxisConfig = useMemo(() => {
+    if (netWorthData.length === 0) return { domain: ['auto', 'auto'], ticks: undefined };
+    const values = netWorthData.map((row) => row.balance).filter(Number.isFinite);
+    if (values.length === 0) return { domain: ['auto', 'auto'], ticks: undefined };
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    return calculateUniformTicks(min, max, 5);
+  }, [netWorthData]);
 
   // 14. Top expense category
   const topExpenseCategory = useMemo(() => {
@@ -750,9 +1039,9 @@ export default function Dashboard() {
     let totalExp = 0;
     for (const t of parsedTransactions) {
       if (t.type !== 'expense') continue;
-      const cat = t.category || 'Other';
-      map.set(cat, (map.get(cat) || 0) + t.parsedAmount);
-      totalExp += t.parsedAmount;
+      const cat = canonicalCategoryName(t.category);
+      map.set(cat, (map.get(cat) || 0) + t.displayAmount);
+      totalExp += t.displayAmount;
     }
     if (map.size === 0 || totalExp === 0) return null;
     const [name, amount] = Array.from(map.entries()).sort((a, b) => b[1] - a[1])[0];
@@ -764,8 +1053,8 @@ export default function Dashboard() {
     const catMap = new Map();
     for (const t of parsedTransactions) {
       if (t.type !== 'expense') continue;
-      const category = t.category || 'Other';
-      catMap.set(category, (catMap.get(category) || 0) + t.parsedAmount);
+      const category = canonicalCategoryName(t.category);
+      catMap.set(category, (catMap.get(category) || 0) + t.displayAmount);
     }
     return Array.from(catMap.entries())
       .sort((a, b) => b[1] - a[1])
@@ -773,9 +1062,14 @@ export default function Dashboard() {
       .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }));
   }, [parsedTransactions]);
 
-  // 16. Grouped recent transactions
+  const pieTotal = useMemo(
+    () => pieData.reduce((sum, entry) => sum + entry.value, 0),
+    [pieData]
+  );
+
+  // 16. Grouped recent transactions (Clean teaser capped at 4 items)
   const groupedTxns = useMemo(() => {
-    const list = sortedDescFiltered.slice(0, recentLimit);
+    const list = sortedDescFiltered.slice(0, 4);
     const groups = [];
     let lastLabel = '';
     for (const tx of list) {
@@ -787,13 +1081,13 @@ export default function Dashboard() {
       groups.push({ type: 'tx', data: tx, key: tx.id || tx._id || `t-${groups.length}` });
     }
     return groups;
-  }, [sortedDescFiltered, recentLimit, locale]);
+  }, [sortedDescFiltered, locale]);
 
   // 17. Category options
   const categoryOptions = useMemo(() => {
     const set = new Set(DEFAULT_CATEGORIES);
     for (const t of allParsed) {
-      if (t.category) set.add(String(t.category));
+      if (t.category) set.add(canonicalCategoryName(t.category));
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [allParsed]);
@@ -803,16 +1097,6 @@ export default function Dashboard() {
     const value = t && typeof t === 'function' ? t(key) : null;
     return value && value !== key ? value : fallback;
   }, [t]);
-
-  const savingsRateText = useMemo(() => {
-    if (parsedTransactions.length === 0) {
-      return allParsed.length === 0
-        ? tr('no_transactions', 'No transactions yet')
-        : tr('no_match_filter', 'No transactions match the current filter');
-    }
-    if (savingsRate <= 0) return 'No savings yet — let\'s change that 📈';
-    return `Saving ${savingsRate.toFixed(1)}% · ${parsedTransactions.length} transactions`;
-  }, [parsedTransactions.length, allParsed.length, savingsRate, tr]);
 
   /* ---------------- Theme colours ---------------- */
   const balanceColor = rawBalance >= 0 ? 'var(--balance-accent)' : 'var(--danger)';
@@ -835,41 +1119,18 @@ export default function Dashboard() {
    * Event handlers
    * ============================================================ */
 
-  const handleExportJSON = useCallback(async () => {
-    if (isExporting) return;
-    setIsExporting(true);
-    try {
-      const data = exportFilter === 'all' ? allParsed : parsedTransactions;
-      const cleaned = data.map(({ parsedDate, ...rest }) => rest);
-      const blob = new Blob([JSON.stringify(cleaned, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `transactions_${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      showToast('success', 'Data exported to JSON successfully!');
-    } catch (err) {
-      console.error(err);
-      showToast('error', 'Failed to export data');
-    } finally {
-      setIsExporting(false);
-    }
-  }, [allParsed, parsedTransactions, exportFilter, isExporting, showToast]);
-
   const handleExportCSV = useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
-      const data = exportFilter === 'all' ? allParsed : parsedTransactions;
-      const headers = ['Date', 'Type', 'Category', 'Amount', 'Note'];
+      const data = parsedTransactions.length > 0 ? parsedTransactions : allParsed;
+      const headers = ['Date', 'Type', 'Category', 'Amount', 'Currency', 'Note'];
       const rows = data.map((tx) => [
         toLocalDateKey(tx.date) || '',
         tx.type || '',
-        tx.category || 'Other',
+        canonicalCategoryName(tx.category),
         tx.parsedAmount.toFixed(2),
+        tx.transactionCurrency || displayCurrency,
         tx.note || '',
       ]);
       const csvContent = [
@@ -893,7 +1154,7 @@ export default function Dashboard() {
     } finally {
       setIsExporting(false);
     }
-  }, [allParsed, parsedTransactions, exportFilter, isExporting, showToast]);
+  }, [allParsed, parsedTransactions, isExporting, showToast, displayCurrency]);
 
   const handleRefresh = useCallback(async () => {
     if (isRefreshing) return;
@@ -1042,8 +1303,6 @@ export default function Dashboard() {
     }
   }, [pendingDelete, deleteTransaction, showToast]);
 
-  const loadMore = useCallback(() => setRecentLimit((prev) => prev + 8), []);
-
   /* ---------------- Keyboard: Ctrl+N only ---------------- */
   useEffect(() => {
     const onKey = (e) => {
@@ -1059,7 +1318,7 @@ export default function Dashboard() {
   /* ============================================================
    * Modal initial data (stable)
    * ============================================================ */
-  const todayKey = useMemo(() => toLocalDateKey(new Date()), []);
+  const todayKey = useMemo(() => toLocalDateKey(getAppDate()), []);
   const initialFormData = useMemo(
     () => editingTx || { date: todayKey },
     [editingTx, todayKey]
@@ -1077,9 +1336,9 @@ export default function Dashboard() {
     <ErrorBoundary>
       <div className="bento-dashboard">
         <div className="bento-header">
-          <motion.div className="bento-insight-pill" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}>
-            <Sparkles size={14} /> {savingsRateText}
-          </motion.div>
+          <div className="bento-title-wrap">
+            <h2 className="bento-page-title">{tr('dashboard', 'Dashboard')}</h2>
+          </div>
           <div className="bento-actions">
             <motion.button
               type="button"
@@ -1105,43 +1364,17 @@ export default function Dashboard() {
               <Share2 size={16} />
             </motion.button>
             <div className="export-group" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <select
-                className="export-filter-select"
-                value={exportFilter}
-                onChange={(e) => setExportFilter(e.target.value)}
-                aria-label="Export scope"
-                style={{
-                  background: 'var(--glass-2)', color: 'var(--text-main)',
-                  border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: '0.7rem',
-                }}
-              >
-                <option value="all">All</option>
-                <option value="filtered">Filtered</option>
-              </select>
-              <motion.button
-                type="button"
-                className="bbtn-icon bbtn-export"
-                onClick={handleExportJSON}
-                disabled={isExporting}
-                whileHover={{ scale: 1.08 }}
-                whileTap={{ scale: 0.92 }}
-                title={isExporting ? 'Exporting…' : 'Export JSON'}
-                aria-label="Export JSON"
-              >
-                {isExporting ? <RefreshCw size={16} className="spinning" /> : <Download size={16} />}
-                <span className="bbtn-export-label">JSON</span>
-              </motion.button>
               <motion.button
                 type="button"
                 className="bbtn-icon bbtn-export"
                 onClick={handleExportCSV}
                 disabled={isExporting}
-                whileHover={{ scale: 1.08 }}
-                whileTap={{ scale: 0.92 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 title={isExporting ? 'Exporting…' : 'Export CSV'}
                 aria-label="Export CSV"
               >
-                {isExporting ? <RefreshCw size={16} className="spinning" /> : <Download size={16} />}
+                {isExporting ? <RefreshCw size={15} className="spinning" /> : <Download size={15} />}
                 <span className="bbtn-export-label">CSV</span>
               </motion.button>
             </div>
@@ -1158,28 +1391,40 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Quick stats strip */}
+        {/* Quick stats strip — calm, restrained structure with delta badges */}
         <motion.div
-          className="dashboard-quick-stats-strip glass"
+          className="dashboard-quick-stats-strip"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
         >
           <div className="dqs-pill">
-            <Zap size={14} className="dqs-icon text-brand" />
             <span className="dqs-label">Savings Rate:</span>
             <span className="dqs-val">{savingsRate.toFixed(1)}%</span>
+            <span className={`dqs-badge ${savingsRate >= 20 ? 'pos' : 'neutral'}`}>
+              {savingsRate >= 20 ? 'Healthy' : savingsRate > 0 ? 'Active' : 'Low'}
+            </span>
           </div>
-          {topExpenseCategory && (
-            <div className="dqs-pill">
-              <Tag size={14} className="dqs-icon text-danger" />
-              <span className="dqs-label">Top Expense:</span>
-              <span className="dqs-val">{topExpenseCategory.name} ({topExpenseCategory.pct}%)</span>
-            </div>
-          )}
+
           <div className="dqs-pill">
-            <TrendingDown size={14} className="dqs-icon text-warning" />
+            <span className="dqs-label">Top Expense:</span>
+            <span className="dqs-val">
+              {topExpenseCategory ? topExpenseCategory.name : '—'}
+            </span>
+            {topExpenseCategory && (
+              <span className="dqs-badge neutral">
+                {topExpenseCategory.pct}% of expenses
+              </span>
+            )}
+          </div>
+
+          <div className="dqs-pill">
             <span className="dqs-label">Daily Avg Spend:</span>
-            <span className="dqs-val">{formatCurrencyNode(dailyAverageSpend, safeFmt, currencySymbol)}</span>
+            <span className="dqs-val">
+              {formatCurrencyNode(dailyAverageSpend, safeFmt, currencySymbol)}
+            </span>
+            <span className="dqs-badge neutral">
+              30d pace
+            </span>
           </div>
         </motion.div>
 
@@ -1188,7 +1433,7 @@ export default function Dashboard() {
           className="bento-filters"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}
+          style={{ display: 'flex', gap: 12, justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: 16 }}
           role="search"
           aria-label="Filter transactions"
         >
@@ -1233,7 +1478,7 @@ export default function Dashboard() {
           {/* Hero — Total Balance (starting balance + net of transactions) */}
           <motion.div
             variants={CARD_VARIANTS}
-            className={`bento-tile bento-hero glass ${balanceDone ? 'numberGlow' : ''}`}
+            className={`bento-tile bento-hero stat-card glass ${balanceDone ? 'numberGlow' : ''}`}
             style={{
               borderColor: rawBalance >= 0
                 ? 'rgba(var(--balance-accent-rgb), 0.34)'
@@ -1253,15 +1498,24 @@ export default function Dashboard() {
             />
             <div className="bh-top">
               <span className="bh-label">{tr('total_balance', 'Total Balance')}</span>
-              <Wallet size={20} className="bh-icon" style={{ color: balanceColor }} />
+              <div
+                className="bh-icon-wrap"
+                style={{
+                  background: rawBalance >= 0
+                    ? 'rgba(var(--balance-accent-rgb), 0.12)'
+                    : 'rgba(var(--danger-rgb), 0.12)',
+                }}
+              >
+                <Wallet size={18} className="bh-icon" style={{ color: balanceColor }} />
+              </div>
             </div>
             <div className="bh-mid">
-              <h2 style={{ fontSize: 'clamp(1.8rem, 10vw, 2.4rem)', fontWeight: 900, color: balanceColor, margin: '8px 0' }}>
+              <h2 style={{ fontSize: 'clamp(1.75rem, 3vw, 2.1rem)', fontWeight: 800, color: balanceColor, margin: '6px 0', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
                 {formatCurrencyNode(animatedBalance, safeFmt, currencySymbol)}
               </h2>
               {sparklineSvgPath && (
                 <div className="bh-sparkline-wrap" title="Net trajectory">
-                  <svg className="bh-sparkline-svg" viewBox="0 0 120 36" aria-hidden="true">
+                  <svg className="bh-sparkline-svg" viewBox="0 0 240 48" aria-hidden="true">
                     <path
                       d={sparklineSvgPath}
                       fill="none"
@@ -1282,12 +1536,14 @@ export default function Dashboard() {
                 <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
                   {tr('net_position', 'Net position')}
                 </span>
-                <div className={`bh-trend ${momMetrics.balance.dir}`} style={{ background: 'var(--glass-2)' }}>
-                  {momMetrics.balance.dir === 'up' && <ArrowUpRight size={14} aria-hidden="true" />}
-                  {momMetrics.balance.dir === 'down' && <ArrowDownRight size={14} aria-hidden="true" />}
-                  {momMetrics.balance.dir === 'neutral' && <Minus size={14} aria-hidden="true" />}
-                  <span>{momMetrics.balance.val} vs last month</span>
-                </div>
+                {momMetrics.balance.val !== 'New' && dateFilter !== 'all' && (
+                  <div className={`bh-trend ${momMetrics.balance.dir}`} style={{ background: 'var(--glass-2)' }}>
+                    {momMetrics.balance.dir === 'up' && <ArrowUpRight size={14} aria-hidden="true" />}
+                    {momMetrics.balance.dir === 'down' && <ArrowDownRight size={14} aria-hidden="true" />}
+                    {momMetrics.balance.dir === 'neutral' && <Minus size={14} aria-hidden="true" />}
+                    <span>{momMetrics.balance.val} vs last month</span>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
@@ -1301,8 +1557,8 @@ export default function Dashboard() {
             colorRgb="34, 197, 94"
             accentColor="var(--success)"
             subtitle={tr('all_time', 'All time')}
-            trend={momMetrics.income.dir}
-            trendVal={momMetrics.income.val}
+            trend={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.dir}
+            trendVal={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.val}
             className="bento-income"
           />
 
@@ -1315,8 +1571,8 @@ export default function Dashboard() {
             colorRgb="239, 68, 68"
             accentColor="var(--danger)"
             subtitle={tr('all_time', 'All time')}
-            trend={momMetrics.expense.dir}
-            trendVal={momMetrics.expense.val}
+            trend={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.dir}
+            trendVal={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.val}
             className="bento-expense"
             invertTrendColor
           />
@@ -1354,7 +1610,7 @@ export default function Dashboard() {
                     const tx = item.data;
                     return (
                       <div key={item.key} className="bt-item" role="listitem">
-                        <div className={`bt-icn ${tx.type}`}><Tag size={16} aria-hidden="true" /></div>
+                        <div className={`bt-icn ${tx.type}`}><Tag size={18} aria-hidden="true" /></div>
                         <div className="bt-info">
                           <span className="bt-cat">{tx.category || 'Uncategorized'}</span>
                           <span className="bt-date">{getDateLabel(tx.date, locale)}</span>
@@ -1363,7 +1619,7 @@ export default function Dashboard() {
                         <div className="bt-amt-group">
                           <div className={`bt-amt ${tx.type}`}>
                             {tx.type === 'income' ? '+' : '-'}
-                            {formatCurrencyNode(tx.parsedAmount, safeFmt, currencySymbol)}
+                            {formatCurrencyNode(tx.displayAmount, safeFmt, currencySymbol)}
                           </div>
                           <div className="bt-actions">
                             <button
@@ -1390,15 +1646,15 @@ export default function Dashboard() {
                     );
                   })}
                 </div>
-                {sortedDescFiltered.length > recentLimit && (
-                  <button
-                    type="button"
-                    className="bt-load-more"
-                    onClick={loadMore}
-                    aria-label="Load more transactions"
-                  >
-                    Load More <ChevronDown size={14} />
-                  </button>
+                {sortedDescFiltered.length > 4 && (
+                  <div className="bt-footer-action">
+                    <NavLink
+                      to="/transactions"
+                      className="bt-view-all-btn"
+                    >
+                      View all {sortedDescFiltered.length} transactions →
+                    </NavLink>
+                  </div>
                 )}
               </>
             )}
@@ -1426,23 +1682,50 @@ export default function Dashboard() {
             </div>
             <div className="bt-chart-wrap">
               {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
+                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
                     <defs>
                       <linearGradient id={gInId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.75} />
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.16} />
                         <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id={gExId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.65} />
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.14} />
                         <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'} vertical={false} />
-                    <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <XAxis
+                      dataKey="name"
+                      interval={chartData.length > 8 ? Math.ceil(chartData.length / 5) : 0}
+                      tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      domain={chartYAxisConfig.domain}
+                      ticks={chartYAxisConfig.ticks}
+                      tick={{ fill: 'var(--text-secondary)', fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={40}
+                      tickFormatter={(val) => {
+                        if (val === 0) return '0';
+                        const abs = Math.abs(val);
+                        const sign = val < 0 ? '-' : '';
+                        if (abs >= 1000) {
+                          const k = abs / 1000;
+                          return `${sign}${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+                        }
+                        return String(val);
+                      }}
+                    />
                     <Tooltip
                       contentStyle={tooltipStyle}
+                      labelFormatter={(label, payload) => {
+                        const detail = payload?.[0]?.payload?.detail;
+                        return detail ? `${label} · ${detail}` : label;
+                      }}
                       formatter={(val) => formatCurrencyText(val, safeFmt, currencySymbol)}
                     />
                     <Legend
@@ -1454,7 +1737,7 @@ export default function Dashboard() {
                       )}
                     />
                     <Area
-                      isAnimationActive={!prefersReducedMotion}
+                      isAnimationActive={!prefersReducedMotion && !loading}
                       animationBegin={800}
                       type="monotone"
                       dataKey="income"
@@ -1462,11 +1745,11 @@ export default function Dashboard() {
                       fill={`url(#${gInId})`}
                       strokeWidth={2.5}
                       strokeLinecap="round"
-                      dot={{ r: 0 }}
+                      dot={chartData.length <= 4 ? { r: 3, strokeWidth: 1.5, fill: '#10b981' } : { r: 0 }}
                       activeDot={{ r: 6, strokeWidth: 0, fill: '#10b981' }}
                     />
                     <Area
-                      isAnimationActive={!prefersReducedMotion}
+                      isAnimationActive={!prefersReducedMotion && !loading}
                       animationBegin={800}
                       type="monotone"
                       dataKey="expense"
@@ -1474,7 +1757,7 @@ export default function Dashboard() {
                       fill={`url(#${gExId})`}
                       strokeWidth={2.5}
                       strokeLinecap="round"
-                      dot={{ r: 0 }}
+                      dot={chartData.length <= 4 ? { r: 3, strokeWidth: 1.5, fill: '#ef4444' } : { r: 0 }}
                       activeDot={{ r: 6, strokeWidth: 0, fill: '#ef4444' }}
                     />
                   </AreaChart>
@@ -1506,23 +1789,50 @@ export default function Dashboard() {
               <h3 className="heading-accent">Net Worth Over Time</h3>
               <LineChart size={16} className="bt-icon-muted" aria-hidden="true" />
             </div>
-            <div className="bt-chart-wrap" style={{ height: 120 }}>
-              {netWorthData.length > 1 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={netWorthData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+            {isNetWorthFlat ? (
+              <div className="bento-empty" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, height: 'calc(100% - 36px)' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', fontSize: '0.82rem', fontWeight: 700, color: 'var(--brand-primary)' }}>
+                  <TrendingUp size={13} /> Steady at {formatCurrencyText(rawBalance, safeFmt, currencySymbol)}
+                </div>
+                <p className="bento-empty-sub" style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+                  Net worth has remained steady this period.
+                </p>
+              </div>
+            ) : (
+              <div className="bt-chart-wrap" style={{ height: 120 }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
+                  <AreaChart data={netWorthData} margin={{ top: 5, right: 8, left: -5, bottom: 0 }}>
                     <defs>
                       <linearGradient id={gNWId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={balanceHex} stopOpacity={0.6} />
+                        <stop offset="5%" stopColor={balanceHex} stopOpacity={0.2} />
                         <stop offset="95%" stopColor={balanceHex} stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <YAxis
+                      domain={netWorthYAxisConfig.domain}
+                      ticks={netWorthYAxisConfig.ticks}
+                      tick={{ fill: 'var(--text-secondary)', fontSize: 9 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={40}
+                      tickFormatter={(val) => {
+                        if (val === 0) return '0';
+                        const abs = Math.abs(val);
+                        const sign = val < 0 ? '-' : '';
+                        if (abs >= 1000) {
+                          const k = abs / 1000;
+                          return `${sign}${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+                        }
+                        return String(val);
+                      }}
+                    />
                     <Tooltip
                       contentStyle={tooltipStyle}
                       formatter={(val) => formatCurrencyText(val, safeFmt, currencySymbol)}
                     />
                     <Area
+                      isAnimationActive={!prefersReducedMotion && !loading}
                       type="monotone"
                       dataKey="balance"
                       stroke={balanceHex}
@@ -1533,12 +1843,8 @@ export default function Dashboard() {
                     />
                   </AreaChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className="bento-empty" style={{ padding: '1rem' }}>
-                  <p className="bento-empty-sub">Add transactions to see your net worth trajectory.</p>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </motion.div>
 
           {/* Savings goal */}
@@ -1550,16 +1856,36 @@ export default function Dashboard() {
             {monthlyGoal > 0 ? (
               <>
                 <div className="bg-hud">
-                  <span className="bg-pct">{goalProgress.toFixed(0)}%</span>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span className="bg-pct">
+                      {`${monthlyNetSavings > 0 ? Math.floor((monthlyNetSavings / monthlyGoal) * 100) : 0}%`}
+                    </span>
+                    {monthlyNetSavings > monthlyGoal && (
+                      <span
+                        className="bg-overflow-badge"
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          background: 'rgba(16, 185, 129, 0.18)',
+                          color: '#10b981',
+                          border: '1px solid rgba(16, 185, 129, 0.35)',
+                        }}
+                      >
+                        +{Math.floor((monthlyNetSavings / monthlyGoal) * 100) - 100}% surplus
+                      </span>
+                    )}
+                  </div>
                   <span className="bg-frac">
-                    {formatCurrencyNode(Math.max(0, netSavings), safeFmt, currencySymbol)} / {formatCurrencyNode(monthlyGoal, safeFmt, currencySymbol)}
+                    {formatCurrencyNode(Math.max(0, monthlyNetSavings), safeFmt, currencySymbol)} / {formatCurrencyNode(monthlyGoal, safeFmt, currencySymbol)}
                   </span>
                 </div>
-                <div className="bg-track">
+                <div className="bg-track" style={{ position: 'relative', overflow: 'visible' }}>
                   <motion.div
                     className={`bg-fill ${goalProgress < 15 ? 'breathing' : ''}`}
                     initial={{ width: 0 }}
-                    animate={{ width: `${goalProgress}%` }}
+                    animate={{ width: `${Math.min(100, goalProgress)}%` }}
                     transition={{
                       duration: prefersReducedMotion ? 0 : 1.5,
                       delay: prefersReducedMotion ? 0 : 0.5,
@@ -1567,14 +1893,30 @@ export default function Dashboard() {
                   >
                     <div className="bg-glow-dot" />
                   </motion.div>
+                  {monthlyNetSavings > monthlyGoal && (
+                    <div
+                      className="bg-overflow-glow"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                        width: 24,
+                        background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.7))',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
                 </div>
                 <div className="bg-goal-actions-row">
                   <p className="bg-nudge">
-                    {goalProgress >= 100
-                      ? '🎉 Monthly target achieved!'
-                      : goalProgress < 15
-                        ? 'Every bit counts. Keep going!'
-                        : `${(100 - goalProgress).toFixed(0)}% to reach target`}
+                    {monthlyNetSavings > monthlyGoal
+                      ? `Goal met · +${formatCurrencyText(monthlyNetSavings - monthlyGoal, safeFmt, currencySymbol)} surplus`
+                      : goalProgress >= 100
+                        ? '🎉 Monthly target achieved!'
+                        : goalProgress < 15
+                          ? 'Every bit counts. Keep going!'
+                          : `${(100 - goalProgress).toFixed(0)}% to reach target`}
                   </p>
                   <button
                     type="button"
@@ -1585,6 +1927,9 @@ export default function Dashboard() {
                     <Plus size={12} /> Top Up
                   </button>
                 </div>
+                <p className="bg-safe-spend">
+                  Safe to spend: <strong>{formatCurrencyText(safeToSpend, safeFmt, currencySymbol)}</strong> / day after recurring bills
+                </p>
               </>
             ) : (
               <div className="bento-empty">
@@ -1611,16 +1956,16 @@ export default function Dashboard() {
             </div>
             <div className="bt-pie-wrap">
               {pieData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
                   <PieChart>
                     <Pie
-                      isAnimationActive={!prefersReducedMotion}
+                      isAnimationActive={!prefersReducedMotion && !loading}
                       animationBegin={800}
                       data={pieData}
                       cx="50%"
-                      cy="50%"
-                      innerRadius="55%"
-                      outerRadius="80%"
+                      cy="44%"
+                      innerRadius="46%"
+                      outerRadius="72%"
                       paddingAngle={4}
                       dataKey="value"
                       nameKey="name"
@@ -1635,11 +1980,21 @@ export default function Dashboard() {
                     </Pie>
                     <Tooltip
                       contentStyle={tooltipStyle}
-                      formatter={(val) => formatCurrencyText(val, safeFmt, currencySymbol)}
+                      formatter={(val) => {
+                        const amount = Number(val) || 0;
+                        const pct = pieTotal > 0 ? ((amount / pieTotal) * 100).toFixed(1) : '0.0';
+                        return [`${formatCurrencyText(amount, safeFmt, currencySymbol)} · ${pct}%`, 'Spend'];
+                      }}
                     />
                     <Legend
-                      wrapperStyle={{ fontSize: '0.72rem', fontWeight: 700 }}
-                      formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value}</span>}
+                      verticalAlign="bottom"
+                      height={32}
+                      wrapperStyle={{ fontSize: '0.74rem', fontWeight: 600, paddingTop: 4 }}
+                      formatter={(value) => {
+                        const item = pieData.find((p) => p.name === value);
+                        const pct = item && pieTotal > 0 ? ` (${((item.value / pieTotal) * 100).toFixed(0)}%)` : '';
+                        return <span style={{ color: 'var(--text-secondary)' }}>{value}{pct}</span>;
+                      }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -1682,4 +2037,3 @@ export default function Dashboard() {
     </ErrorBoundary>
   );
 }
-

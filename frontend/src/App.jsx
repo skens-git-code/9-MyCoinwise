@@ -13,6 +13,7 @@ import { ToastProvider } from './components/ToastProvider';
 import { MotionConfig } from 'framer-motion';
 
 import { AppContext } from './contexts/AppContext';
+import { dedupeTransactions } from './utils/transactionIntegrity';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Transactions = lazy(() => import('./pages/Transactions'));
@@ -29,13 +30,14 @@ const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 const About = lazy(() => import('./pages/About'));
 const Calculator = lazy(() => import('./pages/Calculator'));
+const Tax = lazy(() => import('./pages/Tax'));
 
 function AppRoutes() {
   const location = useLocation();
   return (
     <ErrorBoundary resetKeys={[location.pathname]} fullScreen={false}>
       <Suspense fallback={<Loader />}>
-        <Routes>
+        <Routes location={location}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/analytics" element={<Analytics />} />
@@ -49,6 +51,7 @@ function AppRoutes() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/about" element={<About />} />
         <Route path="/calculator" element={<Calculator />} />
+        <Route path="/tax" element={<Tax />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Suspense>
@@ -154,7 +157,8 @@ export function formatCurrency(amount, currency = 'USD', localeOrLang = 'en-US')
   const parsedAmount = Number(amount);
   const val = Number.isFinite(parsedAmount) ? parsedAmount : 0;
   const isNeg = val < 0;
-  const resolvedLocale = LOCALE_MAP[localeOrLang] || localeOrLang || 'en-US';
+  const defaultLocale = currency === 'INR' ? 'en-IN' : 'en-US';
+  const resolvedLocale = currency === 'INR' ? 'en-IN' : (LOCALE_MAP[localeOrLang] || localeOrLang || defaultLocale);
   const numStr = Math.abs(val).toLocaleString(resolvedLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `${isNeg ? '-' : ''}${info.symbol}${numStr}`;
 }
@@ -200,7 +204,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { });
+    if ('serviceWorker' in navigator) {
+      if (import.meta.env.PROD) {
+        navigator.serviceWorker.register('/sw.js').catch(() => { });
+      } else {
+        navigator.serviceWorker.getRegistrations().then((regs) => {
+          for (const reg of regs) reg.unregister();
+        });
+        if ('caches' in window) {
+          caches.keys().then((keys) => {
+            for (const key of keys) caches.delete(key);
+          });
+        }
+      }
+    }
   }, []);
 
   const installPWA = async () => {
@@ -378,10 +395,14 @@ export default function App() {
         api.getEvents(activeId),
         api.getBudgets(activeId),
         api.getAccounts(activeId),
-        api.getAllUsers().catch(() => [])
+        api.getAllUsers()
       ]);
       const [txResult, goalsResult, subsResult, eventsResult, budgetsResult, accountsResult, usersResult] = results;
-      const settledArray = (result) => (result?.status === 'fulfilled' && Array.isArray(result.value)) ? result.value : [];
+      const settledArray = (result) => (
+        result?.status === 'fulfilled' && Array.isArray(result.value)
+          ? result.value
+          : null
+      );
       const txData = settledArray(txResult);
       const goalsData = settledArray(goalsResult);
       const subsData = settledArray(subsResult);
@@ -389,18 +410,36 @@ export default function App() {
       const budgetsData = settledArray(budgetsResult);
       const accountsData = settledArray(accountsResult);
       const usersData = settledArray(usersResult);
+      const failedResources = [
+        ['transactions', txData],
+        ['goals', goalsData],
+        ['subscriptions', subsData],
+        ['calendar', eventsData],
+        ['budgets', budgetsData],
+        ['accounts', accountsData],
+        ['workspace users', usersData]
+      ].filter(([, data]) => data === null).map(([name]) => name);
       const localTheme = localStorage.getItem('mcw-theme');
       const backendTheme = normalizeTheme(me?.theme);
       const resolvedTheme = (localTheme && ['light', 'amoled'].includes(localTheme)) ? localTheme : backendTheme;
 
       setUser({ ...me, theme: resolvedTheme });
-      setAllUsers(usersData);
-      setTransactions(txData);
-      setGoals(goalsData);
-      setBudgets(budgetsData);
-      setAccounts(accountsData);
-      setSubscriptions(subsData);
-      setEvents(eventsData);
+      // Keep the last known good collection when one endpoint fails. Treating
+      // a transient database/network failure as [] was erasing real data and
+      // made the UI look like a successful empty state.
+      if (usersData !== null) setAllUsers(usersData);
+      if (txData !== null) setTransactions(dedupeTransactions(txData));
+      if (goalsData !== null) setGoals(goalsData);
+      if (budgetsData !== null) setBudgets(budgetsData);
+      if (accountsData !== null) setAccounts(accountsData);
+      if (subsData !== null) setSubscriptions(subsData);
+      if (eventsData !== null) setEvents(eventsData);
+
+      if (failedResources.length > 0) {
+        setGlobalError(`Some live data could not be refreshed (${failedResources.join(', ')}). Existing data was kept. Retrying in the background...`);
+      } else {
+        setGlobalError(null);
+      }
 
       if (me?.theme !== resolvedTheme) {
         api.updateSettings(activeId, { theme: resolvedTheme }).catch(() => { });
