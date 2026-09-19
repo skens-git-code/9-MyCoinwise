@@ -380,18 +380,17 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: center !important;
   align-items: center !important;
   pointer-events: none !important;
-  padding: 0 var(--content-padding-x, 28px) !important;
+  padding: 0 var(--content-padding-x, 20px) !important;
   margin: 0 0 8px 0 !important;
   box-sizing: border-box !important;
-  transform: translate3d(0, 0, 0);
-  will-change: transform;
+  transform: translateY(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s ease !important;
 }
 
 .portfolio-header.is-scrolled {
-  transform: translate3d(0, -4px, 0) !important;
+  transform: translateY(-6px) !important;
 }
 
 .nav-container {
@@ -414,7 +413,8 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 0 0 1px var(--nav-container-ring), var(--nav-container-shadow) !important;
   transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, padding 0.2s ease, transform 0.2s ease !important;
   box-sizing: border-box !important;
-  overflow: visible !important;
+  overflow-x: clip !important;
+  overflow-y: visible !important;
 }
 
 .nav-container:hover {
@@ -1160,21 +1160,11 @@ body,
     /* Original expanded .island-brand (Problematic - height: 64px misaligned with navbar 56px):
     .island-brand {
       height: 64px !important;
-      min-height: 64px !important;
-      max-height: 64px !important;
-      padding: 0 16px !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: flex-start !important;
-      border-bottom: 1px solid var(--glass-border) !important;
-      box-sizing: border-box !important;
-    }
-    */
     .island-brand {
-      height: 56px !important; // Standardized to 56px to match the navbar capsule on the exact same line
+      height: 56px !important;
       min-height: 56px !important;
       max-height: 56px !important;
-      padding: 0 16px !important;
+      padding: 0 10px !important;
       display: flex !important;
       align-items: center !important;
       justify-content: flex-start !important;
@@ -1182,10 +1172,10 @@ body,
       box-sizing: border-box !important;
 
       .brand-icon {
-        width: 40px !important;
-        height: 40px !important;
-        min-width: 40px !important;
-        border-radius: 12px !important;
+        width: 32px !important;
+        height: 32px !important;
+        min-width: 32px !important;
+        border-radius: 9px !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -1195,21 +1185,21 @@ body,
       .brand-name {
         display: inline-block !important;
         font-family: var(--font-display) !important;
-        font-size: 1.05rem !important;
+        font-size: 0.95rem !important;
         font-weight: 700 !important;
-        letter-spacing: 0.01em !important;
+        letter-spacing: -0.01em !important;
         white-space: nowrap !important;
         overflow: hidden !important;
-        margin-left: 12px !important;
+        margin-left: 8px !important;
         color: var(--text) !important;
       }
 
       .collapse-toggle {
         margin-left: auto !important;
-        width: 28px !important;
-        height: 28px !important;
-        min-width: 28px !important;
-        border-radius: 8px !important;
+        width: 24px !important;
+        height: 24px !important;
+        min-width: 24px !important;
+        border-radius: 6px !important;
         border: 1px solid var(--glass-border) !important;
         background: var(--glass-1) !important;
         display: flex !important;
@@ -1230,15 +1220,15 @@ body,
 
     /* User Profile Card */
     .island-user {
-      padding: 10px 12px 6px !important;
+      padding: 8px 10px 4px !important;
       box-sizing: border-box !important;
       display: block !important;
 
       .user-trigger {
         width: 100% !important;
-        min-height: 52px !important;
-        border-radius: 14px !important;
-        padding: 7px 10px !important;
+        min-height: 48px !important;
+        border-radius: 12px !important;
+        padding: 6px 8px !important;
         box-sizing: border-box !important;
         background: var(--panel-sunken-bg) !important;
         border: var(--panel-sunken-border) !important;
@@ -1249,8 +1239,8 @@ body,
 
         .user-avatar-wrapper {
           position: relative !important;
-          width: 36px !important;
-          height: 36px !important;
+          width: 34px !important;
+          height: 34px !important;
           flex-shrink: 0 !important;
           display: flex !important;
           align-items: center !important;
@@ -1265,8 +1255,8 @@ body,
           }
 
           .user-avatar {
-            width: 36px !important;
-            height: 36px !important;
+            width: 34px !important;
+            height: 34px !important;
             border-radius: 50% !important;
             overflow: hidden !important;
             position: relative !important;
@@ -1285,8 +1275,8 @@ body,
         }
 
         .user-info {
-          margin-left: 12px !important;
-          min-width: 0 !important;
+          margin-left: 8px !important;
+          overflow: hidden !important;
           flex: 1 !important;
           display: flex !important;
           flex-direction: column !important;
@@ -1294,7 +1284,7 @@ body,
 
           .u-name {
             font-weight: 600 !important;
-            font-size: 0.88rem !important;
+            font-size: 0.84rem !important;
             color: var(--text) !important;
             line-height: 1.25 !important;
             margin: 0 0 2px 0 !important;
@@ -1304,7 +1294,7 @@ body,
           }
 
           .u-role {
-            font-size: 0.72rem !important;
+            font-size: 0.7rem !important;
             font-weight: 700 !important;
             color: var(--brand-primary, #00d4ff) !important;
             text-transform: uppercase !important;
@@ -1319,10 +1309,10 @@ body,
 
     /* Navigation List */
     .island-nav {
-      padding: 6px 12px 0 !important;
+      padding: 6px 8px 0 !important;
       display: flex !important;
       flex-direction: column !important;
-      gap: 3px !important;
+      gap: 2px !important;
       overflow-y: auto !important;
       overflow-x: hidden !important;
       scrollbar-width: none !important;
@@ -1333,15 +1323,15 @@ body,
 
       .inav-item {
         width: 100% !important;
-        height: 44px !important;
-        min-height: 44px !important;
-        max-height: 44px !important;
+        height: 40px !important;
+        min-height: 40px !important;
+        max-height: 40px !important;
         margin: 0 !important;
-        padding: 0 12px !important;
+        padding: 0 8px !important;
         display: flex !important;
         align-items: center !important;
         justify-content: flex-start !important;
-        border-radius: 12px !important;
+        border-radius: 10px !important;
         position: relative !important;
         box-sizing: border-box !important;
         background: transparent !important;
@@ -1351,21 +1341,22 @@ body,
         transition: background 0.18s ease, color 0.18s ease !important;
 
         .inav-icon {
-          width: 22px !important;
-          height: 22px !important;
-          min-width: 22px !important;
+          width: 18px !important;
+          height: 18px !important;
+          min-width: 18px !important;
           display: flex !important;
           align-items: center !important;
           justify-content: center !important;
-          margin-right: 12px !important;
+          margin-right: 8px !important;
           flex-shrink: 0 !important;
         }
 
         .inav-label {
           display: inline-block !important;
           font-family: var(--font-main, inherit) !important;
-          font-size: 0.9rem !important;
+          font-size: 0.84rem !important;
           font-weight: 500 !important;
+          letter-spacing: -0.01em !important;
           white-space: nowrap !important;
           overflow: hidden !important;
           text-overflow: ellipsis !important;
@@ -1377,7 +1368,7 @@ body,
           inset: 0 !important;
           width: 100% !important;
           height: 100% !important;
-          border-radius: 12px !important;
+          border-radius: 10px !important;
           z-index: 0 !important;
         }
 
@@ -1392,24 +1383,24 @@ body,
 
     /* Footer (Settings & Logout) */
     .island-footer {
-      padding: 10px 12px 14px !important;
+      padding: 8px 8px 10px !important;
       display: flex !important;
       flex-direction: column !important;
-      gap: 3px !important;
+      gap: 2px !important;
       border-top: 1px solid var(--glass-border) !important;
       margin-top: auto !important;
 
       .inav-item {
         width: 100% !important;
-        height: 44px !important;
-        min-height: 44px !important;
-        max-height: 44px !important;
+        height: 40px !important;
+        min-height: 40px !important;
+        max-height: 40px !important;
         margin: 0 !important;
-        padding: 0 12px !important;
+        padding: 0 8px !important;
         display: flex !important;
         align-items: center !important;
         justify-content: flex-start !important;
-        border-radius: 12px !important;
+        border-radius: 10px !important;
         position: relative !important;
         box-sizing: border-box !important;
         background: transparent !important;
@@ -1419,21 +1410,22 @@ body,
         transition: background 0.18s ease, color 0.18s ease !important;
 
         .inav-icon {
-          width: 22px !important;
-          height: 22px !important;
-          min-width: 22px !important;
+          width: 18px !important;
+          height: 18px !important;
+          min-width: 18px !important;
           display: flex !important;
           align-items: center !important;
           justify-content: center !important;
-          margin-right: 12px !important;
+          margin-right: 8px !important;
           flex-shrink: 0 !important;
         }
 
         .inav-label {
           display: inline-block !important;
           font-family: var(--font-main, inherit) !important;
-          font-size: 0.9rem !important;
+          font-size: 0.84rem !important;
           font-weight: 500 !important;
+          letter-spacing: -0.01em !important;
           white-space: nowrap !important;
           overflow: hidden !important;
           text-overflow: ellipsis !important;
@@ -1445,7 +1437,7 @@ body,
           inset: 0 !important;
           width: 100% !important;
           height: 100% !important;
-          border-radius: 12px !important;
+          border-radius: 10px !important;
           z-index: 0 !important;
         }
 
@@ -1746,11 +1738,16 @@ body,
 .bento-filters {
   display: flex !important;
   align-items: center !important;
-  gap: 14px !important;
+  gap: 12px !important;
+  justify-content: flex-start !important;
   flex-wrap: wrap !important;
-  margin-bottom: 6px !important;
+  margin-bottom: 16px !important;
+  width: auto !important;
 
   .filter-select {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 140px !important;
     min-height: 44px !important;
     padding: 8px 18px !important;
     border-radius: 12px !important;
@@ -2681,7 +2678,7 @@ body,
 
   /* Quick Action Floating Button (Above dock) */
   .fab-container {
-    bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
     right: 16px !important;
   }
 }

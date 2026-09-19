@@ -37,7 +37,7 @@ function AppRoutes() {
   return (
     <ErrorBoundary resetKeys={[location.pathname]} fullScreen={false}>
       <Suspense fallback={<Loader />}>
-        <Routes>
+        <Routes location={location}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/analytics" element={<Analytics />} />
@@ -157,7 +157,8 @@ export function formatCurrency(amount, currency = 'USD', localeOrLang = 'en-US')
   const parsedAmount = Number(amount);
   const val = Number.isFinite(parsedAmount) ? parsedAmount : 0;
   const isNeg = val < 0;
-  const resolvedLocale = LOCALE_MAP[localeOrLang] || localeOrLang || 'en-US';
+  const defaultLocale = currency === 'INR' ? 'en-IN' : 'en-US';
+  const resolvedLocale = currency === 'INR' ? 'en-IN' : (LOCALE_MAP[localeOrLang] || localeOrLang || defaultLocale);
   const numStr = Math.abs(val).toLocaleString(resolvedLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `${isNeg ? '-' : ''}${info.symbol}${numStr}`;
 }
@@ -203,7 +204,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { });
+    if ('serviceWorker' in navigator) {
+      if (import.meta.env.PROD) {
+        navigator.serviceWorker.register('/sw.js').catch(() => { });
+      } else {
+        navigator.serviceWorker.getRegistrations().then((regs) => {
+          for (const reg of regs) reg.unregister();
+        });
+        if ('caches' in window) {
+          caches.keys().then((keys) => {
+            for (const key of keys) caches.delete(key);
+          });
+        }
+      }
+    }
   }, []);
 
   const installPWA = async () => {

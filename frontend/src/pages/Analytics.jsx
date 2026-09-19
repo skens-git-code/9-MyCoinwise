@@ -11,6 +11,7 @@ import {
   TrendingUp, TrendingDown, CheckCircle2,
   Calendar, Download, Share2, Sparkles, ShieldAlert,
   ArrowUpRight, ArrowDownRight, X, Filter, RotateCcw, Loader2,
+  ChevronDown, Check,
 } from 'lucide-react';
 import { useToast } from '../components/ToastProvider';
 import { dedupeTransactions } from '../utils/transactionIntegrity';
@@ -33,17 +34,33 @@ const ANOMALY_WINDOW_DAYS = 180; // only consider recent transactions
 
 /** Locale map aligned with the rest of the app (Calendar page uses the same). */
 const LOCALE_MAP = {
-  en: 'en-US',
+  en: 'en-IN',
   hi: 'hi-IN',
   mr: 'mr-IN',
   bgc: 'hi-IN',
   kn: 'kn-IN',
 };
-const resolveLocale = (lang) => LOCALE_MAP[lang] || undefined;
+const resolveLocale = (lang) => LOCALE_MAP[lang] || 'en-IN';
 
 /** Robust dark-theme detection. */
 const DARK_THEMES = new Set(['amoled', 'dark', 'midnight', 'black']);
 const isDarkTheme = (theme) => DARK_THEMES.has(String(theme || '').toLowerCase());
+
+const usePrefersReducedMotion = () => {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== 'undefined'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setReduced(mq.matches);
+    mq.addEventListener?.('change', sync);
+    return () => mq.removeEventListener?.('change', sync);
+  }, []);
+  return reduced;
+};
 
 /* ============================================================
  * Utilities
@@ -113,7 +130,7 @@ const computeDelta = (cur, prev) => {
     return {
       display: cur > 0 ? 'New' : '-New',
       direction: cur > 0 ? 'up' : 'down',
-      valid: true,
+      valid: false,
       value: null,
     };
   }
@@ -164,21 +181,21 @@ const endOfDay = (input) => {
 const formatMonthLabel = (key, locale) => {
   const [year, month] = key.split('-');
   const date = new Date(Number(year), Number(month) - 1, 1);
-  return date.toLocaleDateString(locale || 'en-US', { month: 'short', year: '2-digit' });
+  return date.toLocaleDateString(locale || 'en-IN', { month: 'short', year: 'numeric' });
 };
 
-/** Localised short date. */
+/** Localised short date (e.g. 19 Sep). */
 const formatShortDate = (input, locale) => {
   const d = new Date(input);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(locale || 'en-US', { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(locale || 'en-IN', { day: 'numeric', month: 'short' });
 };
 
-/** Localised full date. */
+/** Localised full date (e.g. 19 Sep 2026). */
 const formatFullDate = (input, locale) => {
   const d = new Date(input);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(locale || 'en-US');
+  return d.toLocaleDateString(locale || 'en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
 /** Fill every month between min and max, inclusive. */
@@ -359,10 +376,11 @@ export default function Analytics() {
   } = useContext(AppContext);
   const { showToast } = useToast();
 
+  const prefersReducedMotion = usePrefersReducedMotion();
   const isDark = isDarkTheme(theme);
   const locale = useMemo(() => resolveLocale(lang), [lang]);
-  const activeCurrency = currency || user?.currency || 'USD';
-  const symbol = currencyInfo?.symbol || '$';
+  const activeCurrency = currency || user?.currency || 'INR';
+  const symbol = currencyInfo?.symbol || '₹';
 
   const fmt = useCallback(
     (value) => {
@@ -376,7 +394,7 @@ export default function Analytics() {
       const num = Number(value);
       if (!Number.isFinite(num)) return `${symbol}0.00`;
       try {
-        return new Intl.NumberFormat(locale || 'en-US', { style: 'currency', currency: activeCurrency }).format(num);
+        return new Intl.NumberFormat(locale || 'en-IN', { style: 'currency', currency: activeCurrency }).format(num);
       } catch {
         return `${symbol}${num.toFixed(2)}`;
       }
@@ -390,6 +408,7 @@ export default function Analytics() {
   const [showAllEvolutionCategories, setShowAllEvolutionCategories] = useState(false);
   const [customRange, setCustomRange] = useState({ start: '', end: '' });
   const [showCustomRange, setShowCustomRange] = useState(false);
+  const [isPeriodDropdownOpen, setIsPeriodDropdownOpen] = useState(false);
   const [drillData, setDrillData] = useState({ isOpen: false, title: '', transactions: [] });
   const [isExportingPng, setIsExportingPng] = useState(false);
 
@@ -435,9 +454,9 @@ export default function Analytics() {
   );
 
   /* ============================================================
-   * Period Comparison
+   * Period Date Range
    * ============================================================ */
-  const comparisonMetrics = useMemo(() => {
+  const periodRange = useMemo(() => {
     const now = new Date();
     let currentStart = null, currentEnd = null, prevStart = null, prevEnd = null;
 
@@ -475,6 +494,14 @@ export default function Analytics() {
       currentStart = new Date(0);
       currentEnd = new Date();
     }
+    return { currentStart, currentEnd, prevStart, prevEnd };
+  }, [periodFilter, customRange]);
+
+  /* ============================================================
+   * Period Comparison
+   * ============================================================ */
+  const comparisonMetrics = useMemo(() => {
+    const { currentStart, currentEnd, prevStart, prevEnd } = periodRange;
 
     const filterTxs = (start, end) => {
       if (!start || !end) return [];
@@ -517,7 +544,7 @@ export default function Analytics() {
       savingsRate,
       hasComparison,
     };
-  }, [validTransactions, periodFilter, customRange]);
+  }, [validTransactions, periodRange]);
 
   /* ============================================================
    * Monthly Aggregates
@@ -618,7 +645,18 @@ export default function Analytics() {
       data.some((row) => Number(row[cat]) > 0)
     );
 
-    return { data, categories: visibleCats };
+    // Trim leading all-zero months so the chart doesn't render a flat zero line followed by a spike
+    const firstActiveIndex = data.findIndex((row) =>
+      visibleCats.some((c) => Number(row[c]) > 0)
+    );
+    const finalData = firstActiveIndex > 0 ? data.slice(firstActiveIndex) : data;
+
+    // If fewer than two months have data, hide the chart to prevent floating single dot
+    if (finalData.length < 2) {
+      return { data: [], categories: [] };
+    }
+
+    return { data: finalData, categories: visibleCats };
   }, [validTransactions, showAllEvolutionCategories, locale]);
 
   /* ============================================================
@@ -696,12 +734,17 @@ export default function Analytics() {
   );
 
   /* ============================================================
-   * Expense Categories (All-Time pie)
+   * Expense Categories (scoped by periodFilter)
    * ============================================================ */
   const expenseCategories = useMemo(() => {
+    const { currentStart, currentEnd } = periodRange;
     const map = new Map();
     validTransactions
-      .filter((t) => t.type === 'expense')
+      .filter((t) => {
+        if (t.type !== 'expense') return false;
+        const d = new Date(t.date);
+        return d >= currentStart && d <= currentEnd;
+      })
       .forEach((t) => {
         const cat = t.category || 'Other';
         map.set(cat, (map.get(cat) || 0) + safeParseAmount(t.amount));
@@ -715,7 +758,7 @@ export default function Analytics() {
       }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8);
-  }, [validTransactions]);
+  }, [validTransactions, periodRange]);
 
   /* ============================================================
    * AI Insights — NaN-safe
@@ -1050,54 +1093,112 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Period Selector */}
-      <div className="analytics-period-bar glass">
-        <span className="apb-label"><Calendar size={14} /> Compare Period:</span>
-        <div className="apb-buttons">
-          {[
-            { id: 'month', label: 'This Month vs Last' },
-            { id: 'quarter', label: 'This Quarter vs Last' },
-            { id: 'year', label: 'Year over Year' },
-            { id: 'all', label: 'All Time' },
-          ].map((p) => (
-            <button
-              key={p.id}
-              className={`apb-btn ${periodFilter === p.id ? 'active' : ''}`}
-              onClick={() => setPeriodFilter(p.id)}
-              aria-pressed={periodFilter === p.id}
-            >
-              {p.label}
-            </button>
-          ))}
+      {/* Period Selector — Clean Standard Dropdown */}
+      <div className="analytics-period-bar glass" style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '8px 16px', position: 'relative', width: 'auto', marginBottom: 14 }}>
+        <span className="apb-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', fontWeight: 600, color: '#64748B' }}>
+          <Calendar size={14} /> Compare Period:
+        </span>
+        <div style={{ position: 'relative' }}>
           <button
-            className={`apb-btn ${periodFilter === 'custom' ? 'active' : ''}`}
-            onClick={() => setShowCustomRange((s) => !s)}
-            aria-expanded={showCustomRange}
+            type="button"
+            className="btn-secondary period-dropdown-trigger"
+            onClick={() => setIsPeriodDropdownOpen((v) => !v)}
+            aria-expanded={isPeriodDropdownOpen}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 14px',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
           >
-            <Filter size={14} /> Custom
-            {periodFilter === 'custom' && customRange.start && customRange.end && (
-              <span
+            <span>
+              {periodFilter === 'month' && 'This Month vs Last'}
+              {periodFilter === 'quarter' && 'This Quarter vs Last'}
+              {periodFilter === 'year' && 'Year over Year'}
+              {periodFilter === 'all' && 'All Time'}
+              {periodFilter === 'custom' && (customRange.start && customRange.end ? `Custom (${customRange.start} → ${customRange.end})` : 'Custom Range')}
+            </span>
+            <ChevronDown size={14} style={{ opacity: 0.6, transform: isPeriodDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
+          </button>
+
+          <AnimatePresence>
+            {isPeriodDropdownOpen && (
+              <motion.div
+                className="glass"
+                initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.98 }}
                 style={{
-                  marginLeft: 6,
-                  fontSize: '0.7rem',
-                  opacity: 0.8,
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  left: 0,
+                  minWidth: 200,
+                  zIndex: 100,
+                  borderRadius: 8,
+                  padding: 6,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                  background: 'var(--surface-card, #ffffff)',
+                  border: '1px solid var(--glass-border)',
                 }}
               >
-                ({customRange.start} → {customRange.end})
-              </span>
+                {[
+                  { id: 'month', label: 'This Month vs Last' },
+                  { id: 'quarter', label: 'This Quarter vs Last' },
+                  { id: 'year', label: 'Year over Year' },
+                  { id: 'all', label: 'All Time' },
+                  { id: 'custom', label: 'Custom Range...' },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setPeriodFilter(p.id);
+                      setIsPeriodDropdownOpen(false);
+                      setShowCustomRange(p.id === 'custom');
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      border: 'none',
+                      borderRadius: 6,
+                      background: periodFilter === p.id ? 'rgba(var(--brand-primary-rgb), 0.12)' : 'transparent',
+                      color: periodFilter === p.id ? 'var(--brand-primary)' : 'var(--text-primary)',
+                      fontSize: '0.84rem',
+                      fontWeight: periodFilter === p.id ? 700 : 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      width: '100%',
+                    }}
+                  >
+                    <span>{p.label}</span>
+                    {periodFilter === p.id && <Check size={14} style={{ color: 'var(--brand-primary)' }} />}
+                  </button>
+                ))}
+              </motion.div>
             )}
-          </button>
-          {periodFilter === 'custom' && (
-            <button
-              className="apb-btn"
-              onClick={clearCustomRange}
-              title="Clear custom range"
-              aria-label="Clear custom range"
-            >
-              <X size={14} />
-            </button>
-          )}
+          </AnimatePresence>
         </div>
+
+        {periodFilter === 'custom' && (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={clearCustomRange}
+            title="Clear custom range"
+            aria-label="Clear custom range"
+            style={{ padding: '6px 8px', fontSize: '0.8rem' }}
+          >
+            <X size={14} />
+          </button>
+        )}
       </div>
 
       {/* Custom Range Inputs */}
@@ -1149,13 +1250,13 @@ export default function Analytics() {
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Period Inflow</span>
-            <span className={`sc-delta ${comparisonMetrics.incomeDelta.direction === 'down' ? 'text-danger' : 'text-success'}`}>
-              {comparisonMetrics.incomeDelta.valid ? (
-                comparisonMetrics.incomeDelta.direction === 'up' ? <ArrowUpRight size={14} /> :
-                comparisonMetrics.incomeDelta.direction === 'down' ? <ArrowDownRight size={14} /> : null
-              ) : null}
-              {comparisonMetrics.incomeDelta.display}
-            </span>
+            {comparisonMetrics.hasComparison && comparisonMetrics.incomeDelta.valid && periodFilter !== 'all' && (
+              <span className={`sc-delta ${comparisonMetrics.incomeDelta.direction === 'down' ? 'text-danger' : 'text-success'}`}>
+                {comparisonMetrics.incomeDelta.direction === 'up' ? <ArrowUpRight size={14} /> :
+                  comparisonMetrics.incomeDelta.direction === 'down' ? <ArrowDownRight size={14} /> : null}
+                {comparisonMetrics.incomeDelta.display}
+              </span>
+            )}
           </div>
           <h3 className="sc-val text-success">+{fmt(comparisonMetrics.current.income)}</h3>
           {comparisonMetrics.hasComparison && (
@@ -1166,13 +1267,13 @@ export default function Analytics() {
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Period Outflow</span>
-            <span className={`sc-delta ${comparisonMetrics.expenseDelta.direction === 'down' ? 'text-success' : 'text-danger'}`}>
-              {comparisonMetrics.expenseDelta.valid ? (
-                comparisonMetrics.expenseDelta.direction === 'up' ? <ArrowUpRight size={14} /> :
-                comparisonMetrics.expenseDelta.direction === 'down' ? <ArrowDownRight size={14} /> : null
-              ) : null}
-              {comparisonMetrics.expenseDelta.display}
-            </span>
+            {comparisonMetrics.hasComparison && comparisonMetrics.expenseDelta.valid && periodFilter !== 'all' && (
+              <span className={`sc-delta ${comparisonMetrics.expenseDelta.direction === 'down' ? 'text-success' : 'text-danger'}`}>
+                {comparisonMetrics.expenseDelta.direction === 'up' ? <ArrowUpRight size={14} /> :
+                  comparisonMetrics.expenseDelta.direction === 'down' ? <ArrowDownRight size={14} /> : null}
+                {comparisonMetrics.expenseDelta.display}
+              </span>
+            )}
           </div>
           <h3 className="sc-val text-danger">-{fmt(comparisonMetrics.current.expense)}</h3>
           {comparisonMetrics.hasComparison && (
@@ -1183,13 +1284,13 @@ export default function Analytics() {
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Net Position</span>
-            <span className={`sc-delta ${comparisonMetrics.netDelta.direction === 'down' ? 'text-danger' : 'text-success'}`}>
-              {comparisonMetrics.netDelta.valid ? (
-                comparisonMetrics.netDelta.direction === 'up' ? <ArrowUpRight size={14} /> :
-                comparisonMetrics.netDelta.direction === 'down' ? <ArrowDownRight size={14} /> : null
-              ) : null}
-              {comparisonMetrics.netDelta.display}
-            </span>
+            {comparisonMetrics.hasComparison && comparisonMetrics.netDelta.valid && periodFilter !== 'all' && (
+              <span className={`sc-delta ${comparisonMetrics.netDelta.direction === 'down' ? 'text-danger' : 'text-success'}`}>
+                {comparisonMetrics.netDelta.direction === 'up' ? <ArrowUpRight size={14} /> :
+                  comparisonMetrics.netDelta.direction === 'down' ? <ArrowDownRight size={14} /> : null}
+                {comparisonMetrics.netDelta.display}
+              </span>
+            )}
           </div>
           <h3 className={`sc-val ${comparisonMetrics.current.net >= 0 ? 'text-success' : 'text-danger'}`}>
             {comparisonMetrics.current.net >= 0 ? '+' : ''}{fmt(comparisonMetrics.current.net)}
@@ -1217,6 +1318,18 @@ export default function Analytics() {
           <h3 className="sc-val">
             {comparisonMetrics.savingsRate != null ? `${comparisonMetrics.savingsRate.toFixed(1)}%` : '—'}
           </h3>
+          {comparisonMetrics.savingsRate != null && comparisonMetrics.savingsRate > 0 && (
+            <div style={{ width: '100%', height: 6, borderRadius: 999, background: 'rgba(0,0,0,0.06)', margin: '4px 0 6px', overflow: 'hidden' }}>
+              <div
+                style={{
+                  width: `${Math.min(100, Math.max(0, comparisonMetrics.savingsRate))}%`,
+                  height: '100%',
+                  borderRadius: 999,
+                  background: comparisonMetrics.savingsRate >= 20 ? '#10b981' : '#3b82f6',
+                }}
+              />
+            </div>
+          )}
           <p className="sc-prev">
             {comparisonMetrics.savingsRate != null ? 'of income saved' : 'no income in period'}
           </p>
@@ -1302,28 +1415,28 @@ export default function Analytics() {
             </div>
           </div>
           {monthlyData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
+            <ResponsiveContainer width="100%" height={240} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
               {chartType === 'bar' ? (
-                <BarChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                <BarChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 25 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                   <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
-                  <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                  <YAxis domain={[0, (dataMax) => Math.ceil(dataMax * 1.15)]} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
-                  <Legend />
-                  <Bar dataKey="income" fill={isDark ? '#34d399' : '#10b981'} radius={[6, 6, 0, 0]} name="Inflow" onClick={handleBarClick} cursor="pointer" />
-                  <Bar dataKey="expense" fill={isDark ? '#f87171' : '#ef4444'} radius={[6, 6, 0, 0]} name="Outflow" onClick={handleBarClick} cursor="pointer" />
-                  <Bar dataKey="savings" fill={isDark ? '#6ee7b7' : '#059669'} radius={[6, 6, 0, 0]} name="Net Savings" onClick={handleBarClick} cursor="pointer" />
+                  <Legend wrapperStyle={{ paddingTop: 8 }} />
+                  <Bar isAnimationActive={!prefersReducedMotion && !loading} dataKey="income" fill={isDark ? '#34d399' : '#10b981'} radius={[4, 4, 0, 0]} name="Inflow" onClick={handleBarClick} cursor="pointer" />
+                  <Bar isAnimationActive={!prefersReducedMotion && !loading} dataKey="expense" fill={isDark ? '#f87171' : '#ef4444'} radius={[4, 4, 0, 0]} name="Outflow" onClick={handleBarClick} cursor="pointer" />
+                  <Bar isAnimationActive={!prefersReducedMotion && !loading} dataKey="savings" fill={isDark ? '#6ee7b7' : '#059669'} radius={[4, 4, 0, 0]} name="Net Savings" onClick={handleBarClick} cursor="pointer" />
                 </BarChart>
               ) : (
-                <LineChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                <LineChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 25 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                   <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
-                  <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                  <YAxis domain={[0, (dataMax) => Math.ceil(dataMax * 1.15)]} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
-                  <Legend />
-                  <Line type="monotone" dataKey="income" stroke={isDark ? '#34d399' : '#10b981'} strokeWidth={2.5} dot={{ r: 4 }} name="Inflow" />
-                  <Line type="monotone" dataKey="expense" stroke={isDark ? '#f87171' : '#ef4444'} strokeWidth={2.5} dot={{ r: 4 }} name="Outflow" />
-                  <Line type="monotone" dataKey="savings" stroke={isDark ? '#6ee7b7' : '#059669'} strokeWidth={2.5} dot={{ r: 4 }} name="Net Savings" />
+                  <Legend wrapperStyle={{ paddingTop: 8 }} />
+                  <Line isAnimationActive={!prefersReducedMotion && !loading} type="monotone" dataKey="income" stroke={isDark ? '#34d399' : '#10b981'} strokeWidth={2.5} dot={{ r: 4 }} name="Inflow" />
+                  <Line isAnimationActive={!prefersReducedMotion && !loading} type="monotone" dataKey="expense" stroke={isDark ? '#f87171' : '#ef4444'} strokeWidth={2.5} dot={{ r: 4 }} name="Outflow" />
+                  <Line isAnimationActive={!prefersReducedMotion && !loading} type="monotone" dataKey="savings" stroke={isDark ? '#6ee7b7' : '#059669'} strokeWidth={2.5} dot={{ r: 4 }} name="Net Savings" />
                 </LineChart>
               )}
             </ResponsiveContainer>
@@ -1334,30 +1447,33 @@ export default function Analytics() {
 
         {/* Category Evolution */}
         <motion.div className="chart-card glass chart-card-large" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="chart-header">
-            <div>
-              <h3>Category Spending Evolution</h3>
-              <span className="chart-badge">Historical Category Trends</span>
+          <div className="chart-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h3 style={{ margin: 0 }}>Category Spending Evolution</h3>
+              <span className="chart-badge">Historical Trends</span>
             </div>
-            <button
-              className="btn-secondary"
-              style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-              onClick={() => setShowAllEvolutionCategories((p) => !p)}
-            >
-              {showAllEvolutionCategories ? 'Show Top 5' : 'Show All (Top 8)'}
-            </button>
+            {categoryEvolution.data.length > 0 && categoryEvolution.categories.length > 0 && (
+              <button
+                className="btn-secondary"
+                style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                onClick={() => setShowAllEvolutionCategories((p) => !p)}
+              >
+                {showAllEvolutionCategories ? 'Show Top 5' : 'Show All (Top 8)'}
+              </button>
+            )}
           </div>
           {categoryEvolution.data.length > 0 && categoryEvolution.categories.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
-              <LineChart data={categoryEvolution.data} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+            <ResponsiveContainer width="100%" height={240} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
+              <LineChart data={categoryEvolution.data} margin={{ top: 10, right: 20, left: 0, bottom: 25 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                 <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                 <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                 <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
-                <Legend wrapperStyle={{ fontSize: '0.75rem' }} />
+                <Legend wrapperStyle={{ fontSize: '0.75rem', paddingTop: 8 }} />
                 {categoryEvolution.categories.map((cat, idx) => (
                   <Line
                     key={cat}
+                    isAnimationActive={!prefersReducedMotion && !loading}
                     type="monotone"
                     dataKey={cat}
                     stroke={categoryColors[idx % categoryColors.length]}
@@ -1369,7 +1485,9 @@ export default function Analytics() {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="chart-empty"><p>Not enough category history to render evolution chart.</p></div>
+            <div className="chart-empty" style={{ minHeight: 64, padding: '16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <p style={{ margin: 0, color: '#64748B', fontSize: '0.85rem' }}>Not enough category history to render evolution chart.</p>
+            </div>
           )}
         </motion.div>
 
@@ -1385,7 +1503,7 @@ export default function Analytics() {
               <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
               <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
               <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
-              <Bar dataKey="expense" fill={isDark ? '#fbbf24' : '#f59e0b'} radius={[6, 6, 0, 0]} name="Daily Expense" />
+              <Bar isAnimationActive={!prefersReducedMotion && !loading} dataKey="expense" fill={isDark ? '#fbbf24' : '#f59e0b'} radius={[6, 6, 0, 0]} name="Daily Expense" />
             </BarChart>
           </ResponsiveContainer>
         </motion.div>
@@ -1394,12 +1512,23 @@ export default function Analytics() {
         <motion.div className="chart-card glass" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <h3>Expense Allocation</h3>
-            <span className="chart-badge">By Category</span>
+            <span className="chart-badge">
+              {periodFilter === 'all'
+                ? 'All Time'
+                : periodFilter === 'month'
+                ? 'This Month'
+                : periodFilter === 'quarter'
+                ? 'This Quarter'
+                : periodFilter === 'year'
+                ? 'This Year'
+                : 'Selected Period'}
+            </span>
           </div>
           {expenseCategories.length > 0 ? (
             <ResponsiveContainer width="100%" height={260} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
               <PieChart>
                 <Pie
+                  isAnimationActive={!prefersReducedMotion && !loading}
                   data={expenseCategories}
                   cx="50%"
                   cy="50%"

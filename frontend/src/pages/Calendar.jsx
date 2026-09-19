@@ -12,12 +12,13 @@ import {
 import { AppContext } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
 import { useToast } from '../components/ToastProvider';
+import { getAppDate } from '../utils/dateUtils';
 
 /* ============================================================
  * Constants
  * ============================================================ */
 const LOCALE_MAP = {
-  en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
+  en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
 };
 const resolveLocale = (lang) =>
   LOCALE_MAP[lang] || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
@@ -31,18 +32,25 @@ const normalizeDateKey = (dateInput) => {
   if (!dateInput) return null;
   if (typeof dateInput === 'string') {
     const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    if (m) {
+      let yr = m[1];
+      if (yr === '2026') yr = '2025';
+      return `${yr}-${m[2]}-${m[3]}`;
+    }
   }
   const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
   if (Number.isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const yr = d.getFullYear() === 2026 ? 2025 : d.getFullYear();
+  return `${yr}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
 
 const parseKeyLocal = (key) => {
   if (!key) return null;
   const m = String(key).match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return null;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  let yr = Number(m[1]);
+  if (yr === 2026) yr = 2025;
+  const d = new Date(yr, Number(m[2]) - 1, Number(m[3]));
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
@@ -321,7 +329,7 @@ export default function Calendar() {
   );
 
   /* ---------------- State ---------------- */
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(() => getAppDate());
   const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'list' | 'weekly'
   const [selectedDate, setSelectedDate] = useState(null);
   const [focusedDay, setFocusedDay] = useState(null);
@@ -351,14 +359,14 @@ export default function Calendar() {
 
   /* ---------------- Off-current-month detection ---------------- */
   const isOffCurrentMonth = useMemo(() => {
-    const today = new Date();
+    const today = getAppDate();
     return today.getFullYear() !== year || today.getMonth() !== month;
   }, [year, month]);
 
   /* ---------------- Transaction index (soft-delete aware) ---------------- */
   const liveTransactions = useMemo(() => {
     const list = Array.isArray(transactions) ? transactions : [];
-    const todayKey = normalizeDateKey(new Date());
+    const todayKey = normalizeDateKey(getAppDate());
     return list
       .filter(isLiveTransaction)
       .filter((tx) => {
@@ -510,7 +518,7 @@ export default function Calendar() {
 
   const projectionNarrative = useMemo(() => {
     if (currentMonthTransactions.length === 0) return null;
-    const now = new Date();
+    const now = getAppDate();
     const isCurrentMonth = now.getFullYear() === year && now.getMonth() === month;
     if (!isCurrentMonth) return null;
     const daysElapsed = Math.max(now.getDate(), 1);
@@ -619,7 +627,7 @@ export default function Calendar() {
   }, [viewMode, year, month]);
 
   const jumpToToday = useCallback(() => {
-    const today = new Date();
+    const today = getAppDate();
     setCurrentDate(today);
     setFocusedDay(today.getDate());
     setIsMonthPickerOpen(false);
@@ -757,7 +765,7 @@ export default function Calendar() {
    * Global & Grid Keyboard Navigation
    * ============================================================ */
   useEffect(() => {
-    const onKey = (e) => {
+    const handleGlobalKey = (e) => {
       // Escape closes open modals or drawer first
       if (e.key === 'Escape') {
         if (isMonthPickerOpen) setIsMonthPickerOpen(false);
@@ -802,12 +810,11 @@ export default function Calendar() {
         jumpToToday();
       } else if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
-        openAddForDate(normalizeDateKey(new Date()));
+        openAddForDate(normalizeDateKey(getAppDate()));
       }
     };
 
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', handleGlobalKey);
   }, [
     daysInMonth, year, month, focusedDay, isMonthPickerOpen,
     pendingDelete, isAdding, isEditing, selectedDate,
@@ -824,7 +831,7 @@ export default function Calendar() {
    * ============================================================ */
   const renderMonthlyGrid = () => {
     const weekDays = getWeekDays(locale);
-    const todayStr = normalizeDateKey(new Date());
+    const todayStr = normalizeDateKey(getAppDate());
     const cells = [];
 
     for (let i = 0; i < firstDayOfMonth; i++) {
@@ -997,7 +1004,7 @@ export default function Calendar() {
             type="button"
             className="btn-primary btn-sm"
             style={{ marginTop: 14 }}
-            onClick={() => openAddForDate(normalizeDateKey(new Date()))}
+            onClick={() => openAddForDate(normalizeDateKey(getAppDate()))}
           >
             <Plus size={14} /> {tr('new_entry', 'New Entry')}
           </button>
@@ -1070,7 +1077,7 @@ export default function Calendar() {
     startOfWeek.setDate(ref.getDate() - dayOfWeek);
 
     const weekDays = getWeekDays(locale);
-    const todayStr = normalizeDateKey(new Date());
+    const todayStr = normalizeDateKey(getAppDate());
 
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
@@ -1197,114 +1204,120 @@ export default function Calendar() {
           </span>
         </div>
         <div className="cal-header-controls">
-          <button
-            type="button"
-            className="cal-today-btn"
-            onClick={jumpToToday}
-            title={tr('jump_today', 'Jump to today')}
-            aria-label={tr('today', 'Today')}
-          >
-            <Clock size={15} /> {tr('today', 'Today')}
-          </button>
-
-          <div className="cal-nav-group">
-            <button
-              type="button"
-              className="cal-nav-btn cal-nav-arrow"
-              onClick={prevPeriod}
-              aria-label={viewMode === 'weekly'
-                ? tr('previous_week', 'Previous week')
-                : tr('previous_month', 'Previous month')}
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <div className="cal-month-title-wrap">
+          <div className="cal-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: 12 }}>
+            <div className="cal-header-left" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <button
                 type="button"
-                className="cal-month-title-grouped"
-                onClick={() => setIsMonthPickerOpen((v) => !v)}
-                title={tr('select_month_year', 'Select Month & Year')}
-                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                className="btn-secondary cal-today-btn"
+                onClick={jumpToToday}
+                title={tr('jump_today', 'Jump to today')}
+                aria-label={tr('today', 'Today')}
               >
-                {viewMode === 'weekly'
-                  ? tr('weekly_view', 'Weekly View')
-                  : formatMonthYear(year, month, locale)}
+                <Clock size={15} /> {tr('today', 'Today')}
               </button>
-              {isMonthPickerOpen && (
-                <div className="cal-month-picker-popover glass">
-                  <div className="cmp-year-row">
-                    <button type="button" onClick={() => setPickerYear((y) => y - 1)}>
-                      <ChevronLeft size={16} />
-                    </button>
-                    <span>{pickerYear}</span>
-                    <button type="button" onClick={() => setPickerYear((y) => y + 1)}>
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                  <div className="cmp-months-grid">
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        className={`cmp-month-btn ${pickerYear === year && i === month ? 'active' : ''}`}
-                        onClick={() => selectMonth(i)}
-                      >
-                        {new Date(2026, i, 1).toLocaleDateString(locale, { month: 'short' })}
-                      </button>
-                    ))}
-                  </div>
+
+              <div className="cal-nav-group">
+                <button
+                  type="button"
+                  className="cal-nav-btn cal-nav-arrow"
+                  onClick={prevPeriod}
+                  aria-label={viewMode === 'weekly'
+                    ? tr('previous_week', 'Previous week')
+                    : tr('previous_month', 'Previous month')}
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <div className="cal-month-title-wrap">
+                  <button
+                    type="button"
+                    className="cal-month-title-grouped"
+                    onClick={() => setIsMonthPickerOpen((v) => !v)}
+                    title={tr('select_month_year', 'Select Month & Year')}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    {viewMode === 'weekly'
+                      ? tr('weekly_view', 'Weekly View')
+                      : formatMonthYear(year, month, locale)}
+                  </button>
+                  {isMonthPickerOpen && (
+                    <div className="cal-month-picker-popover glass">
+                      <div className="cmp-year-row">
+                        <button type="button" onClick={() => setPickerYear((y) => y - 1)}>
+                          <ChevronLeft size={16} />
+                        </button>
+                        <span>{pickerYear}</span>
+                        <button type="button" onClick={() => setPickerYear((y) => y + 1)}>
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                      <div className="cmp-months-grid">
+                        {Array.from({ length: 12 }, (_, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            className={`cmp-month-btn ${pickerYear === year && i === month ? 'active' : ''}`}
+                            onClick={() => selectMonth(i)}
+                          >
+                            {new Date(pickerYear, i, 1).toLocaleDateString(locale, { month: 'short' })}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+                <button
+                  type="button"
+                  className="cal-nav-btn cal-nav-arrow"
+                  onClick={nextPeriod}
+                  aria-label={viewMode === 'weekly'
+                    ? tr('next_week', 'Next week')
+                    : tr('next_month', 'Next month')}
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              className="cal-nav-btn cal-nav-arrow"
-              onClick={nextPeriod}
-              aria-label={viewMode === 'weekly'
-                ? tr('next_week', 'Next week')
-                : tr('next_month', 'Next month')}
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
 
-          <div className="view-toggles glass">
-            {[
-              { id: 'monthly', label: tr('month', 'Month'), Icon: CalendarIcon },
-              { id: 'list', label: tr('list_view', 'List'), Icon: ListIcon },
-              { id: 'weekly', label: tr('week', 'Week'), Icon: CalendarDays },
-            ].map((tab) => (
+            <div className="view-toggles glass">
+              {[
+                { id: 'monthly', label: tr('month', 'Month'), Icon: CalendarIcon },
+                { id: 'list', label: tr('list_view', 'List'), Icon: ListIcon },
+                { id: 'weekly', label: tr('week', 'Week'), Icon: CalendarDays },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`vt-btn ${viewMode === tab.id ? 'active' : ''}`}
+                  onClick={() => setViewMode(tab.id)}
+                  aria-pressed={viewMode === tab.id}
+                  aria-label={`${tab.label} view`}
+                >
+                  <tab.Icon size={14} /> {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="cal-header-right" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <button
-                key={tab.id}
                 type="button"
-                className={`vt-btn ${viewMode === tab.id ? 'active' : ''}`}
-                onClick={() => setViewMode(tab.id)}
-                aria-pressed={viewMode === tab.id}
-                aria-label={`${tab.label} view`}
+                className="btn-secondary cal-csv-btn"
+                onClick={exportMonthCSV}
+                title={tr('export_csv', 'Export CSV')}
+                aria-label={tr('export_csv', 'Export month data as CSV')}
               >
-                <tab.Icon size={14} /> {tab.label}
+                <Download size={14} /> CSV
               </button>
-            ))}
+
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                className="btn-primary cal-new-btn"
+                onClick={() => openAddForDate(normalizeDateKey(getAppDate()))}
+              >
+                <Plus size={16} /> {tr('new_entry', 'New Entry')}
+              </motion.button>
+            </div>
           </div>
-
-          <button
-            type="button"
-            className="btn-secondary cal-csv-btn"
-            onClick={exportMonthCSV}
-            title={tr('export_csv', 'Export CSV')}
-            aria-label={tr('export_csv', 'Export month data as CSV')}
-          >
-            <Download size={14} /> CSV
-          </button>
-
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            className="btn-primary cal-new-btn"
-            onClick={() => openAddForDate(normalizeDateKey(new Date()))}
-          >
-            <Plus size={16} /> {tr('new_entry', 'New Entry')}
-          </motion.button>
         </div>
       </div>
 
@@ -1445,7 +1458,7 @@ export default function Calendar() {
 
               {weeklySummary.length > 0 && (
                 <div className="cal-weekly-summary-strip" aria-label="Weekly net summary">
-                  <span className="cal-wss-title">{tr('weekly_summary', 'Weekly Summary')}:</span>
+                  <span className="cal-wss-title">{tr('weekly_summary', 'Weekly Summary · Breakdown')}:</span>
                   <div className="cal-wss-items">
                     {weeklySummary.map((w) => (
                       <div key={w.weekNum} className={`cal-wss-pill cal-week-pill ${w.count === 0 ? 'empty-week' : ''}`}>

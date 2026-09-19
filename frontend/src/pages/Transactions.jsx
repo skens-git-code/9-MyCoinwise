@@ -1047,7 +1047,7 @@ export default function Transactions() {
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
               >
-                <option value="all">{tr('all_categories', 'All Categories')}</option>
+                <option value="all">{tr('category', 'Category')}</option>
                 {categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
 
@@ -1462,25 +1462,29 @@ export default function Transactions() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
-                <Wallet size={48} className="idp-empty-icon" aria-hidden />
-                <h3>{tr('select_a_transaction', 'Select a Transaction')}</h3>
-                <p>
+                <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(59, 130, 246, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <Wallet size={40} className="idp-empty-icon" style={{ color: 'var(--brand-primary)', margin: 0 }} aria-hidden />
+                </div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 6px', color: 'var(--text-primary)' }}>
+                  {tr('select_a_transaction', 'Select a Transaction')}
+                </h3>
+                <p style={{ fontSize: '0.88rem', color: '#64748B', maxWidth: 320, lineHeight: 1.5, margin: '0 auto 12px' }}>
                   {tr('click_transaction_to_inspect', 'Click on any transaction to view, edit, duplicate, or inspect its details.')}
                 </p>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 8 }}>
-                  <Keyboard size={12} aria-hidden /> {tr('shortcuts_hint', 'Press / to search, N for new')}
-                </p>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: 'var(--glass-2)', border: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: '#64748B', marginBottom: 20 }}>
+                  <Keyboard size={13} aria-hidden /> {tr('shortcuts_hint', 'Press / to search, N for new')}
+                </div>
 
                 <div className="idp-quick-stats">
-                  <div className="iqs-box glass">
+                  <div className="iqs-box iqs-earned glass">
                     <label>{tr('earned', 'EARNED')}</label>
                     <span className="success">{fmt(totals.income)}</span>
                   </div>
-                  <div className="iqs-box glass">
+                  <div className="iqs-box iqs-spent glass">
                     <label>{tr('spent_upper', 'SPENT')}</label>
                     <span className="danger">{fmt(totals.expense)}</span>
                   </div>
-                  <div className="iqs-box glass">
+                  <div className="iqs-box iqs-net glass">
                     <label>{tr('net_upper', 'NET')}</label>
                     <span className="primary">{fmt(totals.net)}</span>
                   </div>
