@@ -1821,39 +1821,51 @@ body,
 /* Row 2: Recent Transactions (6) + Spending vs Income Chart (6) = 12 */
 .bento-recent {
   grid-column: span 6 !important;
-  grid-row: span 2 !important;
-  min-height: 440px !important;
-  padding: 30px !important;
+  grid-row: span 1 !important;
+  min-height: 290px !important;
+  padding: 20px !important;
   display: flex !important;
   flex-direction: column !important;
 }
 
 .bento-chart {
   grid-column: span 6 !important;
-  grid-row: span 2 !important;
-  min-height: 440px !important;
-  padding: 30px !important;
+  grid-row: span 1 !important;
+  min-height: 290px !important;
+  padding: 20px !important;
   display: flex !important;
   flex-direction: column !important;
 }
 
-/* Row 3: Net Worth (4) + Goal (4) + Breakdown (4) = 12 (Fills 100% width, no empty void!) */
+/* Row 3: Net Worth (4) + Goal (4) + Breakdown (4) = 12 (Symmetrical 3-card bottom tier) */
 .bento-networth {
   grid-column: span 4 !important;
-  min-height: 260px !important;
-  padding: 28px !important;
+  grid-row: span 1 !important;
+  min-height: 235px !important;
+  padding: 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
 }
 
 .bento-goal {
   grid-column: span 4 !important;
-  min-height: 260px !important;
-  padding: 28px !important;
+  grid-row: span 1 !important;
+  min-height: 235px !important;
+  padding: 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
 }
 
 .bento-pie {
   grid-column: span 4 !important;
-  min-height: 260px !important;
-  padding: 28px !important;
+  grid-row: span 1 !important;
+  min-height: 235px !important;
+  padding: 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
 }
 
 /* Responsive Grid Breakpoints */
