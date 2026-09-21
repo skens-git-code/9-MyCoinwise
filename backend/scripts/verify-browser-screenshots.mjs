@@ -106,7 +106,7 @@ async function main() {
       const data = await res.json();
       wsUrl = data.webSocketDebuggerUrl;
       if (wsUrl) break;
-    } catch {}
+    } catch { }
   }
 
   if (!wsUrl) {
@@ -136,23 +136,24 @@ async function main() {
 
   const capture = async (filename, width = 1440, height = 900, isMobile = false) => {
     await setViewport(width, height, isMobile);
-    await sleep(800);
-    const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    await sleep(1500);
+    const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
     const outPath = path.join(ARTIFACTS_DIR, filename);
     fs.writeFileSync(outPath, Buffer.from(screenshot.data, 'base64'));
     console.log(`Captured: ${filename}`);
   };
 
   try {
-    // 1. Dashboard 1440x900
+    // 1. Dashboard 1440x1350
     console.log('Navigating to Dashboard...');
-    await setViewport(1440, 900, false);
+    await setViewport(1440, 1350, false);
     await cdp.send('Page.navigate', { url: `http://localhost:5173/?token=${token}` });
     await sleep(3500);
-    await capture('compact_dashboard_1440.png', 1440, 900, false);
+    await capture('compact_dashboard_1440.png', 1440, 1350, false);
 
     // 2. Dashboard 1920x1080 (Wide monitor)
     await capture('compact_dashboard_1920.png', 1920, 1080, false);
+    await capture('compact_dashboard_mobile_390.png', 390, 844, true);
 
     // 3. Transactions 1440x900
     console.log('Navigating to Transactions...');
@@ -165,6 +166,7 @@ async function main() {
     await cdp.send('Page.navigate', { url: 'http://localhost:5173/calendar' });
     await sleep(2000);
     await capture('compact_calendar_1440.png', 1440, 900, false);
+    await capture('compact_calendar_mobile_390.png', 390, 844, true);
 
     // 5. Analytics 1440x900
     console.log('Navigating to Analytics...');
@@ -176,7 +178,9 @@ async function main() {
   } finally {
     cdp.close();
     chromeProc.kill();
-    fs.rmSync(userDataDir, { recursive: true, force: true });
+    try {
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    } catch { }
   }
 }
 
