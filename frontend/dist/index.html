@@ -18,6 +18,18 @@
         } catch {
           document.documentElement.dataset.theme = 'light';
         }
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then((regs) => {
+              for (const r of regs) r.unregister();
+            });
+          }
+          if ('caches' in window) {
+            caches.keys().then((keys) => {
+              for (const k of keys) caches.delete(k);
+            });
+          }
+        }
       })();
     </script>
 
@@ -49,7 +61,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Orbitron:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <script type="module" crossorigin src="/assets/index-DMzNn9l1.js"></script>
+    <script type="module" crossorigin src="/assets/index-BcLGiyd6.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/chunk-BEqpzyXh.js">
     <link rel="modulepreload" crossorigin href="/assets/preload-helper-rov5CBGT.js">
     <link rel="modulepreload" crossorigin href="/assets/api-Ct6ONfTn.js">
@@ -77,7 +89,6 @@
     <link rel="modulepreload" crossorigin href="/assets/credit-card-C9sdWelk.js">
     <link rel="modulepreload" crossorigin href="/assets/keyboard-Cf6nl_A3.js">
     <link rel="modulepreload" crossorigin href="/assets/octagon-alert-GtNOJk_U.js">
-    <link rel="modulepreload" crossorigin href="/assets/plus-DOu7DY9l.js">
     <link rel="modulepreload" crossorigin href="/assets/refresh-cw-jGjXB-hy.js">
     <link rel="modulepreload" crossorigin href="/assets/search-DfZkAnOI.js">
     <link rel="modulepreload" crossorigin href="/assets/settings-CbTYvox-.js">
@@ -96,7 +107,8 @@
     <link rel="modulepreload" crossorigin href="/assets/ErrorBoundary-BFOkcoIP.js">
     <link rel="modulepreload" crossorigin href="/assets/Modal-BHqSgGKn.js">
     <link rel="modulepreload" crossorigin href="/assets/TransactionForm-DU6TfpVQ.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-sNaZ4-Hv.css">
+    <link rel="modulepreload" crossorigin href="/assets/transactionIntegrity-YIMHX29f.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-tv4UEClB.css">
   </head>
   <body>
     <div id="root"></div>

@@ -1204,8 +1204,8 @@ export default function Calendar() {
           </span>
         </div>
         <div className="cal-header-controls">
-          <div className="cal-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: 12 }}>
-            <div className="cal-header-left" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="cal-header-row">
+            <div className="cal-header-left">
               <button
                 type="button"
                 className="btn-secondary cal-today-btn"
@@ -1278,44 +1278,46 @@ export default function Calendar() {
               </div>
             </div>
 
-            <div className="view-toggles glass">
-              {[
-                { id: 'monthly', label: tr('month', 'Month'), Icon: CalendarIcon },
-                { id: 'list', label: tr('list_view', 'List'), Icon: ListIcon },
-                { id: 'weekly', label: tr('week', 'Week'), Icon: CalendarDays },
-              ].map((tab) => (
+            <div className="cal-header-actions-group">
+              <div className="view-toggles glass">
+                {[
+                  { id: 'monthly', label: tr('month', 'Month'), Icon: CalendarIcon },
+                  { id: 'list', label: tr('list_view', 'List'), Icon: ListIcon },
+                  { id: 'weekly', label: tr('week', 'Week'), Icon: CalendarDays },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`vt-btn ${viewMode === tab.id ? 'active' : ''}`}
+                    onClick={() => setViewMode(tab.id)}
+                    aria-pressed={viewMode === tab.id}
+                    aria-label={`${tab.label} view`}
+                  >
+                    <tab.Icon size={14} /> {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="cal-header-right">
                 <button
-                  key={tab.id}
                   type="button"
-                  className={`vt-btn ${viewMode === tab.id ? 'active' : ''}`}
-                  onClick={() => setViewMode(tab.id)}
-                  aria-pressed={viewMode === tab.id}
-                  aria-label={`${tab.label} view`}
+                  className="btn-secondary cal-csv-btn"
+                  onClick={exportMonthCSV}
+                  title={tr('export_csv', 'Export CSV')}
+                  aria-label={tr('export_csv', 'Export month data as CSV')}
                 >
-                  <tab.Icon size={14} /> {tab.label}
+                  <Download size={14} /> <span className="cal-csv-text">CSV</span>
                 </button>
-              ))}
-            </div>
 
-            <div className="cal-header-right" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button
-                type="button"
-                className="btn-secondary cal-csv-btn"
-                onClick={exportMonthCSV}
-                title={tr('export_csv', 'Export CSV')}
-                aria-label={tr('export_csv', 'Export month data as CSV')}
-              >
-                <Download size={14} /> CSV
-              </button>
-
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                className="btn-primary cal-new-btn"
-                onClick={() => openAddForDate(normalizeDateKey(getAppDate()))}
-              >
-                <Plus size={16} /> {tr('new_entry', 'New Entry')}
-              </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="btn-primary cal-new-btn"
+                  onClick={() => openAddForDate(normalizeDateKey(getAppDate()))}
+                >
+                  <Plus size={16} /> <span>{tr('new_entry', 'New Entry')}</span>
+                </motion.button>
+              </div>
             </div>
           </div>
         </div>

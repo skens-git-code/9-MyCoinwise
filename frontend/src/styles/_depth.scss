@@ -607,6 +607,10 @@ body,
   width: 100% !important;
   padding: 12px 20px 48px !important;
   box-sizing: border-box !important;
+
+  @media (max-width: 1024px) {
+    padding: 10px 14px calc(115px + env(safe-area-inset-bottom, 0px)) !important;
+  }
 }
 
 .island-page,
