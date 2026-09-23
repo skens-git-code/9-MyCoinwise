@@ -33,24 +33,19 @@ const normalizeDateKey = (dateInput) => {
   if (typeof dateInput === 'string') {
     const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (m) {
-      let yr = m[1];
-      if (yr === '2026') yr = '2025';
-      return `${yr}-${m[2]}-${m[3]}`;
+      return `${m[1]}-${m[2]}-${m[3]}`;
     }
   }
   const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
   if (Number.isNaN(d.getTime())) return null;
-  const yr = d.getFullYear() === 2026 ? 2025 : d.getFullYear();
-  return `${yr}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
 
 const parseKeyLocal = (key) => {
   if (!key) return null;
   const m = String(key).match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return null;
-  let yr = Number(m[1]);
-  if (yr === 2026) yr = 2025;
-  const d = new Date(yr, Number(m[2]) - 1, Number(m[3]));
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
@@ -1006,7 +1001,7 @@ export default function Calendar() {
             style={{ marginTop: 14 }}
             onClick={() => openAddForDate(normalizeDateKey(getAppDate()))}
           >
-            <Plus size={14} /> {tr('new_entry', 'New Entry')}
+            <Plus size={14} /> {tr('add_transaction', 'Add Transaction')}
           </button>
         </div>
       );
@@ -1315,7 +1310,7 @@ export default function Calendar() {
                   className="btn-primary cal-new-btn"
                   onClick={() => openAddForDate(normalizeDateKey(getAppDate()))}
                 >
-                  <Plus size={16} /> <span>{tr('new_entry', 'New Entry')}</span>
+                  <Plus size={16} /> <span>{tr('add_transaction', 'Add Transaction')}</span>
                 </motion.button>
               </div>
             </div>
@@ -1374,11 +1369,11 @@ export default function Calendar() {
             <h3 className="stat-val cal-support-value text-success">+{fmt(monthlyIncome)}</h3>
             <div className="cal-support-sub-row">
               <span className="cal-support-count-pill">
-                {incomeCount} {tr('deposits', 'deposits')}
+                {incomeCount} {incomeCount === 1 ? tr('deposit', 'deposit') : tr('deposits', 'deposits')}
               </span>
-              {incomeCount > 0 && (
+              {incomeCount > 1 && (
                 <span className="cal-support-avg-pill">
-                  ~{fmt(avgIncome)} avg
+                  avg {fmt(avgIncome)}
                 </span>
               )}
             </div>
@@ -1396,11 +1391,11 @@ export default function Calendar() {
             <h3 className="stat-val cal-support-value text-danger">-{fmt(monthlyExpense)}</h3>
             <div className="cal-support-sub-row">
               <span className="cal-support-count-pill">
-                {expenseCount} {tr('payments', 'payments')}
+                {expenseCount} {expenseCount === 1 ? tr('payment', 'payment') : tr('payments', 'payments')}
               </span>
-              {expenseCount > 0 && (
+              {expenseCount > 1 && (
                 <span className="cal-support-avg-pill">
-                  ~{fmt(avgExpense)} avg
+                  avg {fmt(avgExpense)}
                 </span>
               )}
             </div>
@@ -1504,6 +1499,14 @@ export default function Calendar() {
           <div className="cal-legend-item">
             <span className="cal-legend-dot neutral" aria-hidden="true" />
             <span>{tr('legend_no_activity', 'No activity')}</span>
+          </div>
+          <div className="cal-legend-item">
+            <span className="cal-legend-today-ring" aria-hidden="true" />
+            <span>{tr('legend_today', 'Today')}</span>
+          </div>
+          <div className="cal-legend-item">
+            <span className="cal-legend-bar-sample" aria-hidden="true" />
+            <span>{tr('legend_dual_flow', 'Dual-flow bar')}</span>
           </div>
           {hasAnyRecurringThisMonth && (
             <div className="cal-legend-item">

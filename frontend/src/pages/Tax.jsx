@@ -16,8 +16,8 @@ const LOCALE_MAP = { en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'k
 const getId = (value) => String(value?._id || value?.id || '');
 const resolveTaxLocale = (lang, jurisdiction) => jurisdiction === 'IN' ? (LOCALE_MAP[lang] || 'en-IN') : (LOCALE_MAP[lang] || 'en-US');
 const fiscalYearLabel = (profile) => profile?.jurisdiction === 'IN' ? `FY ${profile.fiscal_year}-${String(Number(profile.fiscal_year) + 1).slice(-2)}` : `FY ${profile?.fiscal_year || ''}`;
-const formatTaxDate = (value, locale = 'en-IN') => { const date = new Date(value); if (date.getFullYear() === 2026) date.setFullYear(2025); return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' }); };
-const formatTaxDateTime = (value, locale = 'en-IN') => { const date = new Date(value); if (date.getFullYear() === 2026) date.setFullYear(2025); return Number.isNaN(date.getTime()) ? 'Not saved yet' : date.toLocaleString(locale, { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+const formatTaxDate = (value, locale = 'en-IN') => { const date = new Date(value); return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' }); };
+const formatTaxDateTime = (value, locale = 'en-IN') => { const date = new Date(value); return Number.isNaN(date.getTime()) ? 'Not saved yet' : date.toLocaleString(locale, { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }); };
 const shiftDateByYear = (date, years) => { const shifted = new Date(date); shifted.setUTCFullYear(shifted.getUTCFullYear() + years); return shifted; };
 
 export default function Tax() {

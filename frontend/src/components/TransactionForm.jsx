@@ -285,24 +285,28 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     }
   }, [validateForm, isSubmitting, amount, initialData, type, category, note, date, merchant, tags, paymentMethod, transactionNumber, accountId, isRecurring, recurrenceInterval, onSubmit, resetForm, accounts, currency]);
 
+  const isEditMode = useMemo(() => {
+    return Boolean(initialData && (initialData._id || initialData.id));
+  }, [initialData]);
+
   // Handle cancel with confirmation if form is dirty
   const handleCancel = useCallback(() => {
     // Check if form has unsaved changes
-    const isDirty = (initialData === null) && (amount !== '' || note !== '');
+    const isDirty = !isEditMode && (amount !== '' || note !== '');
 
     if (isDirty) {
       setShowUnsavedModal(true);
     } else {
       onClose();
     }
-  }, [amount, note, initialData, onClose]);
+  }, [amount, note, isEditMode, onClose]);
 
   // Memoized values for performance
   const isExpense = useMemo(() => type === 'expense', [type]);
   const submitButtonText = useMemo(() => {
-    if (initialData) return t?.('save_changes') || 'Save Changes';
+    if (isEditMode) return t?.('save_changes') || 'Save Changes';
     return type === 'income' ? (t?.('add_income_btn') || 'Add Income') : (t?.('add_expense_btn') || 'Add Expense');
-  }, [initialData, type, t]);
+  }, [isEditMode, type, t]);
 
   return (
     <>
@@ -322,7 +326,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 key="tx-modal-box"
           role="dialog"
           aria-modal="true"
-          aria-label={initialData ? (t?.('edit_transaction') || 'Edit Transaction') : (t?.('new_transaction') || 'New Transaction')}
+          aria-label={isEditMode ? (t?.('edit_transaction') || 'Edit Transaction') : (t?.('new_transaction') || 'New Transaction')}
           className="modal-box glass transaction-modal"
           initial={{ scale: 0.88, y: 24 }}
           animate={{ scale: 1, y: 0 }}
@@ -336,7 +340,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         >
           <div className="transaction-modal-header">
             <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>
-              {initialData ? `✍️ ${t?.('edit_transaction') || 'Edit Transaction'}` : `✨ ${t?.('new_transaction') || 'New Transaction'}`}
+              {isEditMode ? `✍️ ${t?.('edit_transaction') || 'Edit Transaction'}` : `✨ ${t?.('new_transaction') || 'New Transaction'}`}
             </h3>
             <motion.button
               className="icon-btn"

@@ -435,6 +435,61 @@
     }
   }
 
+  /* ── Calendar AMOLED styles ────────────────────────── */
+  .calendar-container {
+    background: #000000;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .cal-weekday {
+    color: #94a3b8 !important;
+    font-weight: 700;
+
+    &.weekend {
+      color: #64748b !important;
+    }
+  }
+
+  .cal-day {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.25);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    &.empty-day {
+      background: transparent !important;
+      border: 1px solid rgba(255, 255, 255, 0.07) !important;
+      opacity: 0.6 !important;
+    }
+
+    &.net-pos {
+      background: rgba(16, 185, 129, 0.12) !important;
+      border-color: rgba(16, 185, 129, 0.35) !important;
+    }
+
+    &.net-neg {
+      background: rgba(239, 68, 68, 0.12) !important;
+      border-color: rgba(239, 68, 68, 0.35) !important;
+    }
+
+    &.today {
+      border: 2px solid #10b981 !important;
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.3) !important;
+    }
+  }
+
+  .cal-dual-bar {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .cal-weekly-summary-strip {
+    background: #050505;
+    border-color: rgba(255, 255, 255, 0.10);
+  }
+
   /* ── Reduced motion ─────────────────────────────────── */
   @media (prefers-reduced-motion: reduce) {
     *,

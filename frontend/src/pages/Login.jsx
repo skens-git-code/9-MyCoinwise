@@ -141,6 +141,11 @@ export default function Login() {
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [showForgotHelp, setShowForgotHelp] = useState(false);
   const [rateLimitSeconds, setRateLimitSeconds] = useState(0);
+  // [FIX] Track whether the backend health-check has returned successfully.
+  // null = pending (still checking), true = server is awake, false = timed-out.
+  // This drives the warm-up banner so users know why a first login attempt
+  // can take a moment (Render.com free tier sleeps between requests).
+  const [serverWarm, setServerWarm] = useState(null);
 
   /* ---------------- Redirect if already logged in ---------------- */
   useEffect(() => {
@@ -194,17 +199,39 @@ export default function Login() {
 
   /* ---------------- Pre-emptive server wake-up ---------------- */
   useEffect(() => {
-    // Ping health check to wake up sleeping backends on Render
-    api.healthCheck();
+    // [FIX] Fire the health-check and track its result so the UI can show a
+    // "server is warming up" banner while Render.com cold-starts the backend.
+    // This prevents users from seeing a confusing first-attempt failure with no
+    // explanation. Health check has its own 15 s timeout (see api.js).
+    setServerWarm(null); // pending
+    try {
+      const p = api?.healthCheck?.();
+      if (p && typeof p.then === 'function') {
+        p.then((result) => {
+          setServerWarm(result !== null);
+        }).catch(() => {
+          setServerWarm(false);
+        });
+      } else {
+        setServerWarm(true);
+      }
+    } catch {
+      setServerWarm(true);
+    }
   }, []);
 
   /* ---------------- Autofill synchronization ---------------- */
+  // [FIX] Run only on mount (empty deps). Previously had [email, password] as deps
+  // which caused the effect to re-fire on every keystroke, creating a race where
+  // an empty DOM value (momentarily empty during React render) would overwrite a
+  // correctly-entered password on first submit attempt.
   useEffect(() => {
     const syncAutofill = () => {
       const domEmail = emailInputRef.current?.value;
       const domPassword = passwordInputRef.current?.value;
-      if (domEmail && !email) setEmail(domEmail);
-      if (domPassword && !password) setPassword(domPassword);
+      // Only sync from DOM → state when state is empty; never overwrite user input.
+      setEmail((prev) => (!prev && domEmail ? domEmail : prev));
+      setPassword((prev) => (!prev && domPassword ? domPassword : prev));
     };
 
     // Browsers often fill fields immediately or after a slight delay
@@ -215,7 +242,7 @@ export default function Login() {
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, [email, password]);
+  }, []); // mount-only: intentionally omits [email, password] to avoid autofill race
 
   /* ============================================================
    * Validation
@@ -363,7 +390,12 @@ export default function Login() {
    * ============================================================ */
   const emailHasError = Boolean(fieldErrors.email && touched.email);
   const passwordHasError = Boolean(fieldErrors.password && touched.password);
-  const submitDisabled = loading || rateLimitSeconds > 0;
+  // [FIX] Also disable submit while health-check is still pending (serverWarm === null).
+  // This prevents firing a login request against a cold/sleeping backend which would
+  // always fail and confuse the user into thinking their credentials are wrong.
+  // Once the check resolves (true = awake, false = timed-out) we unlock the button.
+  const serverIsPending = serverWarm === null;
+  const submitDisabled = loading || rateLimitSeconds > 0 || serverIsPending;
 
   const errorIcon = useMemo(() => {
     if (errorKind === 'network') return <Info size={16} aria-hidden="true" />;
@@ -438,6 +470,53 @@ export default function Login() {
           <h1>{tr('welcome_back_title', 'Welcome back')}</h1>
           <p>{tr('sign_in_to_continue', 'Sign in to your account to continue')}</p>
         </div>
+
+        {/* [FIX] Server warm-up notice: shown while the health-check is still pending.
+            The submit button is also disabled during this window so the user cannot
+            accidentally fire a login against a sleeping backend (which always fails).
+            Once the check resolves the button enables automatically. */}
+        <AnimatePresence>
+          {serverWarm === null && !error && (
+            <motion.div
+              role="status"
+              aria-live="polite"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontSize: '0.80rem', padding: '8px 12px',
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.22)',
+                borderRadius: 10, color: 'var(--text-secondary)',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <RefreshCw size={13} className="spinning" aria-hidden="true" />
+              <span>{tr('server_warming', 'Server is waking up… Login will enable shortly.')}</span>
+            </motion.div>
+          )}
+          {serverWarm === false && !error && (
+            <motion.div
+              role="status"
+              aria-live="polite"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontSize: '0.80rem', padding: '8px 12px',
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.22)',
+                borderRadius: 10, color: 'var(--text-secondary)',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <AlertTriangle size={13} aria-hidden="true" style={{ color: '#f59e0b' }} />
+              <span>{tr('server_slow', 'Server may be slow. Login might take a moment.')}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Top-level error */}
         <AnimatePresence>
@@ -609,18 +688,20 @@ export default function Login() {
             type="submit"
             className="btn btn-primary auth-submit"
             disabled={submitDisabled}
-            aria-busy={loading}
+            aria-busy={loading || serverIsPending}
             whileHover={submitDisabled ? undefined : { scale: 1.02 }}
             whileTap={submitDisabled ? undefined : { scale: 0.98 }}
           >
-            {loading ? (
+            {(loading || serverIsPending) ? (
               <motion.span
                 animate={{ opacity: [1, 0.5, 1] }}
                 transition={{ duration: 1, repeat: Infinity }}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
               >
                 <RefreshCw size={16} className="spin" aria-hidden="true" />
-                {tr('authenticating', 'Authenticating…')}
+                {serverIsPending
+                  ? tr('warming_up', 'Warming up…')
+                  : tr('authenticating', 'Authenticating…')}
               </motion.span>
             ) : rateLimitSeconds > 0 ? (
               <>

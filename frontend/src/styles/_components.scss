@@ -5789,14 +5789,15 @@ textarea:focus-visible {
 
 .cal-weekday {
   text-align: center;
-  font-weight: 600;
+  font-weight: 700;
   padding-bottom: 10px !important;
-  color: var(--text-secondary, #64748b);
-  font-size: 0.78rem !important;
-  text-transform: capitalize;
+  color: var(--text-primary, #334155);
+  font-size: 0.82rem !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 
   &.weekend {
-    color: var(--text-muted);
+    color: var(--text-secondary, #64748b);
   }
 }
 
@@ -5829,8 +5830,8 @@ textarea:focus-visible {
 
   &.empty-day {
     background: transparent !important;
-    border: 1px solid rgba(0, 0, 0, 0.06) !important;
-    opacity: 0.55 !important;
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.08)) !important;
+    opacity: 0.85 !important;
 
     .cal-day-top-row {
       height: 100% !important;
@@ -5849,9 +5850,10 @@ textarea:focus-visible {
       align-self: center !important;
       margin: auto !important;
       text-align: center !important;
-      opacity: 0.45 !important;
-      font-size: 0.88rem !important;
+      opacity: 0.75 !important;
+      font-size: 0.92rem !important;
       font-weight: 600 !important;
+      color: var(--text-primary) !important;
     }
 
     .cal-day-quick-add {
@@ -6065,10 +6067,11 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 3px;
+  height: 5px;
+  min-height: 5px;
   width: 100%;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-3, rgba(255, 255, 255, 0.12));
   position: relative;
   overflow: hidden;
 
@@ -6327,6 +6330,10 @@ textarea:focus-visible {
   left: 50%;
   transform: translateX(-50%);
   width: 280px;
+  /* [FIX] Clamp width to never exceed the viewport so the popover never spills
+     off-screen on narrow phones. The negative margin trick makes it re-center
+     within the available viewport rather than the parent element. */
+  max-width: calc(100vw - 32px);
   padding: 14px;
   border-radius: 16px;
   background: var(--surface-2, #111b2a);
@@ -6399,6 +6406,9 @@ textarea:focus-visible {
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(4px);
+  /* [FIX] Raised z-index above the bottom dock (z-index: 200) so the drawer
+     overlay correctly covers it on mobile. Previously at 99999 which was fine,
+     but must stay higher than the mobile-bottom-dock z-index (200). */
   z-index: 99999;
   display: flex;
   justify-content: flex-end;
@@ -6699,10 +6709,10 @@ textarea:focus-visible {
 
   .cal-week-pill,
   .cal-wss-pill:not(.cal-wss-total-pill):not(.cal-month-net-pill) {
-    flex: 1 1 0 !important;
-    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    min-width: 135px !important;
     text-align: center !important;
-    padding: 6px 8px !important;
+    padding: 6px 10px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -6712,8 +6722,6 @@ textarea:focus-visible {
     border: 1px solid var(--glass-border);
     font-size: 0.78rem !important;
     white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
     box-sizing: border-box !important;
 
     &.empty-week {
@@ -6799,6 +6807,22 @@ textarea:focus-visible {
         background: var(--glass-2, rgba(255, 255, 255, 0.15));
         border: 1px solid var(--glass-border);
       }
+    }
+
+    .cal-legend-today-ring {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      border: 2px solid var(--brand-primary, #10b981);
+      background: rgba(16, 185, 129, 0.25);
+    }
+
+    .cal-legend-bar-sample {
+      width: 16px;
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(90deg, #ef4444 45%, #ffffff 50%, #10b981 55%);
+      display: inline-block;
     }
 
     .cal-legend-icon {
@@ -7044,7 +7068,7 @@ textarea:focus-visible {
 
 @media (max-width: 640px) {
   .calendar-page-content {
-    padding-inline: clamp(14px, 4vw, 24px) !important;
+    padding-inline: clamp(10px, 3.5vw, 20px) !important;
     padding-bottom: calc(115px + env(safe-area-inset-bottom, 0px)) !important;
     max-width: 100%;
     overflow-x: hidden;
@@ -7102,6 +7126,8 @@ textarea:focus-visible {
         height: 38px !important;
         min-height: 38px !important;
 
+        /* [FIX] Month picker popover: on mobile, anchor to the left edge of the
+           nav group so it stays within the viewport width. */
         .cal-month-title-wrap {
           flex: 1 !important;
           text-align: center !important;
@@ -7111,6 +7137,17 @@ textarea:focus-visible {
           .cal-month-title-grouped {
             font-size: 0.84rem !important;
             font-weight: 600 !important;
+          }
+
+          .cal-month-picker-popover {
+            /* Re-anchor popover to left side on narrow screens to prevent
+               right-side overflow. The left: 50%/translateX(-50%) rule now
+               resolves relative to the narrow title button, which could push
+               the popover off-screen. Use left: 0 + translate on tiny screens. */
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            width: min(280px, calc(100vw - 24px)) !important;
+            max-width: calc(100vw - 24px) !important;
           }
         }
       }
@@ -7177,13 +7214,16 @@ textarea:focus-visible {
 
   .calendar-stats-row {
     display: grid;
-    grid-template-columns: 1fr !important;
+    /* [FIX] Hero card takes full width; the two support cards sit side-by-side in
+       a 2-column subgrid below it. This saves vertical space on mobile and matches
+       the visual hierarchy of the desktop layout. */
+    grid-template-columns: 1fr 1fr !important;
     gap: 12px;
     margin-bottom: 14px;
     width: 100%;
 
     .cal-hero-card {
-      grid-column: span 1 !important;
+      grid-column: span 2 !important;
       padding: 18px 20px !important;
 
       .stat-val,
@@ -7194,13 +7234,65 @@ textarea:focus-visible {
 
     .cal-support-card {
       grid-column: span 1 !important;
-      padding: 16px 18px !important;
+      padding: 14px 16px !important;
 
       .stat-val,
       .cal-support-value {
-        font-size: 1.25rem !important;
+        font-size: 1.15rem !important;
       }
     }
+  }
+
+  /* [FIX REMOVED — Replaced by 2-col grid above] The old 1fr override that
+     forced single-column on all cards is now commented out. Previously:
+     .calendar-stats-row { grid-template-columns: 1fr !important; }
+     &:has(.cal-support-card + .cal-support-card) { grid-template-columns: 1fr !important; } */
+
+  /* [RETAINED for reference] Side-by-side inflow + outflow cards */
+  .calendar-stats-row .cal-support-card:nth-child(2),
+  .calendar-stats-row .cal-support-card:nth-child(3) {
+    grid-column: auto !important;
+  }
+
+  /* [RETAINED] calendar-stats-row-inner-2col: used by template-based layouts */
+  .calendar-stats-row-inner-2col {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+  }
+
+  .cal-grid {
+    gap: 5px !important; /* [FIX] Reduced gap for mobile grid to give day cells more space */
+  }
+
+  .cal-day {
+    /* [FIX] Reduce minimum height so 7-column grid fits on narrow screens (≤360px phones). */
+    min-height: 52px !important;
+    padding: 5px !important;
+    border-radius: 8px !important;
+
+    .cal-date-num {
+      font-size: 0.78rem !important;
+    }
+
+    .cal-cell-net-val {
+      font-size: 0.60rem !important;
+    }
+
+    .cal-dual-bar-wrap {
+      padding-top: 2px !important;
+    }
+
+    .cal-day-quick-add {
+      width: 16px !important;
+      height: 16px !important;
+    }
+  }
+
+  /* [FIX] Make the weekday header labels smaller on mobile so they fit in 7 columns */
+  .cal-weekday {
+    font-size: 0.66rem !important;
+    padding-bottom: 6px !important;
   }
 
   .cal-grid-desktop {
@@ -7213,6 +7305,37 @@ textarea:focus-visible {
 
   .cal-legend-bar {
     display: none !important;
+  }
+
+  /* [FIX] Weekly summary strip: scroll horizontally on mobile instead of wrapping,
+     which causes layout breaks on 360-390px screens. */
+  .cal-weekly-summary-strip {
+    padding: 10px 12px !important;
+
+    .cal-wss-items {
+      flex-wrap: nowrap !important;
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      scrollbar-width: none !important;
+      padding-bottom: 2px !important;
+
+      &::-webkit-scrollbar {
+        display: none !important;
+      }
+    }
+
+    .cal-week-pill,
+    .cal-wss-pill:not(.cal-wss-total-pill):not(.cal-month-net-pill) {
+      flex: 0 0 auto !important; /* Don't stretch/shrink — keep natural width in scroll container */
+    }
+  }
+
+  /* [FIX] Filter chip strip: ensure it stays one scrollable row on mobile.
+     The strip already has overflow-x: auto at the base level; here we enforce
+     flex-wrap: nowrap and remove any padding-bottom that causes visual clipping. */
+  .cal-filter-strip {
+    flex-wrap: nowrap !important;
+    padding-bottom: 4px !important;
   }
 }
 

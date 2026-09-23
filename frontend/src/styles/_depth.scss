@@ -912,13 +912,32 @@ $card-radius-uniform: 14px;
   height: auto !important;
 }
 
-/* ── Typography & Visual Hierarchy Refinements ───────────────────── */
+/* [FIX] Separated .bento-hero .bh-mid h2 from .stat-value — previously both were
+   grouped at clamp(1.75rem, 2.5vw, 2.1rem) !important which capped the Total Balance
+   at ~1.75rem even though the card is the hero and should be much larger.
+   .stat-value (Income/Expense cards) keeps a compact size; hero h2 gets its own
+   larger size. !important is kept to ensure theme consistency across light/dark. */
 .stat-value,
-.bento-hero .bh-mid h2,
 .cal-hero-value {
-  font-size: clamp(1.75rem, 2.5vw, 2.1rem) !important;
+  font-size: clamp(1.6rem, 3vw, 2.1rem) !important;
   font-weight: 800 !important;
   letter-spacing: -0.02em !important;
+}
+
+.bento-hero .bh-mid h2,
+.bh-balance-num {
+  font-size: clamp(2.2rem, 5vw, 3rem) !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.03em !important;
+}
+
+/* [FIX] .bh-balance-num span: override the dark-theme muted-slate rule that
+   was setting all .bh-mid span to #94A3B8 !important. The inner span wrapping
+   the balance number MUST inherit its color from the h2 (resolved hex in JSX). */
+.bh-balance-num span {
+  color: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
 }
 
 .bh-label,
@@ -943,7 +962,7 @@ $card-radius-uniform: 14px;
 .cal-hero-subtext,
 .bt-date,
 .bento-empty-sub,
-.bh-mid span {
+.bh-mid > span:not(.bh-balance-num):not(.bh-balance-num *) {
   font-size: 12px !important;
   color: #64748B !important;
 }
@@ -952,8 +971,18 @@ $card-radius-uniform: 14px;
 [data-theme="dark"] .cal-hero-subtext,
 [data-theme="dark"] .bt-date,
 [data-theme="dark"] .bento-empty-sub,
-[data-theme="dark"] .bh-mid span {
+[data-theme="dark"] .stat-card:not(.bento-hero) .bh-mid > span {
   color: #94A3B8 !important;
+}
+
+/* Ensure the hero balance typography is dominant and never clamped to 12px */
+.bento-hero .bh-mid h2.bh-balance-num,
+.bento-hero .bh-balance-num,
+.bento-hero .bh-balance-num * {
+  font-size: clamp(2.4rem, 5.5vw, 3.2rem) !important;
+  font-weight: 900 !important;
+  line-height: 1.05 !important;
+  letter-spacing: -0.03em !important;
 }
 
 /* ── Standardized Circular Metric Icons ──────────────────────────── */
@@ -1049,26 +1078,47 @@ $card-radius-uniform: 14px;
 
 /* ── Calendar Grid Borders & Structural Cohesion ─────────────────── */
 .cal-grid {
-  border: 1px solid #E2E8F0 !important;
   border-radius: 12px !important;
   padding: 6px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+}
+
+[data-theme="light"] .cal-grid {
+  border: 1px solid #E2E8F0 !important;
   background: rgba(255, 255, 255, 0.4) !important;
 }
 
-[data-theme="dark"] .cal-grid {
+[data-theme="dark"] .cal-grid,
+[data-theme="amoled"] .cal-grid,
+[data-theme="neon"] .cal-grid,
+[data-theme="grassy"] .cal-grid {
   border-color: rgba(255, 255, 255, 0.08) !important;
-  background: rgba(255, 255, 255, 0.02) !important;
+  background: transparent !important;
 }
 
-.cal-day {
+/* Calendar Days */
+[data-theme="light"] .cal-day {
   border: 1px solid #E2E8F0 !important;
   border-radius: 8px !important;
   background: rgba(255, 255, 255, 0.6) !important;
 }
 
-[data-theme="dark"] .cal-day {
-  border-color: rgba(255, 255, 255, 0.08) !important;
+[data-theme="dark"] .cal-day,
+[data-theme="amoled"] .cal-day,
+[data-theme="neon"] .cal-day,
+[data-theme="grassy"] .cal-day {
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
   background: rgba(255, 255, 255, 0.03) !important;
+  color: #f1f5f9 !important;
+}
+
+[data-theme="dark"] .cal-weekday,
+[data-theme="amoled"] .cal-weekday,
+[data-theme="neon"] .cal-weekday,
+[data-theme="grassy"] .cal-weekday {
+  color: #94a3b8 !important;
 }
 
 .cal-date-num {

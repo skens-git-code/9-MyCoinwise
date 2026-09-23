@@ -1415,7 +1415,7 @@ export default function Analytics() {
             </div>
           </div>
           {monthlyData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={240} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
+            <ResponsiveContainer width="100%" height={240} minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
               {chartType === 'bar' ? (
                 <BarChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 25 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
@@ -1463,7 +1463,7 @@ export default function Analytics() {
             )}
           </div>
           {categoryEvolution.data.length > 0 && categoryEvolution.categories.length > 0 ? (
-            <ResponsiveContainer width="100%" height={240} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
+            <ResponsiveContainer width="100%" height={240} minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
               <LineChart data={categoryEvolution.data} margin={{ top: 10, right: 20, left: 0, bottom: 25 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                 <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
@@ -1497,7 +1497,7 @@ export default function Analytics() {
             <h3>Day of Week Outflow</h3>
             <span className="chart-badge">{dayOfWeekData.weekendPct}% Weekend</span>
           </div>
-          <ResponsiveContainer width="100%" height={260} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
+          <ResponsiveContainer width="100%" height={260} minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
             <BarChart data={dayOfWeekData.days} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
               <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
@@ -1525,7 +1525,7 @@ export default function Analytics() {
             </span>
           </div>
           {expenseCategories.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260} minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
+            <ResponsiveContainer width="100%" height={260} minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
               <PieChart>
                 <Pie
                   isAnimationActive={!prefersReducedMotion && !loading}
