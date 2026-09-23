@@ -468,7 +468,7 @@ export default function AppLayout({ children }) {
   const contextData = useContext(AppContext) || {};
   const {
     user, theme, toggleTheme, currencyInfo, alerts = [], transactions = [],
-    addTransaction, t, lang, setLanguage, logout, fmt, refetch, isBackgroundSyncing,
+    accounts = [], addTransaction, t, lang, setLanguage, logout, fmt, refetch, isBackgroundSyncing,
     globalError
   } = contextData;
 
@@ -540,33 +540,6 @@ export default function AppLayout({ children }) {
     return (translated && translated !== key ? translated : PAGE_TITLE_FALLBACKS[key]) || 'Dashboard';
   }, [location.pathname, t, pageTitleKey]);
 
-  const formattedBalance = useMemo(() => {
-    if (fmt && user?.balance !== undefined && user?.balance !== null) {
-      return fmt(user.balance);
-    }
-    return formatBalance(user?.balance, currencyInfo?.symbol, lang);
-  }, [user, currencyInfo?.symbol, fmt, lang]);
-
-  /* Original financialSummary calculation without soft-delete check:
-  const financialSummary = useMemo(() => {
-    const income = transactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => {
-        const val = Number(t.amount);
-        return sum + (Number.isFinite(val) ? val : 0);
-      }, 0);
-    const expense = transactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => {
-        const val = Number(t.amount);
-        return sum + (Number.isFinite(val) ? val : 0);
-      }, 0);
-    const net = income - expense;
-    const rate = income > 0 ? ((net / income) * 100).toFixed(0) : '0';
-    return { income, expense, net, rate };
-  }, [transactions]);
-  // Issue: Excluded check for t.is_deleted === true, causing soft-deleted transactions to leak into top-level layout figures.
-  */
   const financialSummary = useMemo(() => {
     const safeTxs = Array.isArray(transactions) ? transactions : [];
     const liveTxs = safeTxs.filter(t => t && t.is_deleted !== true);
@@ -586,6 +559,30 @@ export default function AppLayout({ children }) {
     const rate = income > 0 ? ((net / income) * 100).toFixed(0) : '0';
     return { income, expense, net, rate };
   }, [transactions]);
+
+  const startingBalance = useMemo(() => {
+    if (!Array.isArray(accounts) || accounts.length === 0) return 0;
+    const liquidTypes = new Set(['bank', 'wallet', 'cash', 'credit_card', 'other']);
+    return accounts
+      .filter((a) => a && a.is_active !== false && liquidTypes.has(String(a.type || '').toLowerCase()))
+      .reduce((sum, a) => {
+        const bal = Number(a.initial_balance);
+        return sum + (Number.isFinite(bal) ? bal : 0);
+      }, 0);
+  }, [accounts]);
+
+  const totalBalance = useMemo(() => {
+    const net = financialSummary?.net ?? 0;
+    const base = Number(user?.startingBalance ?? (startingBalance > 0 ? startingBalance : (user?.balance && user?.balance !== 0 ? user.balance : 0)));
+    return base + net;
+  }, [user, startingBalance, financialSummary?.net]);
+
+  const formattedBalance = useMemo(() => {
+    if (fmt) {
+      return fmt(totalBalance);
+    }
+    return formatBalance(totalBalance, currencyInfo?.symbol, lang);
+  }, [totalBalance, currencyInfo?.symbol, fmt, lang]);
 
   const handleSidebarToggle = useCallback(() => {
     setSidebarOpen(prev => !prev);
