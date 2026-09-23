@@ -65,38 +65,30 @@ const toLocalDateKey = (dateInput) => {
   if (typeof dateInput === 'string') {
     const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (m) {
-      let yr = m[1];
-      if (yr === '2026') yr = '2025';
-      return `${yr}-${m[2]}-${m[3]}`;
+      return `${m[1]}-${m[2]}-${m[3]}`;
     }
   }
   const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
   if (Number.isNaN(d.getTime())) return null;
-  const yr = d.getFullYear() === 2026 ? 2025 : d.getFullYear();
-  return `${yr}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
 
-/** Parse a YYYY-MM-DD string as local date; other formats go through Date. Normalizes 2026 to 2025. */
+/** Parse a YYYY-MM-DD string as local date; other formats go through Date. */
 const safeParseDate = (dateInput) => {
   if (dateInput instanceof Date) {
     if (Number.isNaN(dateInput.getTime())) return null;
-    const copy = new Date(dateInput.getTime());
-    if (copy.getFullYear() === 2026) copy.setFullYear(2025);
-    return copy;
+    return new Date(dateInput.getTime());
   }
   if (typeof dateInput === 'string') {
     const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (m) {
-      let yr = Number(m[1]);
-      if (yr === 2026) yr = 2025;
-      const d = new Date(yr, Number(m[2]) - 1, Number(m[3]));
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
       return Number.isNaN(d.getTime()) ? null : d;
     }
   }
   if (typeof dateInput !== 'string' && typeof dateInput !== 'number') return null;
   const d = new Date(dateInput);
   if (Number.isNaN(d.getTime())) return null;
-  if (d.getFullYear() === 2026) d.setFullYear(2025);
   return d;
 };
 
@@ -1423,7 +1415,7 @@ export default function Dashboard() {
               {formatCurrencyNode(dailyAverageSpend, safeFmt, currencySymbol)}
             </span>
             <span className="dqs-badge neutral">
-              30d pace
+              Last 30 days
             </span>
           </div>
         </motion.div>
@@ -1510,8 +1502,25 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="bh-mid">
-              <h2 style={{ fontSize: 'clamp(1.75rem, 3vw, 2.1rem)', fontWeight: 800, color: balanceColor, margin: '6px 0', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
-                {formatCurrencyNode(animatedBalance, safeFmt, currencySymbol)}
+              {/* [FIX] balanceColor used var(--balance-accent) which is only defined in
+                  _grassy.scss — undefined in default/light theme = transparent, making the
+                  number invisible. Replaced with resolved hex values. Font-size uses !important
+                  via the bh-balance-num class defined in _depth.scss to beat all theme overrides. */}
+              <h2
+                className="bh-balance-num"
+                style={{
+                  fontSize: 'clamp(2.5rem, 5.5vw, 3.4rem)',
+                  fontWeight: 900,
+                  color: rawBalance >= 0 ? '#10b981' : '#ef4444',
+                  margin: '6px 0',
+                  fontVariantNumeric: 'tabular-nums',
+                  letterSpacing: '-0.03em',
+                  lineHeight: 1.05,
+                }}
+              >
+                <span style={{ fontSize: 'inherit', color: 'inherit', fontWeight: 'inherit' }}>
+                  {formatCurrencyNode(animatedBalance, safeFmt, currencySymbol)}
+                </span>
               </h2>
               {sparklineSvgPath && (
                 <div className="bh-sparkline-wrap" title="Net trajectory">
@@ -1582,7 +1591,7 @@ export default function Dashboard() {
             <div className="bt-header">
               <h3 className="heading-accent">{tr('recent_transactions', 'Recent Transactions')}</h3>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <NavLink to="/transactions" className="bt-link" title="View all transactions">View All →</NavLink>
+                <NavLink to="/transactions" className="bt-link" title="View all transactions">View all →</NavLink>
                 <button
                   type="button"
                   className="bt-icon-btn"
@@ -1682,7 +1691,7 @@ export default function Dashboard() {
             </div>
             <div className="bt-chart-wrap">
               {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
                   <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
                     <defs>
                       <linearGradient id={gInId} x1="0" y1="0" x2="0" y2="1">
@@ -1800,7 +1809,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="bt-chart-wrap" style={{ height: 120 }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
                   <AreaChart data={netWorthData} margin={{ top: 5, right: 8, left: -5, bottom: 0 }}>
                     <defs>
                       <linearGradient id={gNWId} x1="0" y1="0" x2="0" y2="1">
@@ -1956,7 +1965,7 @@ export default function Dashboard() {
             </div>
             <div className="bt-pie-wrap">
               {pieData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 1, height: 1 }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
                   <PieChart>
                     <Pie
                       isAnimationActive={!prefersReducedMotion && !loading}

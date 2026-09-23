@@ -13,15 +13,11 @@ import {
 } from 'date-fns';
 
 /**
- * Returns current application date, correcting for server/system clocks set to 2026.
+ * Returns current application date.
  * @returns {Date}
  */
 export function getAppDate() {
-  const d = new Date();
-  if (d.getFullYear() === 2026) {
-    d.setFullYear(2025);
-  }
-  return d;
+  return new Date();
 }
 
 /**
