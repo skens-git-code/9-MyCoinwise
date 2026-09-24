@@ -1,12 +1,13 @@
-/**
- * goals.js — Savings goals routes
+/* —————————————————————————————————————
+ * Savings Goals Routes
+ * CRUD endpoints for user savings goals.
  *
  * Endpoints:
- *   GET    /api/goals/:userId           List all goals for a user
- *   GET    /api/goals/single/:id        Single goal by ID
- *   POST   /api/goals                   Create a goal
- *   PUT    /api/goals/:id               Update a goal
- *   DELETE /api/goals/:id               Delete a goal
+ *   GET    /:userId           List all goals for a user
+ *   GET    /single/:id        Single goal by ID
+ *   POST   /                  Create a goal
+ *   PUT    /:id               Update a goal
+ *   DELETE /:id               Delete a goal
  *
  * What changed from the original:
  *   - Uses the shared `logger` instead of `console.error` for consistency
@@ -26,20 +27,24 @@
  *     `new Date(0)`), so this guard is correct as written.
  *   - `Boolean(achieved)`: express-validator's `.toBoolean()` runs before
  *     the handler, so `achieved` is already a real boolean at this point.
- */
+ * ————————————————————————————————————— */
 
+// ── Load dependencies ──
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const Goal = require('../models/Goal');
 const checkOwnership = require('../middleware/ownership');
 const { logger } = require('../utils/logger');
 
+// ── Create router ──
 const router = express.Router();
 
-/* ============================================================
+/* —————————————————————————————————————
  * Helpers
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Parse a monetary value; null on invalid input ──
+// Rejects booleans, arrays, and objects that JS would coerce silently.
 const parseMoney = (value, { allowZero = true } = {}) => {
   if (value === '' || value === null || value === undefined) return null;
   if (typeof value !== 'string' && typeof value !== 'number') return null;
@@ -49,9 +54,11 @@ const parseMoney = (value, { allowZero = true } = {}) => {
   return Number(amount.toFixed(2));
 };
 
+// ── Allowed auto-save intervals and priorities ──
 const INTERVALS = ['daily', 'weekly', 'monthly'];
 const PRIORITIES = ['low', 'medium', 'high'];
 
+// ── Category alias map (accepts UI spellings and canonical values) ──
 const CATEGORY_ALIASES = {
   'emergency fund': 'emergency_fund',
   emergency_fund: 'emergency_fund',
@@ -67,6 +74,8 @@ const CATEGORY_ALIASES = {
   other: 'other',
 };
 
+// ── Normalize a category to its canonical snake_case form ──
+// Falls back to 'other' when no alias matches.
 const normalizeCategory = (value) => {
   const clean = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
   return (
@@ -76,35 +85,46 @@ const normalizeCategory = (value) => {
   );
 };
 
-// Cache-Control middleware — harmless, added for consistency with other routes.
+/* —————————————————————————————————————
+ * Router Middleware
+ * ————————————————————————————————————— */
+
+// ── Disable caching on every response (consistency with other routes) ──
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   next();
 });
 
-/* ============================================================
- * GET /:userId — List all goals for a user
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /:userId
+ * List all goals for a user, with optional filters:
+ *   - category
+ *   - priority
+ *   - achieved (boolean)
+ * ————————————————————————————————————— */
 router.get(
   '/:userId',
   checkOwnership('userId'),
   [
+    // ── Validate query inputs ──
     param('userId').isMongoId().withMessage('Invalid user ID.'),
     query('category').optional().isString().trim().escape(),
     query('priority').optional().isIn(PRIORITIES),
     query('achieved').optional().isBoolean().toBoolean(),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Build the filter from optional query params ──
       const filter = { user_id: req.params.userId };
       if (req.query.category) filter.category = req.query.category;
       if (req.query.priority) filter.priority = req.query.priority;
       if (req.query.achieved !== undefined) filter.is_completed = req.query.achieved;
 
+      // ── Load goals, oldest first ──
       const goals = await Goal.find(filter).sort({ created_at: 1 });
       return res.json(goals);
     } catch (error) {
@@ -114,21 +134,24 @@ router.get(
   }
 );
 
-/* ============================================================
- * GET /single/:id — Single goal by ID
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /single/:id
+ * Fetch a single goal by ID, scoped to the authenticated user.
+ * ————————————————————————————————————— */
 router.get(
   '/single/:id',
   checkOwnership('id', { model: Goal, paramName: 'id' }),
   [
+    // ── Validate the goal ID ──
     param('id').isMongoId().withMessage('Invalid goal ID.'),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Load the goal, scoped to the authenticated user ──
       const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user.id });
       if (!goal) return res.status(404).json({ error: 'Goal not found.' });
       return res.json(goal);
@@ -139,13 +162,14 @@ router.get(
   }
 );
 
-/* ============================================================
- * POST / — Create a new goal
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /
+ * Create a new savings goal for the authenticated user.
+ * ————————————————————————————————————— */
 router.post(
   '/',
   [
+    // ── Validate request body ──
     body('name').isString().trim().notEmpty().withMessage('Goal name is required.'),
     body('target').isFloat({ min: 0.01 }).withMessage('Target must be a positive number.'),
     body('saved').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
@@ -159,6 +183,7 @@ router.post(
     body('auto_save_interval').optional().isIn(INTERVALS),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
@@ -167,6 +192,7 @@ router.post(
       category, notes, auto_save_amount, auto_save_interval,
     } = req.body;
 
+    // ── Parse target ──
     const targetNum = parseMoney(target, { allowZero: false });
     if (targetNum === null) {
       return res.status(400).json({
@@ -174,6 +200,7 @@ router.post(
       });
     }
 
+    // ── Parse saved amount ──
     const savedNum = parseMoney(saved, { allowZero: true });
     if (savedNum === null) {
       return res.status(400).json({
@@ -196,8 +223,10 @@ router.post(
       }
     }
 
+    // ── Determine initial completion state ──
     const isCompleted = savedNum >= targetNum;
 
+    // ── Assemble the goal payload ──
     const goalData = {
       user_id: req.user.id,
       name: String(name).trim(),
@@ -216,9 +245,11 @@ router.post(
     };
 
     try {
+      // ── Persist the new goal ──
       const goal = await Goal.create(goalData);
       return res.status(201).json({ id: goal._id, message: 'Goal created', goal });
     } catch (error) {
+      // ── Map duplicate-key errors to a friendly message ──
       if (error?.code === 11000) {
         const field = error.keyPattern ? Object.keys(error.keyPattern)[0] : 'field';
         return res.status(409).json({
@@ -231,14 +262,15 @@ router.post(
   }
 );
 
-/* ============================================================
- * PUT /:id — Update a goal
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * PUT /:id
+ * Update a goal owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.put(
   '/:id',
   checkOwnership('id', { model: Goal, paramName: 'id' }),
   [
+    // ── Validate path param and optional body fields ──
     param('id').isMongoId().withMessage('Invalid goal ID.'),
     body('name').optional().isString().trim().notEmpty(),
     body('target').optional().isFloat({ min: 0.01 }).toFloat(),
@@ -254,10 +286,12 @@ router.put(
     body('achieved').optional().isBoolean().toBoolean(),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Load the goal, scoped to the authenticated user ──
       const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user.id });
       if (!goal) return res.status(404).json({ error: 'Goal not found.' });
 
@@ -266,8 +300,10 @@ router.put(
         category, notes, auto_save_amount, auto_save_interval, achieved,
       } = req.body;
 
+      // ── Update name ──
       if (name !== undefined) goal.name = String(name).trim();
 
+      // ── Update target ──
       if (target !== undefined) {
         const targetNum = parseMoney(target, { allowZero: false });
         if (targetNum === null) {
@@ -276,6 +312,7 @@ router.put(
         goal.target = targetNum;
       }
 
+      // ── Update saved amount ──
       if (saved !== undefined) {
         const savedNum = parseMoney(saved, { allowZero: true });
         if (savedNum === null) {
@@ -286,9 +323,11 @@ router.put(
         goal.saved = savedNum;
       }
 
+      // ── Update styling ──
       if (color !== undefined) goal.color = color;
       if (icon !== undefined) goal.icon = icon;
 
+      // ── Update deadline (null/empty clears it) ──
       if (deadline !== undefined) {
         if (deadline === null || deadline === '') {
           goal.deadline = null;
@@ -301,6 +340,7 @@ router.put(
         }
       }
 
+      // ── Update priority ──
       if (priority !== undefined) {
         if (!PRIORITIES.includes(priority)) {
           return res.status(400).json({ error: 'Invalid priority.' });
@@ -308,12 +348,15 @@ router.put(
         goal.priority = priority;
       }
 
+      // ── Update category ──
       if (category !== undefined) goal.category = normalizeCategory(category);
 
+      // ── Update notes ──
       if (notes !== undefined) {
         goal.notes = notes ? String(notes).trim().slice(0, 1000) : '';
       }
 
+      // ── Update auto-save amount ──
       if (auto_save_amount !== undefined) {
         if (auto_save_amount === null) {
           goal.auto_save_amount = null;
@@ -328,6 +371,7 @@ router.put(
         }
       }
 
+      // ── Update auto-save interval ──
       if (auto_save_interval !== undefined) {
         if (auto_save_interval !== null && !INTERVALS.includes(auto_save_interval)) {
           return res.status(400).json({ error: 'Invalid auto-save interval.' });
@@ -335,6 +379,7 @@ router.put(
         goal.auto_save_interval = auto_save_interval || null;
       }
 
+      // ── Update completion state ──
       if (achieved !== undefined) {
         goal.is_completed = Boolean(achieved);
         if (achieved) {
@@ -344,13 +389,16 @@ router.put(
         }
       }
 
+      // ── Guard: saved cannot exceed target after all updates ──
       if (goal.saved > goal.target) {
         return res.status(400).json({ error: 'Saved amount cannot exceed target.' });
       }
 
+      // ── Persist changes ──
       await goal.save();
       return res.json({ message: 'Goal updated', goal });
     } catch (error) {
+      // ── Map duplicate-key errors to a friendly message ──
       if (error?.code === 11000) {
         const field = error.keyPattern ? Object.keys(error.keyPattern)[0] : 'field';
         return res.status(409).json({
@@ -363,21 +411,24 @@ router.put(
   }
 );
 
-/* ============================================================
- * DELETE /:id — Remove a goal
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * DELETE /:id
+ * Delete a goal owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.delete(
   '/:id',
   checkOwnership('id', { model: Goal, paramName: 'id' }),
   [
+    // ── Validate the goal ID ──
     param('id').isMongoId().withMessage('Invalid goal ID.'),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Find and delete in a single atomic operation ──
       const goal = await Goal.findOneAndDelete({ _id: req.params.id, user_id: req.user.id });
       if (!goal) return res.status(404).json({ error: 'Goal not found.' });
       return res.json({ message: 'Goal deleted' });
@@ -388,4 +439,9 @@ router.delete(
   }
 );
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;

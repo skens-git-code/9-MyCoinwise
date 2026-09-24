@@ -1,3 +1,24 @@
+/* —————————————————————————————————————
+ * Subscriptions Page
+ * Recurring subscription management hub with:
+ *   - Summary tiles (monthly cost, annual cost, % of income, active count).
+ *   - Upcoming-charges preview for the next 30 days (cycle-aware).
+ *   - Quick-add popular service presets.
+ *   - Status filter tabs + search.
+ *   - Per-subscription pause / resume / cancel / reactivate / delete.
+ *   - Undo toast for deletes.
+ *
+ * Key behaviors:
+ *   - Monthly equivalent is derived per cycle (daily, weekly, monthly,
+ *     quarterly, yearly) for consistent cost comparisons.
+ *   - Cancelled subscriptions remain in history but are excluded from
+ *     active totals and the upcoming-charges preview.
+ *   - Preset prices are stored in USD and converted to the user's
+ *     currency before being displayed or saved.
+ *   - Billing dates are advanced using a cycle-aware helper that
+ *     preserves the anchor day-of-month when possible.
+ * ————————————————————————————————————— */
+
 import React, {
   useState, useContext, useMemo, useCallback, useEffect, useRef,
 } from 'react';
@@ -18,13 +39,17 @@ import { convertCurrency, getFallbackRatesToInr } from '../utils/currencyRates';
 /* ============================================================
  * Constants
  * ============================================================ */
+
+// ── Map of named icons usable for subscription cards ──
 const ICON_MAP = { Tv, Music, PlaySquare, Cloud, Gamepad2, Package, Sparkles };
 
+// ── Preset color palette for subscription cards ──
 const PRESET_COLORS = [
   '#ef4444', '#f59e0b', '#10b981', '#06b6d4',
   '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280',
 ];
 
+// ── Billing cycle options with approximate day counts ──
 const CYCLE_OPTIONS = [
   { value: 'daily', labelKey: 'cycle_daily', fallback: 'Daily', days: 1 },
   { value: 'weekly', labelKey: 'cycle_weekly', fallback: 'Weekly', days: 7 },
@@ -33,6 +58,7 @@ const CYCLE_OPTIONS = [
   { value: 'yearly', labelKey: 'cycle_yearly', fallback: 'Yearly', days: 365 },
 ];
 
+// ── Payment method options for the form ──
 const PAYMENT_METHODS = [
   { value: 'card', labelKey: 'pm_card', fallback: 'Credit / Debit Card' },
   { value: 'bank_transfer', labelKey: 'pm_bank', fallback: 'Bank Transfer / Direct Debit' },
@@ -53,22 +79,29 @@ const PRESETS = [
   { name: 'Disney+', amount: 7.99, icon: 'Sparkles', color: '#06b6d4' },
 ];
 
+// ── Milliseconds per day ──
 const DAYS_MS = 1000 * 60 * 60 * 24;
 
+// ── Compare two ids across string / ObjectId representations ──
 const matchesId = (a, b) => String(a ?? '') === String(b ?? '');
 
 /* ============================================================
  * Helpers
  * ============================================================ */
+
+// ── Zero-pad a number to 2 digits ──
 const pad2 = (n) => String(n).padStart(2, '0');
 
+// ── Coerce a value into a finite number with a fallback ──
 const safeNumber = (v, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 };
 
+// ── Round to two decimals ──
 const toFixed2 = (n) => Math.round(safeNumber(n) * 100) / 100;
 
+// ── Normalize a date into YYYY-MM-DD local string ──
 const toLocalDateInput = (value) => {
   if (!value) return '';
   if (typeof value === 'string') {
@@ -80,6 +113,7 @@ const toLocalDateInput = (value) => {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
 
+// ── Parse YYYY-MM-DD as a local Date (never UTC) ──
 const parseLocalDate = (value) => {
   if (!value) return null;
   if (typeof value === 'string') {
@@ -93,12 +127,14 @@ const parseLocalDate = (value) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
+// ── Start-of-today in local time ──
 const startOfToday = () => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
 };
 
+// ── Whole-day difference between two dates ──
 const daysBetween = (a, b) =>
   Math.round((a.getTime() - b.getTime()) / DAYS_MS);
 
@@ -128,6 +164,7 @@ const advanceByCycle = (date, cycle) => {
   const d = new Date(date);
   if (Number.isNaN(d.getTime())) return null;
 
+  // ── Preserve the day-of-month when shifting months ──
   const preserveDayMonth = (offset) => {
     const day = d.getDate();
     d.setDate(1);
@@ -202,9 +239,10 @@ const getNextBillDates = (sub, count = 3, now = new Date()) => {
 };
 
 /* ============================================================
- * Main component
+ * Main Component
  * ============================================================ */
 export default function Subscriptions() {
+  // ── App context: data + i18n + currency + actions ──
   const {
     fmt,
     currency,
@@ -219,11 +257,16 @@ export default function Subscriptions() {
   } = useContext(AppContext);
   const { showToast } = useToast();
 
+  // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
+
+  // ── Locale derived from the app language ──
   const locale = useMemo(() => {
     const map = { en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN' };
     return map[lang] || 'en-IN';
   }, [lang]);
+
+  // ── Display currency + preset price converter ──
   const targetCurrency = currency || user?.currency || 'INR';
   const presetRates = useMemo(() => getFallbackRatesToInr(), []);
   const presetAmount = useCallback(
@@ -231,21 +274,29 @@ export default function Subscriptions() {
     [targetCurrency, presetRates]
   );
 
-  /* ---------------- UI state ---------------- */
+  /* ---------------- UI State ---------------- */
+
+  // ── Modal visibility + target state ──
   const [showAdd, setShowAdd] = useState(false);
   const [editingSub, setEditingSub] = useState(null);
   const [subToDelete, setSubToDelete] = useState(null);
   const [subToCancel, setSubToCancel] = useState(null);
+
+  // ── Filter + search ──
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
 
-  /* ---------------- Independent loading flags ---------------- */
+  /* ---------------- Independent Loading Flags ---------------- */
+
+  // ── Per-action in-flight flags ──
   const [isSaving, setIsSaving] = useState(false);
   const [actingIds, setActingIds] = useState(() => new Set()); // per-sub pause/resume/delete
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
-  /* ---------------- Form state ---------------- */
+  /* ---------------- Form State ---------------- */
+
+  // ── Fields for the add/edit subscription form ──
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [cycle, setCycle] = useState('monthly');
@@ -256,20 +307,25 @@ export default function Subscriptions() {
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [formError, setFormError] = useState('');
 
-  /* ---------------- Undo state ---------------- */
+  /* ---------------- Undo State ---------------- */
+
+  // ── Undo toast: label + restore function + auto-dismiss timer ──
   const [undoAction, setUndoAction] = useState(null);
   const undoTimerRef = useRef(null);
 
+  // ── Clear pending undo timer on unmount ──
   useEffect(() => () => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
   }, []);
 
+  // ── Show the undo bar for 6 seconds ──
   const armUndo = useCallback((label, restoreFn) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     setUndoAction({ label, restoreFn });
     undoTimerRef.current = setTimeout(() => setUndoAction(null), 6000);
   }, []);
 
+  // ── Execute the pending undo action ──
   const runUndo = useCallback(async () => {
     if (!undoAction) return;
     const { restoreFn } = undoAction;
@@ -284,8 +340,10 @@ export default function Subscriptions() {
   }, [undoAction, refetch, showToast, tr]);
 
   /* ============================================================
-   * Derived metrics
+   * Derived Metrics
    * ============================================================ */
+
+  // ── Subscription buckets by status ──
   const activeSubs = useMemo(
     () => subs.filter((s) => !s.is_paused && !s.cancelled_at),
     [subs]
@@ -301,6 +359,7 @@ export default function Subscriptions() {
     [subs]
   );
 
+  // ── Monthly and annual recurring cost of active subscriptions ──
   const monthlyTotal = useMemo(
     () => activeSubs.reduce((sum, s) => sum + getMonthlyEquivalent(s), 0),
     [activeSubs]
@@ -322,6 +381,7 @@ export default function Subscriptions() {
     return total / 3; // 90 days ≈ 3 months
   }, [transactions]);
 
+  // ── Recurring cost as a percentage of average monthly income ──
   const incomePct = avgMonthlyIncome > 0
     ? ((monthlyTotal / avgMonthlyIncome) * 100).toFixed(1)
     : '0.0';
@@ -358,6 +418,7 @@ export default function Subscriptions() {
     return bills.sort((a, b) => a.daysLeft - b.daysLeft);
   }, [activeSubs]);
 
+  // ── Total due across upcoming bills + a capped preview list ──
   const totalDue = useMemo(
     () => upcomingBills.reduce((sum, b) => sum + b.amount, 0),
     [upcomingBills]
@@ -369,8 +430,10 @@ export default function Subscriptions() {
   );
 
   /* ============================================================
-   * Filtering + search
+   * Filtering + Search
    * ============================================================ */
+
+  // ── Apply status filter + search across name and notes ──
   const filteredSubs = useMemo(() => {
     let list = subs;
     if (statusFilter === 'active') list = activeSubs;
@@ -387,6 +450,7 @@ export default function Subscriptions() {
     return list;
   }, [subs, statusFilter, activeSubs, pausedSubs, cancelledSubs, search]);
 
+  // ── True when a preset has already been added (and isn't cancelled) ──
   const presetAlreadyAdded = useCallback(
     (pName) => subs.some(
       (s) => String(s.name || '').toLowerCase() === pName.toLowerCase() &&
@@ -396,8 +460,10 @@ export default function Subscriptions() {
   );
 
   /* ============================================================
-   * Form helpers
+   * Form Helpers
    * ============================================================ */
+
+  // ── Reset the form to create-mode defaults ──
   const resetForm = useCallback(() => {
     setName('');
     setAmount('');
@@ -411,11 +477,13 @@ export default function Subscriptions() {
     setEditingSub(null);
   }, []);
 
+  // ── Open the create modal ──
   const openAdd = useCallback(() => {
     resetForm();
     setShowAdd(true);
   }, [resetForm]);
 
+  // ── Pre-fill the form from a preset and open the create modal ──
   const handlePresetClick = useCallback((preset) => {
     resetForm();
     setName(preset.name);
@@ -430,6 +498,7 @@ export default function Subscriptions() {
     setShowAdd(true);
   }, [presetAmount, resetForm]);
 
+  // ── Populate the form for editing an existing subscription ──
   const openEdit = useCallback((sub) => {
     if (!sub) return;
     setEditingSub(sub);
@@ -444,11 +513,13 @@ export default function Subscriptions() {
     setFormError('');
   }, []);
 
+  // ── Close the form modal and reset the form ──
   const closeFormModal = useCallback(() => {
     setShowAdd(false);
     resetForm();
   }, [resetForm]);
 
+  // ── Clear the form error when the user edits any field ──
   const clearError = useCallback(() => {
     setFormError((prev) => (prev ? '' : prev));
   }, []);
@@ -459,6 +530,7 @@ export default function Subscriptions() {
   const handleSaveSub = useCallback(async () => {
     if (isSaving) return;
 
+    // ── Read and validate form values ──
     const trimmedName = name.trim();
     const numAmt = parseFloat(amount);
 
@@ -489,6 +561,7 @@ export default function Subscriptions() {
     setIsSaving(true);
     setFormError('');
     try {
+      // ── Build the payload with normalized values ──
       const payload = {
         user_id: USER_ID,
         name: trimmedName,
@@ -502,6 +575,7 @@ export default function Subscriptions() {
         next_billing_date: nextBillingDate || null,
       };
 
+      // ── Update or create ──
       if (editingSub) {
         const id = editingSub.id || editingSub._id;
         if (!id) {
@@ -535,6 +609,7 @@ export default function Subscriptions() {
     if (!subId || actingIds.has(subId)) return;
 
     const wasPaused = Boolean(sub.is_paused);
+    // ── Mark this id as in-flight ──
     setActingIds((prev) => { const n = new Set(prev); n.add(subId); return n; });
 
     try {
@@ -544,6 +619,7 @@ export default function Subscriptions() {
     } catch (err) {
       showToast('error', err?.response?.data?.error || tr('sub_status_failed', 'Failed to update status'));
     } finally {
+      // ── Remove this id from the in-flight set ──
       setActingIds((prev) => { const n = new Set(prev); n.delete(subId); return n; });
     }
   }, [actingIds, refetch, showToast, tr]);
@@ -589,8 +665,10 @@ export default function Subscriptions() {
   }, [subToDelete, isDeleting, subs, refetch, showToast, tr, armUndo, USER_ID]);
 
   /* ============================================================
-   * ✨ NEW: Cancel subscription (keeps history)
+   * ✨ NEW: Cancel Subscription (keeps history)
    * ============================================================ */
+
+  // ── Confirm and cancel a subscription (marks cancelled_at) ──
   const confirmCancel = useCallback(async () => {
     if (!subToCancel || isCancelling) return;
     const id = subToCancel;
@@ -612,6 +690,7 @@ export default function Subscriptions() {
     }
   }, [subToCancel, isCancelling, subs, refetch, showToast, tr]);
 
+  // ── Reactivate a previously cancelled subscription ──
   const reactivateSub = useCallback(async (sub) => {
     const subId = sub.id || sub._id;
     if (!subId || actingIds.has(subId)) return;
@@ -627,7 +706,9 @@ export default function Subscriptions() {
     }
   }, [actingIds, refetch, showToast, tr]);
 
-  /* ---------------- Loading state ---------------- */
+  /* ---------------- Loading State ---------------- */
+
+  // ── Show loading state while subscriptions have not loaded yet ──
   if (contextLoading && subs.length === 0) {
     return (
       <div className="masonry-layout-page subscriptions-page-wrap">
@@ -649,6 +730,7 @@ export default function Subscriptions() {
    * ============================================================ */
   return (
     <div className="masonry-layout-page subscriptions-page-wrap">
+      {/* ===================== Header ===================== */}
       <div className="masonry-header">
         <div className="mh-titles">
           <h2>{tr('subscriptions_hub_title', 'Subscriptions & Recurring Hub')}</h2>
@@ -666,7 +748,7 @@ export default function Subscriptions() {
         </motion.button>
       </div>
 
-      {/* Summary */}
+      {/* ===================== Summary tiles ===================== */}
       <div className="carousel-wrapper" style={{ minHeight: 90 }}>
         <div className="carousel-track">
           {[
@@ -683,6 +765,7 @@ export default function Subscriptions() {
               transition={{ delay: i * 0.08, type: 'spring' }}
               style={{ border: `1px solid ${s.color}33`, boxShadow: `0 8px 24px ${s.color}15` }}
             >
+              {/* ── Tile icon badge ── */}
               <div className="ci-icon-box" style={{ background: `${s.color}15`, color: s.color }} aria-hidden>
                 {s.icon}
               </div>
@@ -695,7 +778,7 @@ export default function Subscriptions() {
         </div>
       </div>
 
-      {/* ✨ NEW: Savings opportunity strip */}
+      {/* ===================== ✨ NEW: Savings opportunity strip ===================== */}
       {topExpensive.length > 0 && monthlyTotal > 0 && (
         <motion.div
           className="glass"
@@ -720,9 +803,10 @@ export default function Subscriptions() {
         </motion.div>
       )}
 
-      {/* Upcoming charges */}
+      {/* ===================== Upcoming charges ===================== */}
       {upcomingPreview.length > 0 && (
         <motion.div className="sub-timeline-box glass" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          {/* ── Header: title + total due ── */}
           <div className="stb-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <CalendarDays size={16} className="text-brand" aria-hidden />
@@ -733,6 +817,7 @@ export default function Subscriptions() {
             </span>
           </div>
 
+          {/* ── Upcoming bill rows ── */}
           <div className="stb-track">
             {upcomingPreview.map(({ sub, date, daysLeft, amount }) => {
               const subId = sub.id || sub._id;
@@ -759,7 +844,7 @@ export default function Subscriptions() {
         </motion.div>
       )}
 
-      {/* Presets */}
+      {/* ===================== Quick-add presets ===================== */}
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
         <h4
           style={{
@@ -795,6 +880,7 @@ export default function Subscriptions() {
                     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, transition: 'all 0.3s',
                   }}
                 >
+                  {/* ── "Added" badge ── */}
                   {added && (
                     <span
                       style={{
@@ -806,6 +892,7 @@ export default function Subscriptions() {
                       {tr('added', 'Added')}
                     </span>
                   )}
+                  {/* ── Preset icon ── */}
                   <div
                     style={{
                       width: 48, height: 48, borderRadius: 14, background: `${p.color}15`,
@@ -832,8 +919,9 @@ export default function Subscriptions() {
         </div>
       </motion.div>
 
-      {/* Toolbar: filter tabs + search */}
+      {/* ===================== Toolbar: filter + search ===================== */}
       <div className="sub-filter-strip" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* ── Status filter tabs ── */}
         {[
           { id: 'all', label: `${tr('all', 'All')} (${subs.length})` },
           { id: 'active', label: `${tr('active', 'Active')} (${activeSubs.length})` },
@@ -851,6 +939,7 @@ export default function Subscriptions() {
           </button>
         ))}
 
+        {/* ── Search input ── */}
         <div style={{ position: 'relative', marginLeft: 'auto', minWidth: 200 }}>
           <Search
             size={14}
@@ -868,9 +957,10 @@ export default function Subscriptions() {
         </div>
       </div>
 
-      {/* List */}
+      {/* ===================== Subscription list ===================== */}
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
         {filteredSubs.length === 0 ? (
+          /* ── Empty state ── */
           <motion.div
             className="glass empty-state"
             initial={{ opacity: 0, y: 20 }}
@@ -890,6 +980,7 @@ export default function Subscriptions() {
             </p>
           </motion.div>
         ) : (
+          /* ── Grid of subscription cards ── */
           <div className="masonry-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
             <AnimatePresence>
               {filteredSubs.map((s, i) => {
@@ -918,6 +1009,7 @@ export default function Subscriptions() {
                       }),
                     }}
                   >
+                    {/* ── Header: icon + status badges + action buttons ── */}
                     <div className="mc-header" style={{ marginBottom: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div className="mc-icon" aria-hidden>
@@ -942,6 +1034,7 @@ export default function Subscriptions() {
                       </div>
 
                       <div style={{ display: 'flex', gap: 4 }}>
+                        {/* ── Cancelled: reactivate only ── */}
                         {isCancelled ? (
                           <button
                             type="button"
@@ -955,6 +1048,7 @@ export default function Subscriptions() {
                           </button>
                         ) : (
                           <>
+                            {/* ── Pause / resume ── */}
                             <button
                               type="button"
                               className="del-btn"
@@ -967,6 +1061,7 @@ export default function Subscriptions() {
                             >
                               {acting ? <Loader2 size={14} className="spin" /> : (isPaused ? <Play size={14} /> : <Pause size={14} />)}
                             </button>
+                            {/* ── Edit ── */}
                             <button
                               type="button"
                               className="del-btn"
@@ -976,6 +1071,7 @@ export default function Subscriptions() {
                             >
                               <Edit3 size={14} />
                             </button>
+                            {/* ── Cancel ── */}
                             <button
                               type="button"
                               className="del-btn"
@@ -985,6 +1081,7 @@ export default function Subscriptions() {
                             >
                               <XCircle size={14} />
                             </button>
+                            {/* ── Delete ── */}
                             <button
                               type="button"
                               className="del-btn"
@@ -999,8 +1096,10 @@ export default function Subscriptions() {
                       </div>
                     </div>
 
+                    {/* ── Title ── */}
                     <h3 className="mc-title">{s.name}</h3>
 
+                    {/* ── Amount + cycle ── */}
                     <div className="mc-amounts" style={{ marginBottom: 12, alignItems: 'center' }}>
                       <span className="mc-saved" style={{ fontSize: '1.6rem', letterSpacing: '-0.5px' }}>
                         {fmt(s.amount)}
@@ -1016,12 +1115,14 @@ export default function Subscriptions() {
                       </span>
                     </div>
 
+                    {/* ── Notes ── */}
                     {s.notes && (
                       <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 10px', fontStyle: 'italic' }}>
                         {s.notes}
                       </p>
                     )}
 
+                    {/* ── Footer: monthly equivalent ── */}
                     <div
                       className="mc-footer"
                       style={{ marginTop: 'auto', borderTop: '1px solid var(--glass-border)', paddingTop: 12 }}
@@ -1051,7 +1152,7 @@ export default function Subscriptions() {
         )}
       </motion.div>
 
-      {/* Add / Edit modal */}
+      {/* ===================== Add / Edit modal ===================== */}
       <Modal
         isOpen={showAdd || editingSub !== null}
         onClose={closeFormModal}
@@ -1062,6 +1163,7 @@ export default function Subscriptions() {
         onConfirm={handleSaveSub}
         isLoading={isSaving}
       >
+        {/* ── Service name ── */}
         <div className="form-group" style={{ marginBottom: 12 }}>
           <label htmlFor="sub_name">{tr('service_name', 'Service Name')}</label>
           <input
@@ -1074,6 +1176,7 @@ export default function Subscriptions() {
           />
         </div>
 
+        {/* ── Amount ── */}
         <div className="form-group" style={{ marginBottom: 12 }}>
           <label htmlFor="sub_amount">{tr('amount', 'Amount')}</label>
           <input
@@ -1088,6 +1191,7 @@ export default function Subscriptions() {
           />
         </div>
 
+        {/* ── Billing cycle ── */}
         <div className="form-group" style={{ marginBottom: 12 }}>
           <label htmlFor="sub_cycle">{tr('billing_cycle', 'Billing Cycle')}</label>
           <select
@@ -1104,7 +1208,7 @@ export default function Subscriptions() {
           </select>
         </div>
 
-        {/* ✨ NEW: icon + color pickers */}
+        {/* ✨ NEW: icon picker */}
         <div className="form-group" style={{ marginBottom: 12 }}>
           <label>{tr('icon', 'Icon')}</label>
           <div role="group" aria-label={tr('choose_icon', 'Choose icon')} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1134,6 +1238,7 @@ export default function Subscriptions() {
           </div>
         </div>
 
+        {/* ── Color picker ── */}
         <div className="form-group" style={{ marginBottom: 12 }}>
           <label>{tr('color', 'Color')}</label>
           <div role="group" aria-label={tr('choose_color', 'Choose color')} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1155,6 +1260,7 @@ export default function Subscriptions() {
           </div>
         </div>
 
+        {/* ── Next renewal date ── */}
         <div className="form-group" style={{ marginBottom: 12 }}>
           <label htmlFor="sub_next_date">{tr('next_renewal_date', 'Next Renewal Date')}</label>
           <input
@@ -1165,6 +1271,7 @@ export default function Subscriptions() {
           />
         </div>
 
+        {/* ── Payment method ── */}
         <div className="form-group" style={{ marginBottom: 12 }}>
           <label htmlFor="sub_pm">{tr('payment_method', 'Payment Method')}</label>
           <select
@@ -1181,6 +1288,7 @@ export default function Subscriptions() {
           </select>
         </div>
 
+        {/* ── Notes ── */}
         <div className="form-group" style={{ marginBottom: 12 }}>
           <label htmlFor="sub_notes">
             {tr('notes', 'Notes')}{' '}
@@ -1196,6 +1304,7 @@ export default function Subscriptions() {
           />
         </div>
 
+        {/* ── Form error ── */}
         {formError && (
           <p role="alert" style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', gap: 6, alignItems: 'center' }}>
             <AlertCircle size={14} aria-hidden /> {formError}
@@ -1203,7 +1312,7 @@ export default function Subscriptions() {
         )}
       </Modal>
 
-      {/* Delete modal */}
+      {/* ===================== Delete modal ===================== */}
       <Modal
         isOpen={subToDelete !== null}
         onClose={() => (isDeleting ? null : setSubToDelete(null))}
@@ -1222,7 +1331,7 @@ export default function Subscriptions() {
         </p>
       </Modal>
 
-      {/* ✨ NEW: Cancel modal */}
+      {/* ===================== ✨ NEW: Cancel modal ===================== */}
       <Modal
         isOpen={subToCancel !== null}
         onClose={() => (isCancelling ? null : setSubToCancel(null))}
@@ -1241,7 +1350,7 @@ export default function Subscriptions() {
         </p>
       </Modal>
 
-      {/* ✨ NEW: Undo bar */}
+      {/* ===================== ✨ NEW: Undo bar ===================== */}
       <AnimatePresence>
         {undoAction && (
           <motion.div
@@ -1283,6 +1392,7 @@ export default function Subscriptions() {
         )}
       </AnimatePresence>
 
+      {/* ── Local styles for spin animation and paused card state ── */}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }

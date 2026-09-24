@@ -1,3 +1,25 @@
+/* —————————————————————————————————————
+ * Cashflow / Forecasting Page
+ * Predictive cashflow dashboard that projects the user's balance
+ * forward using lookback income, variable burn, subscriptions, and
+ * optional what-if scenarios.
+ *
+ * Sections:
+ *   - Controls bar (horizon pills, baseline overlay toggle).
+ *   - Safety floor warning alert when a breach is predicted.
+ *   - Projected liquidity curve with uncertainty band and floors.
+ *   - AI trajectory analysis card.
+ *   - Safety / critical threshold sliders + what-if modeler.
+ *
+ * Key behaviors:
+ *   - Reads starting balance from accounts + net of live transactions.
+ *   - Variable burn is median expense × events-per-day (robust to spikes).
+ *   - Subscription billing is day-exact and handles month-length edges.
+ *   - Settings persist to localStorage under `mcw-cf-*` keys.
+ *   - AI summary is gated by a composite trigger key to avoid redundant calls.
+ *   - Aborts in-flight AI requests on unmount / dependency change.
+ * ————————————————————————————————————— */
+
 import React, {
   useState, useContext, useMemo, useEffect, useRef, useCallback, useId,
 } from 'react';
@@ -25,8 +47,11 @@ import {
 /* ============================================================
  * Constants
  * ============================================================ */
+
+// ── localStorage key prefix for persisted settings ──
 const STORAGE_PREFIX = 'mcw-cf-';
 
+// ── Default values for every persisted setting ──
 const DEFAULT_STATE = {
   horizon: 90,
   showBaseline: false,
@@ -39,6 +64,7 @@ const DEFAULT_STATE = {
   critical: 2000,
 };
 
+// ── Chart horizon options and engine bounds ──
 const HORIZON_OPTIONS = [30, 60, 90, 180, 365];
 const LOOKBACK_DAYS = 90;
 const MAX_SCENARIO_START = 365;
@@ -47,11 +73,14 @@ const MAX_SCENARIO_MONTHS = 24;
 /* ============================================================
  * Helpers
  * ============================================================ */
+
+// ── Coerce a value into a finite number (fallback on NaN) ──
 const safeNumber = (v, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 };
 
+// ── Read a clamped number from localStorage ──
 const readStoredNumber = (key, fallback, { min = -Infinity, max = Infinity } = {}) => {
   try {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
@@ -64,6 +93,7 @@ const readStoredNumber = (key, fallback, { min = -Infinity, max = Infinity } = {
   }
 };
 
+// ── Read a string from localStorage ──
 const readStoredString = (key, fallback) => {
   try {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
@@ -73,6 +103,7 @@ const readStoredString = (key, fallback) => {
   }
 };
 
+// ── Read a boolean from localStorage ──
 const readStoredBool = (key, fallback) => {
   try {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
@@ -82,6 +113,7 @@ const readStoredBool = (key, fallback) => {
   }
 };
 
+// ── Write a value to localStorage (best-effort) ──
 const writeStored = (key, value) => {
   try { localStorage.setItem(`${STORAGE_PREFIX}${key}`, String(value)); } catch { /* quota */ }
 };
@@ -188,10 +220,14 @@ const useStableId = (prefix) => {
 };
 
 /* ============================================================
- * Custom dot
+ * Custom Dot
+ * Renders nothing for normal days; a red dot for critical and an
+ * orange dot for danger days on the projected line.
  * ============================================================ */
 const CustomizedDot = ({ cx, cy, payload }) => {
   if (!payload) return null;
+
+  // ── Critical day: red dot ──
   if (payload.isCritical) {
     return (
       <circle
@@ -201,6 +237,8 @@ const CustomizedDot = ({ cx, cy, payload }) => {
       />
     );
   }
+
+  // ── Danger day: orange dot ──
   if (payload.isDanger) {
     return (
       <circle
@@ -217,6 +255,7 @@ const CustomizedDot = ({ cx, cy, payload }) => {
  * Component
  * ============================================================ */
 export default function Cashflow() {
+  // ── App context: data + i18n + theme + auth token ──
   const {
     transactions = [],
     subscriptions = [],
@@ -231,23 +270,28 @@ export default function Cashflow() {
   } = useContext(AppContext);
   const { showToast } = useToast();
 
+  // ── Locale derived from the app language ──
   const locale = useMemo(() => {
     const map = { en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN' };
     return map[lang] || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
   }, [lang]);
 
+  // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
   const displayCurrency = useMemo(() => resolveCurrency(currency, 'USD'), [currency]);
 
+  // ── Dark-theme detection for chart stroke/fill colors ──
   const isDark = useMemo(() => {
     const themes = new Set(['amoled', 'dark', 'midnight', 'black']);
     return themes.has(String(theme || '').toLowerCase());
   }, [theme]);
 
+  // ── FX rates to INR (cache or bundled fallback) ──
   const [fxRatesToInr, setFxRatesToInr] = useState(() => (
     readCachedRatesToInr() || getFallbackRatesToInr()
   ));
 
+  // ── Fetch fresh FX rates on mount; keep bundled rates while offline ──
   useEffect(() => {
     const controller = new AbortController();
     fetchRatesToInr(controller.signal)
@@ -256,6 +300,7 @@ export default function Cashflow() {
     return () => controller.abort();
   }, []);
 
+  // ── Map account id → resolved currency ──
   const accountCurrencies = useMemo(() => {
     const result = new Map();
     for (const account of accounts) {
@@ -267,6 +312,8 @@ export default function Cashflow() {
   }, [accounts, displayCurrency]);
 
   /* ---------------- State ---------------- */
+
+  // ── Persisted settings (loaded once from localStorage) ──
   const [forecastHorizon, setForecastHorizon] = useState(() =>
     readStoredNumber('horizon', DEFAULT_STATE.horizon, { min: 7, max: 1095 })
   );
@@ -295,14 +342,16 @@ export default function Cashflow() {
     readStoredNumber('critical', DEFAULT_STATE.critical, { min: 0, max: 10_000_000 })
   );
 
+  // ── AI summary state ──
   const [aiSummary, setAiSummary] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const aiTriggerRef = useRef('');
 
+  // ── Stable gradient ids for the two SVG fills ──
   const gradientId = useStableId('cashflow-gradient');
   const uncertaintyId = useStableId('cashflow-uncertainty');
 
-  /* ---------------- Persist settings ---------------- */
+  /* ---------------- Persist Settings ---------------- */
   useEffect(() => {
     writeStored('horizon', forecastHorizon);
     writeStored('show-baseline', showScenarioComparison);
@@ -319,7 +368,8 @@ export default function Cashflow() {
     safetyThreshold, criticalThreshold,
   ]);
 
-  /* ---------------- Live transactions ---------------- */
+  /* ---------------- Live Transactions ---------------- */
+  // ── Normalize transactions into display currency; drop future-dated ──
   const liveTransactions = useMemo(
     () => {
       if (!Array.isArray(transactions)) return [];
@@ -369,6 +419,7 @@ export default function Cashflow() {
     return base;
   }, [accounts, displayCurrency, fxRatesToInr]);
 
+  // ── Net of live transactions (income − expense) ──
   const transactionNet = useMemo(() => {
     let net = 0;
     for (const tx of liveTransactions) {
@@ -381,7 +432,8 @@ export default function Cashflow() {
 
   const currentBalance = startingBalance + transactionNet;
 
-  /* ---------------- Sanitised thresholds ---------------- */
+  /* ---------------- Sanitized Thresholds ---------------- */
+  // ── Clamp thresholds and ensure critical ≤ safety for alerts ──
   const { safeThreshold, critThreshold } = useMemo(() => {
     const s = Math.max(0, safetyThreshold);
     const c = Math.max(0, criticalThreshold);
@@ -390,7 +442,9 @@ export default function Cashflow() {
   }, [safetyThreshold, criticalThreshold]);
 
   /* ============================================================
-   * Forecast engine
+   * Forecast Engine
+   * Builds the day-by-day projection and baseline series, tracks
+   * the first danger / critical breach, and derives daily rates.
    * ============================================================ */
   const {
     projectionData,
@@ -547,15 +601,20 @@ export default function Cashflow() {
     scenarioStartDay, safeThreshold, critThreshold, locale,
   ]);
 
+  // ── Projected summary values ──
   const projectedFinal = projectionData.at(-1)?.balance ?? currentBalance;
   const baselineFinal = baselineData.at(-1)?.balance ?? currentBalance;
   const projectedChange = projectedFinal - currentBalance;
 
+  // ── Optimistic / conservative bounds (±20%) ──
   const volatility = Math.abs(projectedChange) * 0.2;
   const bestCaseFinal = projectedFinal + volatility;
   const worstCaseFinal = projectedFinal - volatility;
+
   // Healthy only if neither a danger NOR a critical breach was predicted.
   const isSafe = !dangerZone && !criticalZone;
+
+  // ── Local fallback text when the AI request fails or is skipped ──
   const localAiFallback = dangerZone
     ? tr(
       'ai_fallback_danger',
@@ -567,7 +626,7 @@ export default function Cashflow() {
     );
 
   /* ============================================================
-   * AI insights (with proper trigger key + cleanup)
+   * AI Insights (with proper trigger key + cleanup)
    * ============================================================ */
   useEffect(() => {
     if (liveTransactions.length === 0) {
@@ -594,6 +653,7 @@ export default function Cashflow() {
       Math.round(safeThreshold),
     ].join('|');
 
+    // ── Skip when nothing relevant has changed ──
     if (triggerKey === aiTriggerRef.current) return undefined;
     aiTriggerRef.current = triggerKey;
 
@@ -602,6 +662,7 @@ export default function Cashflow() {
 
     const run = async () => {
       try {
+        // ── Build the payload from the local forecast ──
         const payload = {
           averageDailyIncome: Math.round(dailyIncome),
           medianDailyExpense: Math.round(dailyVariableBurn),
@@ -614,11 +675,13 @@ export default function Cashflow() {
           horizon: forecastHorizon,
         };
 
+        // ── Call the API and store the insight ──
         const json = await api.getCashflowAiInsights(payload, {
           signal: controller.signal,
         });
         setAiSummary(json?.insight || tr('ai_complete', 'Trajectory analysis complete.'));
       } catch (err) {
+        // ── Silent on abort; fall back to local copy otherwise ──
         if (err.name === 'AbortError' || err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
         const fallback = dangerZone
           ? tr('ai_fallback_danger', `${forecastHorizon}-day projection approaches the safety floor around day ${dangerZone.day}. Consider deferring discretionary purchases.`)
@@ -650,6 +713,7 @@ export default function Cashflow() {
    * Handlers
    * ============================================================ */
 
+  // ── Export the projection as CSV ──
   const handleExportCSV = useCallback(() => {
     if (projectionData.length === 0) {
       showToast('error', tr('nothing_to_export', 'Nothing to export.'));
@@ -681,6 +745,7 @@ export default function Cashflow() {
     showToast('success', tr('csv_exported', 'Forecast projection CSV downloaded!'));
   }, [projectionData, forecastHorizon, showToast, tr]);
 
+  // ── Reset the what-if scenario to defaults ──
   const resetScenario = useCallback(() => {
     setWhatIfAmount('');
     setScenarioType('oneTime');
@@ -691,7 +756,7 @@ export default function Cashflow() {
   }, [showToast, tr]);
 
   /* ============================================================
-   * Render values
+   * Render Values
    * ============================================================ */
   const gradientColor = isSafe ? '#10b981' : '#ef4444';
   const parsedWhatIf = safeNumber(whatIfAmount, 0);
@@ -699,7 +764,7 @@ export default function Cashflow() {
   const baselineImpact = projectedFinal - baselineFinal;
 
   /* ============================================================
-   * Loading
+   * Loading Skeleton
    * ============================================================ */
   if (loading && liveTransactions.length === 0) {
     return (
@@ -721,6 +786,7 @@ export default function Cashflow() {
    * ============================================================ */
   return (
     <div className="masonry-layout-page cashflow-page-wrap">
+      {/* ===================== Header ===================== */}
       <div className="masonry-header">
         <div className="mh-titles">
           <h2>{tr('cashflow', 'Forecasting & Cashflow')}</h2>
@@ -729,6 +795,7 @@ export default function Cashflow() {
           </span>
         </div>
         <div className="mh-actions" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* ── Export CSV ── */}
           <button
             type="button"
             className="btn-secondary"
@@ -737,6 +804,8 @@ export default function Cashflow() {
           >
             <Download size={15} /> {tr('export_csv', 'Export CSV')}
           </button>
+
+          {/* ── Current vs. projected balance summary ── */}
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -764,12 +833,13 @@ export default function Cashflow() {
         </div>
       </div>
 
-      {/* Controls */}
+      {/* ===================== Controls Bar ===================== */}
       <div className="forecast-controls-bar glass">
         <div className="fcb-left">
           <span className="fcb-label">
             <Sliders size={15} /> {tr('projection_horizon', 'Projection Horizon')}:
           </span>
+          {/* ── Horizon pills ── */}
           <div className="fcb-pills">
             {HORIZON_OPTIONS.map((days) => (
               <button
@@ -786,6 +856,7 @@ export default function Cashflow() {
           </div>
         </div>
         <div className="fcb-right">
+          {/* ── Baseline overlay toggle ── */}
           <button
             type="button"
             className={`btn-secondary ${showScenarioComparison ? 'active' : ''}`}
@@ -803,7 +874,7 @@ export default function Cashflow() {
       </div>
 
       <div className="masonry-grid" style={{ gridTemplateColumns: '1fr' }}>
-        {/* Danger alert */}
+        {/* ===================== Danger Alert ===================== */}
         <AnimatePresence>
           {dangerZone && (
             <motion.div
@@ -841,7 +912,7 @@ export default function Cashflow() {
           )}
         </AnimatePresence>
 
-        {/* Main chart */}
+        {/* ===================== Main Chart ===================== */}
         {liveTransactions.length > 0 ? (
           <motion.div
             className="glass bento-tile"
@@ -860,15 +931,19 @@ export default function Cashflow() {
               <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
                 <AreaChart data={projectionData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
                   <defs>
+                    {/* ── Gradient for the projected balance area ── */}
                     <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={gradientColor} stopOpacity={0.7} />
                       <stop offset="95%" stopColor={gradientColor} stopOpacity={0.05} />
                     </linearGradient>
+
+                    {/* ── Gradient for the uncertainty band ── */}
                     <linearGradient id={uncertaintyId} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.22} />
                       <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.04} />
                     </linearGradient>
                   </defs>
+
                   <CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
@@ -906,6 +981,8 @@ export default function Cashflow() {
                     ]}
                     labelStyle={{ color: 'var(--text-secondary)' }}
                   />
+
+                  {/* ── Safety floor reference line ── */}
                   <ReferenceLine
                     y={safeThreshold}
                     stroke="var(--warning)"
@@ -918,6 +995,8 @@ export default function Cashflow() {
                       fontWeight: 700,
                     }}
                   />
+
+                  {/* ── Critical floor reference line (only when > 0) ── */}
                   {critThreshold > 0 && (
                     <ReferenceLine
                       y={critThreshold}
@@ -933,6 +1012,7 @@ export default function Cashflow() {
                     />
                   )}
 
+                  {/* ── Baseline overlay (opt-in) ── */}
                   {showScenarioComparison && (
                     <Area
                       type="monotone"
@@ -945,6 +1025,7 @@ export default function Cashflow() {
                     />
                   )}
 
+                  {/* ── Uncertainty band: invisible base + visible band ── */}
                   <Area
                     type="monotone"
                     dataKey="uncertaintyBase"
@@ -964,6 +1045,7 @@ export default function Cashflow() {
                     name="uncertaintyBand"
                   />
 
+                  {/* ── Projected balance line ── */}
                   <Area
                     type="monotone"
                     dataKey="balance"
@@ -980,6 +1062,7 @@ export default function Cashflow() {
             </div>
           </motion.div>
         ) : (
+          /* ── Empty state when there are no live transactions ── */
           <motion.div
             className="glass bento-tile"
             style={{ padding: 40, textAlign: 'center' }}
@@ -992,7 +1075,7 @@ export default function Cashflow() {
           </motion.div>
         )}
 
-        {/* AI summary */}
+        {/* ===================== AI Summary ===================== */}
         {liveTransactions.length > 0 && (
           <motion.div
             className="glass bento-tile"
@@ -1007,6 +1090,8 @@ export default function Cashflow() {
             <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <BrainCircuit size={18} style={{ color: '#a78bfa' }} />
               {tr('ai_trajectory', 'AI Trajectory Analysis')}
+
+              {/* ── Health badge (Healthy / Attention Needed) ── */}
               {isSafe ? (
                 <span
                   style={{
@@ -1036,6 +1121,7 @@ export default function Cashflow() {
               )}
             </h3>
             <div style={{ color: 'var(--text-secondary)', marginTop: 10, fontSize: '0.9rem', lineHeight: 1.6 }}>
+              {/* ── Loading vs. AI text ── */}
               {isAiLoading ? (
                 <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
                   {tr('analyzing', 'Analyzing financial trajectory…')}
@@ -1043,6 +1129,8 @@ export default function Cashflow() {
               ) : (
                 <p>{aiSummary || localAiFallback}</p>
               )}
+
+              {/* ── Optimistic / conservative bounds ── */}
               <div style={{ display: 'flex', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
                 <div
                   style={{
@@ -1079,8 +1167,9 @@ export default function Cashflow() {
           </motion.div>
         )}
 
-        {/* Thresholds + What-If */}
+        {/* ===================== Thresholds + What-If ===================== */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+          {/* ── Safety & Critical floor sliders ── */}
           <motion.div className="glass bento-tile" style={{ padding: 22 }} whileHover={{ y: -2 }}>
             <div className="bt-header" style={{ marginBottom: 14 }}>
               <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1088,6 +1177,7 @@ export default function Cashflow() {
               </h3>
             </div>
 
+            {/* ── Safety buffer slider ── */}
             <div style={{ marginBottom: 16 }}>
               <label
                 htmlFor="safety-slider"
@@ -1114,6 +1204,7 @@ export default function Cashflow() {
               />
             </div>
 
+            {/* ── Critical warning floor slider ── */}
             <div>
               <label
                 htmlFor="critical-slider"
@@ -1138,6 +1229,8 @@ export default function Cashflow() {
                 style={{ width: '100%', accentColor: 'var(--danger)', cursor: 'pointer' }}
                 aria-label={tr('critical_threshold', 'Critical threshold slider')}
               />
+
+              {/* ── Hint when critical exceeds safety ── */}
               {criticalThreshold > safetyThreshold && (
                 <p style={{ fontSize: '0.72rem', color: 'var(--warning-color, #f59e0b)', margin: '6px 0 0' }}>
                   {tr('critical_exceeds_safety', 'Critical floor is capped at the safety buffer for alerting.')}
@@ -1146,6 +1239,7 @@ export default function Cashflow() {
             </div>
           </motion.div>
 
+          {/* ── What-if scenario modeler ── */}
           <motion.div className="glass bento-tile" style={{ padding: 22 }} whileHover={{ y: -2 }}>
             <div className="bt-header" style={{ marginBottom: 12 }}>
               <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1162,6 +1256,7 @@ export default function Cashflow() {
               </button>
             </div>
 
+            {/* ── Scenario type selector ── */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
               {[
                 { id: 'oneTime', label: tr('one_time', 'One-Time') },
@@ -1179,6 +1274,7 @@ export default function Cashflow() {
               ))}
             </div>
 
+            {/* ── Amount field ── */}
             <div style={{ marginBottom: 12 }}>
               <label
                 htmlFor="whatif-amount"
@@ -1205,6 +1301,7 @@ export default function Cashflow() {
               />
             </div>
 
+            {/* ── Frequency + duration (recurring only) ── */}
             {scenarioType === 'recurring' && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
                 <div>
@@ -1244,6 +1341,7 @@ export default function Cashflow() {
               </div>
             )}
 
+            {/* ── Start day ── */}
             <div style={{ marginBottom: 12 }}>
               <label htmlFor="scenario-start" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                 {tr('start_day_tomorrow', 'Start Day (1 = tomorrow)')}
@@ -1262,6 +1360,7 @@ export default function Cashflow() {
               />
             </div>
 
+            {/* ── Impact vs. baseline (shown only when a scenario is active) ── */}
             {hasWhatIf && (
               <div
                 style={{

@@ -1,21 +1,30 @@
-/**
- * users.js — User management, settings, household switching, backup import
+/* —————————————————————————————————————
+ * User Routes
+ * User management, settings, household switching, and backup import.
  *
  * Endpoints:
- *   GET    /api/users                    List household users
- *   GET    /api/users/me                 Current user
- *   GET    /api/users/:id                Single user by ID
- *   POST   /api/users                    Create a household user
- *   PATCH  /api/users/:id/settings       Partial settings update
- *   PUT    /api/users/:id/settings       Full settings replace (deprecated, kept for compat)
- *   GET    /api/users/:id/notifications  Notification preferences
- *   PUT    /api/users/:id/notifications  Update notification preferences
- *   GET    /api/users/:id/advanced-preferences
- *   PUT    /api/users/:id/advanced-preferences
- *   POST   /api/users/:id/reset          Reset financial data
- *   DELETE /api/users/:id                Delete user + all data
- *   POST   /api/users/:id/switch         Switch to a linked household profile
- *   POST   /api/users/:userId/import     Restore a JSON backup
+ *   GET    /                          List household users
+ *   GET    /me                        Current user
+ *   GET    /:id                       Single user by ID
+ *   POST   /                          Create a household user
+ *   PATCH  /:id/settings              Partial settings update
+ *   PUT    /:id/settings              Full settings replace (deprecated, kept for compat)
+ *   GET    /:id/notifications         Notification preferences
+ *   PUT    /:id/notifications         Update notification preferences
+ *   GET    /:id/advanced-preferences
+ *   PUT    /:id/advanced-preferences
+ *   POST   /:id/reset                 Reset financial data
+ *   DELETE /:id                       Delete user + all data
+ *   POST   /:id/switch                Switch to a linked household profile
+ *   POST   /:userId/import            Restore a JSON backup
+ *
+ * Key behaviors:
+ *   - Router-level auth + user-id guard + Cache-Control.
+ *   - POST / shares the settings limiter (previously unlimited).
+ *   - `param('id').isMongoId()` is enforced on all :id routes.
+ *   - Currency defaults to USD on new users.
+ *   - Auto-generated passwords are logged via `logger.warn` in addition
+ *     to being returned.
  *
  * Changes vs. the original:
  *   - Added an explicit `auth` middleware at the router level. If the app
@@ -43,8 +52,9 @@
  *     semantics.
  *   - Import validation accepts backup versions 1–5. If you bump the
  *     export version, update this list.
- */
+ * ————————————————————————————————————— */
 
+// ── Load dependencies ──
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
@@ -71,18 +81,21 @@ const auth = require('../middleware/auth');
 const { logger, auditLogger } = require('../utils/logger');
 const rateLimit = require('express-rate-limit');
 
+// ── Create router ──
 const router = express.Router();
 
-/* ============================================================
- * Rate limiting
- * ============================================================ */
+/* —————————————————————————————————————
+ * Rate Limiting
+ * ————————————————————————————————————— */
 
+// ── Settings / user-creation limiter ──
 const settingsLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 120,
   message: { error: 'Too many settings update requests. Please try again later.' },
 });
 
+// ── Destructive-action limiter ──
 const deleteLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
@@ -92,18 +105,21 @@ const deleteLimiter = rateLimit({
 // User creation shares the settings limiter — before this was unlimited.
 const createUserLimiter = settingsLimiter;
 
-/* ============================================================
+/* —————————————————————————————————————
  * Constants
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Supported currency codes ──
 const CURRENCY_CODES = new Set([
   'USD', 'INR', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SGD', 'AED',
   'CHF', 'CNY', 'MXN', 'BRL', 'KRW', 'THB',
 ]);
 
+// ── Theme values and hex color pattern ──
 const THEME_VALUES = new Set(['light', 'amoled']);
 const HEX_COLOR = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{4}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/;
 
+// ── Default notification preferences ──
 const DEFAULT_NOTIFICATION_PREFS = {
   emailReports: true,
   budgetAlerts: true,
@@ -117,6 +133,7 @@ const DEFAULT_NOTIFICATION_PREFS = {
   quietHoursEnd: '08:00',
 };
 
+// ── Default advanced preferences ──
 const DEFAULT_ADVANCED_PREFS = {
   dateFormat: 'MM/DD/YYYY',
   timeFormat: '12h',
@@ -128,15 +145,15 @@ const DEFAULT_ADVANCED_PREFS = {
   showWeekNumbers: false,
 };
 
-/* ============================================================
- * Router-level middleware
- * ============================================================ */
+/* —————————————————————————————————————
+ * Router Middleware
+ * ————————————————————————————————————— */
 
 // Apply auth once for the whole router. Defensive: harmless if the app
 // already mounts this router behind a global auth middleware.
 router.use(auth);
 
-// Ensure a request reaching this router always has an authenticated user.
+// ── Ensure every request has an authenticated user ──
 router.use((req, res, next) => {
   if (req.method === 'OPTIONS') return next();
   if (!req.user || (!req.user.id && !req.user._id)) {
@@ -146,22 +163,25 @@ router.use((req, res, next) => {
   next();
 });
 
-// Cache-Control on every response.
+// ── Disable caching on every response ──
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   next();
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * Helpers
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Return the value when it is a boolean, else the fallback ──
 const normalizeBoolean = (value, fallback) =>
   typeof value === 'boolean' ? value : fallback;
 
+// ── Return the value when it matches HH:MM, else the fallback ──
 const normalizeTime = (value, fallback) =>
   /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || '')) ? value : fallback;
 
+// ── Merge incoming notification preferences with defaults ──
 const normalizeNotificationPrefs = (value = {}) => {
   const prefs = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   return {
@@ -178,6 +198,7 @@ const normalizeNotificationPrefs = (value = {}) => {
   };
 };
 
+// ── Merge incoming advanced preferences with defaults ──
 const normalizeAdvancedPrefs = (value = {}) => {
   const prefs = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   return {
@@ -200,6 +221,8 @@ const normalizeAdvancedPrefs = (value = {}) => {
   };
 };
 
+// ── Parse a monetary value; null on invalid input ──
+// Rejects booleans, arrays, and objects explicitly.
 const parseMoney = (value, { allowZero = true } = {}) => {
   if (value === '' || value === null || value === undefined) return null;
   if (typeof value !== 'string' && typeof value !== 'number') return null;
@@ -210,9 +233,12 @@ const parseMoney = (value, { allowZero = true } = {}) => {
   return Number(amount.toFixed(2));
 };
 
+// ── Build a $set payload from a partial settings update ──
+// Returns { updates } on success or { error } on validation failure.
 const buildSettingsUpdate = (payload = {}) => {
   const updates = {};
 
+  // ── Username ──
   if (payload.username !== undefined) {
     const username = String(payload.username).trim();
     if (!username || username.length > 80) {
@@ -221,12 +247,14 @@ const buildSettingsUpdate = (payload = {}) => {
     updates.username = username;
   }
 
+  // ── Last name ──
   if (payload.last_name !== undefined) {
     const lastName = String(payload.last_name).trim();
     if (lastName.length > 80) return { error: 'Last name must be 80 characters or fewer.' };
     updates.last_name = lastName;
   }
 
+  // ── Profession ──
   if (payload.profession !== undefined) {
     if (typeof payload.profession !== 'string' || payload.profession.trim().length > 80) {
       return { error: 'Profession must be 80 characters or fewer.' };
@@ -234,17 +262,20 @@ const buildSettingsUpdate = (payload = {}) => {
     updates.profession = payload.profession.trim() || 'Trader';
   }
 
+  // ── Email ──
   if (payload.email !== undefined) {
     const email = String(payload.email).trim().toLowerCase();
     if (!email || !/^\S+@\S+\.\S+$/.test(email)) return { error: 'A valid email is required.' };
     updates.email = email;
   }
 
+  // ── Theme ──
   if (payload.theme !== undefined) {
     if (!THEME_VALUES.has(payload.theme)) return { error: 'Theme must be light or amoled.' };
     updates.theme = payload.theme;
   }
 
+  // ── Monthly goal ──
   if (payload.monthly_goal !== undefined) {
     const monthlyGoal = parseMoney(payload.monthly_goal);
     if (monthlyGoal === null) {
@@ -253,18 +284,21 @@ const buildSettingsUpdate = (payload = {}) => {
     updates.monthly_goal = monthlyGoal;
   }
 
+  // ── Currency ──
   if (payload.currency !== undefined) {
     const currency = String(payload.currency).trim().toUpperCase();
     if (!CURRENCY_CODES.has(currency)) return { error: 'Unsupported currency.' };
     updates.currency = currency;
   }
 
+  // ── Avatar (emoji or small URL) ──
   if (payload.profile_avatar !== undefined) {
     const avatar = typeof payload.profile_avatar === 'string' ? payload.profile_avatar.trim() : '';
     if (avatar.length > 8_000_000) return { error: 'Profile avatar is too large.' };
     updates.profile_avatar = avatar || '😊';
   }
 
+  // ── Profile color ──
   if (payload.profile_color !== undefined) {
     if (typeof payload.profile_color !== 'string' || !HEX_COLOR.test(payload.profile_color)) {
       return { error: 'Profile color must be a valid hex color.' };
@@ -272,6 +306,7 @@ const buildSettingsUpdate = (payload = {}) => {
     updates.profile_color = payload.profile_color;
   }
 
+  // ── Notification preferences (normalized) ──
   if (payload.notification_prefs !== undefined) {
     if (!payload.notification_prefs || typeof payload.notification_prefs !== 'object' || Array.isArray(payload.notification_prefs)) {
       return { error: 'Notification preferences are invalid.' };
@@ -279,6 +314,7 @@ const buildSettingsUpdate = (payload = {}) => {
     updates.notification_prefs = normalizeNotificationPrefs(payload.notification_prefs);
   }
 
+  // ── Advanced preferences (normalized) ──
   if (payload.advanced_prefs !== undefined) {
     if (!payload.advanced_prefs || typeof payload.advanced_prefs !== 'object' || Array.isArray(payload.advanced_prefs)) {
       return { error: 'Advanced preferences are invalid.' };
@@ -286,6 +322,7 @@ const buildSettingsUpdate = (payload = {}) => {
     updates.advanced_prefs = normalizeAdvancedPrefs(payload.advanced_prefs);
   }
 
+  // ── Custom account types ──
   if (payload.custom_account_types !== undefined) {
     if (!Array.isArray(payload.custom_account_types)) {
       return { error: 'custom_account_types must be an array of strings.' };
@@ -299,10 +336,11 @@ const buildSettingsUpdate = (payload = {}) => {
   return { updates };
 };
 
-/* ============================================================
- * Data deletion helpers
- * ============================================================ */
+/* —————————————————————————————————————
+ * Data Deletion Helpers
+ * ————————————————————————————————————— */
 
+// ── Collections that hold user-scoped data ──
 const USER_DATA_MODELS = [
   Transaction,
   Goal,
@@ -321,6 +359,9 @@ const USER_DATA_MODELS = [
   TaxDocument,
 ];
 
+// ── Delete a user and all of their data ──
+// Uses a transaction when the deployment supports it; otherwise falls
+// back to sequential deletes (see the fallback note).
 const deleteUserAndData = async (userId) => {
   let userObjectId;
   try {
@@ -366,14 +407,15 @@ const deleteUserAndData = async (userId) => {
   }
 };
 
-/* ============================================================
- * GET / — List household users
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /
+ * List users in the same household as the authenticated user.
+ * ————————————————————————————————————— */
 router.get('/', async (req, res) => {
   try {
     const householdId = req.user.household_id || req.userId;
 
+    // ── Load household members ──
     const users = await User.find({
       $or: [
         { household_id: householdId },
@@ -395,10 +437,10 @@ router.get('/', async (req, res) => {
   }
 });
 
-/* ============================================================
- * GET /me — Current user
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /me
+ * Return the currently authenticated user's profile.
+ * ————————————————————————————————————— */
 router.get('/me', async (req, res) => {
   try {
     const user = await User.findById(req.userId).select(
@@ -412,19 +454,21 @@ router.get('/me', async (req, res) => {
   }
 });
 
-/* ============================================================
- * GET /:id — Single user
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /:id
+ * Fetch a single user by ID (scoped by ownership middleware).
+ * ————————————————————————————————————— */
 router.get(
   '/:id',
   [param('id').isMongoId().withMessage('Invalid user ID.')],
   checkOwnership('id'),
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Load the user ──
       const user = await User.findById(req.params.id);
       if (!user) return res.status(404).json({ error: 'User not found' });
       return res.json(user);
@@ -435,10 +479,10 @@ router.get(
   }
 );
 
-/* ============================================================
- * POST / — Create a household user
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /
+ * Create a new user inside the authenticated user's household.
+ * ————————————————————————————————————— */
 router.post(
   '/',
   createUserLimiter,
@@ -451,6 +495,7 @@ router.post(
     body('password').optional().isString().isLength({ min: 8 }),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
@@ -466,14 +511,17 @@ router.post(
     } = req.body;
 
     try {
+      // ── Validate currency ──
       const normalizedCurrency = String(currency).trim().toUpperCase();
       if (!CURRENCY_CODES.has(normalizedCurrency)) {
         return res.status(400).json({ error: 'Unsupported currency.' });
       }
 
+      // ── Generate a temporary password when none was provided ──
       const autoGenerated = !password;
       const userPassword = password || crypto.randomBytes(16).toString('hex');
 
+      // ── Create the user ──
       const user = await User.create({
         username: String(username).trim(),
         last_name,
@@ -512,6 +560,7 @@ router.post(
         message: 'User created successfully',
       });
     } catch (error) {
+      // ── Map duplicate-key errors to a friendly message ──
       if (error.code === 11000) {
         const keyField = error.keyPattern ? Object.keys(error.keyPattern)[0] : null;
         if (keyField === 'username') {
@@ -525,15 +574,16 @@ router.post(
   }
 );
 
-/* ============================================================
- * PATCH /:id/settings — Partial settings update
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * PATCH /:id/settings
+ * Partial settings update.
+ * ————————————————————————————————————— */
 router.patch(
   '/:id/settings',
   checkOwnership('id'),
   settingsLimiter,
   [
+    // ── Validate each optional settings field ──
     param('id').isMongoId().withMessage('Invalid user ID.'),
     body('username').optional().notEmpty().trim(),
     body('last_name').optional().isString().trim().isLength({ max: 80 }),
@@ -549,13 +599,16 @@ router.patch(
     body('custom_account_types').optional().isArray(),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
+    // ── Build the $set payload from the request ──
     const result = buildSettingsUpdate(req.body);
     if (result.error) return res.status(400).json({ error: result.error });
 
     try {
+      // ── Apply the update ──
       const user = await User.findByIdAndUpdate(
         req.params.id,
         { $set: result.updates },
@@ -581,15 +634,17 @@ router.patch(
   }
 );
 
-/* ============================================================
- * PUT /:id/settings — Full settings replace (deprecated)
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * PUT /:id/settings
+ * Full settings replace — DEPRECATED, kept for backwards compatibility.
+ * Shares the same handler body as PATCH.
+ * ————————————————————————————————————— */
 router.put(
   '/:id/settings',
   checkOwnership('id'),
   settingsLimiter,
   [
+    // ── Validate each optional settings field ──
     param('id').isMongoId().withMessage('Invalid user ID.'),
     body('username').optional().notEmpty().trim(),
     body('last_name').optional().isString().trim().isLength({ max: 80 }),
@@ -605,13 +660,16 @@ router.put(
     body('custom_account_types').optional().isArray(),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
+    // ── Build the $set payload from the request ──
     const result = buildSettingsUpdate(req.body);
     if (result.error) return res.status(400).json({ error: result.error });
 
     try {
+      // ── Apply the update ──
       const user = await User.findByIdAndUpdate(
         req.params.id,
         { $set: result.updates },
@@ -630,19 +688,21 @@ router.put(
   }
 );
 
-/* ============================================================
+/* —————————————————————————————————————
  * GET /:id/notifications
- * ============================================================ */
-
+ * Fetch the user's normalized notification preferences.
+ * ————————————————————————————————————— */
 router.get(
   '/:id/notifications',
   [param('id').isMongoId().withMessage('Invalid user ID.')],
   checkOwnership('id'),
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Load and normalize preferences ──
       const user = await User.findById(req.params.id).select('notification_prefs');
       if (!user) return res.status(404).json({ error: 'User not found' });
       return res.json(
@@ -655,20 +715,22 @@ router.get(
   }
 );
 
-/* ============================================================
+/* —————————————————————————————————————
  * PUT /:id/notifications
- * ============================================================ */
-
+ * Update notification preferences (normalized on write).
+ * ————————————————————————————————————— */
 router.put(
   '/:id/notifications',
   [param('id').isMongoId().withMessage('Invalid user ID.')],
   checkOwnership('id'),
   settingsLimiter,
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Persist normalized preferences ──
       const user = await User.findByIdAndUpdate(
         req.params.id,
         { $set: { notification_prefs: normalizeNotificationPrefs(req.body) } },
@@ -686,19 +748,21 @@ router.put(
   }
 );
 
-/* ============================================================
+/* —————————————————————————————————————
  * GET /:id/advanced-preferences
- * ============================================================ */
-
+ * Fetch the user's normalized advanced preferences.
+ * ————————————————————————————————————— */
 router.get(
   '/:id/advanced-preferences',
   [param('id').isMongoId().withMessage('Invalid user ID.')],
   checkOwnership('id'),
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Load and normalize preferences ──
       const user = await User.findById(req.params.id).select('advanced_prefs');
       if (!user) return res.status(404).json({ error: 'User not found' });
       return res.json(normalizeAdvancedPrefs(user.advanced_prefs || DEFAULT_ADVANCED_PREFS));
@@ -709,20 +773,22 @@ router.get(
   }
 );
 
-/* ============================================================
+/* —————————————————————————————————————
  * PUT /:id/advanced-preferences
- * ============================================================ */
-
+ * Update advanced preferences (normalized on write).
+ * ————————————————————————————————————— */
 router.put(
   '/:id/advanced-preferences',
   [param('id').isMongoId().withMessage('Invalid user ID.')],
   checkOwnership('id'),
   settingsLimiter,
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Persist normalized preferences ──
       const user = await User.findByIdAndUpdate(
         req.params.id,
         { $set: { advanced_prefs: normalizeAdvancedPrefs(req.body) } },
@@ -737,22 +803,24 @@ router.put(
   }
 );
 
-/* ============================================================
- * POST /:id/reset — Reset financial data
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /:id/reset
+ * Reset the user's financial data (keeps the account itself).
+ * ————————————————————————————————————— */
 router.post(
   '/:id/reset',
   [param('id').isMongoId().withMessage('Invalid user ID.')],
   checkOwnership('id'),
   deleteLimiter,
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
       const userId = new mongoose.Types.ObjectId(req.params.id);
 
+      // ── Wipe all financial data for the user ──
       await Promise.all([
         Transaction.deleteMany({ user_id: userId }),
         Goal.deleteMany({ user_id: userId }),
@@ -765,6 +833,7 @@ router.post(
         Calculation.deleteMany({ user_id: userId }),
       ]);
 
+      // ── Reset the cached balance ──
       await User.findByIdAndUpdate(userId, { $set: { balance: 0 } });
 
       auditLogger.info('User financial data reset', {
@@ -781,20 +850,22 @@ router.post(
   }
 );
 
-/* ============================================================
- * DELETE /:id — Delete user + all data
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * DELETE /:id
+ * Delete a user and all associated data (household-scoped ownership).
+ * ————————————————————————————————————— */
 router.delete(
   '/:id',
   [param('id').isMongoId().withMessage('Invalid user ID.')],
   checkOwnership('id', { household: true }),
   deleteLimiter,
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Delete the user and every user-scoped collection ──
       await deleteUserAndData(req.params.id);
 
       auditLogger.info('User deleted account', {
@@ -813,20 +884,22 @@ router.delete(
   }
 );
 
-/* ============================================================
- * POST /:id/switch — Switch to a linked household profile
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /:id/switch
+ * Issue a new session token for a linked household profile.
+ * ————————————————————————————————————— */
 router.post(
   '/:id/switch',
   [param('id').isMongoId().withMessage('Invalid user ID.')],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
       const householdId = req.user.household_id || req.userId;
 
+      // ── Verify the target belongs to the same household ──
       const target = await User.findOne({
         _id: req.params.id,
         $or: [
@@ -841,6 +914,7 @@ router.post(
         return res.status(403).json({ error: 'You can only switch to a linked household profile.' });
       }
 
+      // ── Issue a new token and persist a Session record ──
       const tokenId = crypto.randomUUID();
       const token = jwt.sign(
         {
@@ -886,19 +960,23 @@ router.post(
   }
 );
 
-/* ============================================================
- * POST /:userId/import — Restore a JSON backup
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /:userId/import
+ * Restore a JSON backup created by the exports endpoint.
+ * Accepted versions: 1–5. Bump this list when the export version changes.
+ * ————————————————————————————————————— */
 router.post(
   '/:userId/import',
   [param('userId').isMongoId().withMessage('Invalid user ID.')],
   checkOwnership('userId'),
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const backup = req.body;
+
+    // ── Validate the backup envelope ──
     if (
       !backup ||
       typeof backup !== 'object' ||
@@ -908,6 +986,7 @@ router.post(
       return res.status(400).json({ message: 'Unsupported or malformed backup format.' });
     }
 
+    // ── Map backup keys to their models ──
     const collections = [
       ['transactions', Transaction],
       ['goals', Goal],
@@ -924,6 +1003,7 @@ router.post(
       ['taxDocuments', TaxDocument],
     ];
 
+    // ── Reject non-array payloads early ──
     for (const [key] of collections) {
       if (backup[key] !== undefined && !Array.isArray(backup[key])) {
         return res.status(400).json({ message: `Malformed backup: "${key}" must be an array.` });
@@ -934,17 +1014,16 @@ router.post(
     const ownerQuery = { user_id: userObjectId };
 
     let session;
+
+    // ── Restore routine, parameterised by session (or none) ──
     const restore = async (options = {}) => {
       for (const [key, Model] of collections) {
         if (!Array.isArray(backup[key])) continue;
-        /* Original buggy code:
-        const documents = backup[key].map(({ _id, id, user_id, __v, ...document }) => ({
-          ...document,
-          user_id: userObjectId,
-        }));
-        // Issue: Stripping _id broke referential integrity: Account._id was discarded,
-        // leaving Transaction.account_id and parent_transaction_id pointing to non-existent IDs.
-        */
+
+        // Note: an earlier version stripped `_id` from every document,
+        // breaking referential integrity (e.g. Transaction.account_id
+        // pointed to an Account._id that no longer existed). Now the
+        // original _id (or `id`) is preserved when it is a valid ObjectId.
         const documents = backup[key].map(({ _id, id, user_id, __v, ...document }) => {
           const doc = { ...document, user_id: userObjectId };
           const candidateId = _id || id;
@@ -953,6 +1032,7 @@ router.post(
           }
           return doc;
         });
+
         await Model.deleteMany(ownerQuery, options);
         if (documents.length) {
           await Model.insertMany(documents, { ...options, ordered: true });
@@ -976,6 +1056,7 @@ router.post(
 
     try {
       try {
+        // ── Preferred path: transactional restore ──
         session = await mongoose.startSession();
         session.startTransaction();
         await restore({ session });
@@ -1011,4 +1092,9 @@ router.post(
   }
 );
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;

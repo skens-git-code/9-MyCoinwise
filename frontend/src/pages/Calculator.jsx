@@ -9,98 +9,124 @@ import {
 import { AppContext } from '../contexts/AppContext';
 import { api } from '../services/api';
 
-/* ============================================================
- * Constants & storage keys
- * ============================================================ */
-const HISTORY_KEY = 'mycoinwise-calculator-history';
-const PENDING_KEY = 'mycoinwise-calculator-pending';
-const MEMORY_KEY = 'mycoinwise-calculator-memory';
-const ANGLE_KEY = 'mycoinwise-calculator-angle';
-const MAX_HISTORY = 30;
+/* 
+ * ————————————————————————————————————————————
+ * CONFIGURATION & CONSTANTS
+ * Defines storage keys, limits, and mathematical constants.
+ * ————————————————————————————————————————————
+ */
+const STORAGE_PREFIX = 'mycoinwise-calculator';
+const MAX_HISTORY_ITEMS = 30;
 
-const getMemoryKey = (userId) => `${MEMORY_KEY}:${userId || 'guest'}`;
-const getHistoryKey = (userId) => `${HISTORY_KEY}:${userId || 'guest'}`;
-const getPendingKey = (userId) => `${PENDING_KEY}:${userId || 'guest'}`;
-const getAngleKey = (userId) => `${ANGLE_KEY}:${userId || 'guest'}`;
+const getStorageKey = (suffix, userId) => `${STORAGE_PREFIX}-${suffix}:${userId || 'guest'}`;
 
-const FUNCTIONS = new Set([
+const SUPPORTED_FUNCTIONS = new Set([
   'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh',
   'log', 'ln', 'sqrt', 'cbrt', 'abs', 'exp', 'floor', 'ceil', 'round',
   'pow', 'min', 'max',
 ]);
 
-const isFiniteNumber = (value) => Number.isFinite(value);
-
-const newClientId = () =>
+/**
+ * Generates a unique client ID for tracking unsynced calculations.
+ */
+const generateUniqueId = () =>
   globalThis.crypto?.randomUUID?.() ||
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const safeReadJson = (key, fallback) => {
+/**
+ * Safely parses JSON from localStorage, returning a fallback on failure.
+ */
+const loadFromStorage = (key, fallbackValue) => {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw);
+    const rawData = localStorage.getItem(key);
+    if (!rawData) return fallbackValue;
+    return JSON.parse(rawData);
   } catch {
-    return fallback;
+    return fallbackValue;
   }
 };
 
-const safeWriteJson = (key, value) => {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota */ }
+/**
+ * Safely writes JSON to localStorage, ignoring quota errors.
+ */
+const saveToStorage = (key, data) => {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* ignore quota errors */ }
 };
 
-const normalizeHistoryItem = (item) => {
+/**
+ * Normalizes a history item from local or remote storage into a consistent format.
+ */
+const normalizeHistoryEntry = (item) => {
   if (!item || typeof item !== 'object') return null;
-  const clientId =
-    item.clientId || item.client_id || item.id || item._id || newClientId();
-  const numericRaw = item.numericResult ?? item.numeric_result;
-  const numericResult = Number(numericRaw);
+  
+  const uniqueId = item.clientId || item.client_id || item.id || item._id || generateUniqueId();
+  const rawNumeric = item.numericResult ?? item.numeric_result;
+  const parsedNumeric = Number(rawNumeric);
+
   return {
-    id: item.id || item._id || clientId,
-    clientId,
+    id: item.id || item._id || uniqueId,
+    clientId: uniqueId,
     expression: String(item.expression ?? ''),
     result: String(item.result ?? ''),
-    numericResult: Number.isFinite(numericResult) ? numericResult : 0,
+    numericResult: Number.isFinite(parsedNumeric) ? parsedNumeric : 0,
     angleMode: item.angleMode || item.angle_mode || 'DEG',
     timestamp: item.timestamp || item.created_at || Date.now(),
-    synced: item.synced ?? true,
+    isSynced: item.synced ?? true,
   };
 };
 
-/* ============================================================
- * Tokenizer & Parser
- * ============================================================ */
-function tokenize(expression) {
+/* 
+ * ————————————————————————————————————————————
+ * EXPRESSION PARSER & EVALUATOR
+ * Custom tokenizer and recursive descent parser for safe math evaluation.
+ * ————————————————————————————————————————————
+ */
+
+/**
+ * Tokenizes a mathematical expression string into numbers, identifiers, and operators.
+ */
+function tokenizeExpression(expression) {
   const tokens = [];
-  let index = 0;
-  while (index < expression.length) {
-    const char = expression[index];
-    if (/\s/.test(char)) { index += 1; continue; }
+  let currentIndex = 0;
 
+  while (currentIndex < expression.length) {
+    const char = expression[currentIndex];
+
+    // Skip whitespace
+    if (/\s/.test(char)) {
+      currentIndex += 1;
+      continue;
+    }
+
+    // Parse Numbers (including decimals and scientific notation)
     if (/[0-9.]/.test(char)) {
-      const match = expression.slice(index).match(/^(?:(?:\d+\.?\d*)|(?:\.\d+))(?:e[+-]?\d+)?/i);
-      if (!match) throw new Error('Invalid number');
+      const match = expression.slice(currentIndex).match(/^(?:(?:\d+\.?\d*)|(?:\.\d+))(?:e[+-]?\d+)?/i);
+      if (!match) throw new Error('Invalid number format');
+      
       const value = Number(match[0]);
-      if (!isFiniteNumber(value)) throw new Error('Number is too large');
+      if (!Number.isFinite(value)) throw new Error('Number is too large');
+      
       tokens.push({ type: 'number', value });
-      index += match[0].length;
+      currentIndex += match[0].length;
       continue;
     }
 
+    // Parse Identifiers (functions, constants, variables)
     if (/[a-zA-Zπ]/.test(char)) {
-      const match = expression.slice(index).match(/^(?:[a-zA-Z]+|π)/);
-      const value = match[0].toLowerCase() === 'π' ? 'pi' : match[0].toLowerCase();
-      tokens.push({ type: 'identifier', value });
-      index += match[0].length;
+      const match = expression.slice(currentIndex).match(/^(?:[a-zA-Z]+|π)/);
+      const normalizedValue = match[0].toLowerCase() === 'π' ? 'pi' : match[0].toLowerCase();
+      tokens.push({ type: 'identifier', value: normalizedValue });
+      currentIndex += match[0].length;
       continue;
     }
 
+    // Parse Operators and Parentheses
     if ('+-*/^%!(),'.includes(char)) {
       tokens.push({
         type: char === '(' || char === ')' || char === ',' ? char : 'operator',
         value: char,
       });
-      index += 1;
+      currentIndex += 1;
       continue;
     }
 
@@ -109,28 +135,37 @@ function tokenize(expression) {
   return tokens;
 }
 
-function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) {
-  const cleaned = String(expression)
+/**
+ * Evaluates a tokenized mathematical expression with support for angles and previous answers.
+ */
+function evaluateMathExpression(expression, { angleMode = 'DEG', previousAnswer = 0 } = {}) {
+  // Normalize common symbols
+  const cleanedExpression = String(expression)
     .replaceAll('×', '*')
     .replaceAll('÷', '/')
     .replaceAll('−', '-')
     .replaceAll('√', 'sqrt')
-    .replace(/(\d)\(/g, '$1*(')
-    .replace(/\)\(/g, ')*(');
+    .replace(/(\d)\(/g, '$1*(') // Implicit multiplication: 2(3) -> 2*(3)
+    .replace(/\)\(/g, ')*(');   // Implicit multiplication: )( -> )*(
 
-  const tokens = tokenize(cleaned);
+  const tokens = tokenizeExpression(cleanedExpression);
   let position = 0;
-  const peek = () => tokens[position];
-  const take = () => tokens[position++];
+
+  const peekToken = () => tokens[position];
+  const consumeToken = () => tokens[position++];
+  
   const isPrimaryStart = (token) =>
     token && (token.type === 'number' || token.type === 'identifier' || token.type === '(');
 
-  const toRadians = (v) => (angleMode === 'DEG' ? (v * Math.PI) / 180 : v);
-  const fromRadians = (v) => (angleMode === 'DEG' ? (v * 180) / Math.PI : v);
+  // Angle conversion helpers
+  const toRadians = (value) => (angleMode === 'DEG' ? (value * Math.PI) / 180 : value);
+  const fromRadians = (value) => (angleMode === 'DEG' ? (value * 180) / Math.PI : value);
 
-  const constants = { pi: Math.PI, e: Math.E, ans: answer };
+  // Constants available in expressions
+  const constants = { pi: Math.PI, e: Math.E, ans: previousAnswer };
 
-  const functions = {
+  // Mathematical functions available in expressions
+  const mathFunctions = {
     sin: (v) => Math.sin(toRadians(v)),
     cos: (v) => Math.cos(toRadians(v)),
     tan: (v) => Math.tan(toRadians(v)),
@@ -144,36 +179,41 @@ function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) 
     pow: Math.pow, min: Math.min, max: Math.max,
   };
 
-  const assertFinite = (value) => {
-    if (!isFiniteNumber(value)) throw new Error('Result is not a real number');
+  const assertValidNumber = (value) => {
+    if (!Number.isFinite(value)) throw new Error('Result is not a real number');
     return value;
   };
 
-  const parseExpression = () => parseAddSub();
+  // --- Recursive Descent Parser ---
 
-  const parseAddSub = () => {
-    let value = parseMulDiv();
-    while (peek()?.value === '+' || peek()?.value === '-') {
-      const operator = take().value;
-      const right = parseMulDiv();
-      value = assertFinite(operator === '+' ? value + right : value - right);
+  const parseExpression = () => parseAdditionSubtraction();
+
+  const parseAdditionSubtraction = () => {
+    let value = parseMultiplicationDivision();
+    while (peekToken()?.value === '+' || peekToken()?.value === '-') {
+      const operator = consumeToken().value;
+      const rightOperand = parseMultiplicationDivision();
+      value = assertValidNumber(operator === '+' ? value + rightOperand : value - rightOperand);
     }
     return value;
   };
 
-  const parseMulDiv = () => {
+  const parseMultiplicationDivision = () => {
     let value = parseUnary();
     while (true) {
-      const token = peek();
+      const token = peekToken();
       if (token?.value === '*' || token?.value === '/' || token?.value === '%') {
-        const operator = take().value;
-        const right = parseUnary();
-        if (operator === '/' && right === 0) throw new Error('Cannot divide by zero');
-        if (operator === '*') value = assertFinite(value * right);
-        else if (operator === '/') value = assertFinite(value / right);
-        else value = assertFinite(value % right);
+        const operator = consumeToken().value;
+        const rightOperand = parseUnary();
+        
+        if (operator === '/' && rightOperand === 0) throw new Error('Cannot divide by zero');
+        
+        if (operator === '*') value = assertValidNumber(value * rightOperand);
+        else if (operator === '/') value = assertValidNumber(value / rightOperand);
+        else value = assertValidNumber(value % rightOperand);
       } else if (isPrimaryStart(token)) {
-        value = assertFinite(value * parseUnary());
+        // Implicit multiplication
+        value = assertValidNumber(value * parseUnary());
       } else {
         return value;
       }
@@ -181,103 +221,122 @@ function evaluateExpression(expression, { angleMode = 'DEG', answer = 0 } = {}) 
   };
 
   const parseUnary = () => {
-    if (peek()?.value === '+' || peek()?.value === '-') {
-      const operator = take().value;
+    if (peekToken()?.value === '+' || peekToken()?.value === '-') {
+      const operator = consumeToken().value;
       const value = parseUnary();
       return operator === '-' ? -value : value;
     }
 
-    let value = parsePower();
+    let value = parseExponentiation();
 
-    while (peek()?.value === '!') {
-      take();
+    // Factorial
+    while (peekToken()?.value === '!') {
+      consumeToken();
       if (!Number.isInteger(value) || value < 0 || value > 170) {
-        throw new Error('Factorial needs an integer from 0 to 170');
+        throw new Error('Factorial requires an integer from 0 to 170');
       }
-      let factorial = 1;
-      for (let i = 2; i <= value; i += 1) factorial *= i;
-      value = factorial;
+      let factorialResult = 1;
+      for (let i = 2; i <= value; i += 1) factorialResult *= i;
+      value = factorialResult;
     }
 
-    // Percentage postfix — applies only when the following token isn't a number
-    // (in which case '%' is treated as modulo in parseMulDiv).
-    if (peek()?.value === '%') {
-      const next = tokens[position + 1]?.value;
-      const nextIsPctContext =
-        next === undefined ||
-        next === '%' || next === ')' || next === ',' ||
-        next === '+' || next === '-' || next === '*' || next === '/' || next === '^';
-      if (nextIsPctContext) {
-        take();
+    // Percentage postfix (only if not followed by another number, which would imply modulo)
+    if (peekToken()?.value === '%') {
+      const nextTokenValue = tokens[position + 1]?.value;
+      const isPercentageContext =
+        nextTokenValue === undefined ||
+        nextTokenValue === '%' || nextTokenValue === ')' || nextTokenValue === ',' ||
+        nextTokenValue === '+' || nextTokenValue === '-' || nextTokenValue === '*' || nextTokenValue === '/' || nextTokenValue === '^';
+      
+      if (isPercentageContext) {
+        consumeToken();
         value /= 100;
       }
     }
 
-    return assertFinite(value);
+    return assertValidNumber(value);
   };
 
-  const parsePower = () => {
+  const parseExponentiation = () => {
     let value = parsePrimary();
-    if (peek()?.value === '^') {
-      take();
-      value = assertFinite(Math.pow(value, parseUnary()));
+    if (peekToken()?.value === '^') {
+      consumeToken();
+      value = assertValidNumber(Math.pow(value, parseUnary()));
     }
     return value;
   };
 
   const parsePrimary = () => {
-    const token = take();
+    const token = consumeToken();
     if (!token) throw new Error('Incomplete expression');
+    
     if (token.type === 'number') return token.value;
+    
     if (token.type === '(') {
       const value = parseExpression();
-      if (take()?.type !== ')') throw new Error('Missing closing parenthesis');
+      if (consumeToken()?.type !== ')') throw new Error('Missing closing parenthesis');
       return value;
     }
+    
     if (token.type === 'identifier') {
       if (Object.hasOwn(constants, token.value)) return constants[token.value];
-      if (!FUNCTIONS.has(token.value) || peek()?.type !== '(') {
+      
+      if (!SUPPORTED_FUNCTIONS.has(token.value) || peekToken()?.type !== '(') {
         throw new Error(`Unknown function: ${token.value}`);
       }
-      take();
+      
+      consumeToken(); // Consume '('
       const args = [];
-      if (peek()?.type !== ')') {
+      
+      if (peekToken()?.type !== ')') {
         args.push(parseExpression());
-        while (peek()?.type === ',') {
-          take();
+        while (peekToken()?.type === ',') {
+          consumeToken();
           args.push(parseExpression());
         }
       }
-      if (take()?.type !== ')') throw new Error('Missing closing parenthesis');
+      
+      if (consumeToken()?.type !== ')') throw new Error('Missing closing parenthesis');
 
-      const isVarArg = token.value === 'min' || token.value === 'max';
-      const expected = token.value === 'pow' ? 2 : 1;
-      if (isVarArg ? args.length < 1 : args.length !== expected) {
+      const isVariadic = token.value === 'min' || token.value === 'max';
+      const expectedArgs = token.value === 'pow' ? 2 : 1;
+      
+      if (isVariadic ? args.length < 1 : args.length !== expectedArgs) {
         throw new Error(`${token.value} has the wrong number of arguments`);
       }
-      return assertFinite(functions[token.value](...args));
+      
+      return assertValidNumber(mathFunctions[token.value](...args));
     }
+    
     throw new Error('Unexpected token');
   };
 
   if (!tokens.length) throw new Error('Enter an expression');
-  const result = assertFinite(parseExpression());
+  
+  const finalResult = assertValidNumber(parseExpression());
   if (position !== tokens.length) throw new Error('Check the expression');
-  return result;
+  
+  return finalResult;
 }
 
-const formatResult = (value) => {
-  if (!isFiniteNumber(value)) return 'Error';
+/**
+ * Formats a numeric result for display, handling large/small numbers.
+ */
+const formatDisplayResult = (value) => {
+  if (!Number.isFinite(value)) return 'Error';
   if (Math.abs(value) >= 1e12 || (Math.abs(value) > 0 && Math.abs(value) < 1e-9)) {
     return value.toExponential(8);
   }
   return Number(value.toPrecision(12)).toString();
 };
 
-/* ============================================================
- * Button layout
- * ============================================================ */
-const buttonGroups = {
+/* 
+ * ————————————————————————————————————————————
+ * BUTTON LAYOUT DEFINITIONS
+ * Configures the grid layout for basic and scientific keys.
+ * ————————————————————————————————————————————
+ */
+const KEY_LAYOUTS = {
   scientific: [
     ['sin(', 'sin'], ['cos(', 'cos'], ['tan(', 'tan'], ['log(', 'log'],
     ['asin(', 'asin'], ['acos(', 'acos'], ['atan(', 'atan'], ['ln(', 'ln'],
@@ -296,76 +355,99 @@ const buttonGroups = {
   ],
 };
 
-/* ============================================================
- * Component
- * ============================================================ */
-export default function Calculator() {
-  const { USER_ID, t } = useContext(AppContext);
+/* 
+ * ————————————————————————————————————————————
+ * MAIN COMPONENT: ScientificCalculator
+ * Handles state, evaluation, history, and synchronization.
+ * ————————————————————————————————————————————
+ */
+export default function ScientificCalculator() {
+  const { USER_ID, t: translate } = useContext(AppContext);
 
-  const [expression, setExpression] = useState('');
-  const [result, setResult] = useState('0');
+  // Core State
+  const [currentExpression, setCurrentExpression] = useState('');
+  const [displayResult, setDisplayResult] = useState('0');
+  const [lastAnswer, setLastAnswer] = useState(0);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // Settings & Persistence State
   const [angleMode, setAngleMode] = useState(
-    () => localStorage.getItem(getAngleKey(USER_ID)) || 'DEG'
+    () => localStorage.getItem(getStorageKey('angle', USER_ID)) || 'DEG'
   );
-  const [memory, setMemory] = useState(() => {
-    const raw = Number(localStorage.getItem(getMemoryKey(USER_ID)));
+  const [memoryValue, setMemoryValue] = useState(() => {
+    const raw = Number(localStorage.getItem(getStorageKey('memory', USER_ID)));
     return Number.isFinite(raw) ? raw : 0;
   });
-  const [answer, setAnswer] = useState(0);
-  const [history, setHistory] = useState(() => {
-    const stored = safeReadJson(getHistoryKey(USER_ID), []);
-    return Array.isArray(stored) ? stored.map(normalizeHistoryItem).filter(Boolean) : [];
+  const [historyList, setHistoryList] = useState(() => {
+    const stored = loadFromStorage(getStorageKey('history', USER_ID), []);
+    return Array.isArray(stored) ? stored.map(normalizeHistoryEntry).filter(Boolean) : [];
   });
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState('');
-  const [isClearing, setIsClearing] = useState(false);
-  const [showScientific, setShowScientific] = useState(() => (
+
+  // UI State
+  const [isCopied, setIsCopied] = useState(false);
+  const [isClearingHistory, setIsClearingHistory] = useState(false);
+  const [showScientificPanel, setShowScientificPanel] = useState(() => (
     typeof window === 'undefined' ? true : window.matchMedia('(min-width: 641px)').matches
   ));
 
   const copyTimeoutRef = useRef(null);
 
-  /* ---------------- Responsive scientific panel ---------------- */
+  /* 
+   * ————————————————————————————————————————————
+   * EFFECTS: RESPONSIVENESS & SYNC
+   * ————————————————————————————————————————————
+   */
+
+  /**
+   * Adjusts scientific panel visibility based on screen width.
+   */
   useEffect(() => {
-    const mq = window.matchMedia('(min-width: 641px)');
-    const sync = () => setShowScientific(mq.matches);
-    mq.addEventListener?.('change', sync);
-    return () => mq.removeEventListener?.('change', sync);
+    const mediaQuery = window.matchMedia('(min-width: 641px)');
+    const handleResize = () => setShowScientificPanel(mediaQuery.matches);
+    mediaQuery.addEventListener?.('change', handleResize);
+    return () => mediaQuery.removeEventListener?.('change', handleResize);
   }, []);
 
-  /* ---------------- Reload history / memory / angle on USER_ID change ---------------- */
-  const syncUserScopedStorage = useCallback(() => {
-    const stored = safeReadJson(getHistoryKey(USER_ID), []);
-    setHistory(Array.isArray(stored) ? stored.map(normalizeHistoryItem).filter(Boolean) : []);
+  /**
+   * Reloads user-specific data when the User ID changes.
+   */
+  const reloadUserData = useCallback(() => {
+    const storedHistory = loadFromStorage(getStorageKey('history', USER_ID), []);
+    setHistoryList(Array.isArray(storedHistory) ? storedHistory.map(normalizeHistoryEntry).filter(Boolean) : []);
 
-    const rawMem = Number(localStorage.getItem(getMemoryKey(USER_ID)));
-    setMemory(Number.isFinite(rawMem) ? rawMem : 0);
+    const rawMem = Number(localStorage.getItem(getStorageKey('memory', USER_ID)));
+    setMemoryValue(Number.isFinite(rawMem) ? rawMem : 0);
 
-    const storedAngle = localStorage.getItem(getAngleKey(USER_ID));
+    const storedAngle = localStorage.getItem(getStorageKey('angle', USER_ID));
     if (storedAngle === 'DEG' || storedAngle === 'RAD') setAngleMode(storedAngle);
   }, [USER_ID]);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(syncUserScopedStorage);
+    const frame = requestAnimationFrame(reloadUserData);
     return () => cancelAnimationFrame(frame);
-  }, [syncUserScopedStorage]);
+  }, [reloadUserData]);
 
-  /* ---------------- Persist angle mode ---------------- */
+  /**
+   * Persists angle mode preference.
+   */
   useEffect(() => {
-    localStorage.setItem(getAngleKey(USER_ID), angleMode);
+    localStorage.setItem(getStorageKey('angle', USER_ID), angleMode);
   }, [USER_ID, angleMode]);
 
-  /* ---------------- Sync pending + fetch remote ---------------- */
+  /**
+   * Synchronizes pending local calculations with the remote database.
+   */
   useEffect(() => {
     if (!USER_ID) return undefined;
-    let active = true;
+    let isActive = true;
 
-    const run = async () => {
-      const pendingKey = getPendingKey(USER_ID);
-      const pending = safeReadJson(pendingKey, []);
-      const remaining = [];
+    const syncPendingCalculations = async () => {
+      const pendingKey = getStorageKey('pending', USER_ID);
+      const pendingItems = loadFromStorage(pendingKey, []);
+      const failedItems = [];
 
-      for (const item of pending) {
+      // Attempt to upload pending items
+      for (const item of pendingItems) {
         try {
           await api.saveCalculation({
             userId: USER_ID,
@@ -376,266 +458,334 @@ export default function Calculator() {
             angle_mode: item.angleMode,
           });
         } catch {
-          remaining.push(item);
+          failedItems.push(item);
         }
       }
 
-      if (!active) return;
+      if (!isActive) return;
 
-      if (remaining.length) safeWriteJson(pendingKey, remaining);
-      else localStorage.removeItem(pendingKey);
+      // Update pending storage
+      if (failedItems.length) {
+        saveToStorage(pendingKey, failedItems);
+      } else {
+        localStorage.removeItem(pendingKey);
+      }
 
-      // Mark any uploaded items as synced in history
-      if (remaining.length !== pending.length) {
+      // Mark successfully uploaded items as synced in local history
+      if (failedItems.length !== pendingItems.length) {
         const uploadedIds = new Set(
-          pending.filter((p) => !remaining.some((r) => r.clientId === p.clientId))
+          pendingItems.filter((p) => !failedItems.some((r) => r.clientId === p.clientId))
             .map((p) => p.clientId)
         );
-        setHistory((current) => {
-          const next = current.map((h) =>
-            uploadedIds.has(h.clientId) ? { ...h, synced: true } : h
+        setHistoryList((currentHistory) => {
+          const updatedHistory = currentHistory.map((h) =>
+            uploadedIds.has(h.clientId) ? { ...h, isSynced: true } : h
           );
-          safeWriteJson(getHistoryKey(USER_ID), next);
-          return next;
+          saveToStorage(getStorageKey('history', USER_ID), updatedHistory);
+          return updatedHistory;
         });
       }
 
+      // Fetch remote history and merge
       try {
-        const remote = (await api.getCalculations(USER_ID))
-          .map(normalizeHistoryItem)
+        const remoteHistory = (await api.getCalculations(USER_ID))
+          .map(normalizeHistoryEntry)
           .filter(Boolean);
-        if (!active) return;
+        
+        if (!isActive) return;
 
-        const remoteIds = new Set(remote.map((r) => r.clientId));
-        const stillPending = remaining
+        const remoteIds = new Set(remoteHistory.map((r) => r.clientId));
+        const stillPending = failedItems
           .filter((r) => !remoteIds.has(r.clientId))
-          .map((r) => ({ ...r, synced: false }));
+          .map((r) => ({ ...r, isSynced: false }));
 
-        const merged = [...remote, ...stillPending]
+        const mergedHistory = [...remoteHistory, ...stillPending]
           .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-          .slice(0, MAX_HISTORY);
+          .slice(0, MAX_HISTORY_ITEMS);
 
-        setHistory(merged);
-        safeWriteJson(getHistoryKey(USER_ID), merged);
+        setHistoryList(mergedHistory);
+        saveToStorage(getStorageKey('history', USER_ID), mergedHistory);
       } catch {
-        // Merge, don't replace — keep previously synced items visible.
-        if (!active) return;
-        setHistory((current) => {
-          const ids = new Set(current.map((h) => h.clientId));
-          const extra = remaining
-            .filter((r) => !ids.has(r.clientId))
-            .map((r) => ({ ...r, synced: false }));
-          const next = [...current, ...extra]
+        // If fetch fails, keep local history but add any remaining pending items
+        if (!isActive) return;
+        setHistoryList((currentHistory) => {
+          const existingIds = new Set(currentHistory.map((h) => h.clientId));
+          const extraPending = failedItems
+            .filter((r) => !existingIds.has(r.clientId))
+            .map((r) => ({ ...r, isSynced: false }));
+          
+          const nextHistory = [...currentHistory, ...extraPending]
             .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-            .slice(0, MAX_HISTORY);
-          safeWriteJson(getHistoryKey(USER_ID), next);
-          return next;
+            .slice(0, MAX_HISTORY_ITEMS);
+          
+          saveToStorage(getStorageKey('history', USER_ID), nextHistory);
+          return nextHistory;
         });
-        if (remaining.length) {
-          setError('Some calculations are waiting to sync with the database.');
+        
+        if (failedItems.length) {
+          setErrorMessage('Some calculations are waiting to sync with the database.');
         }
       }
     };
 
-    run();
-    return () => { active = false; };
+    syncPendingCalculations();
+    return () => { isActive = false; };
   }, [USER_ID]);
 
-  /* ---------------- Preview ---------------- */
-  const preview = useMemo(() => {
-    if (!expression.trim()) return '';
-    try { return formatResult(evaluateExpression(expression, { angleMode, answer })); }
-    catch { return ''; }
-  }, [angleMode, answer, expression]);
+  /* 
+   * ————————————————————————————————————————————
+   * COMPUTED VALUES
+   * ————————————————————————————————————————————
+   */
 
-  /* ---------------- Append ---------------- */
-  const append = useCallback((value) => {
-    setExpression((current) => {
+  /**
+   * Live preview of the result as the user types.
+   */
+  const livePreview = useMemo(() => {
+    if (!currentExpression.trim()) return '';
+    try { return formatDisplayResult(evaluateMathExpression(currentExpression, { angleMode, previousAnswer: lastAnswer })); }
+    catch { return ''; }
+  }, [angleMode, lastAnswer, currentExpression]);
+
+  /* 
+   * ————————————————————————————————————————————
+   * ACTION HANDLERS
+   * ————————————————————————————————————————————
+   */
+
+  /**
+   * Appends a character or function to the current expression.
+   */
+  const appendToExpression = useCallback((value) => {
+    setCurrentExpression((prev) => {
       if (value === ')') {
-        const open = (current.match(/\(/g) || []).length;
-        const close = (current.match(/\)/g) || []).length;
-        if (close >= open) return current;
+        const openCount = (prev.match(/\(/g) || []).length;
+        const closeCount = (prev.match(/\)/g) || []).length;
+        if (closeCount >= openCount) return prev;
       }
-      return current === '0' ? value : current + value;
+      return prev === '0' ? value : prev + value;
     });
-    setError('');
+    setErrorMessage('');
   }, []);
 
-  /* ---------------- Calculate ---------------- */
-  const calculate = useCallback(() => {
-    if (!expression.trim()) return;
+  /**
+   * Evaluates the current expression and saves it to history.
+   */
+  const performCalculation = useCallback(() => {
+    if (!currentExpression.trim()) return;
+    
     try {
-      const numericResult = evaluateExpression(expression, { angleMode, answer });
-      const formatted = formatResult(numericResult);
-      setResult(formatted);
-      setAnswer(numericResult);
-      setError('');
+      const numericResult = evaluateMathExpression(currentExpression, { angleMode, previousAnswer: lastAnswer });
+      const formattedResult = formatDisplayResult(numericResult);
+      
+      setDisplayResult(formattedResult);
+      setLastAnswer(numericResult);
+      setErrorMessage('');
 
-      const entry = normalizeHistoryItem({
-        clientId: newClientId(),
-        expression,
-        result: formatted,
+      const newEntry = normalizeHistoryEntry({
+        clientId: generateUniqueId(),
+        expression: currentExpression,
+        result: formattedResult,
         numericResult,
         angleMode,
         timestamp: new Date().toISOString(),
-        synced: false,
+        isSynced: false,
       });
 
-      setHistory((current) => {
-        const next = [entry, ...current].slice(0, MAX_HISTORY);
-        safeWriteJson(getHistoryKey(USER_ID), next);
-        return next;
+      // Update local history immediately
+      setHistoryList((prevHistory) => {
+        const nextHistory = [newEntry, ...prevHistory].slice(0, MAX_HISTORY_ITEMS);
+        saveToStorage(getStorageKey('history', USER_ID), nextHistory);
+        return nextHistory;
       });
 
+      // Sync to backend if user is logged in
       if (USER_ID) {
         api.saveCalculation({
           userId: USER_ID,
-          client_id: entry.clientId,
-          expression: entry.expression,
-          result: entry.result,
-          numeric_result: entry.numericResult,
-          angle_mode: entry.angleMode,
+          client_id: newEntry.clientId,
+          expression: newEntry.expression,
+          result: newEntry.result,
+          numeric_result: newEntry.numericResult,
+          angle_mode: newEntry.angleMode,
         })
           .then(() => {
-            setHistory((current) => {
-              const next = current.map((h) =>
-                h.clientId === entry.clientId ? { ...h, synced: true } : h
+            setHistoryList((prevHistory) => {
+              const updatedHistory = prevHistory.map((h) =>
+                h.clientId === newEntry.clientId ? { ...h, isSynced: true } : h
               );
-              safeWriteJson(getHistoryKey(USER_ID), next);
-              return next;
+              saveToStorage(getStorageKey('history', USER_ID), updatedHistory);
+              return updatedHistory;
             });
           })
           .catch(() => {
-            const pendingKey = getPendingKey(USER_ID);
-            const pending = safeReadJson(pendingKey, []);
-            if (!pending.some((p) => p.clientId === entry.clientId)) {
-              const next = [...pending, entry].slice(-MAX_HISTORY);
-              safeWriteJson(pendingKey, next);
+            const pendingKey = getStorageKey('pending', USER_ID);
+            const pendingItems = loadFromStorage(pendingKey, []);
+            if (!pendingItems.some((p) => p.clientId === newEntry.clientId)) {
+              const nextPending = [...pendingItems, newEntry].slice(-MAX_HISTORY_ITEMS);
+              saveToStorage(pendingKey, nextPending);
             }
-            setError('Calculation saved locally and queued for database sync.');
+            setErrorMessage('Calculation saved locally and queued for database sync.');
           });
       }
     } catch (err) {
-      setError(err.message || 'Unable to calculate');
-      setResult('Error');
+      setErrorMessage(err.message || 'Unable to calculate');
+      setDisplayResult('Error');
     }
-  }, [USER_ID, angleMode, answer, expression]);
+  }, [USER_ID, angleMode, lastAnswer, currentExpression]);
 
-  /* ---------------- Keyboard ---------------- */
+  /**
+   * Handles keyboard input for calculator operations.
+   */
   useEffect(() => {
-    const onKeyDown = (event) => {
+    const handleKeyDown = (event) => {
       const target = event.target;
-      const isInput =
+      const isInputField =
         target instanceof HTMLElement &&
         (target.tagName === 'INPUT' ||
           target.tagName === 'TEXTAREA' ||
           target.isContentEditable);
-      if (isInput) return;
+      
+      if (isInputField) return;
 
-      if (/^[0-9.+*/^%(),-]$/.test(event.key)) append(event.key);
-      else if (event.key === 'Enter' || event.key === '=') calculate();
-      else if (event.key === 'Backspace') setExpression((c) => c.slice(0, -1));
-      else if (event.key === 'Escape') { setExpression(''); setResult('0'); setError(''); }
+      if (/^[0-9.+*/^%(),-]$/.test(event.key)) appendToExpression(event.key);
+      else if (event.key === 'Enter' || event.key === '=') performCalculation();
+      else if (event.key === 'Backspace') setCurrentExpression((prev) => prev.slice(0, -1));
+      else if (event.key === 'Escape') {
+        setCurrentExpression('');
+        setDisplayResult('0');
+        setErrorMessage('');
+      }
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [append, calculate]);
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [appendToExpression, performCalculation]);
 
-  /* ---------------- Clear ---------------- */
-  const clear = () => { setExpression(''); setResult('0'); setError(''); };
-  const clearEntry = () => { setExpression(''); setError(''); };
+  /**
+   * Clears the current expression and result.
+   */
+  const clearAll = () => {
+    setCurrentExpression('');
+    setDisplayResult('0');
+    setErrorMessage('');
+  };
 
-  const clearHistory = useCallback(async () => {
-    if (isClearing) return;
-    setIsClearing(true);
+  /**
+   * Clears only the current expression entry.
+   */
+  const clearEntry = () => {
+    setCurrentExpression('');
+    setErrorMessage('');
+  };
+
+  /**
+   * Clears the entire calculation history from local and remote storage.
+   */
+  const clearAllHistory = useCallback(async () => {
+    if (isClearingHistory) return;
+    setIsClearingHistory(true);
+    
     if (USER_ID) {
       try {
         await api.clearCalculations(USER_ID);
       } catch {
-        setError('Could not clear database history. Please try again.');
-        setIsClearing(false);
+        setErrorMessage('Could not clear database history. Please try again.');
+        setIsClearingHistory(false);
         return;
       }
-      localStorage.removeItem(getPendingKey(USER_ID));
+      localStorage.removeItem(getStorageKey('pending', USER_ID));
     }
-    setHistory([]);
-    localStorage.removeItem(getHistoryKey(USER_ID));
-    setError('');
-    setIsClearing(false);
-  }, [USER_ID, isClearing]);
+    
+    setHistoryList([]);
+    localStorage.removeItem(getStorageKey('history', USER_ID));
+    setErrorMessage('');
+    setIsClearingHistory(false);
+  }, [USER_ID, isClearingHistory]);
 
-  /* ---------------- Memory ---------------- */
-  const handleMemory = useCallback((action) => {
-    const numericValue = Number(result);
-    if (!isFiniteNumber(numericValue) && action !== 'clear') {
-      setError('Cannot perform memory operation on non‑finite result.');
+  /**
+   * Performs memory operations (Store, Recall, Add, Subtract, Clear).
+   */
+  const handleMemoryOperation = useCallback((action) => {
+    const currentNumeric = Number(displayResult);
+    
+    if (!Number.isFinite(currentNumeric) && action !== 'clear') {
+      setErrorMessage('Cannot perform memory operation on non‑finite result.');
       return;
     }
-    let next;
+    
+    let nextMemoryValue;
     switch (action) {
-      case 'clear': next = 0; break;
-      case 'store': next = numericValue; break;
-      case 'add': next = memory + numericValue; break;
-      case 'subtract': next = memory - numericValue; break;
-      default: next = memory;
+      case 'clear': nextMemoryValue = 0; break;
+      case 'store': nextMemoryValue = currentNumeric; break;
+      case 'add': nextMemoryValue = memoryValue + currentNumeric; break;
+      case 'subtract': nextMemoryValue = memoryValue - currentNumeric; break;
+      default: nextMemoryValue = memoryValue;
     }
-    setMemory(next);
-    localStorage.setItem(getMemoryKey(USER_ID), String(next));
-    setError('');
-  }, [USER_ID, memory, result]);
+    
+    setMemoryValue(nextMemoryValue);
+    localStorage.setItem(getStorageKey('memory', USER_ID), String(nextMemoryValue));
+    setErrorMessage('');
+  }, [USER_ID, memoryValue, displayResult]);
 
-  /* ---------------- Copy ---------------- */
-  const copyResult = useCallback(async () => {
+  /**
+   * Copies the current result to the clipboard.
+   */
+  const copyResultToClipboard = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(result);
-      setCopied(true);
+      await navigator.clipboard.writeText(displayResult);
+      setIsCopied(true);
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopied(false), 1400);
+      copyTimeoutRef.current = setTimeout(() => setIsCopied(false), 1400);
     } catch {
-      setError('Clipboard access is unavailable');
+      setErrorMessage('Clipboard access is unavailable');
     }
-  }, [result]);
+  }, [displayResult]);
 
   useEffect(() => () => {
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
   }, []);
 
-  /* ---------------- Delete history entry ---------------- */
-  const deleteHistoryItem = useCallback(async (item) => {
-    setHistory((current) => {
-      const filtered = current.filter((h) => h.clientId !== item.clientId);
-      safeWriteJson(getHistoryKey(USER_ID), filtered);
-      return filtered;
+  /**
+   * Deletes a specific item from history.
+   */
+  const removeHistoryItem = useCallback(async (item) => {
+    setHistoryList((currentHistory) => {
+      const filteredHistory = currentHistory.filter((h) => h.clientId !== item.clientId);
+      saveToStorage(getStorageKey('history', USER_ID), filteredHistory);
+      return filteredHistory;
     });
 
-    if (item.synced && USER_ID) {
+    if (item.isSynced && USER_ID) {
       try {
         await api.deleteCalculation(USER_ID, item.clientId);
       } catch {
-        setError('Failed to delete from server, but removed locally.');
+        setErrorMessage('Failed to delete from server, but removed locally.');
       }
     } else {
-      const pendingKey = getPendingKey(USER_ID);
-      const pending = safeReadJson(pendingKey, []);
-      const filtered = pending.filter((p) => p.clientId !== item.clientId);
-      safeWriteJson(pendingKey, filtered);
+      const pendingKey = getStorageKey('pending', USER_ID);
+      const pendingItems = loadFromStorage(pendingKey, []);
+      const filteredPending = pendingItems.filter((p) => p.clientId !== item.clientId);
+      saveToStorage(pendingKey, filteredPending);
     }
   }, [USER_ID]);
 
-  /* ============================================================
-   * Render
-   * ============================================================ */
+  /* 
+   * ————————————————————————————————————————————
+   * RENDER: MAIN INTERFACE
+   * ————————————————————————————————————————————
+   */
   return (
     <div className="island-page calculator-page">
       <header className="island-header glass-sm calculator-page-header">
         <div className="ih-left">
           <div className="ih-titles">
-            <h1>{t?.('calculator_title') || 'Scientific Calculator'}</h1>
-            <p>{t?.('calculator_subtitle') || 'Fast, precise calculations for everyday decisions.'}</p>
+            <h1>{translate?.('calculator_title') || 'Scientific Calculator'}</h1>
+            <p>{translate?.('calculator_subtitle') || 'Fast, precise calculations for everyday decisions.'}</p>
           </div>
         </div>
         <div className="calculator-header-badge">
-          <Sparkles size={15} /> {t?.('precision_tools') || 'Precision tools'}
+          <Sparkles size={15} /> {translate?.('precision_tools') || 'Precision tools'}
         </div>
       </header>
 
@@ -643,37 +793,37 @@ export default function Calculator() {
         <section className="calculator-main glass" aria-label="Scientific calculator">
           <div className="calculator-display">
             <div className="calculator-display-top">
-              <span>{angleMode} {t?.('mode') || 'mode'}</span>
-              <span><Keyboard size={13} /> {t?.('keyboard_ready') || 'Keyboard ready'}</span>
+              <span>{angleMode} {translate?.('mode') || 'mode'}</span>
+              <span><Keyboard size={13} /> {translate?.('keyboard_ready') || 'Keyboard ready'}</span>
             </div>
             <div className="calculator-expression" aria-label="Current expression">
-              {expression || '0'}
+              {currentExpression || '0'}
             </div>
             <div className="calculator-result-row">
-              <strong aria-live="polite" aria-atomic="true">{result}</strong>
+              <strong aria-live="polite" aria-atomic="true">{displayResult}</strong>
               <button
                 type="button"
                 className="calculator-copy"
-                onClick={copyResult}
+                onClick={copyResultToClipboard}
                 aria-label="Copy result"
                 title="Copy result"
               >
-                {copied ? <Check size={16} /> : <Copy size={16} />}
+                {isCopied ? <Check size={16} /> : <Copy size={16} />}
               </button>
             </div>
-            {preview && preview !== result && (
-              <div className="calculator-preview">= {preview}</div>
+            {livePreview && livePreview !== displayResult && (
+              <div className="calculator-preview">= {livePreview}</div>
             )}
-            {error && <p className="calculator-error" role="alert">{error}</p>}
+            {errorMessage && <p className="calculator-error" role="alert">{errorMessage}</p>}
           </div>
 
           <div className="calculator-toolbar">
-            <button type="button" className="calculator-tool" onClick={() => handleMemory('clear')} aria-label="Memory clear">MC</button>
-            <button type="button" className="calculator-tool" onClick={() => append(String(memory))} aria-label="Memory recall">MR</button>
-            <button type="button" className="calculator-tool" onClick={() => handleMemory('add')} aria-label="Memory add">M+</button>
-            <button type="button" className="calculator-tool" onClick={() => handleMemory('subtract')} aria-label="Memory subtract">M−</button>
-            <button type="button" className="calculator-tool" onClick={() => handleMemory('store')} aria-label="Memory store">MS</button>
-            <span className="calculator-memory-status">M {formatResult(memory)}</span>
+            <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('clear')} aria-label="Memory clear">MC</button>
+            <button type="button" className="calculator-tool" onClick={() => appendToExpression(String(memoryValue))} aria-label="Memory recall">MR</button>
+            <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('add')} aria-label="Memory add">M+</button>
+            <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('subtract')} aria-label="Memory subtract">M−</button>
+            <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('store')} aria-label="Memory store">MS</button>
+            <span className="calculator-memory-status">M {formatDisplayResult(memoryValue)}</span>
             <button
               type="button"
               className="calculator-angle"
@@ -687,24 +837,24 @@ export default function Calculator() {
             <button
               type="button"
               className="calculator-functions-toggle"
-              aria-expanded={showScientific}
+              aria-expanded={showScientificPanel}
               aria-controls="scientific-panel"
-              onClick={() => setShowScientific((v) => !v)}
+              onClick={() => setShowScientificPanel((v) => !v)}
             >
               <span><Sparkles size={14} /> Scientific functions</span>
               <ChevronDown size={16} />
             </button>
             <div
               id="scientific-panel"
-              className={`calculator-scientific-panel ${showScientific ? 'is-open' : ''}`}
+              className={`calculator-scientific-panel ${showScientificPanel ? 'is-open' : ''}`}
             >
               <div className="calculator-scientific-grid">
-                {buttonGroups.scientific.map(([value, label]) => (
+                {KEY_LAYOUTS.scientific.map(([value, label]) => (
                   <button
                     type="button"
                     key={label}
                     className="calculator-key scientific"
-                    onClick={() => append(value)}
+                    onClick={() => appendToExpression(value)}
                     aria-label={label}
                   >
                     {label}
@@ -715,12 +865,12 @@ export default function Calculator() {
 
             <div className="calculator-basic-panel">
               <div className="calculator-basic-grid">
-                {buttonGroups.basic.map(([value, label, action]) => {
-                  let clickHandler = () => append(value);
+                {KEY_LAYOUTS.basic.map(([value, label, action]) => {
+                  let clickHandler = () => appendToExpression(value);
                   if (action === 'clearEntry') clickHandler = clearEntry;
-                  else if (action === 'clear') clickHandler = clear;
-                  else if (action === 'backspace') clickHandler = () => setExpression((c) => c.slice(0, -1));
-                  else if (action === 'calculate') clickHandler = calculate;
+                  else if (action === 'clear') clickHandler = clearAll;
+                  else if (action === 'backspace') clickHandler = () => setCurrentExpression((c) => c.slice(0, -1));
+                  else if (action === 'calculate') clickHandler = performCalculation;
 
                   let className = 'calculator-key';
                   if (['/', '*', '-', '+', '^'].includes(value)) className += ' operator';
@@ -744,7 +894,7 @@ export default function Calculator() {
           </div>
 
           <p className="calculator-hint">
-            <Clock3 size={14} /> {t?.('calculator_hint') || 'Use parentheses for clarity, and press Enter to calculate.'}
+            <Clock3 size={14} /> {translate?.('calculator_hint') || 'Use parentheses for clarity, and press Enter to calculate.'}
           </p>
         </section>
 
@@ -752,47 +902,47 @@ export default function Calculator() {
           <div className="calculator-history-heading">
             <div>
               <span className="calculator-eyebrow">
-                <History size={14} /> {t?.('recent_work') || 'Recent work'}
+                <History size={14} /> {translate?.('recent_work') || 'Recent work'}
               </span>
-              <h2>{t?.('history') || 'History'}</h2>
+              <h2>{translate?.('history') || 'History'}</h2>
             </div>
             <button
               type="button"
               className="calculator-icon-button"
-              onClick={clearHistory}
-              disabled={isClearing || history.length === 0}
+              onClick={clearAllHistory}
+              disabled={isClearingHistory || historyList.length === 0}
               aria-label="Clear calculation history"
               title="Clear history"
             >
-              {isClearing ? <Clock3 size={16} /> : <Trash2 size={16} />}
+              {isClearingHistory ? <Clock3 size={16} /> : <Trash2 size={16} />}
             </button>
           </div>
 
-          {history.length === 0 ? (
+          {historyList.length === 0 ? (
             <div className="calculator-empty-history">
               <CalculatorIcon size={28} />
-              <p>{t?.('calculator_empty') || 'Your calculations will appear here.'}</p>
-              <span>{t?.('calculator_stored') || 'Results are securely stored for your account.'}</span>
+              <p>{translate?.('calculator_empty') || 'Your calculations will appear here.'}</p>
+              <span>{translate?.('calculator_stored') || 'Results are securely stored for your account.'}</span>
             </div>
           ) : (
             <div className="calculator-history-list">
-              {history.map((item, index) => (
+              {historyList.map((item, index) => (
                 <div key={`${item.clientId}-${index}`} className="calculator-history-item-wrapper">
                   <button
                     type="button"
                     className="calculator-history-item"
                     onClick={() => {
-                      setExpression(item.expression);
-                      setResult(item.result);
+                      setCurrentExpression(item.expression);
+                      setDisplayResult(item.result);
                       setAngleMode(item.angleMode || 'DEG');
-                      setAnswer(isFiniteNumber(item.numericResult) ? item.numericResult : 0);
-                      setError('');
+                      setLastAnswer(Number.isFinite(item.numericResult) ? item.numericResult : 0);
+                      setErrorMessage('');
                     }}
                     aria-label={`Restore calculation: ${item.expression} = ${item.result}`}
                   >
                     <span>
                       {item.expression}{' '}
-                      {!item.synced && (
+                      {!item.isSynced && (
                         <Clock3 size={12} style={{ marginLeft: 4 }} title="Not synced" />
                       )}
                     </span>
@@ -805,7 +955,7 @@ export default function Calculator() {
                   <button
                     type="button"
                     className="calculator-history-delete"
-                    onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item); }}
+                    onClick={(e) => { e.stopPropagation(); removeHistoryItem(item); }}
                     aria-label="Delete this history entry"
                   >
                     <X size={14} />

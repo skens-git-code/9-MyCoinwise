@@ -1,18 +1,76 @@
+/* —————————————————————————————————————
+ * Event Model
+ * Stores user calendar events such as bills, income,
+ * reminders, and general entries.
+ *
+ * Used for:
+ *   - Rendering calendar views
+ *   - Tracking bill / income amounts
+ *   - Color-coding events in the UI
+ *
+ * Indexes:
+ *   - user_id + date : fast calendar queries per user, sorted by date
+ * ————————————————————————————————————— */
+
+// ── Load mongoose ──
 const mongoose = require('mongoose');
 
+// ── Define schema ──
 const eventSchema = new mongoose.Schema({
-  user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  title: { type: String, required: true, trim: true },
-  date: { type: Date, required: true },
-  type: { type: String, enum: ['bill', 'income', 'reminder', 'general'], default: 'general' },
-  amount: { type: Number, default: null }, // Optional, for bills/income
-  description: { type: String, trim: true },
-  color: { type: String, default: '#6366f1' }, // UI Color representation
+  // ── Owning user reference ──
+  user_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+
+  // ── Event title shown on the calendar ──
+  title: {
+    type: String,
+    required: true,
+    trim: true
+  },
+
+  // ── Date the event occurs on ──
+  date: {
+    type: Date,
+    required: true
+  },
+
+  // ── Event category ──
+  type: {
+    type: String,
+    enum: ['bill', 'income', 'reminder', 'general'],
+    default: 'general'
+  },
+
+  // ── Optional monetary amount (used by bills and income) ──
+  amount: {
+    type: Number,
+    default: null
+  },
+
+  // ── Optional longer description ──
+  description: {
+    type: String,
+    trim: true
+  },
+
+  // ── UI color used to render the event ──
+  color: {
+    type: String,
+    default: '#6366f1'
+  },
 }, {
+  // ── Auto-managed created_at / updated_at fields ──
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
 
-// Enable virtuals for front-end ID conversion (so _id becomes id)
+/* —————————————————————————————————————
+ * Serialization
+ * ————————————————————————————————————— */
+
+// ── Convert _id → id and strip internal fields for API responses ──
 eventSchema.methods.toJSON = function() {
   const obj = this.toObject();
   obj.id = obj._id;
@@ -21,7 +79,16 @@ eventSchema.methods.toJSON = function() {
   return obj;
 };
 
-/* Optimization: Add compound index on user_id and date for fast calendar queries and sorting */
+/* —————————————————————————————————————
+ * Indexes
+ * ————————————————————————————————————— */
+
+// ── Fast calendar queries: filter by user, sorted by date ──
 eventSchema.index({ user_id: 1, date: 1 });
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Register and export the model ──
 module.exports = mongoose.model('Event', eventSchema);

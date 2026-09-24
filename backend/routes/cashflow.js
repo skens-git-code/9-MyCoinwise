@@ -1,3 +1,21 @@
+/* —————————————————————————————————————
+ * Cashflow AI Insights Route
+ * Generates a short AI-written cashflow analysis from the user's
+ * aggregated metrics (income, spend, subscriptions, danger day).
+ *
+ * Endpoint:
+ *   POST /ai-insights   Returns { insight } or a graceful fallback
+ *
+ * Key behaviors:
+ *   - Gemini API key is sent via the x-goog-api-key header, never
+ *     in the URL query string (see bug note below).
+ *   - Request timeout is 15 seconds.
+ *   - On provider failure, a locally-composed fallback insight is
+ *     returned with HTTP 200 so the client renders it instead of
+ *     throwing on a 500.
+ * ————————————————————————————————————— */
+
+// ── Load dependencies ──
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const router = express.Router();
@@ -5,21 +23,26 @@ const auth = require('../middleware/auth');
 const axios = require('axios');
 const { logger } = require('../utils/logger');
 
-// ---------- Helpers ----------
+/* —————————————————————————————————————
+ * Helpers
+ * ————————————————————————————————————— */
+
+// ── Call Gemini and return the trimmed text of the first candidate ──
 const fetchGemini = async (prompt) => {
+  // ── Require the API key ──
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) throw new Error('Missing GEMINI_API_KEY environment variable.');
 
+  // ── Resolve the model name ──
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  /* Original buggy code:
-  const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
-  const response = await axios.post(url, data, {
-    timeout: 15000, // 15 seconds
-    headers: { 'Content-Type': 'application/json' },
-  });
-  // Issue: Passing the Gemini API key in the URL query string leaks it to server access logs, proxies, and error messages.
-  */
+
+  // ── Endpoint (key is passed via header, not query string) ──
+  // Note: an earlier version appended ?key=... to the URL, which
+  // leaked the key into server access logs, proxies, and error
+  // messages. The header approach below avoids that.
   const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`;
+
+  // ── Request payload ──
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
@@ -28,6 +51,7 @@ const fetchGemini = async (prompt) => {
     },
   };
 
+  // ── Send the request ──
   const response = await axios.post(url, payload, {
     timeout: 15000, // 15 seconds
     headers: {
@@ -36,6 +60,7 @@ const fetchGemini = async (prompt) => {
     },
   });
 
+  // ── Validate provider response ──
   const candidates = response.data?.candidates;
   if (!candidates || candidates.length === 0) {
     throw new Error('No candidates returned from Gemini.');
@@ -49,11 +74,16 @@ const fetchGemini = async (prompt) => {
   return text.trim();
 };
 
-// ---------- Route ----------
+/* —————————————————————————————————————
+ * POST /ai-insights
+ * Build a prompt from the request metrics, call Gemini, and
+ * return { insight }. On failure, return a fallback insight.
+ * ————————————————————————————————————— */
 router.post(
   '/ai-insights',
   auth,
   [
+    // ── Validate numeric inputs ──
     body('averageDailyIncome').isFloat({ min: 0 }).toFloat(),
     body('medianDailyExpense').isFloat({ min: 0 }).toFloat(),
     body('subscriptionsCount').isInt({ min: 0 }).toInt(),
@@ -62,11 +92,13 @@ router.post(
     body('dangerDay').optional({ nullable: true }).isInt({ min: 1 }).toInt(),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
 
+    // ── Read validated metrics ──
     const {
       averageDailyIncome,
       medianDailyExpense,
@@ -76,12 +108,13 @@ router.post(
       dangerDay,
     } = req.body;
 
-    // Build the prompt
+    // ── Format optional values for the prompt ──
     const whatIfDisplay = whatIfAmount !== undefined && whatIfAmount !== null
       ? (whatIfAmount === 0 ? '0 (no impact)' : (whatIfAmount > 0 ? `+${whatIfAmount}` : `${whatIfAmount}`))
       : 'None';
     const dangerDisplay = dangerDay ? `Day ${dangerDay}` : 'No danger projected in next 90 days';
 
+    // ── Compose the system prompt ──
     const prompt = `
 You are the MyCoinwise Cashflow AI Coach.
 Analyze the user's 90-day cashflow trajectory.
@@ -98,6 +131,7 @@ Provide an insight comparing their daily burn rate to income, taking subscriptio
     `;
 
     try {
+      // ── Call Gemini and return the insight ──
       const insight = await fetchGemini(prompt);
       res.json({ insight });
     } catch (error) {
@@ -105,17 +139,15 @@ Provide an insight comparing their daily burn rate to income, taking subscriptio
         error: error.message,
         stack: error.stack,
       });
-      // Provide a graceful fallback instead of just 500
+
+      // ── Compose a local fallback insight ──
       const fallback = dangerDay
         ? `Your cashflow may hit a low point on day ${dangerDay}. Consider reducing variable expenses or adjusting subscriptions.`
         : 'Your cashflow remains stable. Keep monitoring your daily burn rate.';
-      /* Original buggy code:
-      res.status(500).json({
-        error: 'Failed to generate AI insight.',
-        fallback,
-      });
-      // Issue: Returning status 500 causes Axios to throw on client side, discarding the fallback message.
-      */
+
+      // Return HTTP 200 with the fallback so the client renders it.
+      // Note: an earlier version returned HTTP 500, which caused Axios
+      // on the client to throw and discard the fallback message.
       res.status(200).json({
         insight: fallback,
         fallback: true,
@@ -124,4 +156,9 @@ Provide an insight comparing their daily burn rate to income, taking subscriptio
   }
 );
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;

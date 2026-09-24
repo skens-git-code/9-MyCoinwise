@@ -1,3 +1,23 @@
+/* —————————————————————————————————————
+ * About Page
+ * Personal "about" page presenting the creator's identity, mission,
+ * focus areas, tech stack, tools, ventures, timeline, principles,
+ * goals, and contact info.
+ *
+ * Props:
+ *   - stats : optional override for the four highlight tiles.
+ *
+ * Key behaviors:
+ *   - Respects `prefers-reduced-motion` — all Framer Motion
+ *     animations are disabled when the OS setting is on.
+ *   - Staggered section reveal via shared `containerVariants` and
+ *     per-section `itemVariants`.
+ *   - Profile image floats gently when motion is allowed.
+ *   - Tool cards and focus cards lift on hover (motion only).
+ *   - All static content (profile, tools, ventures, timeline, etc.)
+ *     lives in module-level constants so the JSX stays declarative.
+ * ————————————————————————————————————— */
+
 import React, { useState, useEffect, useContext } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
@@ -11,9 +31,10 @@ import {
 import { AppContext } from '../contexts/AppContext';
 
 /* ============================================================
-   STATIC DATA — single creator profile
+   Static Data — Single Creator Profile
    ============================================================ */
 
+// ── Default highlight tile values (overridable via props) ──
 const DEFAULT_STATS = {
   projects: '50+',
   contributions: '1.5K+',
@@ -21,6 +42,7 @@ const DEFAULT_STATS = {
   ventures: '2',
 };
 
+// ── Profile: identity, contact, bio, and mission ──
 const PROFILE = {
   name: 'Sarthak Mathapati',
   initials: 'SM',
@@ -43,13 +65,13 @@ const PROFILE = {
 };
 
 /* ============================================================
-   IMAGE ASSETS — replace with your actual image URLs
+   Image Assets — Replace with actual image URLs
    ============================================================ */
 
 const IMAGES = {
   // Replace with your actual profile photo URL
   profile: 'https://scrawny-maroon-wwjdpftgcz.edgeone.app/WhatsApp%20Image%202025-10-05%20at%2000.21.05_0bb32ab9.jpg',
-  
+
   // Tool screenshots — replace with actual screenshots
   tools: {
     mathens: 'https://images.unsplash.com/photo-1587145820266-a5951ee6f620?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
@@ -57,7 +79,7 @@ const IMAGES = {
     battlens: 'https://images.unsplash.com/photo-1611996575749-79a3a250f948?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
     achievens: 'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
   },
-  
+
   // Venture logos — replace with actual logos
   ventures: {
     skens: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?ixlib=rb-4.0.3&auto=format&fit=crop&w=200&q=80',
@@ -65,6 +87,7 @@ const IMAGES = {
   },
 };
 
+// ── Social links ──
 const SOCIALS = [
   { label: 'GitHub', href: 'https://github.com/skens-git-code', icon: Github },
   { label: 'LinkedIn', href: 'https://www.linkedin.com/in/sarthak-mathapati-b2b04430a/', icon: Linkedin },
@@ -72,6 +95,7 @@ const SOCIALS = [
   { label: 'Instagram', href: 'https://www.instagram.com/mathapati.i8/', icon: Instagram },
 ];
 
+// ── Focus areas shown as hover-lift cards ──
 const FOCUS_AREAS = [
   {
     icon: BrainCircuit,
@@ -95,6 +119,7 @@ const FOCUS_AREAS = [
   },
 ];
 
+// ── Tech stack grouped by discipline ──
 const TECH_GROUPS = [
   { label: 'Frontend', icon: Layers, items: ['React', 'Next.js', 'TypeScript', 'Tailwind CSS', 'HTML/CSS'] },
   { label: 'Backend', icon: Terminal, items: ['Node.js', 'Express', 'Python', 'FastAPI'] },
@@ -103,6 +128,7 @@ const TECH_GROUPS = [
   { label: 'AI / ML', icon: Cpu, items: ['TensorFlow', 'PyTorch', 'OpenAI API', 'LangChain'] },
 ];
 
+// ── Shipped tools with preview images and tags ──
 const TOOLS = [
   {
     name: 'Mathens.io',
@@ -138,6 +164,7 @@ const TOOLS = [
   },
 ];
 
+// ── Ventures founded/co-founded ──
 const VENTURES = [
   {
     name: 'Skens.inc',
@@ -153,6 +180,7 @@ const VENTURES = [
   },
 ];
 
+// ── Career timeline entries ──
 const TIMELINE = [
   {
     period: '2025 — Present',
@@ -171,6 +199,7 @@ const TIMELINE = [
   },
 ];
 
+// ── Personal principles / habits ──
 const PRINCIPLES = [
   'Continuous Learning',
   'Daily Coding Practice',
@@ -180,6 +209,7 @@ const PRINCIPLES = [
   'Help Others Grow',
 ];
 
+// ── Goals split by horizon ──
 const GOALS = [
   { horizon: 'Short Term · 2025', items: ['Launch the Skens.inc MVP', 'Contribute to 5+ open source projects', 'Build an AI chatbot with 10K+ users'] },
   { horizon: 'Medium Term · 2026–27', items: ['Scale a product to 100K+ users', 'Speak at international tech conferences', 'Launch an AI-powered SaaS product'] },
@@ -187,14 +217,16 @@ const GOALS = [
 ];
 
 /* ============================================================
-   SMALL PRESENTATIONAL HELPERS
+   Small Presentational Helpers
    ============================================================ */
 
+// ── Shared card padding/border-radius ──
 const glassCard = {
   padding: 24,
   borderRadius: 20,
 };
 
+// ── Section header with icon, title, and optional subtitle ──
 function SectionTitle({ icon: Icon, children, sub }) {
   return (
     <div style={{ marginBottom: 18 }}>
@@ -210,6 +242,7 @@ function SectionTitle({ icon: Icon, children, sub }) {
           gap: 10,
         }}
       >
+        {/* ── Icon badge ── */}
         <span
           aria-hidden="true"
           style={{
@@ -227,6 +260,8 @@ function SectionTitle({ icon: Icon, children, sub }) {
         </span>
         {children}
       </h3>
+
+      {/* ── Optional subtitle ── */}
       {sub && (
         <p
           style={{
@@ -243,6 +278,7 @@ function SectionTitle({ icon: Icon, children, sub }) {
   );
 }
 
+// ── Small rounded label used for tech and metadata ──
 function Chip({ children }) {
   return (
     <span
@@ -266,17 +302,20 @@ function Chip({ children }) {
 }
 
 /* ============================================================
-   MAIN COMPONENT
+   Main Component
    ============================================================ */
 
 export default function About({ stats = DEFAULT_STATS }) {
+  // ── i18n ──
   const { t } = useContext(AppContext);
 
+  // ── Respect the OS-level reduced-motion preference ──
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches
   );
 
+  // ── Keep the reduced-motion flag in sync with OS changes ──
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -285,6 +324,7 @@ export default function About({ stats = DEFAULT_STATS }) {
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
+  // ── Container variants: stagger children unless reduced motion ──
   const containerVariants = prefersReducedMotion
     ? { visible: { transition: { staggerChildren: 0 } } }
     : {
@@ -295,6 +335,7 @@ export default function About({ stats = DEFAULT_STATS }) {
         },
       };
 
+  // ── Item variants: fade/slide in unless reduced motion ──
   const itemVariants = prefersReducedMotion
     ? { visible: { y: 0, opacity: 1 } }
     : {
@@ -306,8 +347,10 @@ export default function About({ stats = DEFAULT_STATS }) {
         },
       };
 
+  // ── Hover lift for interactive cards (empty when reduced motion) ──
   const hoverLift = prefersReducedMotion ? {} : { y: -4 };
 
+  // ── Highlight tiles derived from stats ──
   const statTiles = [
     { label: 'Projects Shipped', value: stats.projects },
     { label: 'GitHub Contributions', value: stats.contributions },
@@ -317,7 +360,7 @@ export default function About({ stats = DEFAULT_STATS }) {
 
   return (
     <div className="island-page">
-      {/* ==================== HEADER ==================== */}
+      {/* ==================== Header ==================== */}
       <motion.div
         className="island-header glass-sm"
         initial={prefersReducedMotion ? { opacity: 1 } : { y: -20, opacity: 0 }}
@@ -349,7 +392,8 @@ export default function About({ stats = DEFAULT_STATS }) {
           initial="hidden"
           animate="visible"
         >
-          {/* ==================== HERO / IDENTITY ==================== */}
+
+          {/* ==================== Hero / Identity ==================== */}
           <motion.section
             variants={itemVariants}
             className="bento-tile-base glass"
@@ -360,6 +404,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             }}
             aria-labelledby="about-hero-title"
           >
+            {/* ── Background glow layer ── */}
             <div
               aria-hidden="true"
               style={{
@@ -380,7 +425,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 flexWrap: 'wrap',
               }}
             >
-              {/* Profile Image */}
+              {/* ── Profile image (floats gently when motion allowed) ── */}
               <motion.div
                 animate={prefersReducedMotion ? {} : { y: [0, -6, 0] }}
                 transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
@@ -406,8 +451,9 @@ export default function About({ stats = DEFAULT_STATS }) {
                 />
               </motion.div>
 
-              {/* Name / role / tagline */}
+              {/* ── Name, role, tagline, meta, and CTAs ── */}
               <div style={{ flex: 1, minWidth: 240 }}>
+                {/* ── Tagline ── */}
                 <span
                   style={{
                     display: 'inline-flex',
@@ -425,6 +471,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                   {PROFILE.tagline}
                 </span>
 
+                {/* ── Name ── */}
                 <h2
                   id="about-hero-title"
                   style={{
@@ -439,6 +486,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                   {PROFILE.name}
                 </h2>
 
+                {/* ── Role ── */}
                 <p
                   style={{
                     margin: '0 0 14px',
@@ -450,6 +498,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                   {PROFILE.role}
                 </p>
 
+                {/* ── Short intro ── */}
                 <p
                   style={{
                     margin: '0 0 18px',
@@ -462,7 +511,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                   {PROFILE.intro}
                 </p>
 
-                {/* Meta badges */}
+                {/* ── Meta badges: location, education, mantra ── */}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
                   <Chip>
                     <MapPin size={12} style={{ marginRight: 6 }} aria-hidden="true" />
@@ -478,7 +527,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                   </Chip>
                 </div>
 
-                {/* Primary actions */}
+                {/* ── Primary actions ── */}
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <a
                     href={PROFILE.portfolioUrl}
@@ -518,7 +567,7 @@ export default function About({ stats = DEFAULT_STATS }) {
               </div>
             </div>
 
-            {/* Social row */}
+            {/* ── Social links + availability notice ── */}
             <div
               style={{
                 position: 'relative',
@@ -588,7 +637,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             </div>
           </motion.section>
 
-          {/* ==================== STATS ==================== */}
+          {/* ==================== Stats ==================== */}
           <motion.section
             variants={itemVariants}
             aria-label="Highlights"
@@ -604,6 +653,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 className="bento-tile-base glass-sm"
                 style={{ padding: '20px 18px', textAlign: 'center' }}
               >
+                {/* ── Value with gradient text ── */}
                 <div
                   style={{
                     fontSize: 'clamp(1.4rem, 3.5vw, 1.75rem)',
@@ -634,13 +684,14 @@ export default function About({ stats = DEFAULT_STATS }) {
             ))}
           </motion.section>
 
-          {/* ==================== MISSION ==================== */}
+          {/* ==================== Mission ==================== */}
           <motion.section
             variants={itemVariants}
             className="bento-tile-base glass-sm"
             style={{ ...glassCard, position: 'relative', overflow: 'hidden' }}
             aria-label="Mission statement"
           >
+            {/* ── Decorative quote mark ── */}
             <Quote
               size={64}
               aria-hidden="true"
@@ -676,7 +727,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             </p>
           </motion.section>
 
-          {/* ==================== BIO / JOURNEY ==================== */}
+          {/* ==================== Bio / Journey ==================== */}
           <motion.section
             variants={itemVariants}
             className="bento-tile-base glass-sm"
@@ -703,7 +754,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             </div>
           </motion.section>
 
-          {/* ==================== FOCUS AREAS ==================== */}
+          {/* ==================== Focus Areas ==================== */}
           <motion.section variants={itemVariants} aria-labelledby="about-focus-title">
             <SectionTitle
               icon={Wrench}
@@ -727,6 +778,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                   transition={{ duration: 0.2 }}
                   style={{ padding: 22 }}
                 >
+                  {/* ── Icon badge ── */}
                   <div
                     aria-hidden="true"
                     style={{
@@ -760,7 +812,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             </div>
           </motion.section>
 
-          {/* ==================== TECH STACK ==================== */}
+          {/* ==================== Tech Stack ==================== */}
           <motion.section
             variants={itemVariants}
             className="bento-tile-base glass-sm"
@@ -777,6 +829,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               {TECH_GROUPS.map(({ label, icon: Icon, items }) => (
                 <div key={label}>
+                  {/* ── Group label with icon ── */}
                   <div
                     style={{
                       display: 'flex',
@@ -791,6 +844,8 @@ export default function About({ stats = DEFAULT_STATS }) {
                     <Icon size={15} aria-hidden="true" style={{ color: 'var(--brand-primary)' }} />
                     {label}
                   </div>
+
+                  {/* ── Tech chips ── */}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {items.map((item) => (
                       <Chip key={item}>{item}</Chip>
@@ -801,7 +856,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             </div>
           </motion.section>
 
-          {/* ==================== TOOLS / PRODUCTS ==================== */}
+          {/* ==================== Tools / Products ==================== */}
           <motion.section variants={itemVariants} aria-labelledby="about-tools-title">
             <SectionTitle
               icon={Rocket}
@@ -836,7 +891,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                     borderRadius: 20,
                   }}
                 >
-                  {/* Tool Image */}
+                  {/* ── Preview image with gradient overlay ── */}
                   <div
                     style={{
                       height: 160,
@@ -865,6 +920,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                     />
                   </div>
 
+                  {/* ── Card body: title, description, tags ── */}
                   <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div
                       style={{
@@ -906,7 +962,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                       {desc}
                     </p>
 
-                    {/* Tags */}
+                    {/* ── Tags ── */}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
                       {tags.map((tag) => (
                         <span
@@ -930,7 +986,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             </div>
           </motion.section>
 
-          {/* ==================== VENTURES ==================== */}
+          {/* ==================== Ventures ==================== */}
           <motion.section variants={itemVariants} aria-labelledby="about-ventures-title">
             <SectionTitle
               icon={Briefcase}
@@ -952,7 +1008,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                   className="bento-tile-base glass-sm"
                   style={{ padding: 0, overflow: 'hidden', borderRadius: 20 }}
                 >
-                  {/* Venture Image */}
+                  {/* ── Venture image with overlay ── */}
                   <div
                     style={{
                       height: 120,
@@ -980,6 +1036,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                     />
                   </div>
 
+                  {/* ── Venture body: name, role, description ── */}
                   <div style={{ padding: 22 }}>
                     <div
                       style={{
@@ -1021,7 +1078,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             </div>
           </motion.section>
 
-          {/* ==================== TIMELINE ==================== */}
+          {/* ==================== Timeline ==================== */}
           <motion.section
             variants={itemVariants}
             className="bento-tile-base glass-sm"
@@ -1052,6 +1109,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                     position: 'relative',
                   }}
                 >
+                  {/* ── Dot + connecting line ── */}
                   <div
                     aria-hidden="true"
                     style={{
@@ -1085,6 +1143,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                     )}
                   </div>
 
+                  {/* ── Entry body: period, title, description ── */}
                   <div style={{ paddingBottom: 2 }}>
                     <div
                       style={{
@@ -1117,7 +1176,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             </ol>
           </motion.section>
 
-          {/* ==================== PRINCIPLES ==================== */}
+          {/* ==================== Principles ==================== */}
           <motion.section
             variants={itemVariants}
             className="bento-tile-base glass-sm"
@@ -1163,7 +1222,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             </ul>
           </motion.section>
 
-          {/* ==================== GOALS ==================== */}
+          {/* ==================== Goals ==================== */}
           <motion.section variants={itemVariants} aria-labelledby="about-goals-title">
             <SectionTitle icon={Target}>
               <span id="about-goals-title">Where I'm Headed</span>
@@ -1182,6 +1241,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                   className="bento-tile-base glass-sm"
                   style={{ padding: 22 }}
                 >
+                  {/* ── Horizon label ── */}
                   <div
                     style={{
                       fontSize: '0.72rem',
@@ -1220,7 +1280,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             </div>
           </motion.section>
 
-          {/* ==================== PORTFOLIO LINK CTA ==================== */}
+          {/* ==================== Portfolio Link CTA ==================== */}
           <motion.section
             variants={itemVariants}
             className="bento-tile-base glass"
@@ -1233,6 +1293,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             }}
             aria-labelledby="about-portfolio-title"
           >
+            {/* ── Background glow layer ── */}
             <div
               aria-hidden="true"
               style={{
@@ -1245,6 +1306,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             />
 
             <div style={{ position: 'relative' }}>
+              {/* ── Icon badge ── */}
               <div
                 aria-hidden="true"
                 style={{
@@ -1262,6 +1324,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 <ExternalLink size={26} />
               </div>
 
+              {/* ── Heading ── */}
               <h3
                 id="about-portfolio-title"
                 style={{
@@ -1275,6 +1338,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 See the full portfolio
               </h3>
 
+              {/* ── Description ── */}
               <p
                 style={{
                   margin: '0 auto 22px',
@@ -1288,6 +1352,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 dedicated portfolio site.
               </p>
 
+              {/* ── External link ── */}
               <a
                 href={PROFILE.portfolioUrl}
                 target="_blank"
@@ -1309,7 +1374,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             </div>
           </motion.section>
 
-          {/* ==================== CONTACT / CTA ==================== */}
+          {/* ==================== Contact / CTA ==================== */}
           <motion.section
             variants={itemVariants}
             className="bento-tile-base glass"
@@ -1322,6 +1387,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             }}
             aria-labelledby="about-cta-title"
           >
+            {/* ── Background glow layer ── */}
             <div
               aria-hidden="true"
               style={{
@@ -1334,6 +1400,7 @@ export default function About({ stats = DEFAULT_STATS }) {
             />
 
             <div style={{ position: 'relative' }}>
+              {/* ── Heart icon badge ── */}
               <div
                 aria-hidden="true"
                 style={{
@@ -1351,6 +1418,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 <Heart size={26} fill="rgba(255,255,255,0.25)" />
               </div>
 
+              {/* ── Heading ── */}
               <h3
                 id="about-cta-title"
                 style={{
@@ -1364,6 +1432,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 Let's build something meaningful
               </h3>
 
+              {/* ── Description ── */}
               <p
                 style={{
                   margin: '0 auto 22px',
@@ -1377,6 +1446,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 or mentorship — my inbox is always open.
               </p>
 
+              {/* ── Contact actions ── */}
               <div
                 style={{
                   display: 'flex',
@@ -1419,6 +1489,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 </a>
               </div>
 
+              {/* ── Location note ── */}
               <p
                 style={{
                   marginTop: 22,

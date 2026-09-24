@@ -1,3 +1,22 @@
+/* —————————————————————————————————————
+ * Analytics Page
+ * Financial analytics dashboard with:
+ *   - Period comparison (month/quarter/year/custom).
+ *   - Monthly trajectory (bar or line).
+ *   - Category spending evolution.
+ *   - Day-of-week outflow breakdown.
+ *   - Expense allocation pie chart.
+ *   - AI-generated insights + anomaly detection.
+ *   - PNG / CSV export and share summary.
+ *
+ * Key behaviors:
+ *   - Respects `prefers-reduced-motion` (chart animations disabled).
+ *   - Reviewed anomalies persist per-user in localStorage.
+ *   - Anomalies use a stable hash id so dismissals survive reloads.
+ *   - Transactions are deduped and validated before use.
+ *   - Loading state prevents the "no data yet" flash during fetches.
+ * ————————————————————————————————————— */
+
 import React, {
   useContext, useMemo, useState, useRef, useCallback, useEffect, memo,
 } from 'react';
@@ -19,11 +38,14 @@ import { dedupeTransactions } from '../utils/transactionIntegrity';
 /* ============================================================
  * Constants
  * ============================================================ */
+
+// ── Color palettes for pie and line charts (light / dark variants) ──
 const PIE_COLORS_LIGHT = ['#059669', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#8b5cf6', '#3b82f6', '#f97316', '#14b8a6'];
 const PIE_COLORS_DARK  = ['#34d399', '#22d3ee', '#fbbf24', '#6ee7b7', '#f87171', '#f472b6', '#a78bfa', '#60a5fa', '#fb923c', '#5eead4'];
 const CATEGORY_COLORS_LIGHT = ['#10b981', '#06b6d4', '#f59e0b', '#8b5cf6', '#ec4899', '#3b82f6', '#ef4444', '#14b8a6'];
 const CATEGORY_COLORS_DARK  = ['#34d399', '#22d3ee', '#fbbf24', '#a78bfa', '#f472b6', '#60a5fa', '#f87171', '#5eead4'];
 
+// ── localStorage key and chart/anomaly tuning constants ──
 const REVIEWED_KEY = 'mycoinwise-reviewed-anomalies';
 const MAX_MONTHS_MONTHLY_CHART = 12;
 const MAX_MONTHS_EVOLUTION = 6;
@@ -46,6 +68,7 @@ const resolveLocale = (lang) => LOCALE_MAP[lang] || 'en-IN';
 const DARK_THEMES = new Set(['amoled', 'dark', 'midnight', 'black']);
 const isDarkTheme = (theme) => DARK_THEMES.has(String(theme || '').toLowerCase());
 
+// ── Hook: track the OS-level reduced-motion preference ──
 const usePrefersReducedMotion = () => {
   const [reduced, setReduced] = useState(() =>
     typeof window !== 'undefined'
@@ -66,12 +89,14 @@ const usePrefersReducedMotion = () => {
  * Utilities
  * ============================================================ */
 
+// ── Return true when the input is a valid Date ──
 const isValidDate = (value) => {
   if (!value) return false;
   const d = value instanceof Date ? value : new Date(value);
   return !Number.isNaN(d.getTime());
 };
 
+// ── Structural validation for a transaction row ──
 const validateTransaction = (t) => {
   if (!t || typeof t !== 'object') return false;
   if (!isValidDate(t.date)) return false;
@@ -82,11 +107,13 @@ const validateTransaction = (t) => {
   return true;
 };
 
+// ── Coerce an amount into a non-negative finite number ──
 const safeParseAmount = (amount) => {
   const num = Number(amount);
   return Number.isFinite(num) && num >= 0 ? num : 0;
 };
 
+// ── Capitalize the first letter of a category label ──
 const canonicalCategoryName = (value) => {
   const text = String(value || '').trim();
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'Other';
@@ -103,6 +130,7 @@ const stableHash = (str) => {
   return Math.abs(h).toString(36);
 };
 
+// ── Deterministic anomaly id from tx + category ──
 const anomalyId = (tx, category) =>
   stableHash(
     `${category}|${tx.date || ''}|${tx.amount || ''}|${tx.note || ''}|${tx.account_id || tx.accountId || ''}`
@@ -161,6 +189,7 @@ const monthStartTimestamp = (monthKey) => {
   return new Date(y, m - 1, 1).getTime();
 };
 
+// ── Start-of-day for the given date input ──
 const startOfDay = (input) => {
   if (!input) return null;
   const d = input instanceof Date ? new Date(input) : new Date(input);
@@ -169,6 +198,7 @@ const startOfDay = (input) => {
   return d;
 };
 
+// ── End-of-day for the given date input ──
 const endOfDay = (input) => {
   if (!input) return null;
   const d = input instanceof Date ? new Date(input) : new Date(input);
@@ -232,7 +262,10 @@ const CustomTooltip = memo(({ active, payload, label, isDark, fmt }) => {
         fontSize: '0.82rem',
       }}
     >
+      {/* ── Tooltip label (e.g. month) ── */}
       <p style={{ margin: '0 0 6px 0', fontWeight: 'bold' }}>{label}</p>
+
+      {/* ── One line per series in the hovered slice ── */}
       {payload.map((entry, index) => (
         <p key={`${entry.dataKey}-${index}`} style={{ margin: '3px 0', color: entry.color, fontWeight: 600 }}>
           {entry.name}: {typeof fmt === 'function' ? fmt(entry.value) : String(entry.value)}
@@ -256,6 +289,7 @@ const DrillDownModal = memo(({ isOpen, onClose, title, transactions, fmt, locale
 
   if (!isOpen) return null;
 
+  // ── Total across all rows in the drill-down ──
   const total = transactions.reduce((sum, t) => sum + safeParseAmount(t.amount), 0);
 
   return (
@@ -279,6 +313,7 @@ const DrillDownModal = memo(({ isOpen, onClose, title, transactions, fmt, locale
           overflow: 'auto', color: 'var(--text-main)',
         }}
       >
+        {/* ── Header: title and close button ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h3 style={{ margin: 0 }}>{title}</h3>
           <button
@@ -304,9 +339,12 @@ const DrillDownModal = memo(({ isOpen, onClose, title, transactions, fmt, locale
           <p style={{ color: 'var(--text-muted)' }}>No transactions found.</p>
         ) : (
           <>
+            {/* ── Summary line: count + total ── */}
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: 0 }}>
               {transactions.length} transaction{transactions.length === 1 ? '' : 's'} · Total: {fmt(total)}
             </p>
+
+            {/* ── Row list ── */}
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {transactions.map((t, idx) => (
                 <li
@@ -364,6 +402,7 @@ export default function Analytics() {
   } = useContext(AppContext);
   // Issue: loading was not destructured, preventing the component from showing a loading skeleton while fetches are in-flight.
   */
+  // ── App context (loading added so the skeleton can render) ──
   const {
     transactions = [],
     theme,
@@ -382,6 +421,7 @@ export default function Analytics() {
   const activeCurrency = currency || user?.currency || 'INR';
   const symbol = currencyInfo?.symbol || '₹';
 
+  // ── Currency formatter with contextFmt / Intl fallback ──
   const fmt = useCallback(
     (value) => {
       if (contextFmt) {
@@ -403,20 +443,28 @@ export default function Analytics() {
   );
 
   /* ---------------- State ---------------- */
+
+  // ── Filter / view state ──
   const [periodFilter, setPeriodFilter] = useState('month');
   const [chartType, setChartType] = useState('bar');
   const [showAllEvolutionCategories, setShowAllEvolutionCategories] = useState(false);
   const [customRange, setCustomRange] = useState({ start: '', end: '' });
   const [showCustomRange, setShowCustomRange] = useState(false);
   const [isPeriodDropdownOpen, setIsPeriodDropdownOpen] = useState(false);
+
+  // ── Drill-down modal state ──
   const [drillData, setDrillData] = useState({ isOpen: false, title: '', transactions: [] });
+
+  // ── Export-in-flight flag ──
   const [isExportingPng, setIsExportingPng] = useState(false);
 
+  // ── Per-user localStorage key for reviewed anomalies ──
   const reviewedStorageKey = useMemo(
     () => (user?.id || user?._id ? `${REVIEWED_KEY}:${user.id || user._id}` : REVIEWED_KEY),
     [user]
   );
 
+  // ── Reviewed anomaly IDs (loaded lazily from storage) ──
   const [reviewedAnomalies, setReviewedAnomalies] = useState(() => {
     try {
       const stored = localStorage.getItem(reviewedStorageKey);
@@ -436,6 +484,7 @@ export default function Analytics() {
     }
   }, [reviewedStorageKey]);
 
+  // ── Persist reviewed anomaly IDs to storage ──
   useEffect(() => {
     try {
       localStorage.setItem(reviewedStorageKey, JSON.stringify([...reviewedAnomalies]));
@@ -455,6 +504,8 @@ export default function Analytics() {
 
   /* ============================================================
    * Period Date Range
+   * Resolves the current and previous period windows for the
+   * selected periodFilter (month / quarter / year / all / custom).
    * ============================================================ */
   const periodRange = useMemo(() => {
     const now = new Date();
@@ -499,10 +550,12 @@ export default function Analytics() {
 
   /* ============================================================
    * Period Comparison
+   * Sums current vs. previous period and computes deltas.
    * ============================================================ */
   const comparisonMetrics = useMemo(() => {
     const { currentStart, currentEnd, prevStart, prevEnd } = periodRange;
 
+    // ── Filter transactions to a date window ──
     const filterTxs = (start, end) => {
       if (!start || !end) return [];
       return validTransactions.filter((t) => {
@@ -511,6 +564,7 @@ export default function Analytics() {
       });
     };
 
+    // ── Sum income, expense, net for a list of transactions ──
     const sumTxs = (list) => {
       let inc = 0, exp = 0;
       for (const t of list) {
@@ -548,6 +602,7 @@ export default function Analytics() {
 
   /* ============================================================
    * Monthly Aggregates
+   * Income / expense / savings per month, capped at the chart max.
    * ============================================================ */
   const monthlyData = useMemo(() => {
     const monthMap = new Map();
@@ -578,6 +633,7 @@ export default function Analytics() {
    * Category Evolution — fills gaps, drops zero-total categories
    * ============================================================ */
   const categoryEvolution = useMemo(() => {
+    // ── Rank categories by total expense ──
     const catTotals = new Map();
     validTransactions
       .filter((t) => t.type === 'expense')
@@ -661,6 +717,7 @@ export default function Analytics() {
 
   /* ============================================================
    * Day of Week
+   * Aggregates expenses and income by weekday + weekend split.
    * ============================================================ */
   const dayOfWeekData = useMemo(() => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((name) => ({
@@ -688,6 +745,7 @@ export default function Analytics() {
 
   /* ============================================================
    * Anomaly Detection — recent window, stable IDs
+   * Flags expenses >ANOMALY_SIGMA σ above their category mean.
    * ============================================================ */
   const anomalies = useMemo(() => {
     const cutoff = new Date();
@@ -728,6 +786,7 @@ export default function Analytics() {
     return flagged.sort((a, b) => new Date(b.tx.date) - new Date(a.tx.date));
   }, [validTransactions]);
 
+  // ── Anomalies the user has not yet reviewed ──
   const activeAnomalies = useMemo(
     () => anomalies.filter((a) => !reviewedAnomalies.has(a.id)),
     [anomalies, reviewedAnomalies]
@@ -762,10 +821,13 @@ export default function Analytics() {
 
   /* ============================================================
    * AI Insights — NaN-safe
+   * Builds up to 4 insight cards from comparison, day-of-week,
+   * category concentration, and savings rate.
    * ============================================================ */
   const generatedInsights = useMemo(() => {
     const cards = [];
 
+    // ── Rule: period-over-period spending spike / drop ──
     const expDelta = comparisonMetrics.expenseDelta;
     if (expDelta.valid && expDelta.value != null) {
       if (expDelta.value > 15) {
@@ -783,6 +845,7 @@ export default function Analytics() {
       }
     }
 
+    // ── Rule: weekend concentration ──
     if (dayOfWeekData.weekendPct >= 40) {
       cards.push({
         type: 'info',
@@ -791,6 +854,7 @@ export default function Analytics() {
       });
     }
 
+    // ── Rule: single-category dominance ──
     if (expenseCategories.length > 0 && Number(expenseCategories[0].percentage) > 35) {
       cards.push({
         type: 'info',
@@ -799,6 +863,7 @@ export default function Analytics() {
       });
     }
 
+    // ── Rule: low savings rate ──
     if (
       comparisonMetrics.savingsRate != null &&
       comparisonMetrics.savingsRate < 10 &&
@@ -811,6 +876,7 @@ export default function Analytics() {
       });
     }
 
+    // ── Fallback when nothing else triggers ──
     if (cards.length === 0) {
       cards.push({
         type: 'success',
@@ -826,6 +892,7 @@ export default function Analytics() {
    * Handlers
    * ============================================================ */
 
+  // ── Mark an anomaly reviewed ──
   const handleMarkAnomalyReviewed = useCallback((id) => {
     setReviewedAnomalies((prev) => {
       const next = new Set(prev);
@@ -835,6 +902,7 @@ export default function Analytics() {
     showToast('success', 'Transaction marked as reviewed.');
   }, [showToast]);
 
+  // ── Dismiss an anomaly ──
   const handleDismissAnomaly = useCallback((id) => {
     setReviewedAnomalies((prev) => {
       const next = new Set(prev);
@@ -844,12 +912,14 @@ export default function Analytics() {
     showToast('success', 'Anomaly dismissed.');
   }, [showToast]);
 
+  // ── Restore all dismissed anomalies ──
   const handleResetReviewedAnomalies = useCallback(() => {
     if (reviewedAnomalies.size === 0) return;
     setReviewedAnomalies(new Set());
     showToast('success', 'Reviewed anomalies cleared.');
   }, [reviewedAnomalies, showToast]);
 
+  // ── Export the chart section as PNG (dynamic html2canvas import) ──
   const exportChartAsImage = useCallback(async () => {
     if (isExportingPng) return;
     setIsExportingPng(true);
@@ -877,6 +947,7 @@ export default function Analytics() {
     }
   }, [isDark, isExportingPng, showToast]);
 
+  // ── Export all transactions as CSV with formula-injection guard ──
   const exportCSV = useCallback(() => {
     const headers = ['Date', 'Type', 'Category', 'Amount', 'Note'];
     const rows = validTransactions.map((t) => [
@@ -904,6 +975,7 @@ export default function Analytics() {
     showToast('success', 'CSV exported successfully!');
   }, [validTransactions, showToast]);
 
+  // ── Copy a plain-text summary to the clipboard ──
   const handleShareSummary = useCallback(async () => {
     const savingsRateText =
       comparisonMetrics.savingsRate != null
@@ -934,6 +1006,7 @@ export default function Analytics() {
    * Drill‑down handlers (stable callbacks)
    * ============================================================ */
 
+  // ── Open drill-down for a month ──
   const openMonthDrillDown = useCallback((monthKey) => {
     const [y, m] = monthKey.split('-').map(Number);
     const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
@@ -953,6 +1026,7 @@ export default function Analytics() {
     });
   }, [validTransactions, locale, showToast]);
 
+  // ── Open drill-down for a category ──
   const openCategoryDrillDown = useCallback((category) => {
     const filtered = validTransactions.filter(
       (t) => (t.category || 'Other') === category && t.type === 'expense'
@@ -968,15 +1042,18 @@ export default function Analytics() {
     });
   }, [validTransactions, showToast]);
 
+  // ── Close the drill-down modal ──
   const closeDrill = useCallback(() => {
     setDrillData({ isOpen: false, title: '', transactions: [] });
   }, []);
 
+  // ── Bar click → open month drill-down ──
   const handleBarClick = useCallback((data) => {
     const monthKey = data?.payload?.name;
     if (monthKey) openMonthDrillDown(monthKey);
   }, [openMonthDrillDown]);
 
+  // ── Pie click → open category drill-down ──
   const handlePieClick = useCallback((data) => {
     const category = data?.name ?? data?.payload?.name;
     if (category) openCategoryDrillDown(category);
@@ -985,6 +1062,8 @@ export default function Analytics() {
   /* ============================================================
    * Custom Range
    * ============================================================ */
+
+  // ── Validate and apply a custom date range ──
   const applyCustomRange = useCallback(() => {
     const { start, end } = customRange;
     if (!start || !end) {
@@ -1006,6 +1085,7 @@ export default function Analytics() {
     showToast('success', 'Custom range applied.');
   }, [customRange, showToast]);
 
+  // ── Clear the custom range and reset to month ──
   const clearCustomRange = useCallback(() => {
     setShowCustomRange(false);
     setCustomRange({ start: '', end: '' });
@@ -1027,6 +1107,7 @@ export default function Analytics() {
       <div className="shared-page analytics-page-wrap">
   // Issue: When transactions were in-flight, the UI prematurely rendered "No data yet", causing layout shift and flickering.
   */
+  // ── Loading skeleton (only when there is no data yet) ──
   if (loading && validTransactions.length === 0) {
     return (
       <div className="shared-page analytics-page-wrap">
@@ -1044,6 +1125,7 @@ export default function Analytics() {
     );
   }
 
+  // ── Empty state (loaded, but no valid transactions) ──
   if (validTransactions.length === 0) {
     return (
       <div className="shared-page analytics-page-wrap">
@@ -1069,6 +1151,7 @@ export default function Analytics() {
    * ============================================================ */
   return (
     <div className="shared-page analytics-page-wrap">
+      {/* ===================== Header + actions ===================== */}
       <div className="spage-header">
         <div className="spage-title">
           <h2>Analytics & Intelligence</h2>
@@ -1093,12 +1176,14 @@ export default function Analytics() {
         </div>
       </div>
 
+      {/* ===================== Period selector ===================== */}
       {/* Period Selector — Clean Standard Dropdown */}
       <div className="analytics-period-bar glass" style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '8px 16px', position: 'relative', width: 'auto', marginBottom: 14 }}>
         <span className="apb-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', fontWeight: 600, color: '#64748B' }}>
           <Calendar size={14} /> Compare Period:
         </span>
         <div style={{ position: 'relative' }}>
+          {/* ── Dropdown trigger ── */}
           <button
             type="button"
             className="btn-secondary period-dropdown-trigger"
@@ -1124,6 +1209,7 @@ export default function Analytics() {
             <ChevronDown size={14} style={{ opacity: 0.6, transform: isPeriodDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
           </button>
 
+          {/* ── Dropdown menu ── */}
           <AnimatePresence>
             {isPeriodDropdownOpen && (
               <motion.div
@@ -1187,6 +1273,7 @@ export default function Analytics() {
           </AnimatePresence>
         </div>
 
+        {/* ── Clear custom range ── */}
         {periodFilter === 'custom' && (
           <button
             type="button"
@@ -1201,7 +1288,7 @@ export default function Analytics() {
         )}
       </div>
 
-      {/* Custom Range Inputs */}
+      {/* ===================== Custom range inputs ===================== */}
       <AnimatePresence>
         {showCustomRange && (
           <motion.div
@@ -1245,8 +1332,9 @@ export default function Analytics() {
         )}
       </AnimatePresence>
 
-      {/* Comparison Cards */}
+      {/* ===================== Comparison cards ===================== */}
       <div className="analytics-comparison-grid">
+        {/* ── Period Inflow ── */}
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Period Inflow</span>
@@ -1264,6 +1352,7 @@ export default function Analytics() {
           )}
         </motion.div>
 
+        {/* ── Period Outflow ── */}
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Period Outflow</span>
@@ -1281,6 +1370,7 @@ export default function Analytics() {
           )}
         </motion.div>
 
+        {/* ── Net Position ── */}
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Net Position</span>
@@ -1300,6 +1390,7 @@ export default function Analytics() {
           )}
         </motion.div>
 
+        {/* ── Savings Rate ── */}
         <motion.div className="stat-card glass" whileHover={{ y: -3 }}>
           <div className="sc-header">
             <span className="sc-label">Savings Rate</span>
@@ -1318,6 +1409,8 @@ export default function Analytics() {
           <h3 className="sc-val">
             {comparisonMetrics.savingsRate != null ? `${comparisonMetrics.savingsRate.toFixed(1)}%` : '—'}
           </h3>
+
+          {/* ── Progress bar of savings rate ── */}
           {comparisonMetrics.savingsRate != null && comparisonMetrics.savingsRate > 0 && (
             <div style={{ width: '100%', height: 6, borderRadius: 999, background: 'rgba(0,0,0,0.06)', margin: '4px 0 6px', overflow: 'hidden' }}>
               <div
@@ -1336,7 +1429,7 @@ export default function Analytics() {
         </motion.div>
       </div>
 
-      {/* AI Insights */}
+      {/* ===================== AI Insights ===================== */}
       <div className="analytics-ai-strip">
         {generatedInsights.map((ins, i) => (
           <div key={`${ins.type}-${i}`} className={`ai-insight-card glass ${ins.type}`}>
@@ -1349,13 +1442,14 @@ export default function Analytics() {
         ))}
       </div>
 
-      {/* Anomalies */}
+      {/* ===================== Anomalies ===================== */}
       {activeAnomalies.length > 0 && (
         <motion.div
           className="analytics-anomaly-box glass"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
         >
+          {/* ── Header: title + explanation ── */}
           <div className="aab-header">
             <div className="aab-title">
               <ShieldAlert size={18} className="text-warning" />
@@ -1365,6 +1459,8 @@ export default function Analytics() {
               Transactions &gt;{ANOMALY_SIGMA}σ above category average (last {ANOMALY_WINDOW_DAYS} days)
             </span>
           </div>
+
+          {/* ── Up to 5 anomaly rows ── */}
           <div className="aab-list">
             {activeAnomalies.slice(0, 5).map((a) => (
               <div key={a.id} className="aab-row">
@@ -1389,7 +1485,7 @@ export default function Analytics() {
         </motion.div>
       )}
 
-      {/* Reviewed Anomalies reset */}
+      {/* ===================== Reviewed anomalies reset ===================== */}
       {reviewedAnomalies.size > 0 && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
           <button
@@ -1403,9 +1499,9 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* Charts Section */}
+      {/* ===================== Charts ===================== */}
       <div ref={chartSectionRef} className="analytics-charts">
-        {/* Monthly Trajectory */}
+        {/* ── Monthly Trajectory ── */}
         <motion.div className="chart-card glass chart-card-large" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <h3>Monthly Financial Trajectory</h3>
@@ -1445,13 +1541,14 @@ export default function Analytics() {
           )}
         </motion.div>
 
-        {/* Category Evolution */}
+        {/* ── Category Evolution ── */}
         <motion.div className="chart-card glass chart-card-large" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <h3 style={{ margin: 0 }}>Category Spending Evolution</h3>
               <span className="chart-badge">Historical Trends</span>
             </div>
+            {/* ── Toggle top-5 vs. top-8 view ── */}
             {categoryEvolution.data.length > 0 && categoryEvolution.categories.length > 0 && (
               <button
                 className="btn-secondary"
@@ -1491,7 +1588,7 @@ export default function Analytics() {
           )}
         </motion.div>
 
-        {/* Day of Week */}
+        {/* ── Day of Week ── */}
         <motion.div className="chart-card glass" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <h3>Day of Week Outflow</h3>
@@ -1508,7 +1605,7 @@ export default function Analytics() {
           </ResponsiveContainer>
         </motion.div>
 
-        {/* Expense Allocation */}
+        {/* ── Expense Allocation ── */}
         <motion.div className="chart-card glass" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="chart-header">
             <h3>Expense Allocation</h3>
@@ -1557,7 +1654,7 @@ export default function Analytics() {
         </motion.div>
       </div>
 
-      {/* Drill‑Down Modal */}
+      {/* ===================== Drill-down modal ===================== */}
       <DrillDownModal
         isOpen={drillData.isOpen}
         onClose={closeDrill}

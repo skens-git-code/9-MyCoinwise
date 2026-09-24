@@ -1,12 +1,23 @@
-/**
- * security.js — Security-related routes
+/* —————————————————————————————————————
+ * Security Routes
+ * Account-security endpoints: password change, email change, and
+ * session management.
  *
  * Endpoints:
- *   POST   /api/security/change-password        Change password, revoke all sessions
- *   POST   /api/security/change-email           Change email, revoke all sessions
- *   GET    /api/security/sessions               List active sessions
- *   DELETE /api/security/sessions/:sessionId    Revoke a specific session
- *   DELETE /api/security/sessions               Revoke all sessions except current
+ *   POST   /change-password        Change password, revoke all sessions
+ *   POST   /change-email           Change email, revoke all sessions
+ *   GET    /sessions               List active sessions
+ *   DELETE /sessions/:sessionId    Revoke a specific session
+ *   DELETE /sessions               Revoke all sessions except current
+ *
+ * Key behaviors:
+ *   - Rate limited to 20 requests per 15 minutes per IP.
+ *   - Cache-Control applied to every response (session data must
+ *     not be cached).
+ *   - Password change and email change both bump session_version
+ *     and delete all Session records, forcing a fresh login.
+ *   - change-email performs a case-insensitive uniqueness check to
+ *     guard against legacy mixed-case records.
  *
  * Fixes vs. the original:
  *   - try/catch around every async handler (Express 4 does not catch
@@ -18,8 +29,9 @@
  *   - ObjectId validation on DELETE /sessions/:id.
  *   - Consistent { error } response shape.
  *   - Shared logger instead of console.error.
- */
+ * ————————————————————————————————————— */
 
+// ── Load dependencies ──
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
@@ -30,20 +42,23 @@ const Session = require('../models/Session');
 const auth = require('../middleware/auth');
 const { logger } = require('../utils/logger');
 
-/* ============================================================
+/* —————————————————————————————————————
  * Constants
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Password policy bounds ──
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 128;
+
+// ── Email format pattern and length limit ──
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 254;
 
-/* ============================================================
- * Middleware
- * ============================================================ */
+/* —————————————————————————————————————
+ * Router Middleware
+ * ————————————————————————————————————— */
 
-// Rate limit (20 per 15 min) applied to all security endpoints.
+// ── Rate limit (20 per 15 min) applied to all security endpoints ──
 const securityLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -53,24 +68,22 @@ const securityLimiter = rateLimit({
 });
 router.use(securityLimiter);
 
-// Cache-Control on every response — session data must not be cached.
+// ── Disable caching on every response (session data must not be cached) ──
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   next();
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * Helpers
- * ============================================================ */
+ * ————————————————————————————————————— */
 
-/** Escape user input before embedding it in a RegExp. */
+// ── Escape user input before embedding it in a RegExp ──
 const escapeRegExp = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/**
- * Return an error string if the password violates policy,
- * or null when it passes.
- */
+// ── Validate password policy ──
+// Returns an error string on failure, or null when the password passes.
 const passwordPolicyError = (password) => {
   if (typeof password !== 'string') return 'Password must be a string.';
   if (password.length < MIN_PASSWORD_LENGTH) {
@@ -86,37 +99,43 @@ const passwordPolicyError = (password) => {
   return null;
 };
 
-/* ============================================================
- * POST /api/security/change-password
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /change-password
+ * Change the current user's password and revoke all sessions.
+ * ————————————————————————————————————— */
 router.post('/change-password', auth, async (req, res) => {
   try {
+    // ── Read and validate input ──
     const { current, new: newPassword } = req.body || {};
 
     if (!current || !newPassword) {
       return res.status(400).json({ error: 'Current and new passwords are required.' });
     }
 
+    // ── Enforce password policy ──
     const policyError = passwordPolicyError(newPassword);
     if (policyError) {
       return res.status(400).json({ error: policyError });
     }
 
+    // ── Load the current user with the password hash ──
     const user = await User.findById(req.user.id).select('+password');
     if (!user) return res.status(404).json({ error: 'User not found.' });
 
+    // ── Verify the current password ──
     const isMatch = await bcrypt.compare(current, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Current password is incorrect.' });
     }
 
+    // ── Reject reuse of the current password ──
     if (await bcrypt.compare(newPassword, user.password)) {
       return res.status(400).json({
         error: 'New password must be different from the current password.',
       });
     }
 
+    // ── Persist the new password and bump session_version ──
     // Pre-save hook hashes the password.
     user.password = newPassword;
     user.session_version = (user.session_version || 0) + 1;
@@ -136,12 +155,13 @@ router.post('/change-password', auth, async (req, res) => {
   }
 });
 
-/* ============================================================
- * POST /api/security/change-email
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /change-email
+ * Change the current user's email and revoke all sessions.
+ * ————————————————————————————————————— */
 router.post('/change-email', auth, async (req, res) => {
   try {
+    // ── Read and validate input ──
     const { currentPassword, newEmail } = req.body || {};
 
     if (!currentPassword || !newEmail) {
@@ -150,14 +170,17 @@ router.post('/change-email', auth, async (req, res) => {
       });
     }
 
+    // ── Validate the new email format and length ──
     const trimmedEmail = String(newEmail).trim();
     if (trimmedEmail.length > MAX_EMAIL_LENGTH || !EMAIL_REGEX.test(trimmedEmail)) {
       return res.status(400).json({ error: 'Please provide a valid email format.' });
     }
 
+    // ── Load the current user with the password hash ──
     const user = await User.findById(req.user.id).select('+password');
     if (!user) return res.status(404).json({ error: 'User not found.' });
 
+    // ── Verify the current password ──
     const isMatch = await bcrypt.compare(currentPassword, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Current password is incorrect.' });
@@ -176,10 +199,12 @@ router.post('/change-email', auth, async (req, res) => {
       });
     }
 
+    // ── Persist the new email and bump session_version ──
     user.email = normalizedEmail;
     user.session_version = (user.session_version || 0) + 1;
     await user.save();
 
+    // ── Revoke all sessions ──
     await Session.deleteMany({ user_id: user._id });
 
     return res.json({
@@ -193,12 +218,14 @@ router.post('/change-email', auth, async (req, res) => {
   }
 });
 
-/* ============================================================
- * GET /api/security/sessions
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /sessions
+ * List the authenticated user's active sessions.
+ * ————————————————————————————————————— */
 router.get('/sessions', auth, async (req, res) => {
   try {
+    // ── Load active sessions, newest first ──
+    // `token_id` is selected explicitly so isCurrent can be computed.
     const sessions = await Session.find({
       user_id: req.user.id,
       is_active: true,
@@ -207,6 +234,7 @@ router.get('/sessions', auth, async (req, res) => {
       .select('+token_id')
       .lean();
 
+    // ── Shape the response and flag the current session ──
     return res.json(sessions.map((session) => ({
       id: String(session._id),
       device: session.device || 'Unknown device',
@@ -221,10 +249,10 @@ router.get('/sessions', auth, async (req, res) => {
   }
 });
 
-/* ============================================================
- * DELETE /api/security/sessions/:sessionId
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * DELETE /sessions/:sessionId
+ * Revoke a specific active session owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.delete('/sessions/:sessionId', auth, async (req, res) => {
   try {
     // Guard against invalid ObjectId — otherwise Mongoose throws a
@@ -233,6 +261,7 @@ router.delete('/sessions/:sessionId', auth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid session ID.' });
     }
 
+    // ── Load the session, scoped to the authenticated user ──
     const session = await Session.findOne({
       _id: req.params.sessionId,
       user_id: req.user.id,
@@ -242,6 +271,7 @@ router.delete('/sessions/:sessionId', auth, async (req, res) => {
       return res.status(404).json({ error: 'Session not found or already revoked.' });
     }
 
+    // ── Mark the session as revoked ──
     session.is_active = false;
     session.last_active = new Date();
     await session.save();
@@ -253,18 +283,19 @@ router.delete('/sessions/:sessionId', auth, async (req, res) => {
   }
 });
 
-/* ============================================================
- * DELETE /api/security/sessions
- * Revoke all sessions except the current one.
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * DELETE /sessions
+ * Revoke all active sessions except the current one.
+ * ————————————————————————————————————— */
 router.delete('/sessions', auth, async (req, res) => {
   try {
+    // ── Build the filter (exclude the current jti when present) ──
     const filter = { user_id: req.user.id, is_active: true };
     if (req.user.jti) {
       filter.token_id = { $ne: req.user.jti };
     }
 
+    // ── Revoke matching sessions ──
     await Session.updateMany(
       filter,
       { $set: { is_active: false, last_active: new Date() } }
@@ -287,4 +318,9 @@ router.delete('/sessions', auth, async (req, res) => {
   }
 });
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;

@@ -1,5 +1,7 @@
-/**
- * auth.js — Authentication routes
+/* —————————————————————————————————————
+ * Auth Routes
+ * Handles registration, login, session issuance, password change,
+ * logout, and login-history endpoints.
  *
  * Endpoints:
  *   POST /register        Create account + issue token
@@ -9,24 +11,17 @@
  *   POST /change-password Change password + invalidate other sessions
  *   GET  /login-logs      Paginated login history
  *
- * Fixes applied vs. previous version:
- *   - session_version NaN guard for legacy users
- *   - change-password uses the same policy as register
- *   - household_id included in every auth response
- *   - change-password is rate-limited (brute-force protection)
- *   - register creates the user in a single DB write
- *   - register and login have separate rate limiters
- *   - failed_login_count re-read from DB after increment
- *   - parseUserAgent called with '' instead of null
- *   - same-as-current password rejected on change
- *   - LoginLog write failures surface via logger.warn
- *   - all errors use logger.error (no more console.error)
- *   - 11000 handling falls back for older MongoDB
- *   - Cache-Control applied to every response
- *   - getTransactionBalance validates userId
- *   - JWT_SECRET presence checked before signing
- */
+ * Key behaviors:
+ *   - Register and login use separate rate limiters (see below).
+ *   - change-password is rate-limited via the login limiter.
+ *   - session_version NaN guard for legacy users (|| 0).
+ *   - household_id included in every auth response.
+ *   - Failed LoginLog writes surface via logger.warn, not thrown.
+ *   - Cache-Control is applied to every response from this router.
+ *   - JWT_SECRET is checked before signing.
+ * ————————————————————————————————————— */
 
+// ── Load dependencies ──
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
@@ -42,28 +37,33 @@ const auth = require('../middleware/auth');
 const { logger, auditLogger } = require('../utils/logger');
 const { dedupeTransactions } = require('../utils/transactionIntegrity');
 
+// ── Create router ──
 const router = express.Router();
 
-/* ============================================================
+/* —————————————————————————————————————
  * Constants
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Supported currencies ──
 const CURRENCY_CODES = new Set([
   'USD', 'INR', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SGD', 'AED',
   'CHF', 'CNY', 'MXN', 'BRL', 'KRW', 'THB',
 ]);
 
+// ── Fallback FX rates to INR (used when no live rate is available) ──
 const FALLBACK_RATES_TO_INR = Object.freeze({
   INR: 1, USD: 83.5, EUR: 90.2, GBP: 105.8, JPY: 0.56, CAD: 61.2,
   AUD: 53.8, SGD: 61.5, AED: 22.7, CHF: 95, CNY: 11.5, MXN: 4.9,
   BRL: 16.4, KRW: 0.063, THB: 2.35,
 });
 
+// ── Normalize a currency code (uppercase, default fallback) ──
 const normalizeCurrency = (value, fallback = 'USD') => {
   const normalized = String(value || '').trim().toUpperCase();
   return normalized || fallback;
 };
 
+// ── Convert an amount between currencies using fallback rates ──
 const convertToCurrency = (amount, fromCurrency, toCurrency) => {
   const from = normalizeCurrency(fromCurrency);
   const to = normalizeCurrency(toCurrency);
@@ -74,28 +74,40 @@ const convertToCurrency = (amount, fromCurrency, toCurrency) => {
   return (Number(amount) || 0) * fromRate / toRate;
 };
 
-// Register and login use separate limiters. Sharing one meant a
-// shared-IP office could exhaust login attempts and block all new
-// registrations from that IP. Register is also a bigger abuse target,
-// so it gets a tighter cap.
+/* —————————————————————————————————————
+ * Rate Limiters
+ * Register and login use separate limiters. Sharing one meant a
+ * shared-IP office could exhaust login attempts and block all
+ * registrations from that IP. Register is also a bigger abuse
+ * target, so it gets a tighter cap.
+ * ————————————————————————————————————— */
+
+const isDev = process.env.NODE_ENV !== 'production';
+
+// ── Registration limiter: 10 per IP per hour (relaxed in development) ──
 const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,           // 1 hour
-  max: 10,                            // 10 registrations per IP per hour
+  windowMs: 60 * 60 * 1000,
+  max: isDev ? 1000 : 10,
   message: { error: 'Too many account creations from this IP. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
+// ── Login limiter: 30 per IP per 15 minutes (successful logins do not consume limit) ──
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,           // 15 minutes
-  max: 30,                            // 30 login attempts per IP per window
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 1000 : 30,
+  skipSuccessfulRequests: true,
   message: { error: 'Too many authentication attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// Password policy mirrors the register validator so change-password
-// can't weaken an account created with a strong password.
+/* —————————————————————————————————————
+ * Password Policy
+ * Mirrors the register validator so change-password cannot weaken
+ * an account created with a strong password.
+ * ————————————————————————————————————— */
 const passwordPolicy = (field = 'password') =>
   body(field)
     .isString()
@@ -105,62 +117,72 @@ const passwordPolicy = (field = 'password') =>
     .matches(/\d/).withMessage('Password must contain a digit.')
     .matches(/[^a-zA-Z0-9]/).withMessage('Password must contain a special character.');
 
-/* ============================================================
+/* —————————————————————————————————————
  * Helpers
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Normalize an email (trim + lowercase) ──
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
-/**
- * Shape every auth response uses. Including `household_id` here means
- * the household switcher on the frontend can cache it on login and
- * use it during user switching (fixes the "can't switch back" bug).
- */
+// ── Shape every auth response uses ──
+// Including `household_id`, `theme`, and `balance` lets the frontend
+// hydrate state immediately without waiting for extra profile queries.
 const toSafeUser = (user) => ({
   id: user._id,
   username: user.username,
-  last_name: user.last_name,
-  profession: user.profession,
+  last_name: user.last_name || '',
+  profession: user.profession || 'Trader',
   email: user.email,
-  profile_avatar: user.profile_avatar,
-  profile_color: user.profile_color,
-  currency: user.currency,
-  household_id: user.household_id,
+  profile_avatar: user.profile_avatar || '😊',
+  profile_color: user.profile_color || '#0ea5e9',
+  currency: user.currency || 'USD',
+  household_id: user.household_id || user._id,
+  balance: typeof user.balance === 'number' ? user.balance : 0,
+  theme: user.theme || 'light',
+  monthly_goal: typeof user.monthly_goal === 'number' ? user.monthly_goal : 0,
 });
 
-/**
- * Sign a JWT and persist a Session record.
- * `user.session_version || 0` guards against legacy users whose
- * document predates the field (avoids NaN in the token payload).
- */
+// ── Sign a JWT and persist a Session record ──
+// `user.session_version || 0` guards against legacy users whose
+// document predates the field (avoids NaN in the token payload).
 const createSessionToken = async (user, req, { rememberMe = true, browser, os, device_type } = {}) => {
   if (!process.env.JWT_SECRET) {
     throw new Error('JWT_SECRET is not configured.');
   }
 
+  // ── Generate a unique token id (jti) ──
   const tokenId = crypto.randomUUID();
   const sessionVersion = user.session_version || 0;
 
+  // ── Sign the JWT ──
   const token = jwt.sign(
     { id: user._id, session_version: sessionVersion, jti: tokenId },
     process.env.JWT_SECRET,
     { expiresIn: rememberMe ? '30d' : '1d' }
   );
 
+  // ── Compose a human-readable device label ──
   const device = [browser, os, device_type].filter(Boolean).join(' · ') || 'Unknown device';
 
+  // ── Clean IP and user agent to fit within session schema bounds ──
+  const rawIp = req.ip || (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : '');
+  const cleanIp = String(rawIp || '').slice(0, 100);
+  const cleanUa = String(req.headers['user-agent'] || '').slice(0, 1000);
+
+  // ── Persist the session record ──
   await Session.create({
     user_id: user._id,
     token_id: tokenId,
-    device,
-    ip: req.ip || req.headers['x-forwarded-for'] || '',
-    user_agent: req.headers['user-agent'] || '',
+    device: String(device).slice(0, 160),
+    ip: cleanIp,
+    user_agent: cleanUa,
   });
 
   return token;
 };
 
-/** Aggregate transaction net for a user. Returns 0 for invalid ids. */
+// ── Aggregate the user's net transaction balance ──
+// Returns 0 for invalid user IDs.
 const getTransactionBalance = async (userId) => {
   if (!mongoose.isValidObjectId(userId)) return 0;
   const [user, transactions, accounts] = await Promise.all([
@@ -171,7 +193,9 @@ const getTransactionBalance = async (userId) => {
     Account.find({ user_id: userId }).select('_id currency').lean(),
   ]);
   const displayCurrency = normalizeCurrency(user?.currency);
-  const accountCurrencies = new Map(accounts.map((account) => [String(account._id), normalizeCurrency(account.currency, displayCurrency)]));
+  const accountCurrencies = new Map(
+    accounts.map((account) => [String(account._id), normalizeCurrency(account.currency, displayCurrency)])
+  );
   const balance = dedupeTransactions(transactions).reduce((sum, transaction) => {
     const sourceCurrency = normalizeCurrency(
       transaction.currency || accountCurrencies.get(String(transaction.account_id || '')),
@@ -183,27 +207,47 @@ const getTransactionBalance = async (userId) => {
   return Number(balance.toFixed(2));
 };
 
-/** Recalculate and persist the user's balance. */
+// ── Recalculate and persist the user's cached balance ──
 const syncUserBalance = async (userId) => {
   const balance = await getTransactionBalance(userId);
   await User.findByIdAndUpdate(userId, { $set: { balance } });
   return balance;
 };
 
-/**
- * Apply Cache-Control to every response from this router, not just
- * successful ones. A cached error response served to a different
- * user would be a real problem.
- */
+/* —————————————————————————————————————
+ * Router Middleware
+ * ————————————————————————————————————— */
+
+// ── Disable caching on every response, including errors ──
+// A cached error response served to a different user would be a
+// real problem.
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   next();
 });
 
-/* ============================================================
- * POST /register
- * ============================================================ */
+/* —————————————————————————————————————
+ * GET /check-username
+ * Real-time username availability check (debounced by client).
+ * ————————————————————————————————————— */
+router.get('/check-username', async (req, res) => {
+  try {
+    const raw = String(req.query.username || '').trim();
+    if (!raw || raw.length < 2 || raw.length > 80) {
+      return res.json({ available: false });
+    }
+    const existing = await User.findOne({ username: raw }).select('_id').lean();
+    return res.json({ available: !existing });
+  } catch (err) {
+    logger.warn('Check username error:', err.message);
+    return res.json({ available: true });
+  }
+});
 
+/* —————————————————————————————————————
+ * POST /register
+ * Create a new account and issue a short-lived session token.
+ * ————————————————————————————————————— */
 router.post(
   '/register',
   registerLimiter,
@@ -213,8 +257,17 @@ router.post(
     passwordPolicy('password'),
   ],
   async (req, res) => {
+    // ── Validate input ──
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) {
+      const errArray = errors.array();
+      const firstErr = errArray[0];
+      return res.status(400).json({
+        error: firstErr?.msg || 'Invalid registration details.',
+        errors: errArray,
+        field: firstErr?.path || firstErr?.param,
+      });
+    }
 
     const { username, password, profile_avatar, profile_color } = req.body;
     const email = normalizeEmail(req.body.email);
@@ -226,21 +279,24 @@ router.post(
       return res.status(400).json({ error: 'Unsupported currency.' });
     }
 
-    const ipAddr = req.ip || req.headers['x-forwarded-for'] || null;
-    const ua = req.headers['user-agent'] || '';
+    // ── Collect request metadata ──
+    const rawIp = req.ip || (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : null);
+    const ipAddr = rawIp ? String(rawIp).slice(0, 100) : null;
+    const ua = String(req.headers['user-agent'] || '').slice(0, 500);
     const { device_type, browser, os } = LoginLog.parseUserAgent(ua);
 
     try {
+      // ── Reject when the database is unavailable ──
       if (mongoose.connection.readyState !== 1) {
         return res.status(503).json({
           error: 'Database unavailable. Start MongoDB or configure a reachable MONGO_URI.',
         });
       }
 
-      // Pre-generate _id so household_id can be set in the same write.
-      // Previously this was two round trips (create + save).
+      // ── Pre-generate _id so household_id can be set in one write ──
       const userId = new mongoose.Types.ObjectId();
 
+      // ── Create the user ──
       const user = await User.create({
         _id: userId,
         household_id: userId,
@@ -252,8 +308,7 @@ router.post(
         profile_color,
       });
 
-      // Register creates a short-lived session by default. The client
-      // can call /login with rememberMe:true for a longer one.
+      // ── Issue a short-lived session token ──
       const token = await createSessionToken(user, req, {
         rememberMe: false,
         browser,
@@ -261,6 +316,7 @@ router.post(
         device_type,
       });
 
+      // ── Write audit log (non-blocking) ──
       LoginLog.create({
         user_id: user._id,
         email,
@@ -281,22 +337,21 @@ router.post(
 
       return res.status(201).json({ token, user: toSafeUser(user) });
     } catch (error) {
+      // ── Map duplicate-key errors to a friendly message with field target ──
       if (error.code === 11000) {
-        // Prefer keyPattern (MongoDB 4.4+). Fall back to parsing the
-        // error message for older versions so the client gets the
-        // right field name.
         const keyField = error.keyPattern ? Object.keys(error.keyPattern)[0] : null;
         if (keyField === 'username') {
-          return res.status(409).json({ error: 'Username already taken' });
+          return res.status(409).json({ error: 'Username already taken', field: 'username' });
         }
         if (keyField === 'email') {
-          return res.status(409).json({ error: 'Email already registered' });
+          return res.status(409).json({ error: 'Email already registered', field: 'email' });
         }
+        // Fallback for older MongoDB versions that don't set keyPattern.
         const msg = error.message || '';
         if (msg.includes('username')) {
-          return res.status(409).json({ error: 'Username already taken' });
+          return res.status(409).json({ error: 'Username already taken', field: 'username' });
         }
-        return res.status(409).json({ error: 'Email already registered' });
+        return res.status(409).json({ error: 'Email already registered', field: 'email' });
       }
       logger.error('Register error:', error);
       return res.status(500).json({ error: 'Server error' });
@@ -304,10 +359,10 @@ router.post(
   }
 );
 
-/* ============================================================
+/* —————————————————————————————————————
  * POST /login
- * ============================================================ */
-
+ * Authenticate credentials and issue a session token.
+ * ————————————————————————————————————— */
 router.post(
   '/login',
   loginLimiter,
@@ -316,6 +371,7 @@ router.post(
     body('password').isString().notEmpty(),
   ],
   async (req, res) => {
+    // ── Validate input ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ error: 'Enter a valid email and password.' });
@@ -324,13 +380,17 @@ router.post(
     const email = normalizeEmail(req.body.email);
     const password = req.body.password;
 
-    const ipAddr = req.ip || req.headers['x-forwarded-for'] || null;
-    const ua = req.headers['user-agent'] || '';
+    // ── Collect request metadata ──
+    const rawIp = req.ip || (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : null);
+    const ipAddr = rawIp ? String(rawIp).slice(0, 100) : null;
+    const ua = String(req.headers['user-agent'] || '').slice(0, 500);
     const { device_type, browser, os } = LoginLog.parseUserAgent(ua);
 
     try {
+      // ── Load the user (password field is select: false by default) ──
       const user = await User.findOne({ email }).select('+password');
 
+      // ── Handle unknown email ──
       if (!user) {
         LoginLog.create({
           email,
@@ -347,10 +407,12 @@ router.post(
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
+      // ── Reject disabled accounts ──
       if (!user.is_active) {
         return res.status(403).json({ error: 'Account is disabled. Contact support.' });
       }
 
+      // ── Handle an active lockout, or clear an expired one ──
       if (user.account_locked) {
         if (user.locked_until && user.locked_until > new Date()) {
           const minutesLeft = Math.ceil((user.locked_until - new Date()) / 60000);
@@ -378,15 +440,16 @@ router.post(
         user.failed_login_count = 0;
       }
 
+      // ── Verify password ──
       const isMatch = await user.comparePassword(password);
 
+      // ── Handle incorrect password ──
       if (!isMatch) {
         const prevFailed = user.failed_login_count || 0;
         await user.incrementFailedLogin();
 
         // Re-read to guarantee the local object reflects persisted
-        // state regardless of how incrementFailedLogin is implemented
-        // (instance-aware vs. updateOne).
+        // state regardless of how incrementFailedLogin is implemented.
         const fresh = await User.findById(user._id)
           .select('failed_login_count account_locked locked_until');
 
@@ -424,8 +487,10 @@ router.post(
         });
       }
 
+      // ── Clear lock state and record the successful login ──
       await user.resetLoginAttempts(ipAddr);
 
+      // ── Issue a session token ──
       const token = await createSessionToken(user, req, {
         rememberMe: req.body.rememberMe !== false,
         browser,
@@ -433,6 +498,7 @@ router.post(
         device_type,
       });
 
+      // ── Write audit log (non-blocking) ──
       LoginLog.create({
         user_id: user._id,
         email,
@@ -457,25 +523,29 @@ router.post(
   }
 );
 
-/* ============================================================
+/* —————————————————————————————————————
  * GET /me
- * ============================================================ */
+ * Return the authenticated user and refresh their cached balance.
+ * ————————————————————————————————————— */
 
-/* Optimization: Cooldown map to avoid running heavy aggregation pipelines on every GET /me */
+// ── Cooldown map: avoids running the heavy balance sync on every read ──
 const lastMeBalanceSyncMap = new Map();
 const ME_SYNC_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 router.get('/me', auth, async (req, res) => {
   try {
-    /* Original blocking unthrottled code:
-    await syncUserBalance(req.user.id);
-    // Issue: Running a full table aggregation and DB write on every GET /me adds high TTFB latency on reads.
-    */
+    // ── Throttled background balance sync ──
+    // Previously ran the full aggregation on every GET /me, adding
+    // high TTFB. Now at most once per hour per user.
     const lastSync = lastMeBalanceSyncMap.get(String(req.user.id));
     if (!lastSync || Date.now() - lastSync > ME_SYNC_COOLDOWN_MS) {
       lastMeBalanceSyncMap.set(String(req.user.id), Date.now());
-      syncUserBalance(req.user.id).catch((err) => logger.warn('Background syncUserBalance failed', { error: err.message }));
+      syncUserBalance(req.user.id).catch((err) =>
+        logger.warn('Background syncUserBalance failed', { error: err.message })
+      );
     }
+
+    // ── Load the current user ──
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found.' });
     return res.json(user);
@@ -485,12 +555,13 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * POST /logout
- * ============================================================ */
-
+ * Invalidate the current session, or all sessions if no jti is present.
+ * ————————————————————————————————————— */
 router.post('/logout', auth, async (req, res) => {
   try {
+    // ── Prefer targeted session invalidation via jti ──
     if (req.user.jti) {
       await Session.updateOne(
         { token_id: req.user.jti, user_id: req.user.id },
@@ -510,10 +581,10 @@ router.post('/logout', auth, async (req, res) => {
   }
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * POST /change-password
- * ============================================================ */
-
+ * Change the current user's password and invalidate other sessions.
+ * ————————————————————————————————————— */
 router.post(
   '/change-password',
   auth,
@@ -523,6 +594,7 @@ router.post(
     passwordPolicy('newPassword'),
   ],
   async (req, res) => {
+    // ── Validate input ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -531,25 +603,28 @@ router.post(
     const { currentPassword, newPassword } = req.body;
 
     try {
+      // ── Load the current user (password field included) ──
       const user = await User.findById(req.user.id).select('+password');
       if (!user) return res.status(404).json({ error: 'User not found.' });
 
+      // ── Verify the current password ──
       if (!(await user.comparePassword(currentPassword))) {
         return res.status(401).json({ error: 'Current password is incorrect.' });
       }
 
+      // ── Reject reuse of the current password ──
       if (await user.comparePassword(newPassword)) {
         return res.status(400).json({
           error: 'New password must differ from current password.',
         });
       }
 
+      // ── Persist the new password and bump session_version ──
       user.password = newPassword;
-      // (session_version || 0) prevents NaN for users whose document
-      // predates the field.
       user.session_version = (user.session_version || 0) + 1;
       await user.save();
 
+      // ── Invalidate all other active sessions ──
       await Session.updateMany(
         { user_id: user._id, is_active: true },
         { $set: { is_active: false } }
@@ -564,16 +639,18 @@ router.post(
   }
 );
 
-/* ============================================================
+/* —————————————————————————————————————
  * GET /login-logs
- * ============================================================ */
-
+ * Paginated login history for the authenticated user.
+ * ————————————————————————————————————— */
 router.get('/login-logs', auth, async (req, res) => {
   try {
+    // ── Compute pagination window ──
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
     const skip = (page - 1) * limit;
 
+    // ── Load logs and total count in parallel ──
     const [logs, total] = await Promise.all([
       LoginLog.find({ user_id: req.user.id })
         .sort({ created_at: -1 })
@@ -591,4 +668,31 @@ router.get('/login-logs', auth, async (req, res) => {
   }
 });
 
+/* —————————————————————————————————————
+ * POST /resend-verification
+ * Resend email verification instructions.
+ * ————————————————————————————————————— */
+router.post('/resend-verification', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required.' });
+    }
+    const user = await User.findOne({ email }).select('_id email email_verified');
+    if (user && !user.email_verified) {
+      // In production, dispatch verification email.
+      auditLogger.info('Resent email verification', { userId: String(user._id), email });
+    }
+    return res.json({ message: 'If the email exists and is unverified, a verification link has been sent.' });
+  } catch (err) {
+    logger.error('Resend verification error:', err);
+    return res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;

@@ -324,7 +324,11 @@ export default function App() {
     sessionStorage.removeItem('mcw-token');
     (rememberMe ? localStorage : sessionStorage).setItem('mcw-token', newToken);
     setToken(newToken);
-    setUser(userData);
+    if (userData) {
+      userRef.current = userData;
+      setUser(userData);
+      setIsInitialAuthLoad(false);
+    }
   };
 
   const logout = useCallback(() => {

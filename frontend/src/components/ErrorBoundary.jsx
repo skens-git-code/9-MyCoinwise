@@ -1,20 +1,47 @@
+/* —————————————————————————————————————
+ * ErrorBoundary Component
+ * React error boundary that catches render errors in its subtree
+ * and shows a fallback UI with retry / reload actions.
+ *
+ * Props:
+ *   - children   : subtree to protect.
+ *   - resetKeys  : optional array; when any entry changes, the
+ *                  boundary auto-resets.
+ *   - onReset    : optional callback fired after reset.
+ *   - fullScreen : when not false, the fallback fills the viewport
+ *                  and uses the base surface background (default true).
+ *
+ * Behavior:
+ *   - Errors are logged via console.error and stored on state.
+ *   - "Try Again" resets internal state and calls onReset.
+ *   - "Reload Application" performs a full page reload.
+ *   - Reset is auto-triggered when resetKeys change (shallow compare).
+ * ————————————————————————————————————— */
+
 import React from 'react';
 
+/* —————————————————————————————————————
+ * Error Boundary Class
+ * ————————————————————————————————————— */
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
+    // ── Boundary state: hasError flag and captured error info ──
     this.state = { hasError: false, errorInfo: null };
   }
 
+  // ── Flip into the error state when a child throws ──
   static getDerivedStateFromError(_error) {
     return { hasError: true };
   }
 
+  // ── Capture and log error details when a child throws ──
   componentDidCatch(error, errorInfo) {
     this.setState({ errorInfo });
     console.error("ErrorBoundary caught an error:", error, errorInfo);
   }
 
+  // ── Auto-reset when any resetKeys entry changes ──
   componentDidUpdate(prevProps) {
     if (this.state.hasError && this.props.resetKeys) {
       const hasChanged = this.props.resetKeys.some(
@@ -26,6 +53,7 @@ class ErrorBoundary extends React.Component {
     }
   }
 
+  // ── Clear error state and notify the parent ──
   handleReset = () => {
     this.setState({ hasError: false, errorInfo: null });
     if (this.props.onReset) {
@@ -34,7 +62,10 @@ class ErrorBoundary extends React.Component {
   };
 
   render() {
+    // ── Fallback UI when an error has been caught ──
     if (this.state.hasError) {
+      // fullScreen defaults to true; callers can opt into a 60vh inline
+      // fallback by passing fullScreen={false}.
       const isFullScreen = this.props.fullScreen !== false;
       return (
         <div style={{ 
@@ -48,10 +79,15 @@ class ErrorBoundary extends React.Component {
           justifyContent: 'center',
           background: isFullScreen ? 'var(--surface-0)' : 'transparent'
         }}>
+          {/* ── Fallback heading ── */}
           <h2 style={{ fontSize: '2rem', marginBottom: '16px', fontWeight: 800 }}>Oops, something went wrong.</h2>
+
+          {/* ── Fallback explanation ── */}
           <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '1.1rem' }}>
             We've encountered an unexpected error catching that render.
           </p>
+
+          {/* ── Recovery actions ── */}
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
             <button 
               type="button"
@@ -90,6 +126,8 @@ class ErrorBoundary extends React.Component {
         </div>
       );
     }
+
+    // ── No error: render the protected subtree ──
     return this.props.children;
   }
 }

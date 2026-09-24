@@ -3,12 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import Login from '../pages/Login';
+import Register from '../pages/Register';
 import { AppContext } from '../contexts/AppContext';
 import { api } from '../services/api';
 
 vi.mock('../services/api', () => ({
   api: {
     login: vi.fn(),
+    register: vi.fn(),
+    checkUsername: vi.fn(),
+    resendVerification: vi.fn(),
     healthCheck: vi.fn(),
   },
   CURRENCIES: { USD: { symbol: '$' } },
@@ -19,13 +23,17 @@ describe('Login Autofill & Initial Attempt Handling', () => {
   const mockLogin = vi.fn();
   const mockContext = {
     login: mockLogin,
-    t: (k) => {
+    t: (k, fallback) => {
       const map = {
         email_address: 'Email Address',
         password: 'Password',
+        confirm_password: 'Confirm Password',
         log_in: 'Log In',
+        create_account_title: 'Create Account',
+        username: 'Username',
+        continue_to_app: 'Continue to app',
       };
-      return map[k] || k;
+      return map[k] || fallback || undefined;
     },
     lang: 'en',
     setLanguage: vi.fn(),
@@ -38,7 +46,10 @@ describe('Login Autofill & Initial Attempt Handling', () => {
     sessionStorage.clear();
   });
 
-  it('triggers health check pre-emptively on mount', () => {
+  it('triggers health check pre-emptively on mount without blocking the submit button', () => {
+    // Return a pending promise to simulate in-flight health check
+    api.healthCheck.mockReturnValueOnce(new Promise(() => {}));
+
     render(
       <BrowserRouter>
         <AppContext.Provider value={mockContext}>
@@ -46,7 +57,12 @@ describe('Login Autofill & Initial Attempt Handling', () => {
         </AppContext.Provider>
       </BrowserRouter>
     );
+
     expect(api.healthCheck).toHaveBeenCalledTimes(1);
+    // Submit button should be enabled immediately, not blocked waiting for healthCheck
+    const submitBtn = screen.getByRole('button', { name: /Log In/i });
+    expect(submitBtn).toBeDefined();
+    expect(submitBtn).not.toBeDisabled();
   });
 
   it('submits successfully on first attempt when password manager autofills DOM inputs directly', async () => {
@@ -87,6 +103,55 @@ describe('Login Autofill & Initial Attempt Handling', () => {
       expect.objectContaining({ email: 'autofilled@example.com' }),
       false
     );
+  });
+
+  it('handles registration flow and preserves success modal until user continues', async () => {
+    api.checkUsername.mockResolvedValue({ available: true });
+    api.register.mockResolvedValueOnce({
+      token: 'reg-token-123',
+      user: { id: 'u2', email: 'newuser@example.com', username: 'newuser' },
+    });
+
+    render(
+      <BrowserRouter>
+        <AppContext.Provider value={mockContext}>
+          <Register />
+        </AppContext.Provider>
+      </BrowserRouter>
+    );
+
+    const usernameInput = screen.getByLabelText(/^Username$/i);
+    const emailInput = screen.getByLabelText(/Email Address/i);
+    const passwordInput = screen.getByLabelText(/^Password$/i);
+    const confirmPasswordInput = screen.getByLabelText(/^Confirm Password$/i);
+    const termsCheckbox = screen.getByRole('checkbox', { name: /Terms & Conditions/i });
+
+    fireEvent.change(usernameInput, { target: { value: 'newuser' } });
+    fireEvent.change(emailInput, { target: { value: 'newuser@example.com' } });
+    fireEvent.change(passwordInput, { target: { value: 'SecurePass123!' } });
+    fireEvent.change(confirmPasswordInput, { target: { value: 'SecurePass123!' } });
+    fireEvent.click(termsCheckbox);
+
+    const submitBtn = screen.getByRole('button', { name: /Create Account/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(api.register).toHaveBeenCalledWith(expect.objectContaining({
+        username: 'newuser',
+        email: 'newuser@example.com',
+        password: 'SecurePass123!',
+      }));
+    });
+
+    // Success modal is visible with Continue button
+    const continueBtn = await screen.findByRole('button', { name: /Continue to app/i });
+    expect(continueBtn).toBeDefined();
+
+    // Clicking continue triggers authentication and navigation
+    fireEvent.click(continueBtn);
+    await waitFor(() => {
+      expect(mockLogin).toHaveBeenCalledWith('reg-token-123', expect.objectContaining({ username: 'newuser' }));
+    });
   });
 });
 

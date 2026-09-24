@@ -163,11 +163,11 @@ ${colors.cyan}${colors.bright}==================================================
 
   // 3. Start Frontend (Vite)
   log('FRONTEND', colors.yellow, 'Starting Vite frontend server...');
-  frontendProc = spawn('npx', ['vite', '--host'], {
+  const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  frontendProc = spawn(npxCmd, ['vite', '--host'], {
     cwd: FRONTEND_DIR,
-    env: process.env,
+    env: { ...process.env, VITE_API_URL: process.env.VITE_API_URL || `http://localhost:${BACKEND_PORT}/api` },
     stdio: ['inherit', 'pipe', 'pipe'],
-    shell: true,
   });
 
   let browserOpened = false;

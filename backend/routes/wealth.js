@@ -1,15 +1,24 @@
-// backend/routes/wealth.js
-/**
- * wealth.js — Portfolio items, net-worth history, and AI insights
+/* —————————————————————————————————————
+ * Wealth Routes
+ * Portfolio items, net-worth history, and AI insights.
  *
  * Endpoints:
- *   GET    /api/wealth/items            Hydrated items (live prices + depreciation)
- *   POST   /api/wealth/items            Create item
- *   PUT    /api/wealth/items/:id        Update item
- *   DELETE /api/wealth/items/:id        Delete item
- *   GET    /api/wealth/history          Net-worth history (last 24 snapshots)
- *   POST   /api/wealth/ai-insights      Gemini AI coach
- *   GET    /api/wealth/ai-status        AI connectivity health check
+ *   GET    /items         Hydrated items (live prices + depreciation)
+ *   POST   /items         Create item
+ *   PUT    /items/:id     Update item
+ *   DELETE /items/:id     Delete item
+ *   GET    /history       Net-worth history (last 24 snapshots)
+ *   POST   /ai-insights   Gemini AI coach
+ *   GET    /ai-status     AI connectivity health check
+ *
+ * Key behaviors:
+ *   - Router-level auth + user-id guard + Cache-Control.
+ *   - Live prices are fetched best-effort; provider failures degrade
+ *     gracefully to base values.
+ *   - AI requests are rate limited and cached for 5 minutes per
+ *     unique (user + metrics + currency) key.
+ *   - Snapshots after POST / PUT / DELETE run fire-and-forget via
+ *     setImmediate so the response returns quickly.
  *
  * Fixes vs. the previous version:
  *   1. API key sent via header instead of query string (was leaking the
@@ -36,8 +45,9 @@
  *   9. Router-level auth middleware (was per-route).
  *  10. Cache-Control on every response.
  *  11. Rate limiter key coerced to string for consistency.
- */
+ * ————————————————————————————————————— */
 
+// ── Load dependencies ──
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
 const axios = require('axios');
@@ -51,19 +61,13 @@ const auth = require('../middleware/auth');
 const { logger } = require('../utils/logger');
 const rateLimit = require('express-rate-limit');
 
-/* ============================================================
- * Rate limiting
- * ============================================================ */
+/* —————————————————————————————————————
+ * Rate Limiting
+ * ————————————————————————————————————— */
 
-/* Original buggy code:
-const aiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  keyGenerator: (req) => String(req.user?.id || req.user?._id || req.ip),
-  message: { error: 'Too many AI requests. Please try again later.' },
-});
-// Issue: express-rate-limit v7+ throws ERR_ERL_KEY_GEN_IPV6 when returning bare req.ip in keyGenerator without keyGeneratorIpFallback: false.
-*/
+// Note: express-rate-limit v7+ throws ERR_ERL_KEY_GEN_IPV6 when a
+// keyGenerator returns a bare req.ip without keyGeneratorIpFallback:false.
+// The fallback here is a constant string instead of req.ip.
 const aiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -72,10 +76,11 @@ const aiLimiter = rateLimit({
   message: { error: 'Too many AI requests. Please try again later.' },
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * Constants
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Asset classes accepted by the model ──
 const VALID_ASSET_CLASSES = [
   'liquid_asset',
   'illiquid_asset',
@@ -91,13 +96,17 @@ const DEPRECIATION_RATES = {
   default: 0.15,
 };
 
+// ── AI response cache timings ──
 const AI_CACHE_TTL_MS = 5 * 60 * 1000;
 const AI_CACHE_CLEANUP_MS = 60 * 1000;
 
-/* ============================================================
+/* —————————————————————————————————————
  * Helpers
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Compute the depreciated value of an asset ──
+// Uses compound depreciation per year of ownership. Falls back to the
+// base value when no acquisition date or no base value is present.
 const calculateDepreciation = (baseValue, acquisitionDate, assetClass = 'illiquid_asset') => {
   if (!acquisitionDate || baseValue == null) return baseValue;
   const date = new Date(acquisitionDate);
@@ -109,12 +118,10 @@ const calculateDepreciation = (baseValue, acquisitionDate, assetClass = 'illiqui
   return parseFloat(depreciated.toFixed(2));
 };
 
-/**
- * Normalise an optional numeric field.
- * Treats undefined, null, and empty string as "not provided".
- * Returns a finite number, or null when the field should be cleared.
- * Throws on invalid non-empty input so the caller can map to a 400.
- */
+// ── Normalize an optional numeric field ──
+// Treats undefined, null, and empty string as "not provided".
+// Returns a finite number, or null when the field should be cleared.
+// Throws on invalid non-empty input so the caller can map to a 400.
 const normalizeOptionalNumber = (value) => {
   if (value === undefined || value === null || value === '') return null;
   const num = typeof value === 'string' ? Number(value.trim()) : value;
@@ -122,6 +129,7 @@ const normalizeOptionalNumber = (value) => {
   return num;
 };
 
+// ── Compose the AI prompt from portfolio metrics ──
 const buildAIPrompt = (metrics, currencySymbol = '$') => {
   const { totalAssets, liquidAssets, physicalAssets, liabilities } = metrics;
   const netWorth = totalAssets - liabilities;
@@ -138,6 +146,7 @@ Debt-to-Asset: ${debtRatio}%.
 Write exactly 2 punchy, actionable financial insights. No markdown. No hedging. Be direct and specific.`;
 };
 
+// ── Currency symbol map ──
 const CURRENCY_SYMBOLS = {
   INR: '₹', EUR: '€', GBP: '£', USD: '$',
   JPY: '¥', CAD: 'CA$', AUD: 'A$', SGD: 'S$',
@@ -145,10 +154,13 @@ const CURRENCY_SYMBOLS = {
   BRL: 'R$', KRW: '₩', THB: '฿',
 };
 
-/* ============================================================
+/* —————————————————————————————————————
  * Gemini API
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Call Gemini and return the first candidate's text ──
+// Retries on 5xx and network errors, but NOT on 4xx (except 429),
+// since a malformed request would fail again.
 const fetchGeminiInsight = async (prompt, retries = 2) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
@@ -176,7 +188,10 @@ const fetchGeminiInsight = async (prompt, retries = 2) => {
   let lastError;
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
+      // ── Send the request ──
       const response = await axios.post(url, payload, options);
+
+      // ── Validate provider response ──
       const candidates = response.data?.candidates;
       if (!Array.isArray(candidates) || candidates.length === 0) {
         throw new Error('No candidates returned from Gemini.');
@@ -206,26 +221,28 @@ const fetchGeminiInsight = async (prompt, retries = 2) => {
   throw lastError || new Error('Failed to fetch AI insight after retries.');
 };
 
-/* ============================================================
- * AI response cache
- * ============================================================ */
+/* —————————————————————————————————————
+ * AI Response Cache
+ * ————————————————————————————————————— */
 
 const aiCache = new Map();
 
 // Periodic cleanup so entries don't accumulate forever. Without this,
 // a long-running server would eventually exhaust memory for users with
-// changing metrics.
+// changing metrics. `.unref()` keeps the timer from holding the
+// process alive.
 setInterval(() => {
   const now = Date.now();
   for (const [key, value] of aiCache.entries()) {
     if (now - value.timestamp >= AI_CACHE_TTL_MS) aiCache.delete(key);
   }
-}, AI_CACHE_CLEANUP_MS).unref(); // `.unref()` so the timer doesn't keep the process alive
+}, AI_CACHE_CLEANUP_MS).unref();
 
-/* ============================================================
- * Router middleware
- * ============================================================ */
+/* —————————————————————————————————————
+ * Router Middleware
+ * ————————————————————————————————————— */
 
+// ── Auth + user-id guard + Cache-Control on every route ──
 router.use(auth);
 
 router.use((req, res, next) => {
@@ -242,12 +259,13 @@ router.use((req, res, next) => {
   next();
 });
 
-/* ============================================================
- * GET /items — Hydrated portfolio items
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /items
+ * Return portfolio items hydrated with live prices and depreciation.
+ * ————————————————————————————————————— */
 router.get('/items', async (req, res) => {
   try {
+    // ── Load the user's items ──
     const items = await WealthItem.find({ user_id: req.userId });
 
     // Build the list of symbols to fetch prices for. Duplicate symbols
@@ -275,6 +293,7 @@ router.get('/items', async (req, res) => {
       }
     }
 
+    // ── Compute current value per item ──
     const hydratedItems = items.map((item) => {
       let currentValue;
 
@@ -308,13 +327,14 @@ router.get('/items', async (req, res) => {
   }
 });
 
-/* ============================================================
- * POST /items — Create
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /items
+ * Create a new portfolio item.
+ * ————————————————————————————————————— */
 router.post(
   '/items',
   [
+    // ── Validate input ──
     body('name').isString().trim().notEmpty().withMessage('Name is required.'),
     body('asset_class').isIn(VALID_ASSET_CLASSES).withMessage('Invalid asset class.'),
     body('base_value').isFloat({ min: 0.01 }).withMessage('Base value must be a positive number.'),
@@ -325,38 +345,19 @@ router.post(
       .withMessage('Interest rate must be between 0 and 100.'),
     body('acquisition_date').optional({ nullable: true }).isISO8601().toDate()
       .withMessage('Invalid date format.'),
-    /* Original POST /items validation without note:
     body('current_value_override').optional({ nullable: true }).isFloat({ min: 0 })
       .withMessage('Override must be a non-negative number.'),
-    body('sold_at').optional({ nullable: true }).isISO8601().toDate()
-      .withMessage('Invalid sale date.'),
-    body('sale_price').optional({ nullable: true }).isFloat({ min: 0 })
-      .withMessage('Sale price must be non-negative.'),
-    body('sale_fees').optional({ nullable: true }).isFloat({ min: 0 })
-      .withMessage('Sale fees must be non-negative.'),
-    // Issue: Omitted 'note' validator, dropping notes entered in UI on wealth items.
-    */
-    body('current_value_override').optional({ nullable: true }).isFloat({ min: 0 })
-      .withMessage('Override must be a non-negative number.'),
+    // Note: an earlier version omitted the `note` validator, dropping
+    // notes entered in the UI on wealth items. Now validated and saved.
     body('note').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 1000 }),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    /* Original POST destructuring without note:
-    const {
-      name,
-      asset_class,
-      base_value,
-      symbol,
-      quantity,
-      interest_rate,
-      acquisition_date,
-      current_value_override,
-    } = req.body;
-    // Issue: note field was not extracted from req.body.
-    */
+    // Note: an earlier version omitted `note` from the destructuring,
+    // so the field never reached the model. Now extracted.
     const {
       name,
       asset_class,
@@ -373,23 +374,19 @@ router.post(
     } = req.body;
 
     try {
+      // ── Instantiate the item ──
+      // normalizeOptionalNumber treats null/''/undefined as null and
+      // returns the number otherwise. The previous ternary coerced
+      // `null` into NaN, failing Mongoose validation for JSON bodies
+      // that explicitly sent null.
       const newItem = new WealthItem({
         user_id: req.userId,
         name: name.trim(),
         asset_class,
         base_value: Number(base_value),
         symbol: symbol ? symbol.trim().toUpperCase() : null,
-        // FIX: normalizeOptionalNumber treats null/''/undefined as null
-        // and returns the number otherwise. The previous ternary coerced
-        // `null` into NaN, failing Mongoose validation for JSON bodies
-        // that explicitly sent null.
         quantity: normalizeOptionalNumber(quantity),
         interest_rate: normalizeOptionalNumber(interest_rate),
-        /* Original instantiation without note:
-        acquisition_date: acquisition_date ? new Date(acquisition_date) : new Date(),
-        current_value_override: normalizeOptionalNumber(current_value_override),
-        // Issue: note was omitted from WealthItem instantiation.
-        */
         acquisition_date: acquisition_date ? new Date(acquisition_date) : new Date(),
         current_value_override: normalizeOptionalNumber(current_value_override),
         sold_at: sold_at ? new Date(sold_at) : null,
@@ -398,10 +395,12 @@ router.post(
         note: note ? String(note).trim().slice(0, 1000) : '',
       });
 
+      // ── Reject invalid sale dates ──
       if (newItem.sold_at && newItem.sold_at < newItem.acquisition_date) {
         return res.status(400).json({ error: 'Sale date must be on or after the acquisition date.', code: 'TAX_INVALID_DATE' });
       }
 
+      // ── Persist ──
       const savedItem = await newItem.save();
 
       // Snapshot is fire-and-forget so the request returns quickly.
@@ -422,13 +421,14 @@ router.post(
   }
 );
 
-/* ============================================================
- * PUT /items/:id — Update
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * PUT /items/:id
+ * Update an item owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.put(
   '/items/:id',
   [
+    // ── Validate path param and optional body fields ──
     param('id').isMongoId().withMessage('Invalid item ID.'),
     body('name').optional().isString().trim().notEmpty(),
     body('asset_class').optional().isIn(VALID_ASSET_CLASSES),
@@ -437,37 +437,22 @@ router.put(
     body('quantity').optional({ nullable: true }).isFloat({ min: 0 }),
     body('interest_rate').optional({ nullable: true }).isFloat({ min: 0, max: 100 }),
     body('acquisition_date').optional({ nullable: true }).isISO8601().toDate(),
-    /* Original PUT validation without note:
     body('current_value_override').optional({ nullable: true }).isFloat({ min: 0 }),
-    body('sold_at').optional({ nullable: true }).isISO8601().toDate(),
-    body('sale_price').optional({ nullable: true }).isFloat({ min: 0 }),
-    body('sale_fees').optional({ nullable: true }).isFloat({ min: 0 }),
-    // Issue: PUT endpoint omitted note validation.
-    */
-    body('current_value_override').optional({ nullable: true }).isFloat({ min: 0 }),
+    // Note: an earlier version omitted `note` validation on PUT.
     body('note').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 1000 }),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Load the item, scoped to the authenticated user ──
       const item = await WealthItem.findOne({ _id: req.params.id, user_id: req.userId });
       if (!item) return res.status(404).json({ error: 'Item not found or access denied.' });
 
-      /* Original PUT destructuring without note:
-      const {
-        name,
-        asset_class,
-        base_value,
-        symbol,
-        quantity,
-        interest_rate,
-        acquisition_date,
-        current_value_override,
-      } = req.body;
-      // Issue: note field was not extracted on PUT.
-      */
+      // Note: an earlier version omitted `note` from the destructuring,
+      // so PUT could never change it. Now extracted.
       const {
         name,
         asset_class,
@@ -483,6 +468,7 @@ router.put(
         note,
       } = req.body;
 
+      // ── Apply updates conditionally ──
       if (name !== undefined) item.name = name.trim();
       if (asset_class !== undefined) item.asset_class = asset_class;
       if (base_value !== undefined) item.base_value = Number(base_value);
@@ -492,27 +478,19 @@ router.put(
       if (acquisition_date !== undefined) {
         item.acquisition_date = acquisition_date ? new Date(acquisition_date) : null;
       }
-      /* Original PUT update logic omitting note:
       if (current_value_override !== undefined) {
         item.current_value_override = normalizeOptionalNumber(current_value_override);
       }
-      if (sold_at !== undefined) item.sold_at = sold_at ? new Date(sold_at) : null;
-      if (sale_price !== undefined) item.sale_price = normalizeOptionalNumber(sale_price);
-      if (sale_fees !== undefined) item.sale_fees = normalizeOptionalNumber(sale_fees) ?? 0;
-      if (item.sold_at && item.acquisition_date && item.sold_at < item.acquisition_date) {
-        return res.status(400).json({ error: 'Sale date must be on or after the acquisition date.', code: 'TAX_INVALID_DATE' });
-      }
-      // Issue: note field was never updated on existing items.
-      */
-      if (current_value_override !== undefined) {
-        item.current_value_override = normalizeOptionalNumber(current_value_override);
-      }
+
+      // Note: an earlier version never updated `note` on existing items.
       if (note !== undefined) {
         item.note = note ? String(note).trim().slice(0, 1000) : '';
       }
 
+      // ── Persist ──
       const updated = await item.save();
 
+      // Snapshot is fire-and-forget.
       setImmediate(() => {
         takeSnapshot(req.userId).catch((e) => {
           logger.warn('[Wealth] Snapshot failed after PUT', {
@@ -530,24 +508,27 @@ router.put(
   }
 );
 
-/* ============================================================
+/* —————————————————————————————————————
  * DELETE /items/:id
- * ============================================================ */
-
+ * Remove an item owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.delete(
   '/items/:id',
   [param('id').isMongoId().withMessage('Invalid item ID.')],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Find and delete in a single atomic operation ──
       const item = await WealthItem.findOneAndDelete({
         _id: req.params.id,
         user_id: req.userId,
       });
       if (!item) return res.status(404).json({ error: 'Item not found or access denied.' });
 
+      // Snapshot is fire-and-forget.
       setImmediate(() => {
         takeSnapshot(req.userId).catch((e) => {
           logger.warn('[Wealth] Snapshot failed after DELETE', {
@@ -565,12 +546,13 @@ router.delete(
   }
 );
 
-/* ============================================================
- * GET /history — Net-worth snapshots
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /history
+ * Return the last 24 net-worth snapshots, optionally date-filtered.
+ * ————————————————————————————————————— */
 router.get('/history', async (req, res) => {
   try {
+    // ── Build the optional date filter ──
     const { start, end } = req.query;
     const filter = { user_id: req.userId };
 
@@ -587,6 +569,7 @@ router.get('/history', async (req, res) => {
       }
     }
 
+    // ── Load and shape snapshots for the frontend ──
     const history = await NetWorthHistory.find(filter)
       .sort({ snapshot_date: 1 })
       .limit(24);
@@ -608,23 +591,27 @@ router.get('/history', async (req, res) => {
   }
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * POST /ai-insights
- * ============================================================ */
-
+ * Generate AI portfolio insights from the provided metrics.
+ * Cached for 5 minutes per unique key.
+ * ————————————————————————————————————— */
 router.post(
   '/ai-insights',
   aiLimiter,
   [
+    // ── Validate optional metrics ──
     body('totalAssets').optional().isFloat({ min: 0 }).toFloat(),
     body('liquidAssets').optional().isFloat({ min: 0 }).toFloat(),
     body('physicalAssets').optional().isFloat({ min: 0 }).toFloat(),
     body('liabilities').optional().isFloat({ min: 0 }).toFloat(),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
+    // ── Short-circuit when the API key is missing ──
     if (!process.env.GEMINI_API_KEY) {
       return res.json({
         insight: 'AI Coach offline: GEMINI_API_KEY not configured on the server.',
@@ -633,9 +620,11 @@ router.post(
     }
 
     try {
+      // ── Resolve the currency symbol ──
       const user = await User.findById(req.userId).select('currency').lean();
       const currencySymbol = CURRENCY_SYMBOLS[user?.currency] || '$';
 
+      // ── Read and normalize metrics ──
       const totalAssets = Number(req.body.totalAssets) || 0;
       const liquidAssets = Number(req.body.liquidAssets) || 0;
       const physicalAssets = Number(req.body.physicalAssets) || 0;
@@ -651,11 +640,13 @@ router.post(
         currencySymbol,
       ].join('_');
 
+      // ── Return a cached insight when fresh ──
       const cached = aiCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < AI_CACHE_TTL_MS) {
         return res.json({ insight: cached.insight, cached: true });
       }
 
+      // ── Call Gemini and cache the result ──
       const prompt = buildAIPrompt(metrics, currencySymbol);
       const insight = await fetchGeminiInsight(prompt);
 
@@ -665,6 +656,7 @@ router.post(
     } catch (error) {
       logger.error('[Wealth] AI Insights Error:', error.message);
 
+      // ── Compose a local fallback ──
       const fallback =
         'Your portfolio is diversified. Consider reviewing your asset allocation to ensure it aligns with your risk tolerance.';
 
@@ -676,25 +668,33 @@ router.post(
   }
 );
 
-/* ============================================================
- * GET /ai-status — Health check
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /ai-status
+ * Report Gemini connectivity health.
+ * ————————————————————————————————————— */
 router.get('/ai-status', async (req, res) => {
+  // ── Short-circuit when the API key is missing ──
   if (!process.env.GEMINI_API_KEY) {
     return res.json({ status: 'unconfigured', message: 'GEMINI_API_KEY missing from .env' });
   }
 
   try {
+    // ── Light-weight ping to Gemini ──
     await fetchGeminiInsight('ping', 1);
     return res.json({
       status: 'online',
       model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     });
   } catch (error) {
+    // ── Map the failure to a status code ──
     const status = /rate limit/i.test(error.message) ? 'quota_exceeded' : 'error';
     return res.json({ status, message: error.message });
   }
 });
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;
