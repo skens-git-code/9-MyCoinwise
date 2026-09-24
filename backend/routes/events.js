@@ -1,13 +1,14 @@
-/**
- * events.js — Calendar event routes
+/* —————————————————————————————————————
+ * Event Routes
+ * CRUD endpoints for calendar events.
  *
  * Endpoints:
- *   GET    /api/events/:userId   List events for a user (sorted by date)
- *   POST   /api/events           Create an event
- *   PUT    /api/events/:id       Update an event
- *   DELETE /api/events/:id       Delete an event
+ *   GET    /:userId   List events for a user (sorted by date)
+ *   POST   /          Create an event
+ *   PUT    /:id       Update an event
+ *   DELETE /:id       Delete an event
  *
- * Response shapes (unchanged from client contract):
+ * Response shapes (kept as-is for the client contract):
  *   GET    → bare array of event documents
  *   POST   → bare event document (201)
  *   PUT    → bare event document
@@ -26,8 +27,9 @@
  *   - Cache-Control middleware applied to every response.
  *   - Consistent logger usage (was console.error).
  *   - TITLE / DESCRIPTION / COLOR lengths bounded.
- */
+ * ————————————————————————————————————— */
 
+// ── Load dependencies ──
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const mongoose = require('mongoose');
@@ -35,32 +37,34 @@ const Event = require('../models/Event');
 const checkOwnership = require('../middleware/ownership');
 const { logger } = require('../utils/logger');
 
+// ── Create router ──
 const router = express.Router();
 
-/* ============================================================
+/* —————————————————————————————————————
  * Constants
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Field length and numeric limits ──
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 1000;
 const MAX_AMOUNT = 999_999_999.99;
 
-// Allowed event types. Adjust to match the model enum if one exists.
+// ── Allowed event types ──
+// Adjust to match the model enum if one exists.
 const ALLOWED_TYPES = new Set([
   'income', 'expense', 'bill', 'reminder', 'payment', 'meeting', 'other',
 ]);
 
+// ── Hex color pattern (3 or 6 digit) ──
 const HEX_COLOR = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/;
 
-/* ============================================================
+/* —————————————————————————————————————
  * Helpers
- * ============================================================ */
+ * ————————————————————————————————————— */
 
-/**
- * Parse a monetary amount from request input.
- * Returns a two-decimal number, or null if invalid.
- * Rejects booleans, arrays, and objects that JS would coerce silently.
- */
+// ── Parse a monetary amount from request input ──
+// Returns a two-decimal number, or null if invalid.
+// Rejects booleans, arrays, and objects that JS would coerce silently.
 const parseMoney = (value, { allowZero = true } = {}) => {
   if (value === '' || value === null || value === undefined) return null;
   if (typeof value !== 'string' && typeof value !== 'number') return null;
@@ -71,24 +75,24 @@ const parseMoney = (value, { allowZero = true } = {}) => {
   return Number(amount.toFixed(2));
 };
 
+// ── Coerce common truthy values into a boolean ──
 const parseBoolean = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
 
-/** Normalize a user-id comparison across ObjectId and string types. */
+// ── Normalize user-id comparison across ObjectId and string types ──
 const sameId = (a, b) => {
   if (a == null || b == null) return false;
   return String(a) === String(b);
 };
 
+// ── Safely convert a value into an ObjectId (null if invalid) ──
 const toObjectId = (value) => {
   if (!value || !mongoose.isValidObjectId(value)) return null;
   return new mongoose.Types.ObjectId(value);
 };
 
-/**
- * Validate an optional `type` field.
- * Returns the normalized type or null if invalid.
- */
+// ── Validate an optional `type` field ──
+// Returns the normalized type, undefined when not provided, or null if invalid.
 const normalizeType = (value) => {
   if (value === undefined) return undefined;
   if (typeof value !== 'string') return null;
@@ -98,10 +102,11 @@ const normalizeType = (value) => {
   return normalized;
 };
 
-/* ============================================================
- * Router-level middleware
- * ============================================================ */
+/* —————————————————————————————————————
+ * Router Middleware
+ * ————————————————————————————————————— */
 
+// ── Require authentication and expose req.userId ──
 router.use((req, res, next) => {
   if (req.method === 'OPTIONS') return next();
   if (!req.user || (!req.user.id && !req.user._id)) {
@@ -111,16 +116,18 @@ router.use((req, res, next) => {
   return next();
 });
 
+// ── Disable caching on every response, including errors ──
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   next();
 });
 
-/* ============================================================
- * GET /:userId — List events for a user
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /:userId
+ * List events for a user, sorted by date ascending.
+ * ————————————————————————————————————— */
 router.get('/:userId', checkOwnership('userId'), async (req, res) => {
+  // ── Validate user ID ──
   if (!mongoose.isValidObjectId(req.params.userId)) {
     return res.status(400).json({ error: 'Invalid user ID.' });
   }
@@ -132,6 +139,7 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   }
 
   try {
+    // ── Load events, chronological order ──
     const events = await Event.find({ user_id: req.params.userId })
       .sort({ date: 1 });
     return res.json(events);
@@ -141,13 +149,14 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   }
 });
 
-/* ============================================================
- * POST / — Create an event
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /
+ * Create a new event for the authenticated user.
+ * ————————————————————————————————————— */
 router.post(
   '/',
   [
+    // ── Validate request body ──
     body('title')
       .isString().trim().notEmpty()
       .isLength({ max: MAX_TITLE_LENGTH }),
@@ -158,6 +167,7 @@ router.post(
     body('amount').optional({ nullable: true }),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -174,10 +184,12 @@ router.post(
       });
     }
 
+    // ── Validate optional color ──
     if (color !== undefined && !HEX_COLOR.test(String(color))) {
       return res.status(400).json({ error: 'Color must be a valid hex color.' });
     }
 
+    // ── Parse optional amount ──
     // Amount is optional. If provided and non-empty, it must parse.
     let parsedAmount;
     if (amount !== undefined && amount !== '' && amount !== null) {
@@ -190,6 +202,7 @@ router.post(
     }
 
     try {
+      // ── Build the event payload ──
       const eventData = {
         user_id: req.userId,
         title: String(title).trim(),
@@ -201,6 +214,7 @@ router.post(
       if (description !== undefined) eventData.description = String(description).trim();
       if (color !== undefined) eventData.color = String(color);
 
+      // ── Persist the new event ──
       const event = await Event.create(eventData);
       return res.status(201).json(event);
     } catch (error) {
@@ -210,26 +224,30 @@ router.post(
   }
 );
 
-/* ============================================================
- * PUT /:id — Update an event
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * PUT /:id
+ * Update an event owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.put('/:id', async (req, res) => {
+  // ── Validate event ID ──
   const eventId = toObjectId(req.params.id);
   if (!eventId) {
     return res.status(400).json({ error: 'Invalid event ID.' });
   }
 
   try {
+    // ── Load the event ──
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ error: 'Event not found.' });
 
+    // ── Verify ownership ──
     if (!sameId(event.user_id, req.userId)) {
       return res.status(403).json({ error: 'Forbidden.' });
     }
 
     const { title, date, type, amount, description, color } = req.body;
 
+    // ── Update title ──
     if (title !== undefined) {
       const trimmedTitle = String(title).trim();
       if (!trimmedTitle || trimmedTitle.length > MAX_TITLE_LENGTH) {
@@ -240,6 +258,7 @@ router.put('/:id', async (req, res) => {
       event.title = trimmedTitle;
     }
 
+    // ── Update date ──
     if (date !== undefined) {
       const parsed = new Date(date);
       if (Number.isNaN(parsed.getTime())) {
@@ -248,6 +267,7 @@ router.put('/:id', async (req, res) => {
       event.date = parsed;
     }
 
+    // ── Update type ──
     if (type !== undefined) {
       const normalizedType = normalizeType(type);
       if (normalizedType === null) {
@@ -258,6 +278,7 @@ router.put('/:id', async (req, res) => {
       event.type = normalizedType;
     }
 
+    // ── Update amount (null/empty clears it) ──
     if (amount !== undefined) {
       if (amount === '' || amount === null) {
         event.amount = null;
@@ -272,6 +293,7 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    // ── Update description ──
     if (description !== undefined) {
       const trimmedDesc = String(description).trim();
       if (trimmedDesc.length > MAX_DESCRIPTION_LENGTH) {
@@ -282,6 +304,7 @@ router.put('/:id', async (req, res) => {
       event.description = trimmedDesc;
     }
 
+    // ── Update color ──
     if (color !== undefined) {
       if (!HEX_COLOR.test(String(color))) {
         return res.status(400).json({ error: 'Color must be a valid hex color.' });
@@ -289,6 +312,7 @@ router.put('/:id', async (req, res) => {
       event.color = String(color);
     }
 
+    // ── Persist changes ──
     await event.save();
     return res.json(event);
   } catch (error) {
@@ -297,24 +321,28 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-/* ============================================================
- * DELETE /:id — Delete an event
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * DELETE /:id
+ * Delete an event owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.delete('/:id', async (req, res) => {
+  // ── Validate event ID ──
   const eventId = toObjectId(req.params.id);
   if (!eventId) {
     return res.status(400).json({ error: 'Invalid event ID.' });
   }
 
   try {
+    // ── Load the event ──
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ error: 'Event not found.' });
 
+    // ── Verify ownership ──
     if (!sameId(event.user_id, req.userId)) {
       return res.status(403).json({ error: 'Forbidden.' });
     }
 
+    // ── Delete the event ──
     await event.deleteOne();
     return res.json({ message: 'Event deleted' });
   } catch (error) {
@@ -323,4 +351,9 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;

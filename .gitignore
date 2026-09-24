@@ -1,25 +1,47 @@
 # Dependencies
 node_modules/
+*/node_modules/
 
 # Environment variables (NEVER commit secrets)
 .env
 .env.local
 .env.*.local
+*.env
 
-# Build output
+# Build output & caches
+dist/
+build/
 frontend/dist/
+.vite/
+frontend/node_modules/.vite/
+stats.html
 
-# Logs
+# Logs & Runtime telemetry
 *.log
+audit.log
+server.log
+backend/audit.log
+backend/server.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# OS files
+# Test coverage & reports
+coverage/
+.nyc_output/
+
+# OS metadata & temporary files
 .DS_Store
+*/.DS_Store
+**/.DS_Store
 Thumbs.db
+*.tmp
+*.bak
+*.swp
+*~
 
-# IDE
+# IDE & Editor caches
 .vscode/
 .idea/
-
-# Misc
-server.log
+*.sublime-project
+*.sublime-workspace

@@ -1,3 +1,22 @@
+/* —————————————————————————————————————
+ * Help Modal Component
+ * Knowledge-base modal with a searchable, collapsible list of FAQ
+ * articles covering budgeting, goals, subscriptions, cashflow,
+ * privacy, and keyboard shortcuts.
+ *
+ * Props:
+ *   - isOpen  : controls visibility.
+ *   - onClose : callback to dismiss the modal.
+ *
+ * Behavior:
+ *   - Search matches against title, category, and content
+ *     (case-insensitive substring).
+ *   - One article can be expanded at a time; clicking again collapses
+ *     it.
+ *   - Renders nothing when `isOpen` is false.
+ *   - Backdrop click closes the modal; the modal stops propagation.
+ * ————————————————————————————————————— */
+
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -5,6 +24,11 @@ import {
   CreditCard, Target, TrendingUp, Key, ChevronRight, MessageSquare
 } from 'lucide-react';
 
+/* —————————————————————————————————————
+ * FAQ Articles
+ * Static knowledge-base entries. Each has an id, category, title,
+ * body content, and a small icon rendered next to the title.
+ * ————————————————————————————————————— */
 const FAQ_ARTICLES = [
   {
     id: 'budget-method',
@@ -50,10 +74,19 @@ const FAQ_ARTICLES = [
   }
 ];
 
+/* —————————————————————————————————————
+ * Component
+ * ————————————————————————————————————— */
 export default function HelpModal({ isOpen, onClose }) {
+  // ── Search query and currently expanded article id ──
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedArticle, setExpandedArticle] = useState(null);
 
+  /* —————————————————————————————————————
+   * Filtered Articles
+   * Empty query returns the full list. Otherwise matches against
+   * title, category, or content (case-insensitive, trimmed).
+   * ————————————————————————————————————— */
   const filteredArticles = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
     if (!q) return FAQ_ARTICLES;
@@ -64,10 +97,12 @@ export default function HelpModal({ isOpen, onClose }) {
     );
   }, [searchTerm]);
 
+  // ── Render nothing when closed ──
   if (!isOpen) return null;
 
   return (
     <AnimatePresence>
+      {/* ── Backdrop: click to close ── */}
       <motion.div
         className="shortcuts-backdrop"
         initial={{ opacity: 0 }}
@@ -75,6 +110,7 @@ export default function HelpModal({ isOpen, onClose }) {
         exit={{ opacity: 0 }}
         onClick={onClose}
       >
+        {/* ── Modal panel: stops propagation so clicks inside stay inside ── */}
         <motion.div
           className="shortcuts-modal glass help-modal-box"
           initial={{ opacity: 0, scale: 0.94, y: 16 }}
@@ -83,7 +119,7 @@ export default function HelpModal({ isOpen, onClose }) {
           onClick={e => e.stopPropagation()}
           style={{ maxWidth: '640px' }}
         >
-          {/* Header */}
+          {/* ── Header: title and close button ── */}
           <div className="shortcuts-header">
             <div className="shortcuts-title-row">
               <HelpCircle size={22} className="shortcuts-icon text-brand" />
@@ -94,7 +130,7 @@ export default function HelpModal({ isOpen, onClose }) {
             </button>
           </div>
 
-          {/* Search Box */}
+          {/* ── Search box ── */}
           <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--glass-border)', background: 'var(--glass-2)' }}>
             <div className="il-search" style={{ width: '100%' }}>
               <Search size={16} />
@@ -105,6 +141,7 @@ export default function HelpModal({ isOpen, onClose }) {
                 autoFocus
                 style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '0.88rem' }}
               />
+              {/* ── Clear button (only shown when there is a query) ── */}
               {searchTerm && (
                 <button onClick={() => setSearchTerm('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
                   <X size={14} />
@@ -113,9 +150,10 @@ export default function HelpModal({ isOpen, onClose }) {
             </div>
           </div>
 
-          {/* Articles List */}
+          {/* ── Article list ── */}
           <div className="shortcuts-body" style={{ maxHeight: '420px', padding: '16px 24px' }}>
             {filteredArticles.length === 0 ? (
+              /* ── Empty state when the search has no matches ── */
               <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
                 <p>No help articles found matching "{searchTerm}".</p>
               </div>
@@ -134,6 +172,7 @@ export default function HelpModal({ isOpen, onClose }) {
                     }}
                     onClick={() => setExpandedArticle(isExpanded ? null : article.id)}
                   >
+                    {/* ── Row: icon + category + title + chevron ── */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span style={{ color: 'var(--brand-primary)' }}>{article.icon}</span>
@@ -146,6 +185,8 @@ export default function HelpModal({ isOpen, onClose }) {
                           </h4>
                         </div>
                       </div>
+
+                      {/* ── Chevron rotates 90° when the article is expanded ── */}
                       <ChevronRight
                         size={16}
                         style={{
@@ -157,6 +198,7 @@ export default function HelpModal({ isOpen, onClose }) {
                       />
                     </div>
 
+                    {/* ── Collapsible content ── */}
                     <AnimatePresence>
                       {isExpanded && (
                         <motion.div

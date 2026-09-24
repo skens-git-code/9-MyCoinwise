@@ -1,9 +1,18 @@
-// =============================================
-// MyCoinwise – AI Engine (Client-side ML-like predictions)
-// Uses statistical models + trend analysis on transaction data
-// =============================================
+/* —————————————————————————————————————
+ * AI Engine (Client-side ML-like Predictions)
+ * Statistical models and trend analysis on transaction data to
+ * surface spending forecasts, anomalies, goal timelines, budget
+ * alerts, and personalized insights.
+ *
+ * Exports:
+ *   - predictNextMonthSpending : Weighted average + linear trend forecast.
+ *   - detectAnomalies          : Per-category sigma-based outlier detection.
+ *   - predictTimeToGoal        : Months/weeks needed based on avg savings.
+ *   - generateAlerts           : Prioritized alert list for the dashboard.
+ *   - getSpendingInsights      : Human-readable insights for the user.
+ * ————————————————————————————————————— */
 
-// Helper for safe YYYY-MM extraction using local calendar components
+// ── Safe YYYY-MM extraction using local calendar components ──
 function safeYearMonth(dateVal) {
   if (!dateVal) return '';
   if (typeof dateVal === 'string' && /^\d{4}-\d{2}/.test(dateVal)) {
@@ -14,10 +23,16 @@ function safeYearMonth(dateVal) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-// ── Spending Prediction ──────────────────────────────────────────────────────
+/* —————————————————————————————————————
+ * Spending Prediction
+ * Forecasts next month's total spending using a weighted average
+ * (recent months weigh more) plus a linear trend slope.
+ * Returns null when there is not enough data.
+ * ————————————————————————————————————— */
 export function predictNextMonthSpending(transactions) {
   if (!Array.isArray(transactions) || transactions.length < 2) return null;
 
+  // ── Aggregate monthly expenses ──
   const monthlyExpenses = {};
   transactions.filter(t => t && t.type === 'expense' && t.is_deleted !== true).forEach(t => {
     const key = safeYearMonth(t.date); // YYYY-MM
@@ -36,7 +51,7 @@ export function predictNextMonthSpending(transactions) {
   const totalWeight = weights.reduce((a, b) => a + b, 0);
   const weightedAvg = values.reduce((sum, v, i) => sum + v * weights[i], 0) / totalWeight;
 
-  // Linear trend
+  // ── Linear trend computation ──
   const n = values.length;
   const xMean = (n - 1) / 2;
   const yMean = values.reduce((a, b) => a + b, 0) / n;
@@ -45,14 +60,20 @@ export function predictNextMonthSpending(transactions) {
     values.reduce((sum, _, x) => sum + Math.pow(x - xMean, 2), 0)
     : 0;
 
+  // ── Combine trend + average, clamp to non-negative ──
   const predicted = weightedAvg + slope;
   return Math.max(0, parseFloat(predicted.toFixed(2)));
 }
 
-// ── Category Spending Anomaly Detection ─────────────────────────────────────
+/* —————————————————————————————————————
+ * Category Spending Anomaly Detection
+ * Flags categories whose latest transaction is more than 1.5σ above
+ * the category's historical mean.
+ * ————————————————————————————————————— */
 export function detectAnomalies(transactions) {
   if (!Array.isArray(transactions) || transactions.length < 5) return [];
 
+  // ── Group expense amounts per category ──
   const catStats = {};
   transactions.filter(t => t && t.type === 'expense' && t.is_deleted !== true).forEach(t => {
     const cat = t.category;
@@ -76,10 +97,15 @@ export function detectAnomalies(transactions) {
     }
   });
 
+  // ── Return the top three anomalies by excess amount ──
   return anomalies.sort((a, b) => b.excess - a.excess).slice(0, 3);
 }
 
-// ── Goal Time Prediction ─────────────────────────────────────────────────────
+/* —————————————————————————————————————
+ * Goal Time Prediction
+ * Estimates the number of months and weeks needed to reach a goal,
+ * based on the user's average monthly savings.
+ * ————————————————————————————————————— */
 export function predictTimeToGoal(goal, transactions) {
   const { target, saved } = goal;
   const remaining = target - saved;
@@ -87,7 +113,7 @@ export function predictTimeToGoal(goal, transactions) {
 
   if (!transactions || transactions.length === 0) return { months: null, weeks: null, achieved: false };
 
-  // Estimate avg monthly savings
+  // ── Aggregate monthly income and expense ──
   const monthlyIncome = {};
   const monthlyExpense = {};
   transactions.forEach(t => {
@@ -102,19 +128,25 @@ export function predictTimeToGoal(goal, transactions) {
   const months = [...new Set([...Object.keys(monthlyIncome), ...Object.keys(monthlyExpense)])];
   if (months.length === 0) return { months: null, weeks: null, achieved: false };
 
+  // ── Average monthly savings across observed months ──
   const avgMonthlySavings = months.reduce((sum, m) => {
     return sum + ((monthlyIncome[m] || 0) - (monthlyExpense[m] || 0));
   }, 0) / months.length;
 
   if (avgMonthlySavings <= 0) return { months: null, weeks: null, achieved: false };
 
+  // ── Convert remaining balance into months / weeks ──
   const monthsNeeded = Math.ceil(remaining / avgMonthlySavings);
   const weeksNeeded = Math.ceil(monthsNeeded * 4.33);
 
   return { months: monthsNeeded, weeks: weeksNeeded, achieved: false, savingsPerMonth: parseFloat(avgMonthlySavings.toFixed(2)) };
 }
 
-// ── Budget Alert Generation ───────────────────────────────────────────────────
+/* —————————————————————————————————————
+ * Budget Alert Generation
+ * Produces a prioritized list of alerts for the dashboard based on
+ * this month's activity, goals, anomalies, and daily tips.
+ * ————————————————————————————————————— */
 export function generateAlerts(transactions, user, goals = []) {
   const safeTxs = Array.isArray(transactions) ? transactions : [];
   const safeGoals = Array.isArray(goals) ? goals : [];
@@ -123,6 +155,7 @@ export function generateAlerts(transactions, user, goals = []) {
   const now = new Date();
   const thisMonth = safeYearMonth(now);
 
+  // ── Filter current-month transactions ──
   const thisMonthExpenses = safeTxs.filter(t => {
     if (!t || t.is_deleted === true) return false;
     const m = safeYearMonth(t.date);
@@ -242,13 +275,19 @@ export function generateAlerts(transactions, user, goals = []) {
     priority: 5,
   });
 
+  // ── Sort by priority (lowest number = highest priority) ──
   return alerts.sort((a, b) => a.priority - b.priority);
 }
 
-// ── Spending Insights ─────────────────────────────────────────────────────────
+/* —————————————————————————————————————
+ * Spending Insights
+ * Builds a small set of human-readable insights about savings rate,
+ * forecasted spending, top category, and category diversity.
+ * ————————————————————————————————————— */
 export function getSpendingInsights(transactions, fmt) {
   if (!Array.isArray(transactions) || transactions.length === 0) return [];
 
+  // ── Aggregate totals ──
   const safeTxs = transactions.filter(t => t && t.is_deleted !== true);
   const income = safeTxs.filter(t => t.type === 'income').reduce((a, c) => a + Number(c.amount), 0);
   const expense = safeTxs.filter(t => t.type === 'expense').reduce((a, c) => a + Number(c.amount), 0);
@@ -266,7 +305,7 @@ export function getSpendingInsights(transactions, fmt) {
 
   const insights = [];
 
-  // Savings rate insight — actionable
+  // ── Savings rate insight — actionable ──
   if (savingsRate >= 30) {
     insights.push({ icon: '🏆', color: '#10b981', text: `Great discipline! You're saving ${savingsRate.toFixed(0)}% of your income. Consider allocating savings toward your goal.` });
   } else if (savingsRate >= 20) {
@@ -277,7 +316,7 @@ export function getSpendingInsights(transactions, fmt) {
     insights.push({ icon: '⚠️', color: '#ef4444', text: `Spending exceeds income! ${topCatName ? `"${topCatName}" is ${topCatPct}% of expenses (${fmt ? fmt(topCatAmount) : topCatAmount.toFixed(2)}). Consider cutting back here first.` : 'Review your expenses immediately.'}` });
   }
 
-  // Predicted next month — with context
+  // ── Predicted next month — with context ──
   const predicted = predictNextMonthSpending(transactions);
   if (predicted !== null) {
     const pctOfIncome = income > 0 ? ((predicted / income) * 100).toFixed(0) : null;
@@ -289,7 +328,7 @@ export function getSpendingInsights(transactions, fmt) {
     });
   }
 
-  // Category diversity
+  // ── Category diversity ──
   const cats = [...new Set(transactions.filter(t => t.type === 'expense').map(t => t.category))];
   if (cats.length >= 5) {
     insights.push({ icon: '📊', color: '#06b6d4', text: `Spending across ${cats.length} categories — diversified habits help you spot outliers faster.` });
@@ -297,4 +336,3 @@ export function getSpendingInsights(transactions, fmt) {
 
   return insights;
 }
-

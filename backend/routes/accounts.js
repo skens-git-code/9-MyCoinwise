@@ -1,13 +1,20 @@
-/**
- * accounts.js — Account management routes
+/* —————————————————————————————————————
+ * Account Routes
+ * CRUD endpoints for user financial accounts.
  *
- * Response shapes (unchanged from client contract):
+ * Response shapes (kept as-is for the client contract):
  *   GET    → bare array
  *   POST   → { account, message }
  *   PUT    → { account, message }
  *   DELETE → { message }
- */
+ *
+ * Access control:
+ *   - Every request must be authenticated (req.user set upstream).
+ *   - Ownership is verified via checkOwnership on GET /:userId and
+ *     by scoping every query to req.userId on the other routes.
+ * ————————————————————————————————————— */
 
+// ── Load dependencies ──
 const express = require('express');
 const mongoose = require('mongoose');
 const Account = require('../models/Account');
@@ -15,15 +22,20 @@ const Transaction = require('../models/Transaction');
 const checkOwnership = require('../middleware/ownership');
 const { logger } = require('../utils/logger');
 
+// ── Create router ──
 const router = express.Router();
 
-/* ── Constants ─────────────────────────────────────────────── */
+/* —————————————————————————————————————
+ * Constants
+ * ————————————————————————————————————— */
 
+// ── Length / range limits ──
 const MAX_BALANCE = 999_999_999.99;
 const MAX_NAME_LENGTH = 100;
 const MAX_TYPE_LENGTH = 50;
 const MAX_ICON_LENGTH = 40;
 
+// ── Allowed values ──
 const ALLOWED_ICONS = new Set(['Wallet', 'CreditCard', 'Landmark', 'Coins']);
 const CANONICAL_TYPES = new Set([
   'bank', 'wallet', 'credit_card', 'investment', 'cash', 'other',
@@ -35,13 +47,18 @@ const CURRENCY_CODES = new Set([
   'CHF', 'CNY', 'MXN', 'BRL', 'KRW', 'THB',
 ]);
 
+// ── Hex color pattern (3 or 6 digit) ──
 const HEX_COLOR = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/;
 
-/* ── Helpers ───────────────────────────────────────────────── */
+/* —————————————————————————————————————
+ * Helpers
+ * ————————————————————————————————————— */
 
+// ── Escape user input before building a regex ──
 const escapeRegExp = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// ── Parse and validate an account balance (returns null if invalid) ──
 const parseAccountBalance = (value) => {
   if (value === '' || value === null || value === undefined) return null;
   if (typeof value !== 'string' && typeof value !== 'number') return null;
@@ -51,9 +68,11 @@ const parseAccountBalance = (value) => {
   return Number(amount.toFixed(2));
 };
 
+// ── Coerce common truthy representations into a boolean ──
 const parseBoolean = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
 
+// ── Validate account fields; returns an error string or null ──
 const validateAccountFields = ({ name, type, currency, color, icon } = {}) => {
   if (name !== undefined) {
     if (typeof name !== 'string') return 'Account name must be a string.';
@@ -89,16 +108,19 @@ const validateAccountFields = ({ name, type, currency, color, icon } = {}) => {
   return null;
 };
 
+// ── Normalize account type to lowercase ──
 const normalizeType = (type) => {
   if (type === undefined) return undefined;
   return type.trim().toLowerCase();
 };
 
+// ── Safely convert a value into an ObjectId (null if invalid) ──
 const toObjectId = (value) => {
   if (!value || !mongoose.isValidObjectId(value)) return null;
   return new mongoose.Types.ObjectId(value);
 };
 
+// ── Convert Mongo errors (e.g. duplicates) into HTTP responses ──
 const handleMongoError = (error, res, fallbackMessage) => {
   if (error?.code === 11000) {
     const field = Object.keys(error.keyPattern || {})[0] || 'field';
@@ -110,8 +132,11 @@ const handleMongoError = (error, res, fallbackMessage) => {
   return res.status(500).json({ error: fallbackMessage });
 };
 
-/* ── Middleware ────────────────────────────────────────────── */
+/* —————————————————————————————————————
+ * Router Middleware
+ * ————————————————————————————————————— */
 
+// ── Require authentication and expose req.userId ──
 router.use((req, res, next) => {
   if (req.method === 'OPTIONS') return next();
   if (!req.user || (!req.user.id && !req.user._id)) {
@@ -121,28 +146,35 @@ router.use((req, res, next) => {
   return next();
 });
 
+// ── Disable caching for all account responses ──
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   next();
 });
 
-/* ── GET /:userId ──────────────────────────────────────────── */
-
+/* —————————————————————————————————————
+ * GET /:userId
+ * List all accounts for a user with transaction counts.
+ * ————————————————————————————————————— */
 router.get('/:userId', checkOwnership('userId'), async (req, res) => {
+  // ── Validate user ID ──
   const userId = toObjectId(req.params.userId);
   if (!userId) return res.status(400).json({ error: 'Invalid user ID.' });
 
+  // ── Ensure the request targets the authenticated user ──
   if (String(req.userId) !== String(req.params.userId)) {
     return res.status(403).json({ error: 'Forbidden.' });
   }
 
   try {
+    // ── Load accounts, active first, newest next ──
     const accounts = await Account.find({ user_id: userId })
       .sort({ is_active: -1, created_at: -1 })
       .lean();
 
     if (accounts.length === 0) return res.json([]);
 
+    // ── Aggregate non-deleted transaction counts per account ──
     const accountIds = accounts.map((a) => a._id);
     const counts = await Transaction.aggregate([
       {
@@ -154,6 +186,7 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
       { $group: { _id: '$account_id', count: { $sum: 1 } } },
     ]);
 
+    // ── Merge counts into account records ──
     const countMap = new Map(counts.map((c) => [String(c._id), c.count]));
     const result = accounts.map((acc) => ({
       ...acc,
@@ -167,14 +200,18 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   }
 });
 
-/* ── POST / ────────────────────────────────────────────────── */
-
+/* —————————————————————————————————————
+ * POST /
+ * Create a new account for the authenticated user.
+ * ————————————————————————————————————— */
 router.post('/', async (req, res) => {
+  // ── Read and validate input ──
   const { name, type, currency, initial_balance, color, icon } = req.body || {};
 
   const validationError = validateAccountFields({ name, type, currency, color, icon });
   if (validationError) return res.status(400).json({ error: validationError });
 
+  // ── Parse opening balance ──
   const openingBalance = parseAccountBalance(initial_balance);
   if (openingBalance === null) {
     return res.status(400).json({
@@ -183,6 +220,7 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    // ── Reject duplicate names (case-insensitive) per user ──
     const normalizedName = name.trim();
     const duplicate = await Account.exists({
       user_id: req.userId,
@@ -192,6 +230,7 @@ router.post('/', async (req, res) => {
       return res.status(409).json({ error: 'An account with this name already exists.' });
     }
 
+    // ── Create the account ──
     const account = await Account.create({
       user_id: req.userId,
       name: normalizedName,
@@ -213,21 +252,27 @@ router.post('/', async (req, res) => {
   }
 });
 
-/* ── PUT /:id ──────────────────────────────────────────────── */
-
+/* —————————————————————————————————————
+ * PUT /:id
+ * Update an existing account owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.put('/:id', async (req, res) => {
+  // ── Validate account ID ──
   const accountId = toObjectId(req.params.id);
   if (!accountId) return res.status(400).json({ error: 'Invalid account ID.' });
 
+  // ── Validate fields that were provided ──
   const validationError = validateAccountFields(req.body);
   if (validationError) return res.status(400).json({ error: validationError });
 
   try {
+    // ── Load the account, scoped to the authenticated user ──
     const account = await Account.findOne({ _id: accountId, user_id: req.userId });
     if (!account) return res.status(404).json({ error: 'Account not found.' });
 
     const { name, type, currency, is_active, color, icon } = req.body;
 
+    // ── Update name (reject duplicates) ──
     if (name !== undefined) {
       const normalizedName = name.trim();
       const duplicate = await Account.exists({
@@ -241,8 +286,10 @@ router.put('/:id', async (req, res) => {
       account.name = normalizedName;
     }
 
+    // ── Update type ──
     if (type !== undefined) account.type = normalizeType(type);
 
+    // ── Update currency (only when there are no linked transactions) ──
     if (currency !== undefined) {
       const newCurrency = String(currency).trim().toUpperCase();
       if (newCurrency !== account.currency) {
@@ -259,12 +306,14 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    // ── Update remaining fields ──
     if (is_active !== undefined) account.is_active = parseBoolean(is_active);
     if (color !== undefined) account.color = color;
     if (icon !== undefined) account.icon = icon;
 
     await account.save();
 
+    // ── Attach fresh transaction count for the response ──
     const [countResult] = await Transaction.aggregate([
       {
         $match: { account_id: account._id, is_deleted: { $ne: true } },
@@ -281,16 +330,21 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-/* ── DELETE /:id ───────────────────────────────────────────── */
-
+/* —————————————————————————————————————
+ * DELETE /:id
+ * Delete an account — only when it has no linked transactions.
+ * ————————————————————————————————————— */
 router.delete('/:id', async (req, res) => {
+  // ── Validate account ID ──
   const accountId = toObjectId(req.params.id);
   if (!accountId) return res.status(400).json({ error: 'Invalid account ID.' });
 
   try {
+    // ── Load the account, scoped to the authenticated user ──
     const account = await Account.findOne({ _id: accountId, user_id: req.userId });
     if (!account) return res.status(404).json({ error: 'Account not found.' });
 
+    // ── Block deletion if non-deleted transactions still reference it ──
     const txCount = await Transaction.countDocuments({
       account_id: account._id,
       is_deleted: { $ne: true },
@@ -309,4 +363,9 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;

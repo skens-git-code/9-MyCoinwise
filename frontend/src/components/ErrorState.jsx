@@ -1,8 +1,31 @@
+/* —————————————————————————————————————
+ * Error State Component
+ * Reusable error card with an icon, title, message, and optional
+ * retry button. Used inline or as a full-screen overlay.
+ *
+ * Props:
+ *   - title      : heading text (default: "Data Synchronization Failed").
+ *   - message    : body text (default: a network-error message).
+ *   - onRetry    : optional callback; when provided, a "Try Again"
+ *                  button is shown.
+ *   - fullScreen : when true, renders as a fixed full-viewport
+ *                  overlay with a blurred backdrop. Default false.
+ *
+ * Behavior:
+ *   - The card uses Framer Motion for a subtle scale/fade entrance.
+ *   - Button hover effects are applied imperatively via mouse
+ *     handlers (background, border, transform, shadow).
+ * ————————————————————————————————————— */
+
 import React from 'react';
 import { motion } from 'framer-motion';
 import { AlertOctagon, RefreshCw } from 'lucide-react';
 
+/* —————————————————————————————————————
+ * Component
+ * ————————————————————————————————————— */
 export default function ErrorState({ title = "Data Synchronization Failed", message = "We couldn't connect to the server. Please check your network and try again.", onRetry, fullScreen = false }) {
+  // ── Outer container styles: full-screen overlay vs. inline block ──
   const containerStyle = fullScreen
     ? {
         position: 'fixed', inset: 0, zIndex: 9999,
@@ -18,6 +41,7 @@ export default function ErrorState({ title = "Data Synchronization Failed", mess
 
   return (
     <div style={containerStyle}>
+      {/* ── Animated error card ── */}
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -36,6 +60,7 @@ export default function ErrorState({ title = "Data Synchronization Failed", mess
           gap: '16px'
         }}
       >
+        {/* ── Icon badge ── */}
         <div style={{
           width: '64px', height: '64px', borderRadius: '20px',
           background: 'rgba(239, 68, 68, 0.1)',
@@ -44,7 +69,8 @@ export default function ErrorState({ title = "Data Synchronization Failed", mess
         }}>
           <AlertOctagon size={32} strokeWidth={1.5} />
         </div>
-        
+
+        {/* ── Title ── */}
         <h3 style={{
           margin: 0, fontSize: '1.25rem', fontWeight: 800,
           fontFamily: 'var(--font-head)', color: 'var(--text-primary)',
@@ -52,14 +78,16 @@ export default function ErrorState({ title = "Data Synchronization Failed", mess
         }}>
           {title}
         </h3>
-        
+
+        {/* ── Message ── */}
         <p style={{
           margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)',
           lineHeight: 1.5, fontWeight: 500
         }}>
           {message}
         </p>
-        
+
+        {/* ── Optional retry button ── */}
         {onRetry && (
           <button 
             onClick={onRetry}
@@ -76,12 +104,14 @@ export default function ErrorState({ title = "Data Synchronization Failed", mess
               cursor: 'pointer',
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             }}
+            /* ── Hover-in: lift, tint border, add glow ── */
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--glass-2)';
               e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
               e.currentTarget.style.transform = 'translateY(-2px)';
               e.currentTarget.style.boxShadow = '0 10px 20px rgba(239, 68, 68, 0.15)';
             }}
+            /* ── Hover-out: restore base styles ── */
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'var(--glass-1)';
               e.currentTarget.style.borderColor = 'var(--glass-border)';

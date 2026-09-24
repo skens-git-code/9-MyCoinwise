@@ -1,3 +1,24 @@
+/* —————————————————————————————————————
+ * Dashboard Page
+ * Primary financial overview with:
+ *   - Hero balance card (starting balance + net of live transactions).
+ *   - Income / expense stat cards with month-over-month deltas.
+ *   - Recent transactions list (grouped by day, capped at 4).
+ *   - Daily spending vs. income area chart.
+ *   - Net worth over time area chart.
+ *   - Monthly savings goal progress card.
+ *   - Category breakdown pie chart.
+ *   - Transaction add/edit form, delete confirmation modal.
+ *
+ * Key behaviors:
+ *   - Respects `prefers-reduced-motion` (chart + counter animations).
+ *   - Filters persist per-user in localStorage.
+ *   - Starting balance is derived from liquid-type accounts.
+ *   - Goal progress is computed from *this month's* net savings (not
+ *     all-time) so a small monthly target isn't falsely inverted.
+ *   - All amounts are FX-converted to the display currency.
+ * ————————————————————————————————————— */
+
 import React, {
   useContext, useState, useMemo, useCallback, useEffect, useRef, useId,
 } from 'react';
@@ -34,29 +55,36 @@ import { getAppDate } from '../utils/dateUtils';
 /* ============================================================
  * Constants
  * ============================================================ */
+
+// ── Pie chart color palette ──
 const PIE_COLORS = ['#059669', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4899'];
 
+// ── Default category suggestions (union with user's actual categories) ──
 const DEFAULT_CATEGORIES = [
   'Food', 'Groceries', 'Transport', 'Shopping', 'Entertainment', 'Health',
   'Education', 'Bills', 'Salary', 'Freelance', 'Gift', 'Rent', 'Travel',
   'Fitness', 'Subscriptions', 'Utilities', 'Insurance', 'Investment', 'Other', 'Allowance',
 ];
 
+// ── Locale map aligned with the rest of the app ──
 const LOCALE_MAP = {
   en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
 };
 const resolveLocale = (lang) =>
   LOCALE_MAP[lang] || 'en-IN';
 
+// ── Dark-theme detection ──
 const DARK_THEMES = new Set(['amoled', 'dark', 'midnight', 'black']);
 const isDarkTheme = (theme) => DARK_THEMES.has(String(theme || '').toLowerCase());
 
+// ── localStorage key prefix for user-scoped filters ──
 const STORAGE_PREFIX = 'budgeta_dash_';
 
 /* ============================================================
  * Utilities
  * ============================================================ */
 
+// ── Zero-pad a number to 2 digits ──
 const pad2 = (n) => String(n).padStart(2, '0');
 
 /** Local YYYY-MM-DD (no UTC shift). */
@@ -108,6 +136,7 @@ const escapeCsvField = (raw) => {
   return needsQuotes ? `"${prefixed}"` : prefixed;
 };
 
+// ── Capitalize the first letter of a category label ──
 const canonicalCategoryName = (value) => {
   const text = String(value || '').trim();
   if (!text) return 'Other';
@@ -285,15 +314,17 @@ const usePrefersReducedMotion = () => {
 };
 
 /* ============================================================
- * Sub-components
+ * Sub-Components
  * ============================================================ */
 
+// ── Shared animation variants for cards ──
 const CARD_VARIANTS = {
   hidden: { opacity: 0, y: 24, scale: 0.97 },
   show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', damping: 20, stiffness: 260 } },
 };
 const STAGGER = { hidden: {}, show: { transition: { staggerChildren: 0.09 } } };
 
+// ── Stat tile with icon, label, value, and optional trend ──
 const StatCard = React.memo(({
   icon: Icon,
   label = 'Unknown',
@@ -321,6 +352,7 @@ const StatCard = React.memo(({
       role="region"
       aria-label={valueText ? `${label}: ${valueText}` : label}
     >
+      {/* ── Header: label + icon badge ── */}
       <div className="stat-header">
         <span className="stat-label">{label}</span>
         {Icon && (
@@ -333,9 +365,13 @@ const StatCard = React.memo(({
           </div>
         )}
       </div>
+
+      {/* ── Value ── */}
       <div className="stat-value" style={{ color: accentColor || 'var(--text-primary)' }}>
         {value}
       </div>
+
+      {/* ── Bottom row: subtitle + trend indicator ── */}
       <div className="stat-bottom-row">
         {subtitle && (
           <span className="stat-subtitle" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -372,6 +408,7 @@ StatCard.propTypes = {
   invertTrendColor: PropTypes.bool,
 };
 
+// ── Skeleton placeholder shown while the dashboard is loading ──
 const DashboardSkeleton = () => (
   <div className="bento-dashboard" aria-label="Loading dashboard data" role="status">
     <div className="bento-header shimmer" style={{ height: 40, borderRadius: 14, width: 200, marginBottom: 24, border: '1px solid var(--glass-border)' }} />
@@ -387,6 +424,7 @@ const DashboardSkeleton = () => (
   </div>
 );
 
+// ── Empty state shown when there are no transactions ──
 const EmptyTransactionState = ({ onAddClick }) => (
   <div className="bento-empty">
     <span className="bento-empty-icon" aria-hidden="true">
@@ -406,6 +444,7 @@ const EmptyTransactionState = ({ onAddClick }) => (
 );
 EmptyTransactionState.propTypes = { onAddClick: PropTypes.func.isRequired };
 
+// ── Delete confirmation modal with focus management + Escape handling ──
 const ConfirmDeleteModal = ({ tx, onCancel, onConfirm, safeFmt, currencySymbol }) => {
   const confirmRef = useRef(null);
   useEffect(() => {
@@ -441,6 +480,7 @@ const ConfirmDeleteModal = ({ tx, onCancel, onConfirm, safeFmt, currencySymbol }
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: 440, width: '90%', borderRadius: 14, padding: '1.25rem', background: 'var(--bg-color)' }}
       >
+        {/* ── Header: warning icon + title + close ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.6rem' }}>
           <AlertTriangle size={20} color="var(--danger-color, #ef4444)" aria-hidden="true" />
           <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Delete transaction</h3>
@@ -453,6 +493,8 @@ const ConfirmDeleteModal = ({ tx, onCancel, onConfirm, safeFmt, currencySymbol }
             <X size={18} />
           </button>
         </div>
+
+        {/* ── Message ── */}
         <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
           Delete this <strong>{tx.type}</strong> of{' '}
           <strong>{formatCurrencyText(tx.amount, safeFmt, currencySymbol)}</strong>?
@@ -460,6 +502,8 @@ const ConfirmDeleteModal = ({ tx, onCancel, onConfirm, safeFmt, currencySymbol }
         <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '0.4rem' }}>
           This action cannot be undone.
         </p>
+
+        {/* ── Actions ── */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
           <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>
           <button
@@ -487,6 +531,7 @@ ConfirmDeleteModal.propTypes = {
  * Main Component
  * ============================================================ */
 export default function Dashboard() {
+  // ── App context (safe default so an empty context doesn't crash) ──
   const contextValue = useContext(AppContext);
   const context = useMemo(() => contextValue || {}, [contextValue]);
 
@@ -512,14 +557,17 @@ export default function Dashboard() {
   const { showToast } = useToast();
   const prefersReducedMotion = usePrefersReducedMotion();
 
+  // ── Derived theme / locale / currency ──
   const locale = useMemo(() => resolveLocale(lang), [lang]);
   const isDark = useMemo(() => isDarkTheme(theme), [theme]);
   const displayCurrency = useMemo(() => resolveCurrency(currency, 'USD'), [currency]);
 
+  // ── FX rates to INR (cache or bundled fallback) ──
   const [fxRatesToInr, setFxRatesToInr] = useState(() => (
     readCachedRatesToInr() || getFallbackRatesToInr()
   ));
 
+  // ── Fetch fresh FX rates on mount; keep bundled rates while offline ──
   useEffect(() => {
     const controller = new AbortController();
     fetchRatesToInr(controller.signal)
@@ -528,6 +576,7 @@ export default function Dashboard() {
     return () => controller.abort();
   }, []);
 
+  // ── Map account id → resolved currency ──
   const accountCurrencies = useMemo(() => {
     const result = new Map();
     for (const account of accounts) {
@@ -538,6 +587,7 @@ export default function Dashboard() {
     return result;
   }, [accounts, displayCurrency]);
 
+  // ── Safe currency formatter with locale/currency fallback ──
   const currencySymbol = currencyInfo?.symbol || '$';
   const safeFmt = useCallback(
     (val) => {
@@ -558,9 +608,12 @@ export default function Dashboard() {
   );
 
   /* ---------------- State ---------------- */
+
+  // ── Per-user storage keys for the filters ──
   const dateFilterKey = useMemo(() => userScopedKey('date_filter', USER_ID), [USER_ID]);
   const categoryFilterKey = useMemo(() => userScopedKey('category_filter', USER_ID), [USER_ID]);
 
+  // ── UI state ──
   const [showForm, setShowForm] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
   const [dateFilter, setDateFilter] = useState(() => safeGetItem(dateFilterKey, 'all'));
@@ -581,10 +634,13 @@ export default function Dashboard() {
   useEffect(() => { safeSetItem(categoryFilterKey, categoryFilter); }, [categoryFilterKey, categoryFilter]);
 
   /* ============================================================
-   * Data processing
+   * Data Processing
    * ============================================================ */
 
   // 1. Parse all transactions
+  //    Filter: not deleted, past or today, valid date and amount,
+  //    FX-converted to display currency. Future-dated rows are
+  //    excluded so projections aren't skewed.
   const allParsed = useMemo(() => {
     if (!Array.isArray(rawTransactions)) return [];
     const deduped = dedupeTransactions(rawTransactions, { excludeFuture: false });
@@ -656,6 +712,8 @@ export default function Dashboard() {
   }, [allParsed, categoryFilter, dateFilter]);
 
   // 3. Metrics
+  //    Unfiltered metrics drive the hero + income + expense cards.
+  //    Filtered metrics drive the charts and category breakdown.
   const unfilteredMetrics = useMemo(() => calculateFinancialMetrics(allParsed), [allParsed]);
   const financialMetrics = useMemo(() => calculateFinancialMetrics(parsedTransactions), [parsedTransactions]);
   const { savingsRate, expenseOfIncome } = financialMetrics;
@@ -674,7 +732,7 @@ export default function Dashboard() {
     [parsedTransactions]
   );
 
-  // 5. Starting balance from accounts
+  // 5. Starting balance from liquid-type accounts (FX-converted)
   const startingBalance = useMemo(() => {
     if (!Array.isArray(accounts) || accounts.length === 0) return 0;
     const liquidTypes = new Set(['bank', 'wallet', 'cash', 'credit_card', 'other']);
@@ -707,6 +765,7 @@ export default function Dashboard() {
     }, 0);
   }, [allParsed]);
 
+  // ── Spendable balance: liquid opening balances + all-time net ──
   const spendableBalance = useMemo(() => {
     const liquidTypes = new Set(['bank', 'wallet', 'cash', 'credit_card', 'other']);
     const liquidOpeningBalance = (Array.isArray(accounts) ? accounts : [])
@@ -725,6 +784,7 @@ export default function Dashboard() {
     return Math.max(0, liquidOpeningBalance + netSavings);
   }, [accounts, displayCurrency, fxRatesToInr, netSavings]);
 
+  // ── Safe-to-spend daily amount (after recurring bills, capped) ──
   const safeToSpend = useMemo(() => {
     if (spendableBalance <= 0) return 0;
     const today = getAppDate();
@@ -745,12 +805,12 @@ export default function Dashboard() {
     return Math.max(0, dailyCapped);
   }, [spendableBalance, subscriptions]);
 
-  // 7. Animated counters
+  // 7. Animated counters (respect timing curves, ignore reduced motion)
   const { value: animatedBalance, isFinished: balanceDone } = useCountUp(rawBalance, 900);
   const { value: animatedIncome } = useCountUp(rawIncome, 800);
   const { value: animatedExpense } = useCountUp(rawExpense, 800);
 
-  // 8. Goal progress
+  // 8. Goal progress (monthly)
   const goalProgress = useMemo(() => {
     if (monthlyGoal <= 0) return 0;
     return Math.max(0, Math.min((monthlyNetSavings / monthlyGoal) * 100, 100));
@@ -797,6 +857,7 @@ export default function Dashboard() {
       }
     }
 
+    // ── Percent change with fallbacks for zero baselines ──
     const pct = (cur, prev) => {
       if (prev === 0 && cur === 0) return { val: '0%', dir: 'neutral' };
       if (prev === 0) return { val: cur > 0 ? 'New' : '—', dir: cur > 0 ? 'up' : 'neutral' };
@@ -845,6 +906,7 @@ export default function Dashboard() {
       return { x, y };
     });
 
+    // ── Build a smooth cubic path from the coords ──
     let d = `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
     for (let i = 0; i < coords.length - 1; i++) {
       const p0 = coords[i];
@@ -874,6 +936,7 @@ export default function Dashboard() {
       entry.categories.set(category, (entry.categories.get(category) || 0) + t.displayAmount);
     }
 
+    // ── Determine the full day range based on the active date filter ──
     const now = getAppDate();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -899,6 +962,7 @@ export default function Dashboard() {
       }
     }
 
+    // ── Enumerate every day in the range ──
     const allDays = [];
     const curr = new Date(start);
     while (curr <= end) {
@@ -908,6 +972,7 @@ export default function Dashboard() {
 
     const daysToUse = allDays.length > 30 ? allDays.slice(-30) : allDays;
 
+    // ── Fill in zero-days so the chart is continuous ──
     const rows = daysToUse.map((day) => {
       const key = toLocalDateKey(day);
       const existing = map.get(key);
@@ -926,6 +991,7 @@ export default function Dashboard() {
       };
     });
 
+    // ── Final labels (with year when the range spans years) ──
     const spansMultipleYears = new Set(rows.map((row) => new Date(row.timestamp).getFullYear())).size > 1;
     return rows.map((row) => ({
       ...row,
@@ -974,6 +1040,7 @@ export default function Dashboard() {
 
     const daysToUse = allDays.length > 30 ? allDays.slice(-30) : allDays;
 
+    // ── Seed the running total with deltas from before the window ──
     let running = startingBalance;
     if (allDays.length > 30) {
       const firstUsedDate = daysToUse[0];
@@ -1004,6 +1071,7 @@ export default function Dashboard() {
     }));
   }, [sortedAscAll, locale, startingBalance]);
 
+  // ── Net worth flatness check (for the "steady" empty state) ──
   const isNetWorthFlat = useMemo(() => {
     try {
       if (netWorthData.length < 2) return true;
@@ -1040,7 +1108,7 @@ export default function Dashboard() {
     return { name, amount, pct: ((amount / totalExp) * 100).toFixed(0) };
   }, [parsedTransactions]);
 
-  // 15. Pie data
+  // 15. Pie data (top 6 categories)
   const pieData = useMemo(() => {
     const catMap = new Map();
     for (const t of parsedTransactions) {
@@ -1075,7 +1143,7 @@ export default function Dashboard() {
     return groups;
   }, [sortedDescFiltered, locale]);
 
-  // 17. Category options
+  // 17. Category options (defaults ∪ actual categories)
   const categoryOptions = useMemo(() => {
     const set = new Set(DEFAULT_CATEGORIES);
     for (const t of allParsed) {
@@ -1084,16 +1152,17 @@ export default function Dashboard() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [allParsed]);
 
-  /* ---------------- Localisation helper ---------------- */
+  /* ---------------- Localization Helper ---------------- */
   const tr = useCallback((key, fallback) => {
     const value = t && typeof t === 'function' ? t(key) : null;
     return value && value !== key ? value : fallback;
   }, [t]);
 
-  /* ---------------- Theme colours ---------------- */
+  /* ---------------- Theme Colors ---------------- */
   const balanceColor = rawBalance >= 0 ? 'var(--balance-accent)' : 'var(--danger)';
   const balanceHex = rawBalance >= 0 ? '#10b981' : '#ef4444';
 
+  // ── Chart tooltip style (dark / light aware) ──
   const tooltipStyle = useMemo(() => ({
     backgroundColor: isDark ? 'rgba(8,8,22,0.98)' : 'rgba(255,255,255,0.97)',
     border: `1px solid ${isDark ? 'rgba(5,150,105,0.3)' : 'rgba(5,150,105,0.2)'}`,
@@ -1103,14 +1172,16 @@ export default function Dashboard() {
     backdropFilter: 'blur(12px)',
   }), [isDark]);
 
+  // ── Stable SVG gradient ids for each chart ──
   const gInId = useStableId('gIn');
   const gExId = useStableId('gEx');
   const gNWId = useStableId('gNW');
 
   /* ============================================================
-   * Event handlers
+   * Event Handlers
    * ============================================================ */
 
+  // ── Export the current transaction set as CSV (BOM-prefixed) ──
   const handleExportCSV = useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
@@ -1148,6 +1219,7 @@ export default function Dashboard() {
     }
   }, [allParsed, parsedTransactions, isExporting, showToast, displayCurrency]);
 
+  // ── Refresh transaction data from the API ──
   const handleRefresh = useCallback(async () => {
     if (isRefreshing) return;
     if (typeof fetchTransactions !== 'function') {
@@ -1168,6 +1240,7 @@ export default function Dashboard() {
     }
   }, [fetchTransactions, isRefreshing, showToast]);
 
+  // ── Share a plain-text summary (Web Share API, else clipboard) ──
   const handleShare = useCallback(async () => {
     const summary =
       `My Budget Dashboard\n` +
@@ -1190,6 +1263,7 @@ export default function Dashboard() {
     }
   }, [rawBalance, netSavings, savingsRate, safeFmt, currencySymbol, showToast]);
 
+  // ── Add a new transaction ──
   const handleAddTransaction = useCallback(async (tx) => {
     if (typeof addTransaction !== 'function') {
       showToast('error', 'Transaction service unavailable');
@@ -1221,11 +1295,13 @@ export default function Dashboard() {
     }
   }, [addTransaction, showToast]);
 
+  // ── Open the form in edit mode for a transaction ──
   const handleEditTransaction = useCallback((tx) => {
     setEditingTx(tx);
     setShowForm(true);
   }, []);
 
+  // ── Update an existing transaction ──
   const handleUpdateTransaction = useCallback(async (tx) => {
     if (typeof updateTransaction !== 'function') {
       showToast('error', 'Transaction service unavailable');
@@ -1267,6 +1343,7 @@ export default function Dashboard() {
     }
   }, [updateTransaction, editingTx, showToast]);
 
+  // ── Delete flow: request → confirm → delete ──
   const requestDeleteTransaction = useCallback((tx) => setPendingDelete(tx), []);
   const cancelDelete = useCallback(() => setPendingDelete(null), []);
 
@@ -1308,7 +1385,7 @@ export default function Dashboard() {
   }, []);
 
   /* ============================================================
-   * Modal initial data (stable)
+   * Modal Initial Data (stable)
    * ============================================================ */
   const todayKey = useMemo(() => toLocalDateKey(getAppDate()), []);
   const initialFormData = useMemo(
@@ -1320,6 +1397,7 @@ export default function Dashboard() {
    * Render
    * ============================================================ */
 
+  // ── Early exit: show the loading skeleton until we have a user ──
   if ((loading && !user) || !user) return <DashboardSkeleton />;
 
   const expenseGreaterThanIncome = rawExpense > rawIncome;
@@ -1327,11 +1405,13 @@ export default function Dashboard() {
   return (
     <ErrorBoundary>
       <div className="bento-dashboard">
+        {/* ===================== Header ===================== */}
         <div className="bento-header">
           <div className="bento-title-wrap">
             <h2 className="bento-page-title">{tr('dashboard', 'Dashboard')}</h2>
           </div>
           <div className="bento-actions">
+            {/* ── Refresh ── */}
             <motion.button
               type="button"
               className="bbtn-icon bbtn-refresh"
@@ -1344,6 +1424,8 @@ export default function Dashboard() {
             >
               <RefreshCw size={16} className={isRefreshing ? 'spinning' : ''} />
             </motion.button>
+
+            {/* ── Share ── */}
             <motion.button
               type="button"
               className="bbtn-icon bbtn-share"
@@ -1355,6 +1437,8 @@ export default function Dashboard() {
             >
               <Share2 size={16} />
             </motion.button>
+
+            {/* ── Export CSV ── */}
             <div className="export-group" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               <motion.button
                 type="button"
@@ -1370,6 +1454,8 @@ export default function Dashboard() {
                 <span className="bbtn-export-label">CSV</span>
               </motion.button>
             </div>
+
+            {/* ── Add transaction ── */}
             <motion.button
               type="button"
               className="bbtn-pri bbtn-full"
@@ -1383,12 +1469,14 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* ===================== Quick stats strip ===================== */}
         {/* Quick stats strip — calm, restrained structure with delta badges */}
         <motion.div
           className="dashboard-quick-stats-strip"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
         >
+          {/* ── Savings rate ── */}
           <div className="dqs-pill">
             <span className="dqs-label">Savings Rate:</span>
             <span className="dqs-val">{savingsRate.toFixed(1)}%</span>
@@ -1397,6 +1485,7 @@ export default function Dashboard() {
             </span>
           </div>
 
+          {/* ── Top expense category ── */}
           <div className="dqs-pill">
             <span className="dqs-label">Top Expense:</span>
             <span className="dqs-val">
@@ -1409,6 +1498,7 @@ export default function Dashboard() {
             )}
           </div>
 
+          {/* ── Daily average spend (30d) ── */}
           <div className="dqs-pill">
             <span className="dqs-label">Daily Avg Spend:</span>
             <span className="dqs-val">
@@ -1420,7 +1510,7 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
-        {/* Filters */}
+        {/* ===================== Filters ===================== */}
         <motion.div
           className="bento-filters"
           initial={{ opacity: 0, y: -10 }}
@@ -1429,6 +1519,7 @@ export default function Dashboard() {
           role="search"
           aria-label="Filter transactions"
         >
+          {/* ── Date filter ── */}
           <select
             className="filter-select"
             value={dateFilter}
@@ -1440,6 +1531,8 @@ export default function Dashboard() {
             <option value="30days">{tr('last_30_days', 'Last 30 Days')}</option>
             <option value="thisMonth">{tr('this_month', 'This Month')}</option>
           </select>
+
+          {/* ── Category filter ── */}
           <select
             className="filter-select"
             value={categoryFilter}
@@ -1449,6 +1542,8 @@ export default function Dashboard() {
             <option value="all">{tr('all_categories', 'All Categories')}</option>
             {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+
+          {/* ── Clear filters (only when a filter is active) ── */}
           {(dateFilter !== 'all' || categoryFilter !== 'all') && (
             <button
               type="button"
@@ -1461,13 +1556,14 @@ export default function Dashboard() {
           )}
         </motion.div>
 
-        {/* Bento grid */}
+        {/* ===================== Bento grid ===================== */}
         <motion.div className="bento-grid" variants={STAGGER} initial="hidden" animate="show">
+          {/* ── Ambient decorative orbs ── */}
           <div className="ambient-orb orb-chart" style={{ top: '15%', right: '5%' }} aria-hidden="true" />
           <div className="ambient-orb orb-goal" style={{ bottom: '10%', left: '10%' }} aria-hidden="true" />
           <div className="ambient-orb orb-ai" style={{ bottom: '2%', right: '2%' }} aria-hidden="true" />
 
-          {/* Hero — Total Balance (starting balance + net of transactions) */}
+          {/* ===================== Hero — Total Balance ===================== */}
           <motion.div
             variants={CARD_VARIANTS}
             className={`bento-tile bento-hero stat-card glass ${balanceDone ? 'numberGlow' : ''}`}
@@ -1522,6 +1618,8 @@ export default function Dashboard() {
                   {formatCurrencyNode(animatedBalance, safeFmt, currencySymbol)}
                 </span>
               </h2>
+
+              {/* ── Sparkline (net trajectory) ── */}
               {sparklineSvgPath && (
                 <div className="bh-sparkline-wrap" title="Net trajectory">
                   <svg className="bh-sparkline-svg" viewBox="0 0 240 48" aria-hidden="true">
@@ -1536,6 +1634,8 @@ export default function Dashboard() {
                   </svg>
                 </div>
               )}
+
+              {/* ── Net position + month-over-month trend ── */}
               <div
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1557,7 +1657,7 @@ export default function Dashboard() {
             </div>
           </motion.div>
 
-          {/* Income card */}
+          {/* ===================== Income card ===================== */}
           <StatCard
             icon={TrendingUp}
             label={tr('total_income', 'Total Income')}
@@ -1571,6 +1671,7 @@ export default function Dashboard() {
             className="bento-income"
           />
 
+          {/* ===================== Expense card ===================== */}
           {/* Expense card — truthful trend direction; sentiment in CSS */}
           <StatCard
             icon={TrendingDown}
@@ -1586,7 +1687,7 @@ export default function Dashboard() {
             invertTrendColor
           />
 
-          {/* Recent transactions */}
+          {/* ===================== Recent transactions ===================== */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-recent glass">
             <div className="bt-header">
               <h3 className="heading-accent">{tr('recent_transactions', 'Recent Transactions')}</h3>
@@ -1603,10 +1704,12 @@ export default function Dashboard() {
                 </button>
               </div>
             </div>
+
             {parsedTransactions.length === 0 ? (
               <EmptyTransactionState onAddClick={() => setShowForm(true)} />
             ) : (
               <>
+                {/* ── Grouped list (header rows + tx rows) ── */}
                 <div className="bt-list" role="list">
                   {groupedTxns.map((item) => {
                     if (item.type === 'header') {
@@ -1626,10 +1729,13 @@ export default function Dashboard() {
                           {tx.note && <span className="bt-note">{tx.note}</span>}
                         </div>
                         <div className="bt-amt-group">
+                          {/* ── Signed amount ── */}
                           <div className={`bt-amt ${tx.type}`}>
                             {tx.type === 'income' ? '+' : '-'}
                             {formatCurrencyNode(tx.displayAmount, safeFmt, currencySymbol)}
                           </div>
+
+                          {/* ── Edit / delete actions ── */}
                           <div className="bt-actions">
                             <button
                               type="button"
@@ -1655,6 +1761,8 @@ export default function Dashboard() {
                     );
                   })}
                 </div>
+
+                {/* ── "View all" footer when more than 4 transactions exist ── */}
                 {sortedDescFiltered.length > 4 && (
                   <div className="bt-footer-action">
                     <NavLink
@@ -1669,11 +1777,12 @@ export default function Dashboard() {
             )}
           </motion.div>
 
-          {/* Spending vs Income chart */}
+          {/* ===================== Spending vs Income chart ===================== */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-chart glass">
             <div className="bt-header">
               <h3 className="heading-accent">{tr('spending_vs_income', 'Spending vs Income')}</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* ── Filter-active hint ── */}
                 {(dateFilter !== 'all' || categoryFilter !== 'all') && (
                   <span
                     className="bt-badge"
@@ -1689,15 +1798,19 @@ export default function Dashboard() {
                 <span className="bt-badge">{tr('daily_trend', 'Daily Trend')}</span>
               </div>
             </div>
+
             <div className="bt-chart-wrap">
               {chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
                   <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
                     <defs>
+                      {/* ── Income area gradient ── */}
                       <linearGradient id={gInId} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.16} />
                         <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                       </linearGradient>
+
+                      {/* ── Expense area gradient ── */}
                       <linearGradient id={gExId} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#ef4444" stopOpacity={0.14} />
                         <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
@@ -1745,6 +1858,8 @@ export default function Dashboard() {
                         </span>
                       )}
                     />
+
+                    {/* ── Income series ── */}
                     <Area
                       isAnimationActive={!prefersReducedMotion && !loading}
                       animationBegin={800}
@@ -1757,6 +1872,8 @@ export default function Dashboard() {
                       dot={chartData.length <= 4 ? { r: 3, strokeWidth: 1.5, fill: '#10b981' } : { r: 0 }}
                       activeDot={{ r: 6, strokeWidth: 0, fill: '#10b981' }}
                     />
+
+                    {/* ── Expense series ── */}
                     <Area
                       isAnimationActive={!prefersReducedMotion && !loading}
                       animationBegin={800}
@@ -1772,6 +1889,7 @@ export default function Dashboard() {
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
+                /* ── Empty state when there is no chart data ── */
                 <div className="bento-empty">
                   <span className="bento-empty-icon" aria-hidden="true">
                     <LineChart size={42} strokeWidth={1.5} opacity={0.5} />
@@ -1781,6 +1899,8 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
+
+            {/* ── Insight summary under the chart ── */}
             {chartData.length > 0 && (
               <div className="bt-chart-summary" role="note">
                 {expenseGreaterThanIncome
@@ -1792,13 +1912,15 @@ export default function Dashboard() {
             )}
           </motion.div>
 
-          {/* Net worth over time */}
+          {/* ===================== Net worth over time ===================== */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-networth glass">
             <div className="bt-header">
               <h3 className="heading-accent">Net Worth Over Time</h3>
               <LineChart size={16} className="bt-icon-muted" aria-hidden="true" />
             </div>
+
             {isNetWorthFlat ? (
+              /* ── Steady state: flat net worth ── */
               <div className="bento-empty" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, height: 'calc(100% - 36px)' }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', fontSize: '0.82rem', fontWeight: 700, color: 'var(--brand-primary)' }}>
                   <TrendingUp size={13} /> Steady at {formatCurrencyText(rawBalance, safeFmt, currencySymbol)}
@@ -1808,6 +1930,7 @@ export default function Dashboard() {
                 </p>
               </div>
             ) : (
+              /* ── Net worth chart ── */
               <div className="bt-chart-wrap" style={{ height: 120 }}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
                   <AreaChart data={netWorthData} margin={{ top: 5, right: 8, left: -5, bottom: 0 }}>
@@ -1856,14 +1979,16 @@ export default function Dashboard() {
             )}
           </motion.div>
 
-          {/* Savings goal */}
+          {/* ===================== Savings goal ===================== */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-goal glass">
             <div className="bt-header">
               <h3 className="heading-accent">{tr('savings_goal', 'Savings Goal')}</h3>
               <Target size={16} className="bt-icon-muted" aria-hidden="true" />
             </div>
+
             {monthlyGoal > 0 ? (
               <>
+                {/* ── Goal HUD: percentage + overflow badge + fraction ── */}
                 <div className="bg-hud">
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                     <span className="bg-pct">
@@ -1890,6 +2015,8 @@ export default function Dashboard() {
                     {formatCurrencyNode(Math.max(0, monthlyNetSavings), safeFmt, currencySymbol)} / {formatCurrencyNode(monthlyGoal, safeFmt, currencySymbol)}
                   </span>
                 </div>
+
+                {/* ── Animated progress bar ── */}
                 <div className="bg-track" style={{ position: 'relative', overflow: 'visible' }}>
                   <motion.div
                     className={`bg-fill ${goalProgress < 15 ? 'breathing' : ''}`}
@@ -1902,6 +2029,8 @@ export default function Dashboard() {
                   >
                     <div className="bg-glow-dot" />
                   </motion.div>
+
+                  {/* ── Overflow glow when the goal is exceeded ── */}
                   {monthlyNetSavings > monthlyGoal && (
                     <div
                       className="bg-overflow-glow"
@@ -1917,6 +2046,8 @@ export default function Dashboard() {
                     />
                   )}
                 </div>
+
+                {/* ── Goal nudge + top-up button ── */}
                 <div className="bg-goal-actions-row">
                   <p className="bg-nudge">
                     {monthlyNetSavings > monthlyGoal
@@ -1936,11 +2067,14 @@ export default function Dashboard() {
                     <Plus size={12} /> Top Up
                   </button>
                 </div>
+
+                {/* ── Safe-to-spend footer ── */}
                 <p className="bg-safe-spend">
                   Safe to spend: <strong>{formatCurrencyText(safeToSpend, safeFmt, currencySymbol)}</strong> / day after recurring bills
                 </p>
               </>
             ) : (
+              /* ── Empty state: no monthly goal set ── */
               <div className="bento-empty">
                 <span className="bento-empty-icon" aria-hidden="true">
                   <Target size={42} strokeWidth={1.5} opacity={0.5} />
@@ -1958,7 +2092,7 @@ export default function Dashboard() {
             )}
           </motion.div>
 
-          {/* Pie chart */}
+          {/* ===================== Pie chart (category breakdown) ===================== */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-pie glass">
             <div className="bt-header">
               <h3 className="heading-accent">{tr('breakdown', 'Breakdown')}</h3>
@@ -2008,6 +2142,7 @@ export default function Dashboard() {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
+                /* ── Empty state when there are no expenses yet ── */
                 <div className="bento-empty">
                   <span className="bento-empty-icon" aria-hidden="true">
                     <Tag size={42} strokeWidth={1.5} opacity={0.5} />
@@ -2020,7 +2155,7 @@ export default function Dashboard() {
           </motion.div>
         </motion.div>
 
-        {/* Transaction form */}
+        {/* ===================== Transaction form ===================== */}
         <TransactionForm
           key={editingTx ? `edit-${editingTx.id || editingTx._id}` : `add-${showForm}`}
           isOpen={showForm}
@@ -2030,7 +2165,7 @@ export default function Dashboard() {
           isLoading={isLoadingAction}
         />
 
-        {/* Delete confirmation */}
+        {/* ===================== Delete confirmation ===================== */}
         <AnimatePresence>
           {pendingDelete && (
             <ConfirmDeleteModal

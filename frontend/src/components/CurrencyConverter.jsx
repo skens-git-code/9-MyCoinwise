@@ -1,3 +1,25 @@
+/* —————————————————————————————————————
+ * Currency Converter Modal
+ * Portal-rendered modal that converts an amount between currencies
+ * using live rates with cached + offline fallbacks.
+ *
+ * Props:
+ *   - isOpen        : controls visibility (defaults to true).
+ *   - onClose       : callback to dismiss the modal.
+ *   - initialFrom   : starting "From" currency (default USD).
+ *   - initialTo     : starting "To" currency (default INR).
+ *   - initialAmount : starting amount as a string (default '1').
+ *
+ * Behavior:
+ *   - Rates are fetched from exchangerate-api and cached in
+ *     localStorage for 30 minutes.
+ *   - On failure, FALLBACK_RATES are used and a warning is shown.
+ *   - Amount input is debounced (300 ms) before recomputing the result.
+ *   - Result is derived during render — no effect needed.
+ *   - Focus is trapped inside the modal while open.
+ *   - Popular INR pairs are shown as one-tap shortcuts.
+ * ————————————————————————————————————— */
+
 // CurrencyConverter.jsx
 import React, { useState, useEffect, useCallback, useMemo, useRef, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -5,12 +27,15 @@ import { createPortal } from 'react-dom';
 import { ArrowLeftRight, RefreshCw, X, TrendingUp, AlertCircle } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 
-// ==================== CONSTANTS ====================
+/* ==================== Constants ==================== */
+
+// ── Map app language codes to BCP-47 locales ──
 const LOCALE_MAP = {
   en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
 };
 const resolveLocale = (lang) => LOCALE_MAP[lang] || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
 
+// ── Supported currencies with symbol, name, and flag ──
 const ALL_CURRENCIES = {
   USD: { symbol: '$', name: 'US Dollar', flag: '🇺🇸' },
   EUR: { symbol: '€', name: 'Euro', flag: '🇪🇺' },
@@ -29,12 +54,14 @@ const ALL_CURRENCIES = {
   THB: { symbol: '฿', name: 'Thai Baht', flag: '🇹🇭' },
 };
 
+// ── Offline fallback rates (INR-based) used when the API fails ──
 const FALLBACK_RATES = {
   INR: 1, USD: 83.5, EUR: 90.2, GBP: 105.8, JPY: 0.56,
   CAD: 61.2, AUD: 53.8, SGD: 61.5, AED: 22.7, CHF: 95.0,
   CNY: 11.5, MXN: 4.9, BRL: 16.4, KRW: 0.063, THB: 2.35,
 };
 
+// ── API and UI tuning constants ──
 const API_CONFIG = {
   BASE_URL: 'https://api.exchangerate-api.com/v4/latest',
   CACHE_DURATION: 30 * 60 * 1000, // 30 minutes
@@ -44,14 +71,18 @@ const API_CONFIG = {
   RETRY_DELAY: 1000,
 };
 
+// ── Decimal places by currency (default: 2) ──
 const DECIMAL_CONFIG = {
   JPY: 0, KRW: 0, // Zero decimal currencies
   DEFAULT: 2,
 };
 
-// ==================== UTILITY FUNCTIONS ====================
+/* ==================== Utility Functions ==================== */
+
+// ── Build the localStorage cache key for a base currency ──
 const getCacheKey = (baseCurrency) => `exchange_rates_${baseCurrency}`;
 
+// ── Clamp and round an amount to 2 decimals ──
 const validateAmount = (value) => {
   const num = parseFloat(value);
   if (isNaN(num) || !isFinite(num)) return 0;
@@ -60,6 +91,7 @@ const validateAmount = (value) => {
   return Math.round(num * 100) / 100; // Round to 2 decimals
 };
 
+// ── Format a number with currency-aware decimals ──
 const formatNumber = (num, currencyCode = null) => {
   if (num === null || isNaN(num)) return '0.00';
 
@@ -74,7 +106,17 @@ const formatNumber = (num, currencyCode = null) => {
   });
 };
 
-// ==================== CUSTOM HOOKS ====================
+/* ==================== Custom Hooks ==================== */
+
+/* —————————————————————————————————————
+ * useExchangeRates
+ * Fetches exchange rates for a base currency with:
+ *   - 30-minute localStorage cache
+ *   - retry with backoff
+ *   - abort of in-flight requests
+ *   - fallback to FALLBACK_RATES on failure
+ *   - periodic refresh matching the cache TTL
+ * ————————————————————————————————————— */
 const useExchangeRates = (baseCurrency = 'INR') => {
   const [rates, setRates] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -83,6 +125,7 @@ const useExchangeRates = (baseCurrency = 'INR') => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const abortControllerRef = useRef(null);
 
+  // ── Retry wrapper with linear backoff ──
   const fetchWithRetry = useCallback(async (url, retries = API_CONFIG.RETRY_ATTEMPTS) => {
     for (let i = 0; i < retries; i++) {
       try {
@@ -96,6 +139,7 @@ const useExchangeRates = (baseCurrency = 'INR') => {
     }
   }, []);
 
+  // ── Fetch (or read from cache) the rates for the base currency ──
   const fetchExchangeRates = useCallback(async () => {
     // Cancel previous request
     if (abortControllerRef.current) {
@@ -151,6 +195,7 @@ const useExchangeRates = (baseCurrency = 'INR') => {
     }
   }, [baseCurrency, fetchWithRetry]);
 
+  // ── Fetch on mount and refresh on the cache interval ──
   useEffect(() => {
     fetchExchangeRates();
     const interval = setInterval(fetchExchangeRates, API_CONFIG.CACHE_DURATION);
@@ -166,6 +211,7 @@ const useExchangeRates = (baseCurrency = 'INR') => {
   return { rates, loading, error, usingFallback, lastUpdated, refetch: fetchExchangeRates };
 };
 
+// ── Debounce a value by the given delay ──
 const useDebounce = (value, delay) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -177,22 +223,22 @@ const useDebounce = (value, delay) => {
   return debouncedValue;
 };
 
-// ==================== MAIN COMPONENT ====================
+/* ==================== Main Component ==================== */
 export default function CurrencyConverter({ isOpen = true, onClose, initialFrom = 'USD', initialTo = 'INR', initialAmount = '1' }) {
   const context = useContext(AppContext);
   const locale = useMemo(() => resolveLocale(context?.lang), [context?.lang]);
 
-  // State
+  // ── Form state ──
   const [amount, setAmount] = useState(initialAmount);
   const [from, setFrom] = useState(initialFrom);
   const [to, setTo] = useState(initialTo);
 
-  // Custom hooks
+  // ── Hooks: rates, debounced amount, modal ref ──
   const { rates, loading, error, usingFallback, lastUpdated, refetch } = useExchangeRates();
   const debouncedAmount = useDebounce(amount, API_CONFIG.DEBOUNCE_DELAY);
   const modalRef = useRef(null);
 
-  // Focus trap
+  // ── Focus trap: focus the first control and cycle Tab inside ──
   useEffect(() => {
     const focusable = modalRef.current?.querySelectorAll(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -218,8 +264,9 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
     }
   }, []); // Re-run only once for focus trap
 
-  // ==================== CORE LOGIC ====================
+  /* ==================== Core Logic ==================== */
   // ✅ FIXED: Derive result directly during render - no effect needed!
+  // ── Convert via the base currency (INR) ──
   const convert = useCallback((amountValue, fromCurrency, toCurrency, exchangeRates) => {
     if (!exchangeRates) return 0;
 
@@ -244,17 +291,21 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
   }, []);
 
   // ✅ Calculate result directly during render (pure computation)
+  // ── Derive the converted result during render ──
   const result = useMemo(() => {
     if (!rates) return null;
     return convert(debouncedAmount, from, to, rates);
   }, [debouncedAmount, from, to, rates, convert]);
 
+  // ── Derive the unit exchange rate (1 from = ? to) ──
   const getExchangeRate = useCallback(() => {
     if (!rates) return null;
     return convert(1, from, to, rates);
   }, [from, to, rates, convert]);
 
-  // ==================== EVENT HANDLERS ====================
+  /* ==================== Event Handlers ==================== */
+
+  // ── Amount input: allow empty, single decimal, cap at MAX_AMOUNT ──
   const handleAmountChange = useCallback((e) => {
     let value = e.target.value;
 
@@ -275,6 +326,7 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
     }
   }, []);
 
+  // ── Swap the From/To currencies and reset to 1 ──
   const handleSwap = useCallback(() => {
     setFrom(to);
     setTo(from);
@@ -282,17 +334,21 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
     setAmount('1');
   }, [from, to]);
 
+  // ── One-tap popular pair selection ──
   const handlePairSelect = useCallback((pairFrom, pairTo) => {
     setFrom(pairFrom);
     setTo(pairTo);
     setAmount('1');
   }, []);
 
+  // ── Manual refresh of rates ──
   const handleRefresh = useCallback(async () => {
     await refetch();
   }, [refetch]);
 
-  // ==================== RENDER HELPERS ====================
+  /* ==================== Render Helpers ==================== */
+
+  // ── Popular INR-based pairs shown as shortcuts ──
   const popularPairs = useMemo(() => [
     { from: 'USD', to: 'INR' }, { from: 'EUR', to: 'INR' },
     { from: 'GBP', to: 'INR' }, { from: 'JPY', to: 'INR' },
@@ -301,6 +357,7 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
 
   const exchangeRate = getExchangeRate();
 
+  // ── Loading state (only when there is no cached data) ──
   if (loading && !rates) {
     return (
       <>
@@ -340,12 +397,13 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
     );
   }
 
-  // ==================== MAIN RENDER ====================
+  /* ==================== Main Render ==================== */
   return (
     <>
       {createPortal(
         <AnimatePresence>
           {isOpen && (
+            // ── Backdrop ──
             <motion.div
               key="cc-main-overlay"
               className="modal-overlay"
@@ -357,6 +415,7 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
               aria-label="Currency converter"
               aria-modal="true"
             >
+              {/* ── Modal card ── */}
               <motion.div
                 key="cc-main-box"
                 ref={modalRef}
@@ -364,218 +423,218 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
                 initial={{ scale: 0.88, y: 24 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.88, y: 24 }}
-        transition={{ type: 'spring', damping: 22, stiffness: 280 }}
-        onClick={e => e.stopPropagation()}
-        style={{ maxWidth: 480, width: '100%', borderTop: '4px solid var(--brand-secondary)' }}
-      >
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.1rem' }}>
-            <ArrowLeftRight size={20} color="var(--brand-secondary)" />
-            Currency Converter
-          </h3>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <motion.button
-              className="icon-btn"
-              onClick={handleRefresh}
-              whileHover={{ rotate: 180, scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              disabled={loading}
-              style={{ opacity: loading ? 0.5 : 1 }}
-              aria-label="Refresh rates"
-            >
-              <RefreshCw size={16} />
-            </motion.button>
-            <motion.button
-              className="icon-btn"
-              onClick={onClose}
-              whileHover={{ rotate: 90, scale: 1.1 }}
-              aria-label="Close"
-            >
-              <X size={18} />
-            </motion.button>
-          </div>
-        </div>
+                transition={{ type: 'spring', damping: 22, stiffness: 280 }}
+                onClick={e => e.stopPropagation()}
+                style={{ maxWidth: 480, width: '100%', borderTop: '4px solid var(--brand-secondary)' }}
+              >
+                {/* ── Header: title, refresh, close ── */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.1rem' }}>
+                    <ArrowLeftRight size={20} color="var(--brand-secondary)" />
+                    Currency Converter
+                  </h3>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <motion.button
+                      className="icon-btn"
+                      onClick={handleRefresh}
+                      whileHover={{ rotate: 180, scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      disabled={loading}
+                      style={{ opacity: loading ? 0.5 : 1 }}
+                      aria-label="Refresh rates"
+                    >
+                      <RefreshCw size={16} />
+                    </motion.button>
+                    <motion.button
+                      className="icon-btn"
+                      onClick={onClose}
+                      whileHover={{ rotate: 90, scale: 1.1 }}
+                      aria-label="Close"
+                    >
+                      <X size={18} />
+                    </motion.button>
+                  </div>
+                </div>
 
-        {/* Error Message */}
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            style={{
-              background: 'rgba(245, 158, 11, 0.1)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              borderRadius: 8,
-              padding: '8px 12px',
-              marginBottom: 16,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: '0.75rem',
-              color: '#f59e0b'
-            }}
-            role="alert"
-          >
-            <AlertCircle size={14} />
-            <span>{error}</span>
-          </motion.div>
-        )}
+                {/* ── Error / offline notice ── */}
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{
+                      background: 'rgba(245, 158, 11, 0.1)',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      borderRadius: 8,
+                      padding: '8px 12px',
+                      marginBottom: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontSize: '0.75rem',
+                      color: '#f59e0b'
+                    }}
+                    role="alert"
+                  >
+                    <AlertCircle size={14} />
+                    <span>{error}</span>
+                  </motion.div>
+                )}
 
-        {/* Amount Input */}
-        <div className="form-field" style={{ marginBottom: 16 }}>
-          <label htmlFor="amount-input">Amount</label>
-          <input
-            id="amount-input"
-            type="text"
-            inputMode="decimal"
-            value={amount}
-            onChange={handleAmountChange}
-            placeholder="Enter amount..."
-            style={{ fontSize: '1.2rem', fontWeight: 700 }}
-            autoFocus
-            aria-label="Amount to convert"
-          />
-        </div>
+                {/* ── Amount input ── */}
+                <div className="form-field" style={{ marginBottom: 16 }}>
+                  <label htmlFor="amount-input">Amount</label>
+                  <input
+                    id="amount-input"
+                    type="text"
+                    inputMode="decimal"
+                    value={amount}
+                    onChange={handleAmountChange}
+                    placeholder="Enter amount..."
+                    style={{ fontSize: '1.2rem', fontWeight: 700 }}
+                    autoFocus
+                    aria-label="Amount to convert"
+                  />
+                </div>
 
-        {/* Currency Selection */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, minWidth: 0 }}>
-          <div className="form-field" style={{ flex: 1, marginBottom: 0, minWidth: 0 }}>
-            <label htmlFor="from-currency">From</label>
-            <select
-              id="from-currency"
-              value={from}
-              onChange={e => setFrom(e.target.value)}
-              aria-label="From currency"
-            >
-              {Object.entries(ALL_CURRENCIES).map(([code, info]) => (
-                <option key={code} value={code}>
-                  {info.flag} {code} – {info.name}
-                </option>
-              ))}
-            </select>
-          </div>
+                {/* ── Currency selectors + swap button ── */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, minWidth: 0 }}>
+                  <div className="form-field" style={{ flex: 1, marginBottom: 0, minWidth: 0 }}>
+                    <label htmlFor="from-currency">From</label>
+                    <select
+                      id="from-currency"
+                      value={from}
+                      onChange={e => setFrom(e.target.value)}
+                      aria-label="From currency"
+                    >
+                      {Object.entries(ALL_CURRENCIES).map(([code, info]) => (
+                        <option key={code} value={code}>
+                          {info.flag} {code} – {info.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-          <motion.button
-            onClick={handleSwap}
-            whileHover={{ rotate: 180, scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              border: '1px solid var(--glass-border)',
-              background: 'var(--glass-2)',
-              cursor: 'pointer',
-              color: 'var(--brand-secondary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              marginTop: 20
-            }}
-            aria-label="Swap currencies"
-          >
-            <RefreshCw size={16} />
-          </motion.button>
+                  <motion.button
+                    onClick={handleSwap}
+                    whileHover={{ rotate: 180, scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: '50%',
+                      border: '1px solid var(--glass-border)',
+                      background: 'var(--glass-2)',
+                      cursor: 'pointer',
+                      color: 'var(--brand-secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      marginTop: 20
+                    }}
+                    aria-label="Swap currencies"
+                  >
+                    <RefreshCw size={16} />
+                  </motion.button>
 
-          <div className="form-field" style={{ flex: 1, marginBottom: 0, minWidth: 0 }}>
-            <label htmlFor="to-currency">To</label>
-            <select
-              id="to-currency"
-              value={to}
-              onChange={e => setTo(e.target.value)}
-              aria-label="To currency"
-            >
-              {Object.entries(ALL_CURRENCIES).map(([code, info]) => (
-                <option key={code} value={code}>
-                  {info.flag} {code} – {info.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+                  <div className="form-field" style={{ flex: 1, marginBottom: 0, minWidth: 0 }}>
+                    <label htmlFor="to-currency">To</label>
+                    <select
+                      id="to-currency"
+                      value={to}
+                      onChange={e => setTo(e.target.value)}
+                      aria-label="To currency"
+                    >
+                      {Object.entries(ALL_CURRENCIES).map(([code, info]) => (
+                        <option key={code} value={code}>
+                          {info.flag} {code} – {info.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-        {/* Result Display */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={result}
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.95, opacity: 0 }}
-            style={{
-              background: 'linear-gradient(135deg, rgba(6,182,212,0.12), rgba(5, 150, 105,0.12))',
-              border: '1px solid rgba(6,182,212,0.3)',
-              borderRadius: 16,
-              padding: '20px 24px',
-              marginBottom: 20,
-              textAlign: 'center'
-            }}
-            role="status"
-            aria-live="polite"
-          >
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 6 }}>
-              {ALL_CURRENCIES[from]?.flag} {formatNumber(validateAmount(amount), null, locale)} {from} equals
-            </p>
-            <p style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--brand-secondary)', fontFamily: "'Space Grotesk'" }}>
-              {result === null ? <span style={{ fontSize: '1.2rem', color: 'var(--danger)' }}>Rates unavailable</span> : `${ALL_CURRENCIES[to]?.symbol}${formatNumber(result, to, locale)}`}
-            </p>
-            {exchangeRate && (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: 6 }}>
-                1 {from} = {ALL_CURRENCIES[to]?.symbol}{formatNumber(exchangeRate, to, locale)} {to}
-              </p>
-            )}
-          </motion.div>
-        </AnimatePresence>
+                {/* ── Converted result (animated on change) ── */}
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={result}
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(6,182,212,0.12), rgba(5, 150, 105,0.12))',
+                      border: '1px solid rgba(6,182,212,0.3)',
+                      borderRadius: 16,
+                      padding: '20px 24px',
+                      marginBottom: 20,
+                      textAlign: 'center'
+                    }}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 6 }}>
+                      {ALL_CURRENCIES[from]?.flag} {formatNumber(validateAmount(amount), null, locale)} {from} equals
+                    </p>
+                    <p style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--brand-secondary)', fontFamily: "'Space Grotesk'" }}>
+                      {result === null ? <span style={{ fontSize: '1.2rem', color: 'var(--danger)' }}>Rates unavailable</span> : `${ALL_CURRENCIES[to]?.symbol}${formatNumber(result, to, locale)}`}
+                    </p>
+                    {exchangeRate && (
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: 6 }}>
+                        1 {from} = {ALL_CURRENCIES[to]?.symbol}{formatNumber(exchangeRate, to, locale)} {to}
+                      </p>
+                    )}
+                  </motion.div>
+                </AnimatePresence>
 
-        {/* Popular Pairs */}
-        <div>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>
-            Popular INR Rates (indicative)
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            {popularPairs.map(pair => {
-              const rate = rates ? convert(1, pair.from, pair.to, rates) : null;
-              const isActive = from === pair.from && to === pair.to;
-              return (
-                <motion.button
-                  key={`${pair.from}-${pair.to}`}
-                  whileHover={{ scale: 1.04 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => handlePairSelect(pair.from, pair.to)}
-                  style={{
-                    background: isActive ? 'rgba(5, 150, 105,0.2)' : 'var(--glass-1)',
-                    border: `1px solid ${isActive ? 'var(--brand-primary)' : 'var(--glass-border)'}`,
-                    borderRadius: 10,
-                    padding: '8px 6px',
-                    cursor: 'pointer',
-                    color: 'var(--text-primary)',
-                    transition: 'all 0.2s ease'
-                  }}
-                  aria-label={`Convert ${pair.from} to ${pair.to}`}
-                >
-                  <p style={{ fontSize: '0.7rem', fontWeight: 700 }}>{ALL_CURRENCIES[pair.from]?.flag} {pair.from}</p>
-                  <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
-                    = {ALL_CURRENCIES[pair.to]?.symbol}{rate ? formatNumber(rate, pair.to, locale) : '...'}
+                {/* ── Popular INR pairs ── */}
+                <div>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+                    Popular INR Rates (indicative)
                   </p>
-                </motion.button>
-              );
-            })}
-          </div>
-        </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                    {popularPairs.map(pair => {
+                      const rate = rates ? convert(1, pair.from, pair.to, rates) : null;
+                      const isActive = from === pair.from && to === pair.to;
+                      return (
+                        <motion.button
+                          key={`${pair.from}-${pair.to}`}
+                          whileHover={{ scale: 1.04 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => handlePairSelect(pair.from, pair.to)}
+                          style={{
+                            background: isActive ? 'rgba(5, 150, 105,0.2)' : 'var(--glass-1)',
+                            border: `1px solid ${isActive ? 'var(--brand-primary)' : 'var(--glass-border)'}`,
+                            borderRadius: 10,
+                            padding: '8px 6px',
+                            cursor: 'pointer',
+                            color: 'var(--text-primary)',
+                            transition: 'all 0.2s ease'
+                          }}
+                          aria-label={`Convert ${pair.from} to ${pair.to}`}
+                        >
+                          <p style={{ fontSize: '0.7rem', fontWeight: 700 }}>{ALL_CURRENCIES[pair.from]?.flag} {pair.from}</p>
+                          <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                            = {ALL_CURRENCIES[pair.to]?.symbol}{rate ? formatNumber(rate, pair.to, locale) : '...'}
+                          </p>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-        {/* Footer */}
-        <p style={{ textAlign: 'center', fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 14 }}>
-          <TrendingUp size={10} style={{ marginRight: 4 }} />
-          {usingFallback ? 'Offline rates' : 'Live rates'} ·
-          Last updated: {lastUpdated ? lastUpdated.toLocaleDateString(locale, {
-            day: 'numeric',
-            month: 'short',
-            hour: '2-digit',
-            minute: '2-digit'
-          }) : '...'}
-        </p>
-      </motion.div>
-    </motion.div>
+                {/* ── Footer: source + last-updated ── */}
+                <p style={{ textAlign: 'center', fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 14 }}>
+                  <TrendingUp size={10} style={{ marginRight: 4 }} />
+                  {usingFallback ? 'Offline rates' : 'Live rates'} ·
+                  Last updated: {lastUpdated ? lastUpdated.toLocaleDateString(locale, {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }) : '...'}
+                </p>
+              </motion.div>
+            </motion.div>
           )}
         </AnimatePresence>,
         document.body

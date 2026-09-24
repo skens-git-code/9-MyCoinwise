@@ -1,3 +1,19 @@
+/* —————————————————————————————————————
+ * Tax Engine Tests
+ * Node-assert based tests for the pure tax calculation functions.
+ *
+ * Coverage:
+ *   - India new regime: brackets, rebate, and boundary cases.
+ *   - US federal regime: brackets and standard deduction.
+ *   - Capital gains classification (short-term vs. long-term) and tax.
+ *   - Annual estimate orchestration: deductions, payments, balance due.
+ *   - Invalid inputs return null.
+ *
+ * Run:
+ *   node <path-to>/taxEngine.test.js
+ * ————————————————————————————————————— */
+
+// ── Load dependencies ──
 const assert = require('assert');
 const {
   calculateIncomeTax,
@@ -7,6 +23,9 @@ const {
 const indiaRules = require('../services/taxRules/india-2024');
 const usRules = require('../services/taxRules/us-federal-2024');
 
+// ── Minimal profile factory for tests ──
+// Builds a profile with empty deductions and credits so results are
+// driven purely by the rule set and the inputs under test.
 const profile = (jurisdiction, fiscal_year, tax_regime) => ({
   jurisdiction,
   fiscal_year,
@@ -16,17 +35,31 @@ const profile = (jurisdiction, fiscal_year, tax_regime) => ({
   tax_credits: [],
 });
 
+// ── Shared fixtures ──
 const indiaNew = profile('IN', 2024, 'new');
 const indiaRule = indiaRules.find((rule) => rule.regime === 'new');
 
+/* —————————————————————————————————————
+ * India New Regime — Income Tax
+ * ————————————————————————————————————— */
+
+// ── 1,000,000 gross → 925,000 taxable (75k standard deduction) ──
 const indiaMillion = calculateIncomeTax({ grossIncome: 1000000, ruleSet: indiaRule, profile: indiaNew });
 assert.strictEqual(indiaMillion.taxableIncome, 925000);
 assert.strictEqual(indiaMillion.total, 44200);
+
+// ── Rebate zeroes out liability at or below the 700k threshold ──
 assert.strictEqual(calculateIncomeTax({ grossIncome: 300000, ruleSet: indiaRule, profile: indiaNew }).total, 0);
 assert.strictEqual(calculateIncomeTax({ grossIncome: 300001, ruleSet: indiaRule, profile: indiaNew }).taxBeforeCredits, 0);
 assert.strictEqual(calculateIncomeTax({ grossIncome: 700000, ruleSet: indiaRule, profile: indiaNew }).total, 0);
+
+// ── Invalid inputs return null ──
 assert.strictEqual(calculateIncomeTax({ grossIncome: -1, ruleSet: indiaRule, profile: indiaNew }), null);
 assert.strictEqual(calculateIncomeTax({ grossIncome: 100, ruleSet: usRules[0], profile: indiaNew }), null);
+
+/* —————————————————————————————————————
+ * US Federal Regime — Income Tax
+ * ————————————————————————————————————— */
 
 const usResult = calculateIncomeTax({
   grossIncome: 75000,
@@ -35,6 +68,12 @@ const usResult = calculateIncomeTax({
 });
 assert.strictEqual(usResult.taxableIncome, 60400);
 assert.strictEqual(usResult.total, 8341);
+
+/* —————————————————————————————————————
+ * Capital Gains — Classification and Tax
+ * Short-term (held < 365 days) uses the short-term rate; long-term
+ * uses the long-term rate.
+ * ————————————————————————————————————— */
 
 const gains = calculateCapitalGains({
   ruleSet: indiaRule,
@@ -49,6 +88,12 @@ assert.strictEqual(gains.total, 5000);
 assert.strictEqual(gains.holdings[0].tax, 3000);
 assert.strictEqual(gains.holdings[1].tax, 2000);
 
+/* —————————————————————————————————————
+ * Annual Estimate — Orchestrator
+ * Combines income tax, tagged deductions, and payments into a single
+ * estimate. Verifies the resulting balance due.
+ * ————————————————————————————————————— */
+
 const annual = estimateAnnualTax({
   profile: indiaNew,
   ruleSet: indiaRule,
@@ -61,4 +106,5 @@ assert.strictEqual(annual.hasTaxableActivity, true);
 assert.strictEqual(annual.paymentsMade, 1000);
 assert.strictEqual(annual.balanceDue, 42680);
 
+// ── All assertions passed ──
 console.log('taxEngine tests passed');

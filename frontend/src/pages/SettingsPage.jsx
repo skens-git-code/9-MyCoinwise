@@ -1,4 +1,26 @@
 // SettingsPage.jsx — COMPLETE, CORRECTED, ENHANCED
+
+/* —————————————————————————————————————
+ * Settings Page
+ * Full settings hub with:
+ *   - Tabs: Profile, Preferences, Language, Appearance, Notifications,
+ *     Security, Users, Data & Security, Advanced.
+ *   - Lazy-loaded emoji picker for avatar selection.
+ *   - Re-authentication modal gating destructive actions.
+ *   - Session management with per-device revoke.
+ *   - Backup & restore (JSON export + import, weekly auto-backup).
+ *   - Master save bar with dirty tracking + undo.
+ *   - Idle session timeout driven by user preferences.
+ *   - Compact mode + animation toggles applied to <body>.
+ *
+ * Key behaviors:
+ *   - Settings form state lives in a reducer; dirty flag drives the
+ *     save bar visibility.
+ *   - Avatar uploads are downscaled to 360 px before persisting.
+ *   - Only the last 4 characters of any tax identifier are accepted.
+ *   - `useFocusTrap` gives modals full keyboard accessibility.
+ * ————————————————————————————————————— */
+
 import React, {
   useState, useContext, useEffect, useRef, useCallback, useMemo, useReducer,
   lazy, Suspense,
@@ -26,8 +48,11 @@ const EmojiPicker = lazy(() => import('emoji-picker-react'));
 /* ============================================================
  * Constants
  * ============================================================ */
+
+// ── Valid URL tab ids (used to resolve ?tab= param and defaults) ──
 const TAB_IDS = ['profile', 'preferences', 'language', 'appearance', 'notifications', 'security', 'users', 'data', 'advanced'];
 
+// ── Default notification preferences ──
 const DEFAULT_NOTIFICATION_PREFS = {
   emailReports: true,
   budgetAlerts: true,
@@ -40,6 +65,7 @@ const DEFAULT_NOTIFICATION_PREFS = {
   quietHoursEnd: '08:00',
 };
 
+// ── Default advanced preferences ──
 const DEFAULT_ADVANCED_PREFS = {
   dateFormat: 'MM/DD/YYYY',
   timeFormat: '12h',
@@ -52,6 +78,7 @@ const DEFAULT_ADVANCED_PREFS = {
   sessionTimeoutMinutes: 30,
 };
 
+// ── Destructive actions that require re-authentication ──
 const DESTRUCTIVE_ACTIONS = {
   PASSWORD_CHANGE: 'password_change',
   EMAIL_CHANGE: 'email_change',
@@ -62,8 +89,11 @@ const DESTRUCTIVE_ACTIONS = {
 /* ============================================================
  * Helpers
  * ============================================================ */
+
+// ── Simple email format check ──
 const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 
+// ── Validate the monthly goal (nullable, non-negative) ──
 const validateGoal = (goal) => {
   if (!goal && goal !== 0) return { isValid: true, value: null };
   const num = Number(goal);
@@ -73,6 +103,7 @@ const validateGoal = (goal) => {
 /** Safe trim — no destructive character stripping (React escapes output). */
 const sanitizeInput = (input) => String(input || '').trim();
 
+// ── Split a user's combined name into first / last parts ──
 const getNameParts = (user) => {
   const username = String(user?.username || user?.name || '').trim();
   const surname = String(user?.last_name || user?.surname || '').trim();
@@ -87,6 +118,7 @@ const getNameParts = (user) => {
   };
 };
 
+// ── Build the reducer's initial/reset payload from the user ──
 const buildResetPayload = (user) => ({
   firstName: getNameParts(user).firstName,
   lastName: getNameParts(user).lastName,
@@ -99,6 +131,7 @@ const buildResetPayload = (user) => ({
   advancedPrefs: user?.advanced_prefs || { ...DEFAULT_ADVANCED_PREFS },
 });
 
+// ── True when the avatar value looks like a usable image source ──
 const isUsableAvatarSource = (value) => {
   const avatar = String(value || '').trim();
   return (
@@ -110,6 +143,7 @@ const isUsableAvatarSource = (value) => {
   );
 };
 
+// ── Resolve the user's avatar into a render-safe { type, value } ──
 const getSafeUserAvatar = (user) => {
   const avatar = String(user?.profile_avatar || '').trim();
   if (isUsableAvatarSource(avatar)) return { type: 'image', value: avatar };
@@ -120,6 +154,7 @@ const getSafeUserAvatar = (user) => {
   return { type: 'text', value: name.charAt(0).toUpperCase() || 'U' };
 };
 
+// ── Compose a display name (avoids duplicating a surname) ──
 const getUserDisplayName = (user) => {
   const username = String(user?.username || '').trim().replace(/\s+/g, ' ');
   const surname = String(user?.last_name || '').trim().replace(/\s+/g, ' ');
@@ -145,6 +180,7 @@ function useFocusTrap(ref, isActive, onEscape) {
     const node = ref.current;
     const previousActive = document.activeElement;
 
+    // ── Query visible focusable elements inside the trap ──
     const getFocusable = () =>
       Array.from(
         node.querySelectorAll(
@@ -152,9 +188,11 @@ function useFocusTrap(ref, isActive, onEscape) {
         )
       ).filter((el) => el.offsetParent !== null);
 
+    // ── Initial focus ──
     const focusables = getFocusable();
     if (focusables.length > 0) focusables[0].focus();
 
+    // ── Escape closes; Tab cycles inside the trap ──
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -192,6 +230,8 @@ function useFocusTrap(ref, isActive, onEscape) {
 /* ============================================================
  * Password strength
  * ============================================================ */
+
+// ── Score a password on a 0–5 scale ──
 const getPasswordStrength = (password) => {
   const pw = String(password || '');
   if (!pw) return 0;
@@ -204,9 +244,11 @@ const getPasswordStrength = (password) => {
   return Math.min(score, 5);
 };
 
+// ── Labels and colors per strength level ──
 const STRENGTH_LABELS = ['Very weak', 'Weak', 'Fair', 'Good', 'Strong', 'Very strong'];
 const STRENGTH_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#10b981'];
 
+// ── Segmented strength bar rendered under a password field ──
 const PasswordStrengthIndicator = ({ password }) => {
   const score = getPasswordStrength(password);
   if (!password) return null;
@@ -246,6 +288,8 @@ const PasswordStrengthIndicator = ({ password }) => {
 /* ============================================================
  * Re-authentication modal
  * ============================================================ */
+
+// ── Modal content: asks for the current password before a sensitive action ──
 const ReAuthModalContent = ({ onClose, onConfirmed, actionLabel, isLoading }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -253,6 +297,7 @@ const ReAuthModalContent = ({ onClose, onConfirmed, actionLabel, isLoading }) =>
 
   useFocusTrap(modalRef, true, onClose);
 
+  // ── Submit the password and resolve based on the parent's result ──
   const handleConfirm = async () => {
     if (!password) {
       setError('Password is required.');
@@ -282,6 +327,7 @@ const ReAuthModalContent = ({ onClose, onConfirmed, actionLabel, isLoading }) =>
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: 440, width: '90%', padding: 24, borderRadius: 16, background: 'var(--bg-color)' }}
       >
+        {/* ── Header ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <Lock size={22} aria-hidden="true" style={{ color: 'var(--warning, #f59e0b)' }} />
           <h3 id="reauth-title" style={{ margin: 0, fontSize: '1.15rem' }}>Confirm your password</h3>
@@ -289,6 +335,8 @@ const ReAuthModalContent = ({ onClose, onConfirmed, actionLabel, isLoading }) =>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '0 0 16px', lineHeight: 1.55 }}>
           For your security, please re-enter your password to {actionLabel || 'continue'}.
         </p>
+
+        {/* ── Password field ── */}
         <div className="form-field">
           <label htmlFor="reauth_password">Password</label>
           <input
@@ -309,6 +357,8 @@ const ReAuthModalContent = ({ onClose, onConfirmed, actionLabel, isLoading }) =>
             </p>
           )}
         </div>
+
+        {/* ── Actions ── */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
           <button type="button" className="btn-secondary" onClick={onClose} disabled={isLoading}>
             Cancel
@@ -327,6 +377,7 @@ const ReAuthModalContent = ({ onClose, onConfirmed, actionLabel, isLoading }) =>
   );
 };
 
+// ── Wrapper that mounts the re-auth content only when open ──
 const ReAuthModal = ({ isOpen, onClose, onConfirmed, actionLabel, isLoading }) => {
   if (!isOpen) return null;
   return (
@@ -343,6 +394,7 @@ const ReAuthModal = ({ isOpen, onClose, onConfirmed, actionLabel, isLoading }) =
  * Backup & Restore
  * ============================================================ */
 const BackupRestore = ({ userId, showMessage }) => {
+  // ── Local state: export/restore in-flight + auto-backup toggle ──
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [autoBackup, setAutoBackup] = useState(false);
@@ -352,6 +404,7 @@ const BackupRestore = ({ userId, showMessage }) => {
   const autoBackupIntervalRef = useRef(null);
   const isMountedRef = useRef(true);
 
+  // ── Load auto-backup preference; cleanup interval on unmount ──
   useEffect(() => {
     isMountedRef.current = true;
     try {
@@ -367,6 +420,7 @@ const BackupRestore = ({ userId, showMessage }) => {
     };
   }, []);
 
+  // ── Download a full JSON backup as a file ──
   const handleExportBackup = useCallback(async () => {
     if (!userId) {
       showMessage('error', 'Session expired. Please log in again.');
@@ -395,6 +449,7 @@ const BackupRestore = ({ userId, showMessage }) => {
     }
   }, [userId, showMessage]);
 
+  // ── Parse a backup file and stage it for confirmation ──
   const handleImportBackup = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -415,6 +470,7 @@ const BackupRestore = ({ userId, showMessage }) => {
     }
   };
 
+  // ── Confirm and execute the restore; then reload the page ──
   const executeRestore = async () => {
     if (!restorePreview?.parsedData || !userId) return;
     setRestoreLoading(true);
@@ -435,12 +491,14 @@ const BackupRestore = ({ userId, showMessage }) => {
     }
   };
 
+  // ── Cancel the restore confirmation ──
   const cancelRestore = () => {
     setConfirmRestoreFile(null);
     setRestorePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // ── Toggle auto-backup (weekly) ──
   const toggleAutoBackup = async () => {
     const newState = !autoBackup;
     setAutoBackup(newState);
@@ -473,6 +531,8 @@ const BackupRestore = ({ userId, showMessage }) => {
       <h4 style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         <Database size={20} aria-hidden /> Universal Backup & Data Restore
       </h4>
+
+      {/* ── Export / Import buttons ── */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <button
           type="button"
@@ -503,6 +563,7 @@ const BackupRestore = ({ userId, showMessage }) => {
         />
       </div>
 
+      {/* ── Auto-backup toggle ── */}
       <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
         <div className="toggle-switch">
           <input
@@ -524,6 +585,7 @@ const BackupRestore = ({ userId, showMessage }) => {
         📦 Backup archives contain all transactions, goals, subscriptions, and preferences.
       </p>
 
+      {/* ── Restore confirmation modal ── */}
       <Modal
         isOpen={!!confirmRestoreFile}
         onClose={cancelRestore}
@@ -543,6 +605,7 @@ const BackupRestore = ({ userId, showMessage }) => {
               marginBottom: 16, fontSize: '0.85rem', border: '1px solid var(--glass-border)',
             }}
           >
+            {/* ── Restore preview rows ── */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
               <span>Transactions:</span> <strong>{restorePreview.transactions} items</strong>
             </div>
@@ -565,6 +628,8 @@ const BackupRestore = ({ userId, showMessage }) => {
 /* ============================================================
  * Notification preferences
  * ============================================================ */
+
+// ── Notification toggle definitions (key, icon, label) ──
 const NOTIFICATION_TOGGLES = [
   { key: 'emailReports', icon: Bell, label: 'Monthly Email Reports' },
   { key: 'weeklyDigest', icon: Calendar, label: 'Weekly Digest' },
@@ -574,15 +639,18 @@ const NOTIFICATION_TOGGLES = [
   { key: 'pushNotifications', icon: Smartphone, label: 'Push Notifications' },
 ];
 
+// ── Notification preferences panel with quiet-hours support ──
 const NotificationPreferences = ({ preferences, onChange }) => {
   const prefs = preferences || DEFAULT_NOTIFICATION_PREFS;
 
+  // ── Quiet hours validation: start and end must differ when enabled ──
   const quietHoursValid =
     !prefs.quietHoursEnabled ||
     (prefs.quietHoursStart && prefs.quietHoursEnd && prefs.quietHoursStart !== prefs.quietHoursEnd);
 
   return (
     <>
+      {/* ── Header ── */}
       <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
         <div
           className="idp-hero-icon"
@@ -602,6 +670,7 @@ const NotificationPreferences = ({ preferences, onChange }) => {
 
       <div className="idp-body">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* ── Notification toggles ── */}
           {NOTIFICATION_TOGGLES.map(({ key, icon: Icon, label }) => (
             <div className="form-field" key={key}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
@@ -625,6 +694,7 @@ const NotificationPreferences = ({ preferences, onChange }) => {
 
           <div style={{ height: 1, background: 'var(--glass-border)', margin: '8px 0' }} />
 
+          {/* ── Quiet hours toggle ── */}
           <div className="form-field">
             <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
               <div className="toggle-switch">
@@ -644,6 +714,7 @@ const NotificationPreferences = ({ preferences, onChange }) => {
             </label>
           </div>
 
+          {/* ── Quiet hours time range (shown only when enabled) ── */}
           {prefs.quietHoursEnabled && (
             <div style={{ marginLeft: 24 }}>
               <div style={{ display: 'flex', gap: 12 }}>
@@ -686,6 +757,7 @@ const NotificationPreferences = ({ preferences, onChange }) => {
  * Password change (with re-auth)
  * ============================================================ */
 const PasswordChange = ({ userId, showMessage, logout, requestReAuth }) => {
+  // ── Local form state + visibility toggle + loading ──
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
@@ -696,6 +768,7 @@ const PasswordChange = ({ userId, showMessage, logout, requestReAuth }) => {
 
   const strength = getPasswordStrength(passwordData.newPassword);
 
+  // ── Submit handler: validate → re-auth → API call → logout ──
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
@@ -746,6 +819,7 @@ const PasswordChange = ({ userId, showMessage, logout, requestReAuth }) => {
 
   return (
     <form onSubmit={handleSubmit}>
+      {/* ── Current password with show/hide toggle ── */}
       <div className="form-field">
         <label htmlFor="current_password">Current Password</label>
         <div style={{ position: 'relative' }}>
@@ -772,6 +846,7 @@ const PasswordChange = ({ userId, showMessage, logout, requestReAuth }) => {
         </div>
       </div>
 
+      {/* ── New password + strength meter ── */}
       <div className="form-field">
         <label htmlFor="new_password">New Password</label>
         <input
@@ -785,6 +860,7 @@ const PasswordChange = ({ userId, showMessage, logout, requestReAuth }) => {
         <PasswordStrengthIndicator password={passwordData.newPassword} />
       </div>
 
+      {/* ── Confirm new password ── */}
       <div className="form-field">
         <label htmlFor="confirm_new_password">Confirm New Password</label>
         <input
@@ -802,6 +878,7 @@ const PasswordChange = ({ userId, showMessage, logout, requestReAuth }) => {
         )}
       </div>
 
+      {/* ── Submit ── */}
       <div className="idp-actions">
         <button type="submit" className="btn-primary" disabled={loading}>
           <Key size={18} aria-hidden /> {loading ? 'Changing…' : 'Change Password'}
@@ -815,10 +892,12 @@ const PasswordChange = ({ userId, showMessage, logout, requestReAuth }) => {
  * Session management (fixed cleanup)
  * ============================================================ */
 const SessionManagement = ({ userId, showMessage }) => {
+  // ── Sessions list + loading + revoke-all confirmation ──
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
 
+  // ── Load active sessions for the user ──
   const loadSessions = useCallback(async () => {
     if (!userId) {
       setSessions([]);
@@ -834,6 +913,7 @@ const SessionManagement = ({ userId, showMessage }) => {
     }
   }, [userId, showMessage]);
 
+  // ── Load sessions on mount; guard against unmounted updates ──
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -844,6 +924,7 @@ const SessionManagement = ({ userId, showMessage }) => {
     return () => { alive = false; };
   }, [loadSessions]);
 
+  // ── Revoke a single session (never the current one) ──
   const revokeSession = async (sessionId) => {
     const session = sessions.find((s) => s.id === sessionId);
     if (session?.isCurrent) {
@@ -870,6 +951,7 @@ const SessionManagement = ({ userId, showMessage }) => {
     }
   };
 
+  // ── Ask for confirmation before revoking all other sessions ──
   const requestRevokeAll = () => {
     if (!userId) {
       showMessage('error', 'User not identified');
@@ -878,6 +960,7 @@ const SessionManagement = ({ userId, showMessage }) => {
     setConfirmRevokeAll(true);
   };
 
+  // ── Execute revoke-all-other-sessions ──
   const executeRevokeAll = async () => {
     setConfirmRevokeAll(false);
     if (!userId || loading) return;
@@ -895,6 +978,7 @@ const SessionManagement = ({ userId, showMessage }) => {
     }
   };
 
+  // ── Loading skeleton ──
   if (loading && sessions.length === 0) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }} aria-busy="true">
@@ -906,6 +990,7 @@ const SessionManagement = ({ userId, showMessage }) => {
 
   return (
     <div>
+      {/* ── Header with revoke-all button ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <h4 style={{ margin: 0 }}>Active Sessions</h4>
         <button
@@ -918,6 +1003,7 @@ const SessionManagement = ({ userId, showMessage }) => {
         </button>
       </div>
 
+      {/* ── Session rows ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {sessions.map((session) => (
           <div
@@ -967,6 +1053,7 @@ const SessionManagement = ({ userId, showMessage }) => {
         )}
       </div>
 
+      {/* ── Revoke-all confirmation modal ── */}
       <Modal
         isOpen={confirmRevokeAll}
         onClose={() => setConfirmRevokeAll(false)}
@@ -991,6 +1078,7 @@ const AdvancedPreferences = ({ prefs, onChange }) => {
   const p = prefs || DEFAULT_ADVANCED_PREFS;
   const update = (patch) => onChange({ ...p, ...patch });
 
+  // ── Boolean toggle definitions ──
   const toggles = [
     { key: 'compactMode', icon: Zap, label: 'Compact Mode (Denser Layout)' },
     { key: 'autoSave', icon: Save, label: 'Auto-save Changes' },
@@ -1000,6 +1088,7 @@ const AdvancedPreferences = ({ prefs, onChange }) => {
 
   return (
     <>
+      {/* ── Header ── */}
       <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
         <div className="idp-hero-icon" style={{ width: 64, height: 64, marginBottom: 16 }} aria-hidden>
           <Zap size={28} />
@@ -1011,6 +1100,7 @@ const AdvancedPreferences = ({ prefs, onChange }) => {
       </div>
 
       <div className="idp-body">
+        {/* ── Format selectors ── */}
         <div className="form-field">
           <label htmlFor="date_format">Date Format</label>
           <select id="date_format" value={p.dateFormat} onChange={(e) => update({ dateFormat: e.target.value })}>
@@ -1044,6 +1134,7 @@ const AdvancedPreferences = ({ prefs, onChange }) => {
           </select>
         </div>
 
+        {/* ── Session timeout selector ── */}
         <div className="form-field">
           <label htmlFor="session_timeout">
             <Clock size={14} aria-hidden /> Auto-logout after inactivity (minutes)
@@ -1061,6 +1152,7 @@ const AdvancedPreferences = ({ prefs, onChange }) => {
           </select>
         </div>
 
+        {/* ── Boolean toggles ── */}
         {toggles.map(({ key, icon: Icon, label }) => (
           <div className="form-field" key={key}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
@@ -1090,10 +1182,12 @@ const AdvancedPreferences = ({ prefs, onChange }) => {
  * Email change (with logout + re-auth)
  * ============================================================ */
 const EmailChangeSection = ({ user, showMessage, logout, requestReAuth, t }) => {
+  // ── Modal visibility + form state ──
   const [showModal, setShowModal] = useState(false);
   const [emailForm, setEmailForm] = useState({ newEmail: '', currentPassword: '' });
   const [loading, setLoading] = useState(false);
 
+  // ── Submit handler: validate → re-auth → API call → logout ──
   const handleSubmit = async () => {
     if (!emailForm.newEmail || !emailForm.currentPassword) {
       showMessage('error', 'All fields are required.');
@@ -1126,6 +1220,7 @@ const EmailChangeSection = ({ user, showMessage, logout, requestReAuth, t }) => 
 
   return (
     <>
+      {/* ── Read-only email + change trigger ── */}
       <div className="form-field" style={{ marginTop: 24 }}>
         <label>{t?.('email_address') || 'Email Address'}</label>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1140,6 +1235,7 @@ const EmailChangeSection = ({ user, showMessage, logout, requestReAuth, t }) => 
         </div>
       </div>
 
+      {/* ── Change-email modal ── */}
       <Modal
         isOpen={showModal}
         onClose={() => { setShowModal(false); setEmailForm({ newEmail: '', currentPassword: '' }); }}
@@ -1182,9 +1278,11 @@ const EmailChangeSection = ({ user, showMessage, logout, requestReAuth, t }) => 
  * Profile tab
  * ============================================================ */
 const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout, requestReAuth }) => {
+  // ── File input + emoji tray visibility ──
   const fileInputRef = useRef(null);
   const [showEmojiTray, setShowEmojiTray] = useState(false);
 
+  // ── Handle image upload: downscale to 360px, then persist as dataURL ──
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1227,13 +1325,16 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
     reader.readAsDataURL(file);
   };
 
+  // ── Apply an emoji avatar ──
   const selectEmoji = (emojiData) => {
     handleFieldChange('avatar', emojiData.emoji);
     setShowEmojiTray(false);
   };
 
+  // ── Detect whether the current avatar is a URL/base64 image ──
   const isBase64Avatar = /^(?:data:image\/|blob:|https?:\/\/|\/(?!\/))/i.test(String(formState.avatar || '').trim());
 
+  // ── Compute profile completion % from populated fields ──
   const profileChecks = [
     Boolean(formState.firstName?.trim()),
     Boolean(formState.lastName?.trim()),
@@ -1248,6 +1349,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
 
   return (
     <>
+      {/* ── Header ── */}
       <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
         <div className="idp-hero-icon income" style={{ width: 64, height: 64, marginBottom: 16 }} aria-hidden>
           <User size={28} />
@@ -1261,6 +1363,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
       </div>
 
       <div className="idp-body">
+        {/* ── Profile summary tiles ── */}
         <div className="profile-summary-grid" aria-label="Profile summary">
           <div className="profile-summary-card">
             <span className="profile-summary-label">{t?.('profile_completeness') || 'Profile completeness'}</span>
@@ -1281,7 +1384,9 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
           </div>
         </div>
 
+        {/* ── Avatar + color picker ── */}
         <div style={{ display: 'flex', gap: 30, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* ── Avatar preview ── */}
           <motion.div
             whileHover={{ scale: 1.05 }}
             style={{
@@ -1299,6 +1404,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
           </motion.div>
 
           <div style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* ── Emoji / image chooser ── */}
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
                 {t?.('profile_picture') || 'Profile Picture'}
@@ -1323,6 +1429,8 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
                 </button>
                 <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
               </div>
+
+              {/* ── Lazy-loaded emoji picker tray ── */}
               {showEmojiTray && (
                 <div id="profile-emoji-tray" className="profile-emoji-tray" role="dialog" aria-label="Choose a profile emoji">
                   <Suspense fallback={<div style={{ padding: 20, textAlign: 'center' }}><Loader className="spin" size={24} /></div>}>
@@ -1338,6 +1446,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
               )}
             </div>
 
+            {/* ── Profile color options ── */}
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
                 {t?.('profile_color') || 'Profile Color'}
@@ -1367,6 +1476,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
 
         <div style={{ height: 1, background: 'var(--glass-border)', margin: '10px 0' }} />
 
+        {/* ── First name + Surname ── */}
         <div className="profile-name-row" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div className="form-field" style={{ flex: 1, minWidth: 200 }}>
             <label htmlFor="first_name">{t?.('first_name') || 'First Name'}</label>
@@ -1392,6 +1502,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
           </div>
         </div>
 
+        {/* ── Profession ── */}
         <div className="form-field" style={{ marginTop: 16 }}>
           <label htmlFor="profession">{t?.('profession_role') || 'Profession / Role'}</label>
           <input
@@ -1406,6 +1517,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
           <span className="form-help">{t?.('profession_role_hint') || 'Write the profession or role you want shown on your profile.'}</span>
         </div>
 
+        {/* ── Email change section ── */}
         <EmailChangeSection
           user={user}
           showMessage={showMessage}
@@ -1423,6 +1535,7 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
  * ============================================================ */
 const PreferencesTab = ({ formState, handleFieldChange, t }) => (
   <>
+    {/* ── Header ── */}
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
       <div
         className="idp-hero-icon"
@@ -1442,6 +1555,7 @@ const PreferencesTab = ({ formState, handleFieldChange, t }) => (
     </div>
 
     <div className="idp-body">
+      {/* ── Currency selector ── */}
       <div className="form-field">
         <label htmlFor="currency_select">{t?.('currency') || 'Currency'}</label>
         <select
@@ -1456,6 +1570,8 @@ const PreferencesTab = ({ formState, handleFieldChange, t }) => (
           ))}
         </select>
       </div>
+
+      {/* ── Monthly goal ── */}
       <div className="form-field">
         <label htmlFor="monthly_goal_input">
           <Target size={14} aria-hidden /> {t?.('monthly_goal') || 'Monthly Goal'}
@@ -1479,6 +1595,7 @@ const PreferencesTab = ({ formState, handleFieldChange, t }) => (
  * ============================================================ */
 const LanguageTab = ({ lang, setLanguage, showMessage, t }) => (
   <>
+    {/* ── Header ── */}
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
       <div
         className="idp-hero-icon"
@@ -1497,6 +1614,7 @@ const LanguageTab = ({ lang, setLanguage, showMessage, t }) => (
       <p style={{ color: 'var(--text-secondary)', margin: 0 }}>MyCoinwise speaks your language.</p>
     </div>
 
+    {/* ── Language option buttons ── */}
     <div className="idp-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {Object.entries(LANGUAGES || {}).map(([code, info]) => (
         <motion.button
@@ -1531,6 +1649,7 @@ const LanguageTab = ({ lang, setLanguage, showMessage, t }) => (
  * Appearance tab (adds Auto)
  * ============================================================ */
 const AppearanceTab = ({ theme, handleThemeChange }) => {
+  // ── Available theme options ──
   const themes = [
     { id: 'light', label: 'Light', icon: <Sun size={18} />, bg: '#e8f7ed', accent: '#059669', sub: 'Clean Light' },
     { id: 'amoled', label: 'AMOLED', icon: <Moon size={18} />, bg: '#000000', accent: '#34d399', sub: 'True Black' },
@@ -1539,6 +1658,7 @@ const AppearanceTab = ({ theme, handleThemeChange }) => {
 
   return (
     <>
+      {/* ── Header ── */}
       <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
         <div
           className="idp-hero-icon"
@@ -1555,6 +1675,7 @@ const AppearanceTab = ({ theme, handleThemeChange }) => {
         <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Choose a theme that fits your vibe.</p>
       </div>
 
+      {/* ── Theme preview buttons ── */}
       <div
         className="idp-body"
         style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16, padding: '30px 20px' }}
@@ -1584,6 +1705,8 @@ const AppearanceTab = ({ theme, handleThemeChange }) => {
               {opt.label}
             </span>
             <span style={{ color: opt.accent, opacity: 0.7, fontSize: '0.8rem', fontWeight: 600 }}>{opt.sub}</span>
+
+            {/* ── Active checkmark ── */}
             {theme === opt.id && (
               <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ position: 'absolute', top: 12, right: 12 }}>
                 <CheckCircle size={18} color={opt.accent} aria-hidden />
@@ -1600,6 +1723,7 @@ const AppearanceTab = ({ theme, handleThemeChange }) => {
  * Users tab
  * ============================================================ */
 const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId, previousSession, revertSession, t }) => {
+  // ── Honor reduced motion for hover/tap scales ──
   const prefersReducedMotion = useReducedMotion();
   const rowHover = prefersReducedMotion ? undefined : { x: 4 };
   const switchHover = prefersReducedMotion ? undefined : { scale: 1.05 };
@@ -1612,6 +1736,7 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
 
   return (
     <>
+      {/* ── Hero header ── */}
       <div className="manage-users-hero">
         <div className="idp-hero-icon manage-users-hero-icon" aria-hidden>
           <Users size={28} />
@@ -1628,6 +1753,7 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
       </div>
 
       <div className="manage-users-body">
+        {/* ── Revert-to-previous-session banner ── */}
         {previousSession && String(previousSession.id) !== String(USER_ID) && (
           <div
             className="manage-users-revert-banner"
@@ -1675,6 +1801,8 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
             </button>
           </div>
         )}
+
+        {/* ── Empty state ── */}
         {users.length === 0 ? (
           <div
             className="manage-users-empty"
@@ -1687,6 +1815,7 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
             <p className="muted" style={{ fontSize: '0.85rem', margin: 0 }}>{t?.('add_first_user') || 'Add your first user to get started.'}</p>
           </div>
         ) : (
+          /* ── User rows ── */
           <div className="manage-users-list" role="list">
             {users.map((u, i) => {
               const uid = u?.id || u?._id;
@@ -1705,9 +1834,12 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
                   whileHover={rowHover}
                   className={`manage-user-card ${isCurrentUser ? 'is-active' : ''}`}
                 >
+                  {/* ── Avatar ── */}
                   <span className="manage-user-avatar" style={{ background: u?.profile_color || '#059669' }} aria-hidden>
                     {avatar.type === 'image' ? <img src={avatar.value} alt="" /> : avatar.value}
                   </span>
+
+                  {/* ── Name / email / role ── */}
                   <div className="manage-user-main">
                     <p className="manage-user-name">
                       {displayName}
@@ -1729,6 +1861,8 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
                     {email && <p className="manage-user-email" title={email}>{email}</p>}
                     <span className="manage-user-role">{u?.profession || t?.('personal_workspace') || 'Personal workspace'}</span>
                   </div>
+
+                  {/* ── Actions ── */}
                   {isCurrentUser ? (
                     <span className="manage-user-status">{t?.('active') || 'Active'}</span>
                   ) : (
@@ -1765,6 +1899,8 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
             })}
           </div>
         )}
+
+        {/* ── Add new user ── */}
         <motion.button
           type="button"
           className="btn-secondary manage-users-add"
@@ -1791,6 +1927,7 @@ UsersTab.propTypes = {
  * ============================================================ */
 const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, pdfLoading, t }) => (
   <>
+    {/* ── Header ── */}
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
       <div className="idp-hero-icon expense" style={{ width: 64, height: 64, marginBottom: 16 }} aria-hidden>
         <Database size={28} />
@@ -1804,6 +1941,7 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
     </div>
 
     <div className="idp-body" style={{ background: 'transparent', border: 'none', padding: 0 }}>
+      {/* ── Export buttons ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 30 }}>
         <motion.button
           type="button"
@@ -1833,6 +1971,7 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
         </motion.button>
       </div>
 
+      {/* ── Danger zone: factory reset ── */}
       <div
         className="idp-section"
         style={{
@@ -1864,6 +2003,7 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
  * Factory reset modal
  * ============================================================ */
 const FactoryResetModalInner = ({ onClose, onConfirm, isLoading }) => {
+  // ── Require the user to type DELETE before confirming ──
   const [confirmText, setConfirmText] = useState('');
   const isConfirmed = confirmText === 'DELETE';
 
@@ -1887,6 +2027,8 @@ const FactoryResetModalInner = ({ onClose, onConfirm, isLoading }) => {
           This action CANNOT be undone!
         </p>
       </div>
+
+      {/* ── Type-to-confirm input ── */}
       <div className="form-field">
         <label htmlFor="reset_confirm_input" style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
           Type <strong style={{ color: 'var(--danger)', letterSpacing: '0.05em' }}>DELETE</strong> to confirm:
@@ -1907,6 +2049,7 @@ const FactoryResetModalInner = ({ onClose, onConfirm, isLoading }) => {
   );
 };
 
+// ── Wrapper: only mounts inner modal when open ──
 const FactoryResetModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
   if (!isOpen) return null;
   return <FactoryResetModalInner onClose={onClose} onConfirm={onConfirm} isLoading={isLoading} />;
@@ -1956,6 +2099,8 @@ function SettingsInner({ context }) {
   const { showToast: showMessage } = useToast();
 
   /* ---------------- Form state ---------------- */
+
+  // ── Reducer-based form state derived from the user ──
   const [formState, dispatch] = useReducer(
     settingsReducer,
     buildResetPayload(user)
@@ -1969,6 +2114,8 @@ function SettingsInner({ context }) {
   }, [user]);
 
   /* ---------------- Tabs ---------------- */
+
+  // ── Tab state, driven by the ?tab= search param ──
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState(() => (
@@ -1983,6 +2130,8 @@ function SettingsInner({ context }) {
   const [search, setSearch] = useState('');
 
   /* ---------------- Modals ---------------- */
+
+  // ── Modal visibility / target state ──
   const [modals, setModals] = useState({
     addUser: false,
     resetConfirm: false,
@@ -1991,6 +2140,8 @@ function SettingsInner({ context }) {
   });
 
   /* ---------------- Independent loading states ---------------- */
+
+  // ── Independent in-flight flags per action ──
   const [loadingStates, setLoadingStates] = useState({
     save: false,
     createUser: false,
@@ -2001,9 +2152,12 @@ function SettingsInner({ context }) {
     deleteUser: false,
   });
 
+  // ── Snapshot of the last saved state for undo ──
   const [undoSnapshot, setUndoSnapshot] = useState(null);
 
   /* ---------------- Re-auth modal state ---------------- */
+
+  // ── Promise-based re-auth gate for destructive actions ──
   const [reAuthState, setReAuthState] = useState({
     isOpen: false,
     actionLabel: '',
@@ -2035,6 +2189,8 @@ function SettingsInner({ context }) {
   }, [reAuthState]);
 
   /* ---------------- Ref ---------------- */
+
+  // ── Mounted guard + theme-save debounce timer ──
   const isMounted = useRef(true);
   const themeSaveTimerRef = useRef(null);
 
@@ -2091,6 +2247,8 @@ function SettingsInner({ context }) {
   }, [formState.advancedPrefs?.compactMode, formState.advancedPrefs?.animationsEnabled]);
 
   /* ---------------- Field change ---------------- */
+
+  // ── Dispatch a single field update (marks dirty) ──
   const handleFieldChange = useCallback((field, value) => {
     dispatch({ type: 'SET_FIELD', field, value });
   }, []);
@@ -2098,6 +2256,8 @@ function SettingsInner({ context }) {
   /* ============================================================
    * Save
    * ============================================================ */
+
+  // ── Persist the form; snapshot the pre-save state for undo ──
   const handleSave = useCallback(async (e) => {
     if (e?.preventDefault) e.preventDefault();
     if (loadingStates.save) return;
@@ -2161,6 +2321,7 @@ function SettingsInner({ context }) {
     }
   }, [formState, USER_ID, refetch, showMessage, user, loadingStates.save]);
 
+  // ── Restore the last undo snapshot ──
   const handleUndo = useCallback(async () => {
     if (!undoSnapshot || !USER_ID) return;
     setLoadingStates((prev) => ({ ...prev, save: true }));
@@ -2178,6 +2339,7 @@ function SettingsInner({ context }) {
     }
   }, [undoSnapshot, USER_ID, refetch, showMessage]);
 
+  // ── Discard unsaved changes ──
   const handleDiscard = useCallback(() => {
     dispatch({ type: 'RESET_FORM', payload: buildResetPayload(user) });
   }, [user]);
@@ -2185,6 +2347,8 @@ function SettingsInner({ context }) {
   /* ============================================================
    * Users
    * ============================================================ */
+
+  // ── Create a new household user and switch to it ──
   const handleCreateUser = useCallback(async () => {
     if (loadingStates.createUser) return;
     const sanitizedName = sanitizeInput(modals.addUser?.name);
@@ -2218,6 +2382,7 @@ function SettingsInner({ context }) {
     }
   }, [modals.addUser, createUser, switchUser, refetch, showMessage, loadingStates.createUser]);
 
+  // ── Factory reset (gated by re-auth) ──
   const handleReset = useCallback(async () => {
     if (loadingStates.reset) return;
 
@@ -2239,6 +2404,7 @@ function SettingsInner({ context }) {
     }
   }, [resetAccount, showMessage, requestReAuth, loadingStates.reset, logout]);
 
+  // ── Delete a user (self-delete logs out; other-delete refreshes) ──
   const handleDeleteUser = useCallback(async () => {
     if (loadingStates.deleteUser) return;
     const userId = modals.deleteUser;
@@ -2265,6 +2431,7 @@ function SettingsInner({ context }) {
     }
   }, [modals.deleteUser, USER_ID, refetch, showMessage, requestReAuth, loadingStates.deleteUser, logout, navigate]);
 
+  // ── Switch to a different user (auto-saves dirty state first) ──
   const handleSwitchUser = useCallback(async () => {
     const rawTarget = modals.switchConfirm;
     if (!rawTarget) return;
@@ -2305,6 +2472,8 @@ function SettingsInner({ context }) {
   /* ============================================================
    * Theme
    * ============================================================ */
+
+  // ── Apply theme immediately; persist to the backend after 1 s ──
   const handleThemeChange = useCallback((newTheme) => {
     setThemeDirect(newTheme);
     document.body.classList.add('theme-transition');
@@ -2320,6 +2489,8 @@ function SettingsInner({ context }) {
   /* ============================================================
    * Exports
    * ============================================================ */
+
+  // ── Export transactions to PDF (dynamic import) ──
   const handlePDFExport = useCallback(async () => {
     if (!user || transactions.length === 0) {
       showMessage('error', 'No data available to export.');
@@ -2338,6 +2509,7 @@ function SettingsInner({ context }) {
     }
   }, [user, transactions, currencyInfo, lang, showMessage]);
 
+  // ── Export data to Excel via the backend ──
   const handleExcelExport = useCallback(async () => {
     if (!USER_ID) {
       showMessage('error', 'Session expired. Please log in again.');
@@ -2358,6 +2530,8 @@ function SettingsInner({ context }) {
   /* ============================================================
    * Derived data
    * ============================================================ */
+
+  // ── Users sorted alphabetically by display name ──
   const sortedUsers = useMemo(
     () => [...allUsers].sort((a, b) =>
       getUserDisplayName(a).localeCompare(getUserDisplayName(b))
@@ -2365,6 +2539,7 @@ function SettingsInner({ context }) {
     [allUsers]
   );
 
+  // ── Tab definitions (label + keywords for search) ──
   const TABS = useMemo(() => [
     { id: 'profile', icon: User, label: t?.('profile') || 'Profile', keywords: 'name photo avatar' },
     { id: 'preferences', icon: Settings, label: t?.('preferences') || 'Preferences', keywords: 'currency goal regional' },
@@ -2377,6 +2552,7 @@ function SettingsInner({ context }) {
     { id: 'advanced', icon: Zap, label: t?.('advanced') || 'Advanced', keywords: 'date format timeout' },
   ], [t]);
 
+  // ── Filter tabs by search query (label + keywords) ──
   const visibleTabs = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return TABS;
@@ -2423,6 +2599,7 @@ function SettingsInner({ context }) {
       case 'security':
         return (
           <>
+            {/* ── Security tab header ── */}
             <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
               <div
                 className="idp-hero-icon"
@@ -2496,6 +2673,7 @@ function SettingsInner({ context }) {
    * ============================================================ */
   return (
     <div className="inbox-layout-page settings-page shared-page animate-in">
+      {/* ── Page header ── */}
       <div className="inbox-header">
         <div className="ih-titles">
           <h2>{t?.('settings') || 'Settings'}</h2>
@@ -2504,7 +2682,7 @@ function SettingsInner({ context }) {
       </div>
 
       <div className="inbox-split-pane">
-        {/* Sidebar */}
+        {/* ── Sidebar with tab list + search ── */}
         <div className="inbox-list-pane glass" role="tablist" aria-orientation="vertical">
           <div className="il-filters">
             <h3 className="il-title">{t?.('categories') || 'Categories'}</h3>
@@ -2527,6 +2705,8 @@ function SettingsInner({ context }) {
               />
             </div>
           </div>
+
+          {/* ── Tab buttons (filtered by search) ── */}
           <div className="il-scrollable">
             {visibleTabs.length === 0 ? (
               <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '12px' }}>
@@ -2556,7 +2736,7 @@ function SettingsInner({ context }) {
           </div>
         </div>
 
-        {/* Content */}
+        {/* ── Detail pane: current tab content ── */}
         <div className="inbox-detail-pane glass">
           <div
             className="idp-content"
@@ -2579,7 +2759,7 @@ function SettingsInner({ context }) {
         </div>
       </div>
 
-      {/* Master Save Bar */}
+      {/* ── Master save bar ── */}
       <AnimatePresence>
         {(formState.isDirty || undoSnapshot) && (
           <motion.div
@@ -2599,6 +2779,7 @@ function SettingsInner({ context }) {
             role="status"
             aria-live="polite"
           >
+            {/* ── Status text ── */}
             <div>
               <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
                 {formState.isDirty ? 'Unsaved Changes' : '✓ Saved'}
@@ -2610,6 +2791,7 @@ function SettingsInner({ context }) {
               </p>
             </div>
 
+            {/* ── Actions: Undo / Discard / Save ── */}
             <div style={{ display: 'flex', gap: 10, marginLeft: 'auto' }}>
               {undoSnapshot && !formState.isDirty && (
                 <button
@@ -2650,7 +2832,7 @@ function SettingsInner({ context }) {
         )}
       </AnimatePresence>
 
-      {/* Re-auth modal */}
+      {/* ── Re-auth modal ── */}
       <ReAuthModal
         isOpen={reAuthState.isOpen}
         onClose={handleReAuthClose}
@@ -2658,7 +2840,7 @@ function SettingsInner({ context }) {
         actionLabel={reAuthState.actionLabel}
       />
 
-      {/* Add user modal */}
+      {/* ── Add user modal ── */}
       <Modal
         isOpen={!!modals.addUser}
         onClose={() => setModals((prev) => ({ ...prev, addUser: false }))}
@@ -2700,7 +2882,7 @@ function SettingsInner({ context }) {
         </div>
       </Modal>
 
-      {/* Factory reset */}
+      {/* ── Factory reset modal ── */}
       <FactoryResetModal
         isOpen={modals.resetConfirm}
         onClose={() => setModals((prev) => ({ ...prev, resetConfirm: false }))}
@@ -2708,7 +2890,7 @@ function SettingsInner({ context }) {
         isLoading={loadingStates.reset}
       />
 
-      {/* Delete user */}
+      {/* ── Delete user modal ── */}
       <Modal
         isOpen={!!modals.deleteUser}
         onClose={() => setModals((prev) => ({ ...prev, deleteUser: null }))}
@@ -2728,7 +2910,7 @@ function SettingsInner({ context }) {
         </p>
       </Modal>
 
-      {/* Switch user */}
+      {/* ── Switch user modal ── */}
       <Modal
         isOpen={!!modals.switchConfirm}
         onClose={() => setModals((prev) => ({ ...prev, switchConfirm: null }))}
@@ -2749,6 +2931,8 @@ function SettingsInner({ context }) {
             )}
           </strong>?
         </p>
+
+        {/* ── Unsaved-changes notice ── */}
         {formState.isDirty && (
           <div
             style={{
@@ -2772,6 +2956,8 @@ function SettingsInner({ context }) {
 /* ============================================================
  * Export
  * ============================================================ */
+
+// ── Guard: show a loading fallback when there's no AppContext ──
 function SettingsPage() {
   const context = useContext(AppContext);
 

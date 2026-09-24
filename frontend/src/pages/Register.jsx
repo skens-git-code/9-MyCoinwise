@@ -1,3 +1,22 @@
+/* —————————————————————————————————————
+ * Register Page
+ * Signup screen with:
+ *   - Username field (live availability check, debounced).
+ *   - Email + password + confirm with live strength meter.
+ *   - Terms / marketing opt-ins.
+ *   - Rate-limit countdown for repeated attempts.
+ *   - Success modal with resend-verification action.
+ *
+ * Key behaviors:
+ *   - Username availability is checked server-side after a debounce.
+ *   - Password strength score uses length, character classes, and
+ *     penalizes common/sequential patterns.
+ *   - Submit is blocked while a request is in flight or a rate-limit
+ *     cooldown is active.
+ *   - Redirects signed-in users to `/`.
+ *   - Focus is trapped inside the success modal; Escape closes it.
+ * ————————————————————————————————————— */
+
 import React, {
   useState, useContext, useRef, useEffect, useCallback, useMemo,
 } from 'react';
@@ -15,15 +34,22 @@ import {
 /* ============================================================
  * Constants
  * ============================================================ */
+
+// ── Validation patterns and length bounds ──
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{2,30}$/;
 const MAX_EMAIL_LENGTH = 254;
 const MAX_USERNAME_LENGTH = 30;
 const MAX_PASSWORD_LENGTH = 128;
+
+// ── Backend-error and rate-limit safeguards ──
 const MAX_BACKEND_ERROR_LENGTH = 200;
 const RATE_LIMIT_DEFAULT_SECONDS = 60;
+
+// ── Debounce delay for the username availability check ──
 const USERNAME_DEBOUNCE_MS = 500;
 
+// ── Usernames blocked from registration ──
 const RESERVED_USERNAMES = new Set([
   'admin', 'administrator', 'root', 'support', 'help', 'mycoinwise',
   'official', 'staff', 'moderator', 'mod', 'system', 'security',
@@ -31,6 +57,7 @@ const RESERVED_USERNAMES = new Set([
   'api', 'www', 'mail', 'email', 'user', 'users', 'test', 'demo',
 ]);
 
+// ── Common-password blocklist used by the strength scorer ──
 const COMMON_PASSWORDS = new Set([
   'password', 'password1', 'password123', '12345678', '123456789',
   'qwerty123', 'qwertyuiop', 'letmein', 'welcome1', 'admin123',
@@ -38,6 +65,7 @@ const COMMON_PASSWORDS = new Set([
   'welcome123', 'passw0rd', 'p@ssw0rd', 'qwerty!23', 'trustno1',
 ]);
 
+// ── Strength meter labels, colors, and fill widths (0–5 scale) ──
 const STRENGTH_LABELS = ['Very weak', 'Weak', 'Fair', 'Good', 'Strong', 'Very strong'];
 const STRENGTH_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#10b981'];
 const STRENGTH_WIDTHS = ['20%', '40%', '60%', '75%', '90%', '100%'];
@@ -45,11 +73,15 @@ const STRENGTH_WIDTHS = ['20%', '40%', '60%', '75%', '90%', '100%'];
 /* ============================================================
  * Helpers
  * ============================================================ */
+
+// ── True when the error is an aborted/canceled request ──
 const isCancelError = (err) =>
   err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError';
 
+// ── True when the server responded with 429 ──
 const isRateLimitError = (err) => err?.response?.status === 429;
 
+// ── Resolve Retry-After seconds from a 429 response ──
 const getRetryAfterSeconds = (err) => {
   const raw =
     err?.response?.headers?.['retry-after'] ??
@@ -59,6 +91,8 @@ const getRetryAfterSeconds = (err) => {
   return Number.isFinite(n) && n > 0 ? Math.ceil(n) : RATE_LIMIT_DEFAULT_SECONDS;
 };
 
+// ── Sanitize a backend error string before showing it ──
+// Rejects HTML tags and stack-trace-like content to avoid leaking internals.
 const sanitizeBackendMessage = (msg) => {
   if (typeof msg !== 'string') return null;
   const trimmed = msg.trim();
@@ -68,6 +102,9 @@ const sanitizeBackendMessage = (msg) => {
   return trimmed;
 };
 
+// ── Score password strength on a 0–5 scale ──
+// Adds points for length and character variety; subtracts points for
+// common, repeated, sequential, or keyboard-walk patterns.
 const getPasswordStrength = (password) => {
   const pw = String(password || '');
   if (!pw) return 0;
@@ -89,7 +126,7 @@ const getPasswordStrength = (password) => {
 };
 
 /* ============================================================
- * Focus trap
+ * Focus Trap
  * ============================================================ */
 function useFocusTrap(ref, isActive, onEscape) {
   useEffect(() => {
@@ -97,6 +134,7 @@ function useFocusTrap(ref, isActive, onEscape) {
     const node = ref.current;
     const previousActive = document.activeElement;
 
+    // ── Query visible focusable elements inside the modal ──
     const getFocusable = () =>
       Array.from(
         node.querySelectorAll(
@@ -104,9 +142,11 @@ function useFocusTrap(ref, isActive, onEscape) {
         )
       ).filter((el) => el.offsetParent !== null);
 
+    // ── Initial focus ──
     const focusables = getFocusable();
     if (focusables.length > 0) focusables[0].focus();
 
+    // ── Escape closes; Tab cycles within the modal ──
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -145,20 +185,30 @@ function useFocusTrap(ref, isActive, onEscape) {
  * Component
  * ============================================================ */
 export default function Register() {
+  // ── App context + router ──
   const { login, t, lang = 'en', setLanguage, user } = useContext(AppContext);
   const navigate = useNavigate();
 
+  // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
 
+  /* ---------------- Refs ---------------- */
+
+  // ── Form input refs ──
   const nameInputRef = useRef(null);
   const emailInputRef = useRef(null);
   const passwordInputRef = useRef(null);
   const confirmPasswordInputRef = useRef(null);
+
+  // ── Modal + timer/abort refs ──
   const successModalRef = useRef(null);
   const rateLimitTimerRef = useRef(null);
   const usernameCheckTimerRef = useRef(null);
   const usernameAbortRef = useRef(null);
 
+  /* ---------------- State ---------------- */
+
+  // ── Form field values ──
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -168,25 +218,41 @@ export default function Register() {
     agreeMarketing: false,
   });
 
+  // ── Password visibility toggles + Caps Lock flag ──
   const [showPwd, setShowPwd] = useState(false);
   const [showConfirmPwd, setShowConfirmPwd] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
+
+  // ── Top-level error and its kind ──
   const [error, setError] = useState('');
   const [errorKind, setErrorKind] = useState(null);
+
+  // ── Loading + validation state ──
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [touched, setTouched] = useState({});
+
+  // ── Rate-limit cooldown ──
   const [rateLimitSeconds, setRateLimitSeconds] = useState(0);
+
+  // ── Username availability status: 'idle' | 'checking' | 'available' | 'taken' | 'error' ──
   const [usernameStatus, setUsernameStatus] = useState('idle');
+
+  // ── Success modal and session state ──
   const [showSuccess, setShowSuccess] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
+  const [registeredSession, setRegisteredSession] = useState(null);
+  const [resendSent, setResendSent] = useState(false);
 
-  /* Redirect authenticated users */
+  /* ---------------- Redirect Authenticated Users ---------------- */
+  // Only redirect if user is already logged in before registration and not viewing success
   useEffect(() => {
-    if (user) navigate('/', { replace: true });
-  }, [user, navigate]);
+    if (user && !showSuccess) navigate('/', { replace: true });
+  }, [user, showSuccess, navigate]);
 
-  /* Rate limit countdown */
+  /* ---------------- Rate-Limit Countdown ---------------- */
+  // Drives the "wait Ns" indicator and re-enables the submit button
+  // when the cooldown expires.
   useEffect(() => {
     if (rateLimitSeconds <= 0) {
       if (rateLimitTimerRef.current) {
@@ -217,10 +283,13 @@ export default function Register() {
     };
   }, [rateLimitSeconds]);
 
-  /* Debounced username availability check */
+  /* ---------------- Debounced Username Availability Check ---------------- */
+  // Fires the server-side check after the user stops typing, and aborts
+  // any in-flight request when the input changes again.
   useEffect(() => {
     const username = formData.username.trim();
 
+    // ── Skip when the username is empty, malformed, or reserved ──
     if (
       !username ||
       !USERNAME_REGEX.test(username) ||
@@ -258,13 +327,15 @@ export default function Register() {
     };
   }, [formData.username]);
 
-  /* Cleanup on unmount */
+  /* ---------------- Cleanup on Unmount ---------------- */
+  // Cancel pending timers and aborts so they don't fire after unmount.
   useEffect(() => () => {
     if (rateLimitTimerRef.current) clearInterval(rateLimitTimerRef.current);
     if (usernameCheckTimerRef.current) clearTimeout(usernameCheckTimerRef.current);
     if (usernameAbortRef.current) usernameAbortRef.current.abort();
   }, []);
 
+  // ── Update Caps Lock flag from a keyboard event ──
   const handleCapsKey = useCallback((e) => {
     if (typeof e.getModifierState === 'function') {
       setCapsLock(e.getModifierState('CapsLock'));
@@ -274,6 +345,9 @@ export default function Register() {
   /* ============================================================
    * Validation
    * ============================================================ */
+
+  // ── Validate a single field and return its error string ──
+  // `snapshot` overrides formData, used for cross-field checks.
   const validateField = useCallback((name, value, snapshot = formData) => {
     switch (name) {
       case 'username': {
@@ -314,6 +388,7 @@ export default function Register() {
     }
   }, [formData, tr, usernameStatus]);
 
+  // ── Validate every field, storing errors in state ──
   const validateForm = useCallback(() => {
     const errors = {};
     Object.keys(formData).forEach((key) => {
@@ -334,8 +409,11 @@ export default function Register() {
   }, [usernameStatus]);
 
   /* ============================================================
-   * Field handlers
+   * Field Handlers
    * ============================================================ */
+
+  // ── Update a field and clear its field-level error ──
+  // Password changes re-check confirm-password when that field is touched.
   const handleChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
     const val = type === 'checkbox' ? checked : value;
@@ -361,6 +439,7 @@ export default function Register() {
     });
   }, [formData, validateField, touched.confirmPassword]);
 
+  // ── Mark field as touched and validate on blur ──
   const handleBlur = useCallback((e) => {
     const { name } = e.target;
     setTouched((prev) => ({ ...prev, [name]: true }));
@@ -378,6 +457,7 @@ export default function Register() {
     setError('');
     setErrorKind(null);
 
+    // ── Validate; focus the first errored field on failure ──
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
       setTouched((prev) => {
@@ -395,6 +475,7 @@ export default function Register() {
 
     setLoading(true);
     try {
+      // ── Register via the API ──
       const payload = {
         username: formData.username.trim(),
         email: formData.email.trim().toLowerCase(),
@@ -404,13 +485,13 @@ export default function Register() {
       };
 
       const { token, user: newUser } = await api.register(payload);
-      await login(token, newUser);
-
+      setRegisteredSession({ token, user: newUser });
       setRegisteredEmail(payload.email);
       setShowSuccess(true);
     } catch (err) {
       if (isCancelError(err)) return;
 
+      // ── Rate limit: start the cooldown and show the message ──
       if (isRateLimitError(err)) {
         const wait = getRetryAfterSeconds(err);
         setRateLimitSeconds(wait);
@@ -419,26 +500,40 @@ export default function Register() {
         return;
       }
 
+      // ── Map the failure to a user-facing message and targeted field ──
       let msg = tr('registration_failed', 'Registration failed. Please try again.');
       let kind = 'unknown';
 
       if (err?.response) {
-        const backend = sanitizeBackendMessage(err.response?.data?.error);
+        const rawErrors = err.response?.data?.errors;
+        const rawError = err.response?.data?.error;
+        const firstValidationMsg = Array.isArray(rawErrors) && rawErrors.length > 0 ? rawErrors[0]?.msg : null;
+        const backend = sanitizeBackendMessage(rawError || firstValidationMsg);
         if (backend) msg = backend;
 
         const status = err.response.status;
+        const field = err.response?.data?.field || (Array.isArray(rawErrors) ? rawErrors[0]?.path || rawErrors[0]?.param : null);
+
         if (status === 409) {
           kind = 'duplicate';
-          const field = err.response?.data?.field;
-          if (field === 'username') {
+          if (field === 'username' || (!field && msg.toLowerCase().includes('username'))) {
             setFieldErrors((p) => ({ ...p, username: msg }));
             setTouched((p) => ({ ...p, username: true }));
-          } else if (field === 'email') {
+            nameInputRef.current?.focus();
+          } else if (field === 'email' || (!field && msg.toLowerCase().includes('email'))) {
             setFieldErrors((p) => ({ ...p, email: msg }));
             setTouched((p) => ({ ...p, email: true }));
+            emailInputRef.current?.focus();
           }
         } else if (status === 400) {
           kind = 'validation';
+          if (field && ['username', 'email', 'password', 'confirmPassword'].includes(field)) {
+            setFieldErrors((p) => ({ ...p, [field]: msg }));
+            setTouched((p) => ({ ...p, [field]: true }));
+            if (field === 'username') nameInputRef.current?.focus();
+            else if (field === 'email') emailInputRef.current?.focus();
+            else if (field === 'password') passwordInputRef.current?.focus();
+          }
         }
       } else if (err?.request || err?.code === 'ERR_NETWORK') {
         msg = tr('server_unreachable', 'Cannot reach the server. Please check your network connection.');
@@ -450,21 +545,28 @@ export default function Register() {
     } finally {
       setLoading(false);
     }
-  }, [loading, rateLimitSeconds, validateForm, formData, login, tr]);
+  }, [loading, rateLimitSeconds, validateForm, formData, tr]);
 
   /* ============================================================
-   * Success modal
+   * Success Modal
    * ============================================================ */
-  const closeSuccessModal = useCallback(() => {
+
+  // ── Close the modal, authenticate, and navigate to dashboard ──
+  const closeSuccessModal = useCallback(async () => {
     setShowSuccess(false);
+    if (registeredSession) {
+      await login(registeredSession.token, registeredSession.user);
+    }
     navigate('/', { replace: true });
-  }, [navigate]);
+  }, [registeredSession, login, navigate]);
 
   useFocusTrap(successModalRef, showSuccess, closeSuccessModal);
 
   /* ============================================================
-   * Derived UI
+   * Derived UI State
    * ============================================================ */
+
+  // ── Password strength display values ──
   const strengthScore = useMemo(
     () => getPasswordStrength(formData.password),
     [formData.password]
@@ -473,16 +575,19 @@ export default function Register() {
   const strengthColor = STRENGTH_COLORS[strengthScore];
   const strengthWidth = STRENGTH_WIDTHS[strengthScore];
 
+  // ── Field-level error visibility ──
   const emailHasError = Boolean(fieldErrors.email && touched.email);
   const usernameHasError = Boolean(fieldErrors.username && touched.username);
   const passwordHasError = Boolean(fieldErrors.password && touched.password);
   const confirmHasError = Boolean(fieldErrors.confirmPassword && touched.confirmPassword);
   const termsHasError = Boolean(fieldErrors.agreeTerms && touched.agreeTerms);
 
+  // ── Submit gating ──
   const submitDisabled = loading || rateLimitSeconds > 0;
 
   return (
     <div className="auth-page">
+      {/* ── Ambient background orbs ── */}
       <div className="auth-bg" aria-hidden="true">
         <div className="auth-orb auth-orb-1" />
         <div className="auth-orb auth-orb-2" />
@@ -496,6 +601,7 @@ export default function Register() {
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         style={{ position: 'relative' }}
       >
+        {/* ===================== Language Selector ===================== */}
         <div style={{
           position: 'absolute', top: 20, right: 20,
           display: 'flex', alignItems: 'center', gap: 6,
@@ -525,6 +631,7 @@ export default function Register() {
           </select>
         </div>
 
+        {/* ===================== Brand + Header ===================== */}
         <div className="auth-logo">
           <motion.div
             className="auth-logo-icon"
@@ -542,6 +649,7 @@ export default function Register() {
           <p>{tr('create_account_subtitle', 'Start your journey to smarter budgeting')}</p>
         </div>
 
+        {/* ===================== Benefit Bullets ===================== */}
         <ul className="auth-benefits">
           {[
             tr('encryption_badge', 'Secure JWT authentication'),
@@ -555,6 +663,7 @@ export default function Register() {
           ))}
         </ul>
 
+        {/* ===================== Top-Level Error ===================== */}
         <AnimatePresence>
           {error && (
             <motion.div
@@ -567,6 +676,7 @@ export default function Register() {
             >
               <AlertTriangle size={16} aria-hidden="true" />
               <span style={{ flex: 1 }}>{error}</span>
+              {/* ── Rate-limit countdown badge ── */}
               {rateLimitSeconds > 0 && (
                 <span
                   className="auth-rate-countdown"
@@ -575,6 +685,7 @@ export default function Register() {
                   {rateLimitSeconds}s
                 </span>
               )}
+              {/* ── Manual dismiss ── */}
               <button
                 type="button"
                 onClick={() => { setError(''); setErrorKind(null); }}
@@ -590,8 +701,9 @@ export default function Register() {
           )}
         </AnimatePresence>
 
+        {/* ===================== Form ===================== */}
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
-          {/* Username */}
+          {/* ── Username field (with live availability status) ── */}
           <div className={`form-group ${usernameHasError ? 'has-error' : ''}`}>
             <label htmlFor="reg-username">{tr('username', 'Username')}</label>
             <div className="input-wrapper">
@@ -607,6 +719,9 @@ export default function Register() {
                 required
                 autoComplete="username"
                 autoFocus
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 maxLength={MAX_USERNAME_LENGTH}
                 placeholder={tr('username_placeholder', 'johndoe')}
                 disabled={loading}
@@ -621,6 +736,7 @@ export default function Register() {
                         : undefined
                 }
               />
+              {/* ── Availability suffix icon (checking / available / taken) ── */}
               {usernameStatus === 'checking' && (
                 <Loader2 className="input-suffix-icon spin" size={16} aria-hidden="true" />
               )}
@@ -658,7 +774,7 @@ export default function Register() {
             )}
           </div>
 
-          {/* Email */}
+          {/* ── Email field ── */}
           <div className={`form-group ${emailHasError ? 'has-error' : ''}`}>
             <label htmlFor="reg-email">{tr('email_address', 'Email Address')}</label>
             <div className="input-wrapper">
@@ -673,6 +789,10 @@ export default function Register() {
                 onBlur={handleBlur}
                 required
                 autoComplete="email"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 maxLength={MAX_EMAIL_LENGTH}
                 placeholder={tr('email_placeholder', 'you@example.com')}
                 disabled={loading}
@@ -687,7 +807,7 @@ export default function Register() {
             )}
           </div>
 
-          {/* Password */}
+          {/* ── Password field with strength meter ── */}
           <div className={`form-group ${passwordHasError ? 'has-error' : ''}`}>
             <label htmlFor="reg-password">{tr('password', 'Password')}</label>
             <div className="input-wrapper">
@@ -710,6 +830,7 @@ export default function Register() {
                 aria-invalid={passwordHasError}
                 aria-describedby={passwordHasError ? 'password-error' : 'password-requirements'}
               />
+              {/* ── Show / hide toggle ── */}
               <button
                 type="button"
                 className="input-suffix-btn"
@@ -726,6 +847,7 @@ export default function Register() {
                 {fieldErrors.password}
               </div>
             )}
+            {/* ── Strength bar (hidden while an error is visible) ── */}
             {formData.password.length > 0 && !passwordHasError && (
               <div
                 className="pwd-strength-bar"
@@ -743,6 +865,7 @@ export default function Register() {
                 />
               </div>
             )}
+            {/* ── Strength label / requirements hint ── */}
             <div
               id="password-requirements"
               className="form-hint"
@@ -754,6 +877,7 @@ export default function Register() {
                 ? `${tr('password_strength', 'Strength')}: ${strengthLabel}`
                 : tr('password_requirements_hint', 'Use 8+ chars with uppercase, lowercase, number, special.')}
             </div>
+            {/* ── Caps Lock hint ── */}
             <AnimatePresence>
               {capsLock && (
                 <motion.div
@@ -770,7 +894,7 @@ export default function Register() {
             </AnimatePresence>
           </div>
 
-          {/* Confirm */}
+          {/* ── Confirm-password field ── */}
           <div className={`form-group ${confirmHasError ? 'has-error' : ''}`}>
             <label htmlFor="reg-confirm">{tr('confirm_password', 'Confirm Password')}</label>
             <div className="input-wrapper">
@@ -791,6 +915,7 @@ export default function Register() {
                 aria-invalid={confirmHasError}
                 aria-describedby={confirmHasError ? 'confirm-error' : undefined}
               />
+              {/* ── Show / hide toggle ── */}
               <button
                 type="button"
                 className="input-suffix-btn"
@@ -813,7 +938,7 @@ export default function Register() {
             )}
           </div>
 
-          {/* Terms */}
+          {/* ── Terms & Conditions agreement ── */}
           <div className={`form-group checkbox-group ${termsHasError ? 'has-error' : ''}`}>
             <label className="checkbox-label">
               <input
@@ -844,7 +969,7 @@ export default function Register() {
             )}
           </div>
 
-          {/* Marketing opt-in */}
+          {/* ── Marketing opt-in (optional) ── */}
           <div className="form-group checkbox-group">
             <label className="checkbox-label">
               <input
@@ -858,6 +983,7 @@ export default function Register() {
             </label>
           </div>
 
+          {/* ── Submit button (label varies by state) ── */}
           <motion.button
             type="submit"
             className="btn btn-primary auth-submit"
@@ -886,6 +1012,7 @@ export default function Register() {
           </motion.button>
         </form>
 
+        {/* ===================== Footer ===================== */}
         <div className="auth-divider">
           <span>{tr('already_have_account', 'Already have an account?')}</span>
         </div>
@@ -902,12 +1029,14 @@ export default function Register() {
           </Link>
         </div>
 
+        {/* ── Trust badge ── */}
         <div className="auth-secure-note">
           <Shield size={12} aria-hidden="true" />
           <span>{tr('encryption_badge', '256-bit encrypted · secure sessions')}</span>
         </div>
       </motion.div>
 
+      {/* ===================== Success Modal ===================== */}
       {/* Success modal — dismissible via Escape OR overlay click */}
       <AnimatePresence>
         {showSuccess && (
@@ -932,6 +1061,7 @@ export default function Register() {
               aria-describedby="reg-success-desc"
               style={{ maxWidth: 480, padding: 24, textAlign: 'center' }}
             >
+              {/* ── Icon badge ── */}
               <div
                 style={{
                   width: 56, height: 56, borderRadius: '50%',
@@ -962,6 +1092,8 @@ export default function Register() {
                   'Verify your email to unlock all features. You can also verify later from Settings → Security.'
                 )}
               </p>
+
+              {/* ── Primary + secondary actions ── */}
               <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
                 <button type="button" className="btn btn-primary" onClick={closeSuccessModal} style={{ width: '100%' }}>
                   <ArrowRight size={16} aria-hidden="true" />
@@ -971,17 +1103,31 @@ export default function Register() {
                   type="button"
                   className="btn btn-secondary"
                   onClick={async () => {
-                    if (typeof api.resendVerification === 'function') {
-                      try { await api.resendVerification(registeredEmail); } catch { /* ignore */ }
+                    if (resendSent) return;
+                    try {
+                      await api.resendVerification(registeredEmail);
+                      setResendSent(true);
+                    } catch {
+                      setResendSent(true);
                     }
                   }}
                   style={{ width: '100%', fontSize: '0.85rem' }}
                 >
-                  <RefreshCw size={14} aria-hidden="true" />
-                  {tr('resend_verification', 'Resend verification email')}
+                  {resendSent ? (
+                    <>
+                      <CheckCircle2 size={14} aria-hidden="true" style={{ color: 'var(--success-color, #10b981)' }} />
+                      {tr('verification_sent', 'Verification link sent!')}
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw size={14} aria-hidden="true" />
+                      {tr('resend_verification', 'Resend verification email')}
+                    </>
+                  )}
                 </button>
               </div>
 
+              {/* ── 2FA tip strip ── */}
               <div
                 style={{
                   marginTop: 20, padding: '10px 14px', borderRadius: 10,
@@ -1003,6 +1149,7 @@ export default function Register() {
         )}
       </AnimatePresence>
 
+      {/* ── Local styles for spin animation, hints, and helper classes ── */}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }

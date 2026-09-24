@@ -1,3 +1,22 @@
+/* —————————————————————————————————————
+ * Goals Page
+ * Savings goals dashboard with:
+ *   - Category-filtered, sortable, searchable list of goal cards.
+ *   - Goal templates (emergency, vacation, gadget, investment).
+ *   - Add / edit / delete / contribute modals.
+ *   - Contribution history (localStorage per user + goal).
+ *   - Milestone celebration (confetti + toasts) at 25/50/75/100%.
+ *   - Undo toast for the most recent contribution.
+ *   - CSV export of all goals.
+ *
+ * Key behaviors:
+ *   - Dates are treated as local (YYYY-MM-DD), never UTC.
+ *   - Progress % is clamped to [0, 100] and milestones are derived.
+ *   - Contribution history is capped at the last 50 entries per goal.
+ *   - Confetti canvas is DPR-aware and cancelable on unmount.
+ *   - Undo timeout is 6 seconds; superseding actions clear the timer.
+ * ————————————————————————————————————— */
+
 import React, {
   useState, useContext, useMemo, useRef, useEffect, useCallback,
 } from 'react';
@@ -16,13 +35,17 @@ import { useToast } from '../components/ToastProvider';
 /* ============================================================
  * Constants
  * ============================================================ */
+
+// ── Card color palette for goals ──
 const GOAL_COLORS = [
   '#059669', '#06b6d4', '#10b981', '#f59e0b',
   '#8b5cf6', '#ec4899', '#3b82f6', '#ef4444',
 ];
 
+// ── Emoji icon picker options ──
 const GOAL_ICONS = ['🎯', '💻', '✈️', '🎮', '📚', '🏋️', '🎸', '🚗', '🏠', '💍', '🛡️', '📈'];
 
+// ── Category filter options (label + i18n key + fallback) ──
 const GOAL_CATEGORIES = [
   { key: 'all', labelKey: 'category_all', fallback: 'All' },
   { key: 'emergency_fund', labelKey: 'category_emergency_fund', fallback: 'Emergency Fund' },
@@ -93,19 +116,24 @@ const GOAL_TEMPLATES = [
   },
 ];
 
+// ── localStorage prefix for contribution history + undo window ──
 const HISTORY_KEY_PREFIX = 'mcw_goal_history_';
 const UNDO_TIMEOUT_MS = 6000;
 
 /* ============================================================
  * Utilities
  * ============================================================ */
+
+// ── Zero-pad a number to 2 digits ──
 const pad2 = (n) => String(n).padStart(2, '0');
 
+// ── Coerce a value to a finite number with a fallback ──
 const safeNumber = (v, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 };
 
+// ── Round to two decimals ──
 const toFixed2 = (n) => Math.round(safeNumber(n) * 100) / 100;
 
 /** Extract local YYYY-MM-DD from any date-like input (no UTC shift). */
@@ -134,6 +162,7 @@ const parseLocalDate = (value) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
+// ── Normalize any category input to a canonical key ──
 const getCategoryKey = (cat) => {
   if (!cat) return 'other';
   const clean = String(cat).trim().toLowerCase().replace(/[\s-]+/g, '_');
@@ -148,12 +177,14 @@ const getCategoryKey = (cat) => {
   return clean;
 };
 
+// ── Localized category label with fallbacks ──
 const getCategoryLabel = (cat, t) => {
   const key = getCategoryKey(cat);
   const knownKey = GOAL_CATEGORIES.some((c) => c.key === key) ? key : 'other';
   return t?.(`category_${knownKey}`) || t?.(knownKey) || cat || 'Goal';
 };
 
+// ── Pick an unused color from the palette for a new goal ──
 const pickColor = (existingGoals) => {
   const used = new Set(
     (existingGoals || []).map((g) => g?.color).filter(Boolean)
@@ -179,9 +210,12 @@ const getCrossedMilestones = (prevPct, newPct) =>
   [25, 50, 75, 100].filter((m) => prevPct < m && newPct >= m);
 
 /** ✨ NEW: contribution history (localStorage-backed). */
+
+// ── Build the localStorage key for a goal's history ──
 const getHistoryKey = (userId, goalId) =>
   `${HISTORY_KEY_PREFIX}${userId || 'guest'}_${goalId}`;
 
+// ── Read the contribution history for a goal ──
 const readHistory = (userId, goalId) => {
   try {
     const raw = localStorage.getItem(getHistoryKey(userId, goalId));
@@ -193,6 +227,7 @@ const readHistory = (userId, goalId) => {
   }
 };
 
+// ── Write the contribution history for a goal (capped at 50 entries) ──
 const writeHistory = (userId, goalId, entries) => {
   try {
     const trimmed = Array.isArray(entries) ? entries.slice(-50) : [];
@@ -200,6 +235,7 @@ const writeHistory = (userId, goalId, entries) => {
   } catch { /* quota / private */ }
 };
 
+// ── Append one entry to the goal's history and return the new list ──
 const appendHistory = (userId, goalId, entry) => {
   const current = readHistory(userId, goalId);
   const next = [...current, entry];
@@ -207,6 +243,7 @@ const appendHistory = (userId, goalId, entry) => {
   return next;
 };
 
+// ── Format an ISO timestamp for the history list ──
 const formatTimestamp = (ts, locale) => {
   try {
     const d = ts instanceof Date ? ts : new Date(ts);
@@ -225,6 +262,7 @@ const formatTimestamp = (ts, locale) => {
 function fireConfetti(canvas) {
   if (!canvas || typeof window === 'undefined') return () => {};
 
+  // ── DPR sizing ──
   const dpr = window.devicePixelRatio || 1;
   const cssWidth = canvas.offsetWidth;
   const cssHeight = canvas.offsetHeight;
@@ -240,6 +278,7 @@ function fireConfetti(canvas) {
   if (!ctx) return () => {};
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+  // ── Particle pool ──
   const particles = Array.from({ length: 60 }).map(() => ({
     x: cssWidth / 2,
     y: cssHeight / 2,
@@ -257,6 +296,7 @@ function fireConfetti(canvas) {
   let frameId = null;
   let cancelled = false;
 
+  // ── Per-frame render loop ──
   const render = () => {
     if (cancelled) return;
     ctx.clearRect(0, 0, cssWidth, cssHeight);
@@ -290,6 +330,7 @@ function fireConfetti(canvas) {
 
   frameId = requestAnimationFrame(render);
 
+  // ── Cancel handle ──
   return () => {
     cancelled = true;
     if (frameId != null) cancelAnimationFrame(frameId);
@@ -356,6 +397,7 @@ function UndoToast({ state, onUndo, onDismiss, tr }) {
  * ============================================================ */
 const GoalsSkeleton = ({ tr }) => (
   <div className="masonry-layout-page goals-page-wrap" aria-label={tr?.('loading_goals', 'Loading savings goals') || 'Loading savings goals'} role="status">
+    {/* ── Header skeleton ── */}
     <div className="masonry-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
       <div className="skeleton" style={{ height: 38, width: 220, borderRadius: 12 }} />
       <div style={{ display: 'flex', gap: 8 }}>
@@ -363,24 +405,28 @@ const GoalsSkeleton = ({ tr }) => (
         <div className="skeleton" style={{ height: 38, width: 114, borderRadius: 10 }} />
       </div>
     </div>
-    {/* Summary banner skeleton */}
+
+    {/* ── Summary banner skeleton ── */}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 16 }}>
       {[1, 2, 3].map((i) => (
         <div key={i} className="glass skeleton" style={{ height: 96, borderRadius: 16 }} />
       ))}
     </div>
-    {/* Toolbar skeleton */}
+
+    {/* ── Toolbar skeleton ── */}
     <div className="glass" style={{ height: 56, borderRadius: 14, marginBottom: 16, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12 }}>
       <div className="skeleton" style={{ height: 32, width: 160, borderRadius: 8 }} />
       <div className="skeleton" style={{ height: 34, width: 240, borderRadius: 9999, marginLeft: 'auto' }} />
     </div>
-    {/* Category strip skeleton */}
+
+    {/* ── Category strip skeleton ── */}
     <div style={{ display: 'flex', gap: 8, marginBottom: 20, overflow: 'hidden' }}>
       {[70, 130, 90, 80, 100, 85].map((w, idx) => (
         <div key={idx} className="skeleton" style={{ height: 36, width: w, borderRadius: 9999, flexShrink: 0 }} />
       ))}
     </div>
-    {/* Masonry cards skeleton */}
+
+    {/* ── Masonry cards skeleton ── */}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: 20 }}>
       {[1, 2, 3, 4, 5, 6].map((i) => (
         <div key={i} className="glass skeleton" style={{ height: 280, borderRadius: 18 }} />
@@ -405,6 +451,7 @@ export default function Goals() {
   } = useContext(AppContext);
   // Issue: loading was not destructured, preventing Goals from showing a loading skeleton while fetching.
   */
+  // ── App context (loading added so the skeleton can render) ──
   const {
     transactions = [],
     goals = [],
@@ -417,14 +464,18 @@ export default function Goals() {
   } = useContext(AppContext);
   const { showToast } = useToast();
 
+  // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
 
+  // ── Locale derived from the app language ──
   const locale = useMemo(() => {
     const map = { en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN' };
     return map[lang] || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
   }, [lang]);
 
-  /* ---------------- UI state ---------------- */
+  /* ---------------- UI State ---------------- */
+
+  // ── Modal visibility + target selection ──
   const [showAdd, setShowAdd] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
   const [goalToDelete, setGoalToDelete] = useState(null);
@@ -441,7 +492,9 @@ export default function Goals() {
   const [undoState, setUndoState] = useState(null);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
-  /* ---------------- Form state ---------------- */
+  /* ---------------- Form State ---------------- */
+
+  // ── Add / edit form fields ──
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
   const [saved, setSaved] = useState('');
@@ -450,12 +503,15 @@ export default function Goals() {
   const [notes, setNotes] = useState('');
   const [selectedIcon, setSelectedIcon] = useState('🎯');
 
-  /* ---------------- Independent submitting flags ---------------- */
+  /* ---------------- Independent Submitting Flags ---------------- */
+
+  // ── Separate flags so one in-flight action doesn't block others ──
   const [isSavingGoal, setIsSavingGoal] = useState(false);
   const [isContributing, setIsContributing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  // ── Confetti canvas + cancel handle refs ──
   const confettiCanvasRef = useRef(null);
   const cancelConfettiRef = useRef(null);
 
@@ -466,9 +522,10 @@ export default function Goals() {
   }, [undoState]);
 
   /* ============================================================
-   * Derived data
+   * Derived Data
    * ============================================================ */
 
+  // ── Net cashflow across live transactions ──
   const netCashflow = useMemo(() => {
     if (!Array.isArray(transactions)) return 0;
     let total = 0;
@@ -481,6 +538,7 @@ export default function Goals() {
     return total;
   }, [transactions]);
 
+  // ── AI prediction per goal (time-to-goal) ──
   const predictions = useMemo(() => {
     const map = new Map();
     const txs = Array.isArray(transactions) ? transactions : [];
@@ -498,6 +556,7 @@ export default function Goals() {
   }, [goals, transactions]);
 
   /** ✨ NEW: progress percentage helper. */
+  // ── Clamp progress to [0, 100] ──
   const getPct = useCallback((g) => {
     const tgt = safeNumber(g.target, 0);
     const svd = safeNumber(g.saved, 0);
@@ -505,6 +564,7 @@ export default function Goals() {
   }, []);
 
   /** ✨ NEW: is goal overdue. */
+  // ── True when the deadline is in the past and the goal isn't done ──
   const isOverdue = useCallback((g) => {
     if (!g.deadline) return false;
     if (getPct(g) >= 100) return false;
@@ -575,7 +635,7 @@ export default function Goals() {
     return sorted;
   }, [goals, activeCategoryFilter, showOverdueOnly, showCompleted, sortBy, getPct, isOverdue]);
   */
-
+  // ── Filter + sort pipeline: search → category → overdue → completion → sort ──
   const filteredGoals = useMemo(() => {
     let list = goals;
 
@@ -651,6 +711,7 @@ export default function Goals() {
   }, [goals, activeCategoryFilter]);
 
   /** Summary totals — reflect the current filter. */
+  // ── Sum of targets and savings across the filtered goals ──
   const summaryTotals = useMemo(() => {
     let targetSum = 0;
     let savedSum = 0;
@@ -674,9 +735,10 @@ export default function Goals() {
   );
 
   /* ============================================================
-   * Form helpers
+   * Form Helpers
    * ============================================================ */
 
+  // ── Reset the form to its default (create) state ──
   const resetForm = useCallback(() => {
     setName('');
     setTarget('');
@@ -689,12 +751,14 @@ export default function Goals() {
     setShowTemplatePicker(false);
   }, []);
 
+  // ── Open the create modal with template picker visible ──
   const openAdd = useCallback(() => {
     resetForm();
     setShowAdd(true);
     setShowTemplatePicker(true);
   }, [resetForm]);
 
+  // ── Populate the form for editing an existing goal ──
   const openEdit = useCallback((g) => {
     if (!g) return;
     setEditingGoal(g);
@@ -708,13 +772,16 @@ export default function Goals() {
     setShowTemplatePicker(false);
   }, []);
 
+  // ── Close the goal modal and reset the form ──
   const closeGoalModal = useCallback(() => {
     setShowAdd(false);
     resetForm();
   }, [resetForm]);
 
   /* ============================================================
-   * ✨ NEW: Apply template
+   * ✨ NEW: Apply Template
+   * Fills the form from a preset, optionally estimating the target
+   * from recent monthly expenses.
    * ============================================================ */
 
   const applyTemplate = useCallback((template) => {
@@ -737,6 +804,7 @@ export default function Goals() {
       if (hasRecent) avgMonthlyExpense = recentTotal / 3;
     }
 
+    // ── Resolve target: use template.target, or derive from multiplier ──
     let targetNum = template.target;
     if (template.targetMultiplier && avgMonthlyExpense > 0) {
       targetNum = Math.round(avgMonthlyExpense * template.targetMultiplier);
@@ -755,7 +823,8 @@ export default function Goals() {
   }, [transactions, tr]);
 
   /* ============================================================
-   * ✨ NEW: Suggested deadline
+   * ✨ NEW: Suggested Deadline
+   * Estimates a realistic deadline from the current net cashflow.
    * ============================================================ */
 
   const suggestedDeadline = useMemo(() => {
@@ -774,12 +843,13 @@ export default function Goals() {
   }, [target, saved, netCashflow]);
 
   /* ============================================================
-   * Save (create / update)
+   * Save (Create / Update)
    * ============================================================ */
 
   const handleSaveGoal = useCallback(async () => {
     if (isSavingGoal) return;
 
+    // ── Read and validate the form values ──
     const trimmedName = name.trim();
     const targetNum = parseFloat(target);
     const savedNum = parseFloat(saved) || 0;
@@ -803,6 +873,7 @@ export default function Goals() {
 
     setIsSavingGoal(true);
     try {
+      // ── Build the payload with normalized values ──
       const payload = {
         user_id: USER_ID,
         name: trimmedName,
@@ -815,6 +886,7 @@ export default function Goals() {
         notes: notes.trim() || undefined,
       };
 
+      // ── Update or create ──
       if (editingGoal) {
         const goalId = editingGoal.id || editingGoal._id;
         if (!goalId) {
@@ -869,9 +941,10 @@ export default function Goals() {
   }, [isDeleting, goalToDelete, refetch, showToast, tr, USER_ID]);
 
   /* ============================================================
-   * ✨ NEW: Undo handler
+   * ✨ NEW: Undo Handler
    * ============================================================ */
 
+  // ── Restore the goal's `saved` value from before the last contribution ──
   const performUndo = useCallback(async () => {
     if (!undoState) return;
     const { goalId, previousSaved, timeoutId } = undoState;
@@ -886,11 +959,13 @@ export default function Goals() {
     }
   }, [undoState, refetch, showToast, tr]);
 
+  // ── Dismiss the undo bar and cancel its timer ──
   const dismissUndo = useCallback(() => {
     if (undoState?.timeoutId) clearTimeout(undoState.timeoutId);
     setUndoState(null);
   }, [undoState]);
 
+  // ── Show the undo bar for the given goal / previous value ──
   const triggerUndo = useCallback((goalId, previousSaved, message) => {
     if (undoState?.timeoutId) clearTimeout(undoState.timeoutId);
     const timeoutId = setTimeout(() => setUndoState(null), UNDO_TIMEOUT_MS);
@@ -898,12 +973,13 @@ export default function Goals() {
   }, [undoState]);
 
   /* ============================================================
-   * Contribute (with history + milestones + undo)
+   * Contribute (with History + Milestones + Undo)
    * ============================================================ */
 
   const handleContribute = useCallback(async () => {
     if (isContributing) return;
 
+    // ── Parse and validate the amount ──
     const amt = parseFloat(contributeAmount);
     if (!Number.isFinite(amt) || amt === 0) {
       showToast('error', tr('enter_nonzero_amount', 'Please enter a non-zero amount.'));
@@ -919,6 +995,7 @@ export default function Goals() {
       return;
     }
 
+    // ── Compute the new saved value (clamped to [0, target]) ──
     const currentSaved = safeNumber(goal.saved, 0);
     const targetNum = safeNumber(goal.target, 0);
     const desiredSaved = currentSaved + amt;
@@ -926,6 +1003,7 @@ export default function Goals() {
     const wasClamped = toFixed2(desiredSaved) !== clampedSaved;
     const actualDelta = toFixed2(clampedSaved - currentSaved);
 
+    // ── Detect milestone crossings ──
     const prevPct = targetNum > 0 ? (currentSaved / targetNum) * 100 : 0;
     const newPct = targetNum > 0 ? (clampedSaved / targetNum) * 100 : 0;
     const crossed = getCrossedMilestones(prevPct, newPct);
@@ -949,6 +1027,7 @@ export default function Goals() {
       setContributeGoal(null);
       setContributeAmount('');
 
+      // ── Feedback: confetti / milestone / cap / standard toast ──
       if (willHit100 && confettiCanvasRef.current) {
         cancelConfettiRef.current?.();
         cancelConfettiRef.current = fireConfetti(confettiCanvasRef.current);
@@ -1003,6 +1082,7 @@ export default function Goals() {
     }
     setIsExporting(true);
     try {
+      // ── Build headers and rows ──
       const headers = [
         'Name', 'Category', 'Icon', 'Target', 'Saved', 'Progress %',
         'Deadline', 'Overdue', 'Notes', 'Created',
@@ -1029,6 +1109,7 @@ export default function Goals() {
         ...rows.map((r) => r.map(escapeCsvField).join(',')),
       ].join('\n');
 
+      // ── Trigger the download (BOM-prefixed for Excel) ──
       const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -1048,9 +1129,10 @@ export default function Goals() {
   }, [goals, isExporting, showToast, tr, t, isOverdue]);
 
   /* ============================================================
-   * Modal open/close helpers
+   * Modal Open / Close Helpers
    * ============================================================ */
 
+  // ── Contribute modal ──
   const openContribute = useCallback((id) => {
     if (!id) return;
     setContributeGoal(id);
@@ -1062,6 +1144,7 @@ export default function Goals() {
     setContributeAmount('');
   }, []);
 
+  // ── Delete modal ──
   const openDelete = useCallback((id) => {
     if (!id) return;
     setGoalToDelete(id);
@@ -1069,6 +1152,7 @@ export default function Goals() {
 
   const closeDelete = useCallback(() => setGoalToDelete(null), []);
 
+  // ── History modal ──
   const openHistory = useCallback((id) => {
     if (!id) return;
     setHistoryGoal(id);
@@ -1077,15 +1161,17 @@ export default function Goals() {
   const closeHistory = useCallback(() => setHistoryGoal(null), []);
 
   /* ============================================================
-   * Render helpers
+   * Render Helpers
    * ============================================================ */
 
+  // ── Contribute modal: adjust label and behavior based on sign ──
   const contributeAmountNum = parseFloat(contributeAmount);
   const contributeIsRemoval = Number.isFinite(contributeAmountNum) && contributeAmountNum < 0;
   const contributeConfirmText = contributeIsRemoval
     ? tr('remove_funds', 'Remove Funds')
     : tr('add_funds', 'Add Funds');
 
+  // ── Resolve selected goals for each modal ──
   const deletingGoal = goals.find((g) => g.id === goalToDelete || g._id === goalToDelete);
   const contributingGoal = goals.find(
     (g) => g.id === contributeGoal || g._id === contributeGoal
@@ -1125,12 +1211,14 @@ export default function Goals() {
     );
   }
   */
+  // ── Skeleton while goals are loading and none are cached ──
   if (loading && goals.length === 0) {
     return <GoalsSkeleton tr={tr} />;
   }
 
   return (
     <div className="masonry-layout-page goals-page-wrap">
+      {/* ── Confetti canvas (fixed, DPR-aware) ── */}
       <canvas
         ref={confettiCanvasRef}
         aria-hidden="true"
@@ -1144,6 +1232,7 @@ export default function Goals() {
         }}
       />
 
+      {/* ===================== Header ===================== */}
       <div className="masonry-header">
         <div className="mh-titles">
           <h2>{tr('goals', 'Savings Goals')}</h2>
@@ -1164,6 +1253,7 @@ export default function Goals() {
           >
             <Download size={16} /> CSV
           </motion.button>
+          {/* ── New goal ── */}
           <motion.button
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
@@ -1176,7 +1266,7 @@ export default function Goals() {
         </div>
       </div>
 
-      {/* Summary banner */}
+      {/* ===================== Summary banner ===================== */}
       <div className="carousel-wrapper" style={{ minHeight: 110 }}>
         <div className="carousel-track">
           {[
@@ -1213,6 +1303,7 @@ export default function Goals() {
                 boxShadow: `0 8px 32px ${s.color}15`,
               }}
             >
+              {/* ── Icon box ── */}
               <div
                 className="ci-icon-box"
                 style={{ background: `${s.color}22`, color: s.color }}
@@ -1220,6 +1311,7 @@ export default function Goals() {
               >
                 {s.icon}
               </div>
+              {/* ── Value + label ── */}
               <div className="ci-info">
                 <p className="ci-val" style={{ color: s.color }}>{s.value}</p>
                 <p className="ci-lbl">{s.label}</p>
@@ -1229,7 +1321,7 @@ export default function Goals() {
         </div>
       </div>
 
-      {/* Toolbar — sort + search + completed/overdue toggles */}
+      {/* ===================== Toolbar — sort + search + toggles ===================== */}
       <div
         className="goals-toolbar glass"
         style={{
@@ -1243,6 +1335,7 @@ export default function Goals() {
           marginBottom: 16,
         }}
       >
+        {/* ── Sort selector ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <label
             htmlFor="goals-sort"
@@ -1266,7 +1359,7 @@ export default function Goals() {
           </select>
         </div>
 
-        {/* Search input matching Image 1 */}
+        {/* ── Search input matching Image 1 ── */}
         <div style={{ position: 'relative', flex: '0 1 260px', minWidth: 180, maxWidth: 320 }}>
           <Search
             size={14}
@@ -1300,6 +1393,7 @@ export default function Goals() {
               boxSizing: 'border-box',
             }}
           />
+          {/* ── Clear search (only when there is a query) ── */}
           {searchQuery && (
             <button
               type="button"
@@ -1324,6 +1418,7 @@ export default function Goals() {
           )}
         </div>
 
+        {/* ── Completed / overdue toggles ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <button
             type="button"
@@ -1351,7 +1446,7 @@ export default function Goals() {
         </div>
       </div>
 
-      {/* Category filter strip */}
+      {/* ===================== Category filter strip ===================== */}
       <div
         className="goals-category-filter-strip"
         role="group"
@@ -1370,8 +1465,9 @@ export default function Goals() {
         ))}
       </div>
 
-      {/* Goals grid */}
+      {/* ===================== Goals grid ===================== */}
       {filteredGoals.length === 0 ? (
+        /* ── Empty state: no goals OR filters yield nothing ── */
         <motion.div
           className="glass empty-state"
           initial={{ opacity: 0, y: 20 }}
@@ -1379,6 +1475,7 @@ export default function Goals() {
         >
           <Target size={52} aria-hidden="true" />
           {goals.length === 0 ? (
+            /* ── No goals at all ── */
             <>
               <p className="primary-msg">{tr('no_goals_yet', 'No goals yet.')}</p>
               <p className="secondary-msg">
@@ -1397,6 +1494,7 @@ export default function Goals() {
               </motion.button>
             </>
           ) : (
+            /* ── Filters yield no results ── */
             <>
               <p className="primary-msg">
                 {searchQuery
@@ -1424,6 +1522,7 @@ export default function Goals() {
           )}
         </motion.div>
       ) : (
+        /* ── Masonry grid of goal cards ── */
         <div className="masonry-grid">
           <AnimatePresence>
             {filteredGoals.map((g, i) => {
@@ -1435,6 +1534,7 @@ export default function Goals() {
               const done = pct >= 100;
               const overdue = isOverdue(g);
 
+              // ── "Stuck" heuristic: low progress on an old goal ──
               const createdRaw = g.created_at || g.createdAt;
               const createdDate = createdRaw ? new Date(createdRaw) : null;
               const ageInDays =
@@ -1443,6 +1543,7 @@ export default function Goals() {
                   : null;
               const isStuck = pct < 15 && ageInDays !== null && ageInDays > 14;
 
+              // ── Days left + monthly target needed ──
               let daysLeft = null;
               let monthlyNeeded = null;
               if (g.deadline && !done && !overdue) {
@@ -1460,6 +1561,7 @@ export default function Goals() {
                 }
               }
 
+              // ── AI prediction state ──
               const pred = predictions.get(goalId) || null;
               const predShowsMonths = pred && !pred.achieved && pred.months;
               const predShowsEmpty = pred && !pred.achieved && !pred.months;
@@ -1474,6 +1576,7 @@ export default function Goals() {
                   transition={{ delay: i * 0.05, type: 'spring', damping: 20 }}
                   style={{ '--mc-color': g.color }}
                 >
+                  {/* ── Achieved badge ── */}
                   {done && (
                     <motion.div
                       className="mc-badge"
@@ -1485,12 +1588,14 @@ export default function Goals() {
                     </motion.div>
                   )}
 
+                  {/* ── Overdue badge ── */}
                   {overdue && !done && (
                     <div className="mc-badge mc-badge-danger" role="status">
                       <AlertTriangle size={12} aria-hidden="true" /> {tr('overdue', 'Overdue')}
                     </div>
                   )}
 
+                  {/* ── Card header: icon + category + actions ── */}
                   <div className="mc-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div className="mc-icon" aria-hidden="true">{g.icon || '🎯'}</div>
@@ -1509,6 +1614,7 @@ export default function Goals() {
                       >
                         <History size={15} />
                       </button>
+                      {/* ── Edit ── */}
                       <button
                         type="button"
                         className="del-btn"
@@ -1518,6 +1624,7 @@ export default function Goals() {
                       >
                         <Edit3 size={15} />
                       </button>
+                      {/* ── Delete ── */}
                       <button
                         type="button"
                         className="del-btn"
@@ -1530,6 +1637,7 @@ export default function Goals() {
                     </div>
                   </div>
 
+                  {/* ── Title + notes ── */}
                   <h3 className="mc-title">{g.name}</h3>
 
                   {g.notes && (
@@ -1548,6 +1656,7 @@ export default function Goals() {
                     </p>
                   )}
 
+                  {/* ── Deadline strip ── */}
                   {g.deadline && !done && (
                     <div className="goal-deadline-strip">
                       {overdue ? (
@@ -1570,6 +1679,7 @@ export default function Goals() {
                     </div>
                   )}
 
+                  {/* ── Amounts ── */}
                   <div className="mc-amounts">
                     <span className="mc-saved">{fmt(savedNum)}</span>
                     <span className="mc-target">
@@ -1577,6 +1687,7 @@ export default function Goals() {
                     </span>
                   </div>
 
+                  {/* ── Progress bar + milestones ── */}
                   <div className="mc-progress-box">
                     <div className="mc-progress-track">
                       <motion.div
@@ -1587,6 +1698,7 @@ export default function Goals() {
                       />
                     </div>
 
+                    {/* ── Milestone chips ── */}
                     <div
                       className="goal-milestones-row"
                       role="list"
@@ -1607,6 +1719,7 @@ export default function Goals() {
                       })}
                     </div>
 
+                    {/* ── Percentage + amount left ── */}
                     <div className="mc-progress-stats">
                       <span>{pct.toFixed(0)}% {tr('completed', 'completed')}</span>
                       <span>
@@ -1615,6 +1728,7 @@ export default function Goals() {
                     </div>
                   </div>
 
+                  {/* ── Card footer: contribute + AI prediction ── */}
                   <div className="mc-footer">
                     {!done && (
                       <motion.button
@@ -1657,7 +1771,7 @@ export default function Goals() {
         </div>
       )}
 
-      {/* Add / Edit goal modal */}
+      {/* ===================== Add / Edit goal modal ===================== */}
       <Modal
         isOpen={showAdd || editingGoal !== null}
         onClose={closeGoalModal}
@@ -1701,6 +1815,7 @@ export default function Goals() {
                   exit={{ opacity: 0, height: 0 }}
                   style={{ overflow: 'hidden', marginTop: 8 }}
                 >
+                  {/* ── Template buttons grid ── */}
                   <div
                     style={{
                       display: 'grid',
@@ -1741,6 +1856,7 @@ export default function Goals() {
           </div>
         )}
 
+        {/* ── Goal name ── */}
         <div className="form-group">
           <label htmlFor="goal-name">{tr('goal_name', 'Goal Name')}</label>
           <input
@@ -1753,6 +1869,7 @@ export default function Goals() {
           />
         </div>
 
+        {/* ── Category ── */}
         <div className="form-group">
           <label htmlFor="goal-category">{tr('category', 'Category')}</label>
           <select
@@ -1770,6 +1887,7 @@ export default function Goals() {
           </select>
         </div>
 
+        {/* ── Icon picker ── */}
         <div className="form-group">
           <label>{tr('choose_icon', 'Choose Icon')}</label>
           <div
@@ -1795,6 +1913,7 @@ export default function Goals() {
           </div>
         </div>
 
+        {/* ── Target amount ── */}
         <div className="form-group">
           <label htmlFor="goal-target">{tr('target_amount', 'Target Amount')}</label>
           <input
@@ -1809,6 +1928,7 @@ export default function Goals() {
           />
         </div>
 
+        {/* ── Already saved ── */}
         <div className="form-group">
           <label htmlFor="goal-saved">{tr('already_saved', 'Already Saved')}</label>
           <input
@@ -1823,6 +1943,7 @@ export default function Goals() {
           />
         </div>
 
+        {/* ── Deadline ── */}
         <div className="form-group">
           <label htmlFor="goal-deadline">
             {tr('target_deadline', 'Target Deadline')}{' '}
@@ -1858,6 +1979,7 @@ export default function Goals() {
           )}
         </div>
 
+        {/* ── Notes ── */}
         <div className="form-group">
           <label htmlFor="goal-notes">
             {tr('description', 'Description')}{' '}
@@ -1874,7 +1996,7 @@ export default function Goals() {
         </div>
       </Modal>
 
-      {/* Contribute modal */}
+      {/* ===================== Contribute modal ===================== */}
       <Modal
         isOpen={contributeGoal !== null}
         onClose={closeContribute}
@@ -1887,6 +2009,7 @@ export default function Goals() {
           {tr('updating', 'Updating')}:{' '}
           <strong>{contributingGoal?.name || '—'}</strong>
         </p>
+        {/* ── Amount input (negative removes) ── */}
         <div className="form-group">
           <label htmlFor="contribute-amount">
             {tr('amount', 'Amount')}{' '}
@@ -1907,7 +2030,7 @@ export default function Goals() {
         </div>
       </Modal>
 
-      {/* Confirm delete modal */}
+      {/* ===================== Confirm delete modal ===================== */}
       <Modal
         isOpen={goalToDelete !== null}
         onClose={closeDelete}
@@ -1923,7 +2046,7 @@ export default function Goals() {
         </p>
       </Modal>
 
-      {/* ✨ NEW: Contribution history modal */}
+      {/* ===================== ✨ NEW: Contribution history modal ===================== */}
       <Modal
         isOpen={historyGoal !== null}
         onClose={closeHistory}
@@ -1936,6 +2059,7 @@ export default function Goals() {
           <strong>{viewingHistoryGoal?.name || '—'}</strong>
         </p>
         {historyEntries.length === 0 ? (
+          /* ── Empty history ── */
           <div className="glass" style={{ padding: 24, textAlign: 'center', borderRadius: 10 }}>
             <History size={32} style={{ opacity: 0.4, marginBottom: 8 }} aria-hidden="true" />
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
@@ -1943,6 +2067,7 @@ export default function Goals() {
             </p>
           </div>
         ) : (
+          /* ── History entries (newest first) ── */
           <div style={{ maxHeight: 320, overflowY: 'auto' }}>
             {historyEntries.map((entry, idx) => {
               const amt = safeNumber(entry.amount, 0);
@@ -1959,6 +2084,7 @@ export default function Goals() {
                   }}
                 >
                   <div>
+                    {/* ── Signed amount ── */}
                     <div
                       style={{
                         fontWeight: 600,
@@ -1967,10 +2093,12 @@ export default function Goals() {
                     >
                       {amt > 0 ? '+' : ''}{fmt(amt)}
                     </div>
+                    {/* ── Timestamp ── */}
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                       {formatTimestamp(entry.timestamp, locale)}
                     </div>
                   </div>
+                  {/* ── Before → after values ── */}
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'right' }}>
                     {fmt(entry.previousSaved)} → {fmt(entry.newSaved)}
                   </div>
@@ -1981,7 +2109,7 @@ export default function Goals() {
         )}
       </Modal>
 
-      {/* ✨ NEW: Undo bar */}
+      {/* ===================== ✨ NEW: Undo bar ===================== */}
       <AnimatePresence>
         {undoState && (
           <UndoToast

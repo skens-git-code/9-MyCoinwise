@@ -1,3 +1,24 @@
+/* —————————————————————————————————————
+ * Transactions Page
+ * Full transaction management hub with:
+ *   - Search, filter, sort, and preset quick filters.
+ *   - Multi-select for bulk edit and bulk delete.
+ *   - CSV / JSON / PDF export.
+ *   - Bank statement import with duplicate detection.
+ *   - Split-pane UI: list on the left, receipt-style detail on the right.
+ *   - Undo toast for deletes.
+ *
+ * Key behaviors:
+ *   - Only live (non-deleted, non-future) transactions are shown.
+ *   - Search uses `useDeferredValue` for responsive typing.
+ *   - Bulk operations use `Promise.allSettled` so one failure doesn't
+ *     abort the rest.
+ *   - CSV exports are BOM-prefixed and formula-injection guarded.
+ *   - Receipt ticket can be shared via Web Share API or downloaded.
+ *   - Keyboard shortcuts: `/` focuses search, `N` opens add, `Escape`
+ *     clears selection or filters.
+ * ————————————————————————————————————— */
+
 import React, {
   useState, useContext, useMemo, useDeferredValue, useRef, useEffect, useCallback,
 } from 'react';
@@ -19,6 +40,8 @@ import { api } from '../services/api';
 /* ============================================================
  * Constants
  * ============================================================ */
+
+// ── Default category suggestions (merged with user's actual categories) ──
 const DEFAULT_CATEGORIES = [
   'Food', 'Groceries', 'Transport', 'Shopping', 'Entertainment',
   'Health', 'Education', 'Bills', 'Salary', 'Freelance', 'Gift',
@@ -26,22 +49,27 @@ const DEFAULT_CATEGORIES = [
   'Insurance', 'Investment', 'Transfer', 'Other', 'Allowance',
 ];
 
+// ── App language → locale map ──
 const LOCALE_MAP = {
   en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
 };
 const resolveLocale = (lang) =>
   LOCALE_MAP[lang] || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
 
+// ── Framer Motion variants for list items ──
 const ITEM_VARIANTS = {
   hidden: { opacity: 0, x: -12 },
   show: { opacity: 1, x: 0 },
 };
 
+// ── Undo window in milliseconds ──
 const UNDO_TIMEOUT_MS = 6000;
 
 /* ============================================================
  * Helpers
  * ============================================================ */
+
+// ── Zero-pad a number to 2 digits ──
 const pad2 = (n) => String(n).padStart(2, '0');
 
 /** Local YYYY-MM-DD (no UTC shift). */
@@ -56,6 +84,7 @@ const toLocalDateKey = (value) => {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
 
+// ── Coerce a value into a finite number with fallback ──
 const safeNumber = (v, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -77,8 +106,10 @@ const getTransactionId = (transaction) => {
   return id == null ? '' : String(id);
 };
 
+// ── True when the transaction is not soft-deleted ──
 const isLiveTransaction = (tx) => tx && typeof tx === 'object' && tx.is_deleted !== true;
 
+// ── True when the transaction date is in the future ──
 const isFutureTransaction = (tx) => {
   const dateKey = toLocalDateKey(tx?.date);
   const todayKey = toLocalDateKey(new Date());
@@ -102,9 +133,10 @@ const highlight = (text, query) => {
 };
 
 /* ============================================================
- * Component
+ * Main Component
  * ============================================================ */
 export default function Transactions() {
+  // ── App context: data, actions, i18n ──
   const {
     transactions: rawTransactions = [],
     deleteTransaction,
@@ -122,10 +154,15 @@ export default function Transactions() {
   } = useContext(AppContext);
   const { showToast } = useToast();
 
+  // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
+
+  // ── Locale derived from the app language ──
   const locale = useMemo(() => resolveLocale(lang), [lang]);
 
-  /* ---------------- Live transactions ---------------- */
+  /* ---------------- Live Transactions ---------------- */
+
+  // ── Only live, non-future transactions ──
   const transactions = useMemo(
     () => (Array.isArray(rawTransactions)
       ? rawTransactions.filter((tx) => isLiveTransaction(tx) && !isFutureTransaction(tx))
@@ -133,14 +170,20 @@ export default function Transactions() {
     [rawTransactions]
   );
 
-  /* ---------------- Search / filter state ---------------- */
+  /* ---------------- Search / Filter State ---------------- */
+
+  // ── Search query + deferred value for typing performance ──
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
+
+  // ── Primary filters ──
   const [filterType, setFilterType] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterTag, setFilterTag] = useState('all');
   const [activePreset, setActivePreset] = useState('all');
   const [sortBy, setSortBy] = useState('date-desc');
+
+  // ── Advanced filters ──
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -148,10 +191,14 @@ export default function Transactions() {
   const [amountMax, setAmountMax] = useState('');
 
   /* ---------------- Selection ---------------- */
+
+  // ── Bulk selection + focused transaction ──
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [selectedTxId, setSelectedTxId] = useState(null);
 
-  /* ---------------- Bulk action state ---------------- */
+  /* ---------------- Bulk Action State ---------------- */
+
+  // ── Bulk edit / delete modal state ──
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [isBulkOperating, setIsBulkOperating] = useState(false);
@@ -161,25 +208,33 @@ export default function Transactions() {
     date: '',
   });
 
-  /* ---------------- CRUD state ---------------- */
+  /* ---------------- CRUD State ---------------- */
+
+  // ── Single transaction operations ──
   const [deletingTx, setDeletingTx] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
   const [duplicateTxData, setDuplicateTxData] = useState(null);
 
-  /* ---------------- Import state ---------------- */
+  /* ---------------- Import State ---------------- */
+
+  // ── Bank statement import workflow ──
   const [showImportModal, setShowImportModal] = useState(false);
   const [statementRows, setStatementRows] = useState([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isAnalyzingStatement, setIsAnalyzingStatement] = useState(false);
   const fileInputRef = useRef(null);
 
-  /* ---------------- Export ---------------- */
+  /* ---------------- Export State ---------------- */
+
+  // ── Export menu + in-flight flag ──
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  /* ---------------- Undo ---------------- */
+  /* ---------------- Undo State ---------------- */
+
+  // ── Undo toast + refs ──
   const [undoState, setUndoState] = useState(null);
   const undoTimerRef = useRef(null);
   const searchInputRef = useRef(null);
@@ -187,22 +242,26 @@ export default function Transactions() {
   const ticketCardRef = useRef(null);
   const [isSharingTicket, setIsSharingTicket] = useState(false);
 
+  // ── Scroll detail pane into view on mobile when a transaction is selected ──
   useEffect(() => {
     if (selectedTxId && detailPaneRef.current && window.innerWidth <= 992) {
       detailPaneRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     }
   }, [selectedTxId]);
 
+  // ── Clear pending undo timer on unmount ──
   useEffect(() => () => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
   }, []);
 
+  // ── Show the undo bar for the configured window ──
   const armUndo = useCallback((label, restoreFn) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     setUndoState({ label, restoreFn });
     undoTimerRef.current = setTimeout(() => setUndoState(null), UNDO_TIMEOUT_MS);
   }, []);
 
+  // ── Execute the pending undo action ──
   const runUndo = useCallback(async () => {
     if (!undoState) return;
     const { restoreFn } = undoState;
@@ -217,14 +276,17 @@ export default function Transactions() {
   }, [undoState, refetch, showToast, tr]);
 
   /* ============================================================
-   * Categories + tags (derived from data)
+   * Categories + Tags (derived from data)
    * ============================================================ */
+
+  // ── Union of default categories and categories seen in transactions ──
   const categories = useMemo(() => {
     const set = new Set(DEFAULT_CATEGORIES);
     transactions.forEach((tx) => { if (tx.category) set.add(String(tx.category)); });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [transactions]);
 
+  // ── All tags seen in transactions ──
   const allTags = useMemo(() => {
     const set = new Set();
     transactions.forEach((tx) => {
@@ -234,8 +296,10 @@ export default function Transactions() {
   }, [transactions]);
 
   /* ============================================================
-   * Filter + sort
+   * Filter + Sort
    * ============================================================ */
+
+  // ── Apply filters, search, presets, and sort ──
   const filtered = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -284,6 +348,7 @@ export default function Transactions() {
       return true;
     });
 
+    // ── Sort with safe timestamp fallback ──
     const safeTime = (d) => {
       const ts = new Date(d).getTime();
       return Number.isFinite(ts) ? ts : 0;
@@ -307,11 +372,13 @@ export default function Transactions() {
     activePreset, sortBy, dateFrom, dateTo, amountMin, amountMax,
   ]);
 
+  // ── Whether any filter is currently active ──
   const hasActiveFilters =
     searchTerm || filterType !== 'all' || filterCategory !== 'all' ||
     filterTag !== 'all' || activePreset !== 'all' || dateFrom || dateTo ||
     amountMin !== '' || amountMax !== '';
 
+  // ── Reset all filters to their defaults ──
   const clearAllFilters = useCallback(() => {
     setSearchTerm('');
     setFilterType('all');
@@ -325,16 +392,20 @@ export default function Transactions() {
   }, []);
 
   /* ============================================================
-   * Selected transaction
+   * Selected Transaction
    * ============================================================ */
+
+  // ── Currently focused transaction (from the list) ──
   const selectedTx = useMemo(() => {
     if (!selectedTxId) return null;
     return transactions.find((tx) => getTransactionId(tx) === String(selectedTxId)) || null;
   }, [selectedTxId, transactions]);
 
   /* ============================================================
-   * Selection handlers
+   * Selection Handlers
    * ============================================================ */
+
+  // ── Toggle select-all for the filtered list ──
   const toggleSelectAll = useCallback(() => {
     setSelectedIds((prev) => {
       if (prev.size === filtered.length && filtered.length > 0) return new Set();
@@ -342,6 +413,7 @@ export default function Transactions() {
     });
   }, [filtered]);
 
+  // ── Toggle selection for a single row ──
   const toggleSelectOne = useCallback((id, e) => {
     if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
     if (!id) return;
@@ -353,10 +425,11 @@ export default function Transactions() {
     });
   }, []);
 
+  // ── Clear all selections ──
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   /* ============================================================
-   * Bulk delete (with undo)
+   * Bulk Delete (with undo)
    * ============================================================ */
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.size === 0 || isBulkOperating) return;
@@ -398,7 +471,7 @@ export default function Transactions() {
   }, [selectedIds, isBulkOperating, transactions, deleteTransaction, addTransaction, refetch, showToast, tr, armUndo, selectedTxId]);
 
   /* ============================================================
-   * Bulk edit (category, type, date) — parallel with allSettled
+   * Bulk Edit (category, type, date) — parallel with allSettled
    * ============================================================ */
   const handleBulkEdit = useCallback(async () => {
     if (selectedIds.size === 0 || isBulkOperating) return;
@@ -435,7 +508,7 @@ export default function Transactions() {
   }, [selectedIds, isBulkOperating, bulkEdit, editTransaction, refetch, showToast, tr]);
 
   /* ============================================================
-   * Single delete (with undo)
+   * Single Delete (with undo)
    * ============================================================ */
   const confirmDelete = useCallback(async () => {
     if (!deletingTx || isDeleting) return;
@@ -467,8 +540,10 @@ export default function Transactions() {
   }, [deletingTx, isDeleting, deleteTransaction, refetch, showToast, tr, selectedTxId, addTransaction, armUndo]);
 
   /* ============================================================
-   * Add / edit / duplicate submits — with error toasts
+   * Add / Edit / Duplicate Submits — with error toasts
    * ============================================================ */
+
+  // ── Add a new transaction ──
   const handleAdd = useCallback(async (tx) => {
     try {
       await addTransaction(tx);
@@ -479,6 +554,7 @@ export default function Transactions() {
     }
   }, [addTransaction, showToast, tr]);
 
+  // ── Duplicate a transaction ──
   const handleDuplicate = useCallback(async (tx) => {
     try {
       await addTransaction(tx);
@@ -489,6 +565,7 @@ export default function Transactions() {
     }
   }, [addTransaction, showToast, tr]);
 
+  // ── Edit an existing transaction ──
   const handleEdit = useCallback(async (tx) => {
     try {
       const id = getTransactionId(editingTx);
@@ -501,8 +578,10 @@ export default function Transactions() {
   }, [editTransaction, editingTx, showToast, tr]);
 
   /* ============================================================
-   * Duplicate action
+   * Duplicate Action
    * ============================================================ */
+
+  // ── Prepare a copy of the given transaction for the form ──
   const prepareDuplicate = useCallback((tx) => {
     setDuplicateTxData({
       type: tx.type,
@@ -519,7 +598,7 @@ export default function Transactions() {
   }, []);
 
   /* ============================================================
-   * CSV export (RFC 4180 + BOM)
+   * CSV Export (RFC 4180 + BOM)
    * ============================================================ */
   const handleExportCSV = useCallback((exportSelected = false) => {
     const listToExport = exportSelected
@@ -566,7 +645,7 @@ export default function Transactions() {
   }, [filtered, selectedIds, showToast, tr]);
 
   /* ============================================================
-   * JSON export (sanitized payload)
+   * JSON Export (sanitized payload)
    * ============================================================ */
   const handleExportJSON = useCallback(() => {
     try {
@@ -598,7 +677,7 @@ export default function Transactions() {
   }, [filtered, showToast, tr]);
 
   /* ============================================================
-   * PDF export (lazy-loaded)
+   * PDF Export (lazy-loaded)
    * ============================================================ */
   const handleExportPDF = useCallback(async () => {
     setShowExportMenu(false);
@@ -617,7 +696,7 @@ export default function Transactions() {
   }, [user, filtered, currencyInfo, locale, showToast, tr, isExporting]);
 
   /* ============================================================
-   * Bank statement import
+   * Bank Statement Import
    * ============================================================ */
   const handleFileUpload = useCallback(async (e) => {
     const file = e.target.files?.[0];
@@ -652,15 +731,18 @@ export default function Transactions() {
     }
   }, [showToast, tr]);
 
+  // ── Update a single statement row during review ──
   const updateStatementRow = useCallback((id, patch) => {
     setStatementRows((rows) => rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }, []);
 
+  // ── Count of statement rows marked for import ──
   const selectedStatementCount = useMemo(
     () => statementRows.filter((row) => row.selected).length,
     [statementRows]
   );
 
+  // ── Confirm and import the selected statement rows ──
   const handleConfirmImport = useCallback(async () => {
     const selections = statementRows.filter((row) => row.selected);
     if (selections.length === 0 || isImporting) return;
@@ -681,9 +763,8 @@ export default function Transactions() {
     }
   }, [statementRows, isImporting, showToast, tr, refetch]);
 
-
   /* ============================================================
-   * Share ticket picture
+   * Share Ticket Picture
    * ============================================================ */
   const handleShareTicketPic = useCallback(async () => {
     if (!selectedTx || !ticketCardRef.current || isSharingTicket) return;
@@ -773,7 +854,7 @@ export default function Transactions() {
   }, [selectedTx, isSharingTicket, theme, tr, fmt, locale, showToast]);
 
   /* ============================================================
-   * Keyboard shortcuts
+   * Keyboard Shortcuts
    * ============================================================ */
   useEffect(() => {
     const onKey = (e) => {
@@ -808,8 +889,10 @@ export default function Transactions() {
   }, [selectedIds.size, hasActiveFilters, clearSelection, clearAllFilters]);
 
   /* ============================================================
-   * Memoized totals
+   * Memoized Totals
    * ============================================================ */
+
+  // ── Income / expense / net across all live transactions ──
   const totals = useMemo(() => {
     let income = 0;
     let expense = 0;
@@ -822,8 +905,10 @@ export default function Transactions() {
   }, [transactions]);
 
   /* ============================================================
-   * Loading state
+   * Loading State
    * ============================================================ */
+
+  // ── Skeleton while the first page load is in progress ──
   if (contextLoading && transactions.length === 0) {
     return (
       <div className="inbox-layout-page">
@@ -847,6 +932,7 @@ export default function Transactions() {
 
   return (
     <div className="inbox-layout-page">
+      {/* ── Local styles for spin and highlight ── */}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
@@ -858,6 +944,7 @@ export default function Transactions() {
         }
       `}</style>
 
+      {/* ── Hidden file input for statement import ── */}
       <input
         type="file"
         ref={fileInputRef}
@@ -868,6 +955,7 @@ export default function Transactions() {
         tabIndex={-1}
       />
 
+      {/* ===================== Header ===================== */}
       <div className="inbox-header">
         <div className="ih-titles">
           <h2>{tr('transactions', 'Transactions')}</h2>
@@ -877,6 +965,7 @@ export default function Transactions() {
         </div>
 
         <div className="inbox-header-actions">
+          {/* ── Import statement button ── */}
           <motion.button
             type="button"
             whileHover={{ scale: 1.03 }}
@@ -890,6 +979,7 @@ export default function Transactions() {
             {isAnalyzingStatement ? tr('analyzing', 'Analyzing…') : tr('import_statement', 'Import Statement')}
           </motion.button>
 
+          {/* ── Export dropdown ── */}
           <div className="dropdown-container" style={{ position: 'relative' }}>
             <motion.button
               type="button"
@@ -933,6 +1023,7 @@ export default function Transactions() {
             </AnimatePresence>
           </div>
 
+          {/* ── Add new transaction ── */}
           <motion.button
             type="button"
             aria-label={tr('add_transaction', 'Add transaction')}
@@ -946,7 +1037,7 @@ export default function Transactions() {
         </div>
       </div>
 
-      {/* Quick presets */}
+      {/* ===================== Quick Presets ===================== */}
       <div className="tx-presets-strip" role="group" aria-label={tr('quick_filters', 'Quick filters')}>
         {[
           { id: 'all', label: tr('category_all', 'All') },
@@ -968,7 +1059,7 @@ export default function Transactions() {
         ))}
       </div>
 
-      {/* Bulk toolbar */}
+      {/* ===================== Bulk Toolbar ===================== */}
       <AnimatePresence>
         {selectedIds.size > 0 && (
           <motion.div
@@ -1007,9 +1098,11 @@ export default function Transactions() {
       </AnimatePresence>
 
       <div className="inbox-split-pane">
-        {/* LEFT: list */}
+        {/* ===================== LEFT: List Pane ===================== */}
         <div className="inbox-list-pane glass">
+          {/* ── Filters block ── */}
           <div className="il-filters">
+            {/* ── Search input ── */}
             <div className="il-search">
               <Search className="il-search-icon" size={16} aria-hidden />
               <input
@@ -1031,6 +1124,7 @@ export default function Transactions() {
               )}
             </div>
 
+            {/* ── Type / category / tag / sort ── */}
             <div className="il-controls">
               <select
                 aria-label={tr('filter_by_type', 'Filter by type')}
@@ -1098,6 +1192,7 @@ export default function Transactions() {
               )}
             </div>
 
+            {/* ── Advanced filters drawer ── */}
             <AnimatePresence>
               {showAdvancedFilters && (
                 <motion.div
@@ -1154,6 +1249,7 @@ export default function Transactions() {
             </AnimatePresence>
           </div>
 
+          {/* ── Select-all bar (shown when there are results) ── */}
           {filtered.length > 0 && (
             <div className="il-select-all-bar">
               <button
@@ -1172,10 +1268,12 @@ export default function Transactions() {
             </div>
           )}
 
+          {/* ── Screen reader announcement ── */}
           <div className="sr-only" aria-live="polite">
             {tr('showing', 'Showing')} {filtered.length} {tr('of', 'of')} {transactions.length}
           </div>
 
+          {/* ── List items ── */}
           <div className="il-scrollable">
             {transactions.length === 0 ? (
               <div className="il-empty">
@@ -1225,6 +1323,7 @@ export default function Transactions() {
                         }
                       }}
                     >
+                      {/* ── Selection checkbox ── */}
                       <button
                         type="button"
                         className="il-checkbox-btn"
@@ -1241,9 +1340,12 @@ export default function Transactions() {
                         )}
                       </button>
 
+                      {/* ── Direction icon ── */}
                       <div className={`ili-icon ${tx.type}`} aria-hidden>
                         {tx.type === 'income' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
                       </div>
+
+                      {/* ── Category, date, snippet ── */}
                       <div className="ili-info">
                         <p className="ili-cat">{highlight(tx.category || '', deferredSearchTerm)}</p>
                         <p className="ili-date">
@@ -1252,6 +1354,8 @@ export default function Transactions() {
                           {!tx.merchant && tx.note && <span className="ili-note-snip"> · {highlight(tx.note, deferredSearchTerm)}</span>}
                         </p>
                       </div>
+
+                      {/* ── Amount ── */}
                       <div className="ili-amount">
                         <span className={tx.type}>
                           {tx.type === 'income' ? '+' : '-'}{fmt(tx.amount)}
@@ -1265,7 +1369,7 @@ export default function Transactions() {
           </div>
         </div>
 
-        {/* RIGHT: details */}
+        {/* ===================== RIGHT: Details Pane ===================== */}
         <div
           className={`inbox-detail-pane ${selectedTx ? 'has-ticket' : 'glass'}`}
           ref={detailPaneRef}
@@ -1281,7 +1385,7 @@ export default function Transactions() {
                 exit={{ opacity: 0, y: -12, scale: 0.98 }}
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
               >
-                {/* Top Bar: Receipt branding & Dismiss button */}
+                {/* ── Receipt top bar ── */}
                 <div className="tx-ticket-topbar">
                   <div className="tx-ticket-badge">
                     <Receipt size={13} aria-hidden />
@@ -1298,7 +1402,7 @@ export default function Transactions() {
                   </button>
                 </div>
 
-                {/* Hero section: Icon, Status, Amount, Category, Date */}
+                {/* ── Hero section: icon, status, amount, category, date ── */}
                 <div className="tx-ticket-hero">
                   <div className={`tx-ticket-hero-icon ${selectedTx.type}`} aria-hidden>
                     {selectedTx.type === 'income' ? <ArrowUpRight size={24} /> : <ArrowDownRight size={24} />}
@@ -1332,15 +1436,16 @@ export default function Transactions() {
                   </p>
                 </div>
 
-                {/* Perforation divider with Paytm-style ticket punch notches */}
+                {/* ── Perforation divider ── */}
                 <div className="tx-ticket-divider" aria-hidden="true">
                   <div className="tx-ticket-notch left" />
                   <div className="tx-ticket-line" />
                   <div className="tx-ticket-notch right" />
                 </div>
 
-                {/* Receipt Details Breakdown */}
+                {/* ── Receipt details breakdown ── */}
                 <div className="tx-ticket-body">
+                  {/* Type */}
                   <div className="tx-ticket-row">
                     <span className="ttr-label">{tr('type', 'Type')}</span>
                     <span className={`ttr-pill ${selectedTx.type}`}>
@@ -1350,11 +1455,13 @@ export default function Transactions() {
                     </span>
                   </div>
 
+                  {/* Category */}
                   <div className="tx-ticket-row">
                     <span className="ttr-label">{tr('category', 'Category')}</span>
                     <span className="ttr-val">{selectedTx.category || tr('uncategorized', 'Uncategorized')}</span>
                   </div>
 
+                  {/* Merchant */}
                   {selectedTx.merchant && (
                     <div className="tx-ticket-row">
                       <span className="ttr-label">{tr('merchant', 'Merchant / Payee')}</span>
@@ -1362,6 +1469,7 @@ export default function Transactions() {
                     </div>
                   )}
 
+                  {/* Note */}
                   {selectedTx.note ? (
                     <div className="tx-ticket-row note-row">
                       <span className="ttr-label"><FileText size={12} aria-hidden /> {tr('description', 'Note')}</span>
@@ -1369,6 +1477,7 @@ export default function Transactions() {
                     </div>
                   ) : null}
 
+                  {/* Tags */}
                   {Array.isArray(selectedTx.tags) && selectedTx.tags.length > 0 && (
                     <div className="tx-ticket-row tags-row">
                       <span className="ttr-label"><Tag size={12} aria-hidden /> {tr('tags', 'Tags')}</span>
@@ -1380,6 +1489,7 @@ export default function Transactions() {
                     </div>
                   )}
 
+                  {/* Transaction number + copy */}
                   {selectedTx.transaction_number && (
                     <div className="tx-ticket-row ref-row">
                       <span className="ttr-label">{tr('txn_id', 'Txn Ref ID')}</span>
@@ -1406,7 +1516,7 @@ export default function Transactions() {
                   )}
                 </div>
 
-                {/* Action options in responsive 2x2 grid */}
+                {/* ── Action buttons ── */}
                 <div className="tx-ticket-actions">
                   <button
                     type="button"
@@ -1455,6 +1565,7 @@ export default function Transactions() {
                 </div>
               </motion.div>
             ) : (
+              /* ── Empty state when no transaction is selected ── */
               <motion.div
                 key="empty"
                 className="idp-empty"
@@ -1495,7 +1606,7 @@ export default function Transactions() {
         </div>
       </div>
 
-      {/* Single TransactionForm mounted once, driven by mode */}
+      {/* ===================== Single Transaction Form ===================== */}
       {(isAdding || duplicateTxData || editingTx) && (
         <TransactionForm
           key={
@@ -1519,7 +1630,7 @@ export default function Transactions() {
         />
       )}
 
-      {/* Single delete */}
+      {/* ===================== Delete Modal ===================== */}
       <Modal
         isOpen={deletingTx !== null}
         onClose={() => (isDeleting ? null : setDeletingTx(null))}
@@ -1539,7 +1650,7 @@ export default function Transactions() {
         )}
       </Modal>
 
-      {/* Bulk delete */}
+      {/* ===================== Bulk Delete Modal ===================== */}
       <Modal
         isOpen={showBulkDeleteModal}
         onClose={() => (isBulkOperating ? null : setShowBulkDeleteModal(false))}
@@ -1554,7 +1665,7 @@ export default function Transactions() {
         </p>
       </Modal>
 
-      {/* Bulk edit */}
+      {/* ===================== Bulk Edit Modal ===================== */}
       <Modal
         isOpen={showBulkEditModal}
         onClose={() => (isBulkOperating ? null : setShowBulkEditModal(false))}
@@ -1605,7 +1716,7 @@ export default function Transactions() {
         </div>
       </Modal>
 
-      {/* Import review */}
+      {/* ===================== Import Review Modal ===================== */}
       <Modal
         isOpen={showImportModal}
         onClose={() => {
@@ -1699,7 +1810,7 @@ export default function Transactions() {
         </div>
       </Modal>
 
-      {/* Undo bar */}
+      {/* ===================== Undo Bar ===================== */}
       <AnimatePresence>
         {undoState && (
           <motion.div

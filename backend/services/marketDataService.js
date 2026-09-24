@@ -1,19 +1,30 @@
-// backend/services/marketDataService.js
+/* —————————————————————————————————————
+ * Market Data Service
+ * Fetches live prices for ticker symbols with an in-memory cache.
+ *
+ * Key behaviors:
+ *   - Prices are cached for 15 minutes to reduce API calls.
+ *   - In development, a mock database simulates live prices with
+ *     small random fluctuations.
+ *   - A production code block (Finnhub API) is included but commented
+ *     out and can be enabled when ready.
+ *
+ * Exports:
+ *   getLivePrices(symbols) → { [symbol]: price }
+ * ————————————————————————————————————— */
 
-// Simple in-memory cache (In production, replace with Redis)
+// ── Simple in-memory cache (replace with Redis in production) ──
 const priceCache = new Map();
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-/**
- * Fetches real-time prices for an array of ticker symbols.
- * @param {Array<String>} symbols - e.g., ['^NSEI', 'RELIANCE.NS', 'BTC-USD']
- * @returns {Object} - e.g., { '^NSEI': 22500.50, 'BTC-USD': 64000.00 }
- */
+// ── Fetch live prices for an array of ticker symbols ──
+// @param {Array<String>} symbols - e.g., ['^NSEI', 'RELIANCE.NS', 'BTC-USD']
+// @returns {Object} - e.g., { '^NSEI': 22500.50, 'BTC-USD': 64000.00 }
 const getLivePrices = async (symbols) => {
   const results = {};
   const symbolsToFetch = [];
 
-  // 1. Check Cache first
+  // ── 1. Check the cache first ──
   const now = Date.now();
   symbols.forEach(symbol => {
     if (priceCache.has(symbol) && (now - priceCache.get(symbol).timestamp < CACHE_TTL_MS)) {
@@ -25,11 +36,9 @@ const getLivePrices = async (symbols) => {
 
   if (symbolsToFetch.length === 0) return results;
 
-  // 2. Fetch missing symbols
+  // ── 2. Fetch missing symbols ──
   try {
-    // ---------------------------------------------------------
-    // DEVELOPMENT MOCK (Replace this block in production)
-    // ---------------------------------------------------------
+    // ── Development mock (replace this block in production) ──
     console.log(`[DEV] Mocking API call for: ${symbolsToFetch.join(', ')}`);
     const mockDb = {
       '^NSEI': 22450.00,       // Nifty 50
@@ -42,18 +51,18 @@ const getLivePrices = async (symbols) => {
 
     symbolsToFetch.forEach(symbol => {
       // Add slight randomness to simulate live market fluctuations
-      const basePrice = mockDb[symbol] || 1000; 
+      const basePrice = mockDb[symbol] || 1000;
       const variance = basePrice * 0.005 * (Math.random() > 0.5 ? 1 : -1);
       const livePrice = Number((basePrice + variance).toFixed(2));
-      
+
       results[symbol] = livePrice;
-      
-      // Update Cache
+
+      // ── Update cache ──
       priceCache.set(symbol, { price: livePrice, timestamp: now });
     });
-    // ---------------------------------------------------------
 
-    /* PRODUCTION CODE (Uncomment when ready)
+    // ── Production code (uncomment when ready) ──
+    /*
     const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
     const apiKey = process.env.FINNHUB_API_KEY;
     for (const symbol of symbolsToFetch) {
@@ -71,4 +80,5 @@ const getLivePrices = async (symbols) => {
   return results;
 };
 
+// ── Export ──
 module.exports = { getLivePrices };

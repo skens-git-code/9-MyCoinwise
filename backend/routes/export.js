@@ -1,9 +1,20 @@
-/**
- * exports.js — Data export routes (Excel + JSON backup)
+/* —————————————————————————————————————
+ * Data Export Routes (Excel + JSON backup)
+ * Generates downloadable exports of a user's financial data.
  *
  * Endpoints:
- *   GET /api/exports/:userId            Excel export of transactions
- *   GET /api/exports/backup/:userId     Full JSON backup of all user data
+ *   GET /:userId        Excel export of transactions
+ *   GET /backup/:userId Full JSON backup of all user data
+ *
+ * Key behaviors:
+ *   - Router-level rate limit (exportLimiter) and auth apply to all.
+ *   - Cache-Control is applied to every response.
+ *   - Excel export is capped at MAX_EXPORT_ROWS (default 50,000);
+ *     overflow is detected with a +1 limit and reported in the
+ *     Summary sheet.
+ *   - Filenames use the user's local date (no UTC shift).
+ *   - Soft-deleted rows are filtered where the model supports it.
+ *   - Mongoose lean() docs are stripped of __v before backup.
  *
  * Fixes applied vs. the previous version:
  *   - validationResult is now actually checked — previously the
@@ -20,8 +31,9 @@
  *   - Row cap on Excel export to avoid freezing the server on huge
  *     datasets (default 50 000 rows; override via MAX_EXPORT_ROWS).
  *   - Backup response filtered to remove __v and other internal fields.
- */
+ * ————————————————————————————————————— */
 
+// ── Load dependencies ──
 const express = require('express');
 const mongoose = require('mongoose');
 const { param, query: queryValidator, validationResult } = require('express-validator');
@@ -45,12 +57,14 @@ const checkOwnership = require('../middleware/ownership');
 const auth = require('../middleware/auth');
 const { logger } = require('../utils/logger');
 
+// ── Create router ──
 const router = express.Router();
 
-/* ============================================================
+/* —————————————————————————————————————
  * Constants
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Currency symbol map for the Excel sheet ──
 const CURRENCIES = {
   USD: { symbol: '$',   code: 'USD' },
   INR: { symbol: '₹',   code: 'INR' },
@@ -69,13 +83,15 @@ const CURRENCIES = {
   THB: { symbol: '฿',   code: 'THB' },
 };
 
+// ── Hard caps on export sizes ──
 const MAX_EXPORT_ROWS = Number(process.env.MAX_EXPORT_ROWS) || 50_000;
 const MAX_BACKUP_DOCS_PER_COLLECTION = Number(process.env.MAX_BACKUP_DOCS) || 100_000;
 
-/* ============================================================
- * Middleware
- * ============================================================ */
+/* —————————————————————————————————————
+ * Router Middleware
+ * ————————————————————————————————————— */
 
+// ── Rate limiter: caps export requests per IP ──
 const exportLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
@@ -87,20 +103,21 @@ const exportLimiter = rateLimit({
   },
 });
 
+// ── Apply rate limit + auth to every route on this router ──
 router.use(exportLimiter);
 router.use(auth);
 
-// Cache-Control on every response (including errors).
+// ── Disable caching on every response, including errors ──
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   next();
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * Helpers
- * ============================================================ */
+ * ————————————————————————————————————— */
 
-/** Local YYYY-MM-DD (no UTC shift for users east/west of UTC). */
+// ── Local YYYY-MM-DD (no UTC shift for users east/west of UTC) ──
 const localDateStamp = (date = new Date()) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -108,26 +125,29 @@ const localDateStamp = (date = new Date()) => {
   return `${y}-${m}-${d}`;
 };
 
-/** Strip internal-only fields from a Mongoose lean() document. */
+// ── Strip internal-only fields from a Mongoose lean() document ──
 const stripInternalFields = (doc) => {
   if (!doc || typeof doc !== 'object') return doc;
   const { __v, ...rest } = doc;
   return rest;
 };
 
-/* ============================================================
- * GET /:userId — Excel export of transactions
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /:userId
+ * Excel export of transactions for a user, with an optional
+ * date range (start / end ISO strings).
+ * ————————————————————————————————————— */
 router.get(
   '/:userId',
   checkOwnership('userId'),
   [
+    // ── Validate user ID and optional date range ──
     param('userId').isMongoId().withMessage('Invalid user ID.'),
     queryValidator('start').optional().isISO8601().toDate(),
     queryValidator('end').optional().isISO8601().toDate(),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -137,6 +157,7 @@ router.get(
     const { start, end } = req.query;
 
     try {
+      // ── Load the user (for currency + filename) ──
       const user = await User.findById(userId).lean();
       if (!user) {
         return res.status(404).json({ error: 'User not found.' });
@@ -163,9 +184,11 @@ router.get(
         .sort({ date: -1 })
         .limit(MAX_EXPORT_ROWS + 1);
 
+      // ── Detect truncation and slice down to the cap ──
       const truncated = transactions.length > MAX_EXPORT_ROWS;
       const rowsToExport = truncated ? transactions.slice(0, MAX_EXPORT_ROWS) : transactions;
 
+      // ── Create the workbook ──
       const workbook = new excel.Workbook();
       workbook.creator = 'MyCoinwise';
       workbook.created = new Date();
@@ -184,26 +207,31 @@ router.get(
         { header: `Amount (${currency})`, key: 'amount', width: 16 },
       ];
 
+      // ── Style the header row ──
       const headerRow = ws.getRow(1);
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF059669' } };
       headerRow.height = 22;
 
+      // ── Track totals while writing rows ──
       let totalIncome = 0;
       let totalExpense = 0;
       let exportedCount = 0;
 
       for (const t of rowsToExport) {
+        // ── Skip rows with invalid amounts or dates ──
         const amount = Number(t.amount);
         if (!Number.isFinite(amount)) continue;
 
         const dateObj = t.date instanceof Date ? t.date : new Date(t.date);
         if (Number.isNaN(dateObj.getTime())) continue;
 
+        // ── Accumulate totals ──
         if (t.type === 'income') totalIncome += amount;
         else if (t.type === 'expense') totalExpense += amount;
         exportedCount += 1;
 
+        // ── Write the row ──
         const row = ws.addRow({
           id: t._id.toString(),
           date: localDateStamp(dateObj),
@@ -213,6 +241,7 @@ router.get(
           amount: `${currencySymbol}${amount.toFixed(2)}`,
         });
 
+        // ── Color the amount by direction ──
         row.getCell('amount').font = {
           bold: true,
           color: { argb: t.type === 'income' ? 'FF10B981' : 'FFEF4444' },
@@ -251,6 +280,7 @@ router.get(
       summaryWs.getColumn(1).width = 22;
       summaryWs.getColumn(2).width = 40;
 
+      // ── Build a safe, local-dated filename ──
       const safeUsername = String(user.username || 'Report').replace(/[^a-zA-Z0-9_-]/g, '_');
       const filename = `MyCoinwise_${safeUsername}_${localDateStamp()}.xlsx`;
 
@@ -263,6 +293,7 @@ router.get(
         `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`
       );
 
+      // ── Stream the workbook to the client ──
       await workbook.xlsx.write(res);
       return res.end();
     } catch (error) {
@@ -276,15 +307,16 @@ router.get(
   }
 );
 
-/* ============================================================
- * GET /backup/:userId — Full JSON backup
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /backup/:userId
+ * Full JSON backup of every user-owned collection.
+ * ————————————————————————————————————— */
 router.get(
   '/backup/:userId',
   checkOwnership('userId'),
   [param('userId').isMongoId().withMessage('Invalid user ID.')],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -293,6 +325,7 @@ router.get(
     const { userId } = req.params;
 
     try {
+      // ── Load the user (for the profile section) ──
       const user = await User.findById(userId).lean();
       if (!user) {
         return res.status(404).json({ error: 'User not found.' });
@@ -300,6 +333,7 @@ router.get(
 
       // Soft-deleted rows are excluded where the model supports it.
       // Collections without an is_deleted field are returned in full.
+      // Every query is capped at MAX_BACKUP_DOCS_PER_COLLECTION.
       const [
         transactions,
         goals,
@@ -341,6 +375,7 @@ router.get(
         TaxDocument.find({ user_id: userId }).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
       ]);
 
+      // ── Assemble the backup document ──
       const backup = {
         version: 5,
         exportedAt: new Date().toISOString(),
@@ -368,6 +403,7 @@ router.get(
         taxDocuments: taxDocuments.map(stripInternalFields),
       };
 
+      // ── Set download headers and send the JSON ──
       const filename = `MyCoinwise_backup_${localDateStamp()}.json`;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader(
@@ -386,4 +422,9 @@ router.get(
   }
 );
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;

@@ -1,12 +1,13 @@
-/**
- * subscriptions.js — Subscription management routes
+/* —————————————————————————————————————
+ * Subscription Routes
+ * CRUD endpoints for user subscriptions with filters.
  *
  * Endpoints:
- *   GET    /api/subscriptions/:userId           List subscriptions (with filters)
- *   GET    /api/subscriptions/single/:id        Single subscription by ID
- *   POST   /api/subscriptions                   Create a subscription
- *   PUT    /api/subscriptions/:id               Update a subscription
- *   DELETE /api/subscriptions/:id               Delete a subscription
+ *   GET    /:userId           List subscriptions (with filters)
+ *   GET    /single/:id        Single subscription by ID
+ *   POST   /                  Create a subscription
+ *   PUT    /:id               Update a subscription
+ *   DELETE /:id               Delete a subscription
  *
  * Changes vs. the original:
  *   - Duplicate name check on POST (matches accounts.js).
@@ -20,8 +21,9 @@
  *   - `logger.error` replaces console.error.
  *   - Cache-Control middleware on every response.
  *   - 11000 duplicate-key handler for future unique indexes.
- */
+ * ————————————————————————————————————— */
 
+// ── Load dependencies ──
 const express = require('express');
 const mongoose = require('mongoose');
 const { body, param, query, validationResult } = require('express-validator');
@@ -29,27 +31,27 @@ const Subscription = require('../models/Subscription');
 const checkOwnership = require('../middleware/ownership');
 const { logger } = require('../utils/logger');
 
+// ── Create router ──
 const router = express.Router();
 
-/* ============================================================
+/* —————————————————————————————————————
  * Constants
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Allowed billing cycles ──
 const SUBSCRIPTION_CYCLES = ['daily', 'weekly', 'monthly', 'quarterly', 'yearly'];
 
-/* Original buggy code:
-const PAYMENT_METHODS = [
-  'credit_card', 'debit_card', 'bank_transfer', 'paypal',
-  'google_pay', 'apple_pay', 'cash', 'other',
-];
-// Issue: PAYMENT_METHODS did not include 'card', 'upi', 'wallet' which are used in models/Subscription.js
-// and frontend Subscriptions.jsx, causing 400 Bad Request on valid client requests and Mongoose validation errors.
-*/
+// ── Allowed payment methods ──
+// Note: an earlier version omitted 'card', 'upi', and 'wallet', which are
+// used by models/Subscription.js and the frontend, causing 400 responses
+// on otherwise valid client requests.
 const PAYMENT_METHODS = [
   'card', 'bank_transfer', 'wallet', 'upi', 'other',
   'credit_card', 'debit_card', 'paypal', 'google_pay', 'apple_pay', 'cash',
 ];
 
+// ── Normalize incoming payment methods to the schema enum ──
+// Maps aliases like 'credit_card' / 'apple_pay' → 'card', etc.
 const normalizePaymentMethod = (pm) => {
   if (!pm) return 'card';
   const val = String(pm).trim().toLowerCase();
@@ -59,16 +61,21 @@ const normalizePaymentMethod = (pm) => {
   if (val === 'upi') return 'upi';
   return 'other';
 };
+
+// ── Field length and numeric limits ──
 const MAX_NAME_LENGTH = 200;
 const MAX_NOTES_LENGTH = 500;
 const MAX_ICON_LENGTH = 40;
 const MAX_MONEY = 999_999_999.99;
+
+// ── Hex color pattern ──
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
-/* ============================================================
+/* —————————————————————————————————————
  * Helpers
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Parse a monetary amount; null on invalid input ──
 const parseMoney = (value, { allowZero = true } = {}) => {
   if (value === '' || value === null || value === undefined) return null;
   if (typeof value !== 'string' && typeof value !== 'number') return null;
@@ -79,18 +86,18 @@ const parseMoney = (value, { allowZero = true } = {}) => {
   return Number(amount.toFixed(2));
 };
 
+// ── Coerce common truthy values into a boolean ──
 const parseBoolean = (value) => {
   if (value === undefined || value === null) return undefined;
   return value === true || value === 'true' || value === 1 || value === '1';
 };
 
+// ── Escape user input before building a RegExp ──
 const escapeRegExp = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/**
- * Only allow http/https URLs. `isURL()` alone accepts `javascript:`,
- * `data:`, and `file:` schemes.
- */
+// ── Only allow http/https URLs ──
+// `isURL()` alone accepts `javascript:`, `data:`, and `file:` schemes.
 const isSafeUrl = (value) => {
   if (!value) return true;
   try {
@@ -101,39 +108,44 @@ const isSafeUrl = (value) => {
   }
 };
 
-/* ============================================================
- * Middleware
- * ============================================================ */
+/* —————————————————————————————————————
+ * Router Middleware
+ * ————————————————————————————————————— */
 
-// Cache-Control on every response.
+// ── Disable caching on every response ──
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   next();
 });
 
-/* ============================================================
- * GET /:userId — List subscriptions
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /:userId
+ * List subscriptions for a user, with optional filters:
+ *   - active, paused, cycle
+ * ————————————————————————————————————— */
 router.get(
   '/:userId',
   checkOwnership('userId'),
   [
+    // ── Validate user ID and optional filters ──
     param('userId').isMongoId().withMessage('Invalid user ID.'),
     query('active').optional().isBoolean().toBoolean(),
     query('paused').optional().isBoolean().toBoolean(),
     query('cycle').optional().isIn(SUBSCRIPTION_CYCLES),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Build the filter from optional query params ──
       const filter = { user_id: req.params.userId };
       if (req.query.active !== undefined) filter.is_active = req.query.active;
       if (req.query.paused !== undefined) filter.is_paused = req.query.paused;
       if (req.query.cycle) filter.cycle = req.query.cycle;
 
+      // ── Load subscriptions, oldest first ──
       const subscriptions = await Subscription.find(filter).sort({ created_at: 1 });
       return res.json(subscriptions);
     } catch (error) {
@@ -143,19 +155,21 @@ router.get(
   }
 );
 
-/* ============================================================
- * GET /single/:id — Single subscription
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /single/:id
+ * Fetch a single subscription by ID, scoped to the authenticated user.
+ * ————————————————————————————————————— */
 router.get(
   '/single/:id',
   checkOwnership('id', { model: Subscription, paramName: 'id' }),
   [param('id').isMongoId().withMessage('Invalid subscription ID.')],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Load the subscription, scoped to the authenticated user ──
       const subscription = await Subscription.findOne({
         _id: req.params.id,
         user_id: req.user.id,
@@ -171,13 +185,14 @@ router.get(
   }
 );
 
-/* ============================================================
- * POST / — Create a subscription
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /
+ * Create a new subscription for the authenticated user.
+ * ————————————————————————————————————— */
 router.post(
   '/',
   [
+    // ── Validate request body ──
     body('name')
       .isString().trim().notEmpty()
       .isLength({ max: MAX_NAME_LENGTH })
@@ -196,6 +211,7 @@ router.post(
     body('trial_ends').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
@@ -204,6 +220,7 @@ router.post(
       payment_method, start_date, next_billing_date, trial_ends,
     } = req.body;
 
+    // ── Parse amount ──
     const amountNum = parseMoney(amount, { allowZero: false });
     if (amountNum === null) {
       return res.status(400).json({
@@ -211,6 +228,7 @@ router.post(
       });
     }
 
+    // ── Enforce http/https URL protocol ──
     if (!isSafeUrl(url)) {
       return res.status(400).json({ error: 'URL must use http or https.' });
     }
@@ -229,6 +247,7 @@ router.post(
         });
       }
 
+      // ── Assemble the subscription payload ──
       const subscriptionData = {
         user_id: req.user.id,
         name: normalizedName,
@@ -237,17 +256,19 @@ router.post(
         color: color || '#3b82f6',
         icon: icon || '💳',
         url: url ? String(url).trim() : null,
-        /* Original buggy code:
-        payment_method: payment_method || 'credit_card',
-        // Issue: 'credit_card' violates Subscription schema enum ['card', 'bank_transfer', 'wallet', 'upi', 'other']
-        */
+
+        // Note: an earlier version defaulted to 'credit_card', which
+        // violates the Subscription schema enum ['card', ...]. The
+        // normalizePaymentMethod helper maps aliases into the enum.
         payment_method: normalizePaymentMethod(payment_method),
+
         next_billing_date: next_billing_date || null,
         trial_ends: trial_ends || null,
         is_active: true,
         is_paused: false,
       };
 
+      // ── Persist the new subscription ──
       const subscription = await Subscription.create(subscriptionData);
       return res.status(201).json({
         id: subscription._id,
@@ -255,6 +276,7 @@ router.post(
         subscription,
       });
     } catch (error) {
+      // ── Map duplicate-key errors to a friendly message ──
       if (error?.code === 11000) {
         const field = error.keyPattern
           ? Object.keys(error.keyPattern)[0]
@@ -269,14 +291,15 @@ router.post(
   }
 );
 
-/* ============================================================
- * PUT /:id — Update a subscription
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * PUT /:id
+ * Update a subscription owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.put(
   '/:id',
   checkOwnership('id', { model: Subscription, paramName: 'id' }),
   [
+    // ── Validate path param and optional body fields ──
     param('id').isMongoId().withMessage('Invalid subscription ID.'),
     body('name').optional().isString().trim().notEmpty()
       .isLength({ max: MAX_NAME_LENGTH }),
@@ -296,10 +319,12 @@ router.put(
     body('cancelled_at').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
   ],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Load the subscription, scoped to the authenticated user ──
       const subscription = await Subscription.findOne({
         _id: req.params.id,
         user_id: req.user.id,
@@ -330,6 +355,7 @@ router.put(
         subscription.name = normalizedName;
       }
 
+      // ── Update amount ──
       if (amount !== undefined) {
         const amountNum = parseMoney(amount, { allowZero: false });
         if (amountNum === null) {
@@ -338,10 +364,12 @@ router.put(
         subscription.amount = amountNum;
       }
 
+      // ── Update simple fields ──
       if (cycle !== undefined) subscription.cycle = cycle;
       if (color !== undefined) subscription.color = color;
       if (icon !== undefined) subscription.icon = icon;
 
+      // ── Update URL (re-checked for protocol safety) ──
       if (url !== undefined) {
         if (!isSafeUrl(url)) {
           return res.status(400).json({ error: 'URL must use http or https.' });
@@ -349,16 +377,16 @@ router.put(
         subscription.url = url ? String(url).trim() : null;
       }
 
+      // ── Update notes ──
       if (notes !== undefined) {
         subscription.notes = notes ? String(notes).trim().slice(0, MAX_NOTES_LENGTH) : '';
       }
 
-      /* Original buggy code:
-      if (payment_method !== undefined) subscription.payment_method = payment_method;
-      // Issue: unnormalized payment_method could store values outside schema enum.
-      */
+      // Note: unnormalized payment_method could store values outside
+      // the schema enum. normalizePaymentMethod keeps it aligned.
       if (payment_method !== undefined) subscription.payment_method = normalizePaymentMethod(payment_method);
 
+      // ── Update start date ──
       if (start_date !== undefined) {
         subscription.start_date = start_date || null;
       }
@@ -369,6 +397,7 @@ router.put(
         ? start_date
         : subscription.start_date;
 
+      // ── Update next billing date (must be on/after start) ──
       if (next_billing_date !== undefined) {
         if (next_billing_date && effectiveStart && next_billing_date < effectiveStart) {
           return res.status(400).json({
@@ -378,6 +407,7 @@ router.put(
         subscription.next_billing_date = next_billing_date || null;
       }
 
+      // ── Update trial end (must be on/before start) ──
       if (trial_ends !== undefined) {
         // Trial ends on or before the paid start date. If the field is
         // cleared, accept.
@@ -389,9 +419,11 @@ router.put(
         subscription.trial_ends = trial_ends || null;
       }
 
+      // ── Update status flags ──
       if (is_active !== undefined) subscription.is_active = parseBoolean(is_active);
       if (is_paused !== undefined) subscription.is_paused = parseBoolean(is_paused);
 
+      // ── Update cancellation date (null/empty clears it) ──
       if (cancelled_at !== undefined) {
         if (cancelled_at === null || cancelled_at === '') {
           subscription.cancelled_at = null;
@@ -404,9 +436,11 @@ router.put(
         }
       }
 
+      // ── Persist changes ──
       await subscription.save();
       return res.json({ message: 'Subscription updated', subscription });
     } catch (error) {
+      // ── Map duplicate-key errors to a friendly message ──
       if (error?.code === 11000) {
         const field = error.keyPattern
           ? Object.keys(error.keyPattern)[0]
@@ -421,19 +455,21 @@ router.put(
   }
 );
 
-/* ============================================================
- * DELETE /:id — Delete a subscription
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * DELETE /:id
+ * Delete a subscription owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.delete(
   '/:id',
   checkOwnership('id', { model: Subscription, paramName: 'id' }),
   [param('id').isMongoId().withMessage('Invalid subscription ID.')],
   async (req, res) => {
+    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      // ── Find and delete in a single atomic operation ──
       const subscription = await Subscription.findOneAndDelete({
         _id: req.params.id,
         user_id: req.user.id,
@@ -449,4 +485,9 @@ router.delete(
   }
 );
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;

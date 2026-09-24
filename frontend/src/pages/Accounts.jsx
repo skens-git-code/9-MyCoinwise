@@ -1,3 +1,22 @@
+/* —————————————————————————————————————
+ * Accounts Page
+ * Full CRUD interface for user financial accounts (bank, wallet,
+ * credit card, investment, cash, custom types) with search, sort,
+ * grid/list views, archive/restore, currency-aware net-worth
+ * aggregation, and optional transaction linking.
+ *
+ * Key behaviors:
+ *   - Account cards render in their own currency; the summary card
+ *     converts to the user's base currency.
+ *   - Account-linked transactions are excluded from the summary to
+ *     avoid double-counting (balance already reflects them).
+ *   - Archive is parallel-safe via a Set of in-flight IDs.
+ *   - Custom types are persisted before creating the first account
+ *     that uses them.
+ *   - Currency can only be changed while the account balance is zero.
+ *   - Search/sort/view preferences live in local state only.
+ * ————————————————————————————————————— */
+
 import React, {
   useState,
   useContext,
@@ -29,6 +48,7 @@ import {
  * Constants
  * ============================================================ */
 
+// ── Icon map for account cards ──
 const ICONS = {
   Wallet: <Wallet size={24} />,
   CreditCard: <CreditCard size={24} />,
@@ -36,14 +56,17 @@ const ICONS = {
   Coins: <Coins size={24} />,
 };
 
+// ── Built-in account types and the full allowed list ──
 const BASE_ACCOUNT_TYPES = ['bank', 'wallet', 'credit_card', 'investment', 'cash'];
 const ACCOUNT_TYPES = [...BASE_ACCOUNT_TYPES, 'other'];
 
+// ── Preset color palette for account cards ──
 const COLOR_PRESETS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
   '#8b5cf6', '#ec4899', '#14b8a6', '#6b7280',
 ];
 
+// ── Sort menu options ──
 const SORT_OPTIONS = [
   { value: 'name_asc', label: 'Name (A–Z)' },
   { value: 'name_desc', label: 'Name (Z–A)' },
@@ -54,6 +77,7 @@ const SORT_OPTIONS = [
   { value: 'created_asc', label: 'Oldest First' },
 ];
 
+// ── Numeric and pattern guards ──
 const MAX_BALANCE = 999_999_999.99;
 
 // Accepts: 12  |  12.  |  12.5  |  12.50  |  .5  |  -.5  |  -0.01
@@ -85,8 +109,10 @@ const formatCurrency = (value, currencyCode = 'USD', locale) => {
   }
 };
 
+// ── Extract the effective id from an account (supports both shapes) ──
 const accountId = (account) => account?.id ?? account?._id ?? null;
 
+// ── Convert a raw type string into a display label ──
 const humanizeType = (type) =>
   String(type || 'other')
     .replace(/_/g, ' ')
@@ -96,6 +122,7 @@ const humanizeType = (type) =>
  * Sub-components
  * ============================================================ */
 
+// ── Summary stat tile used at the top of the page ──
 const StatCard = ({ icon, label, value, sub, tone = 'default' }) => (
   <motion.div
     className="glass stat-card"
@@ -111,6 +138,7 @@ const StatCard = ({ icon, label, value, sub, tone = 'default' }) => (
       boxSizing: 'border-box',
     }}
   >
+    {/* ── Header: icon + uppercase label ── */}
     <div
       style={{
         display: 'flex',
@@ -126,6 +154,8 @@ const StatCard = ({ icon, label, value, sub, tone = 'default' }) => (
       <span style={{ display: 'inline-flex', opacity: 0.85 }}>{icon}</span>
       {label}
     </div>
+
+    {/* ── Value (tone controls color) ── */}
     <div
       style={{
         fontSize: '1.5rem',
@@ -141,12 +171,15 @@ const StatCard = ({ icon, label, value, sub, tone = 'default' }) => (
     >
       {value}
     </div>
+
+    {/* ── Optional sub text ── */}
     <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', minHeight: '1.1rem' }}>
       {sub || ''}
     </div>
   </motion.div>
 );
 
+// ── Skeleton shown while accounts are still loading ──
 const AccountsSkeleton = () => (
   <div className="account-page" style={{ padding: 'var(--spacing-lg, 24px)', maxWidth: 'var(--content-max-width, 1240px)', margin: '0 auto' }} role="status" aria-label="Loading accounts">
     <div className="shimmer" style={{ width: 220, height: 32, borderRadius: 10, marginBottom: 10 }} />
@@ -165,6 +198,7 @@ const AccountsSkeleton = () => (
  * ============================================================ */
 
 export default function Accounts() {
+  // ── App context: accounts, transactions, i18n, actions ──
   const {
     accounts = [],
     transactions: rawTransactions = [],
@@ -177,18 +211,22 @@ export default function Accounts() {
   } = useContext(AppContext);
   const { showToast } = useToast();
 
+  // ── Locale hint derived from the app language ──
   const locale =
     lang === 'hi' || lang === 'bgc' ? 'hi-IN'
       : lang === 'mr' ? 'mr-IN'
         : lang === 'kn' ? 'kn-IN'
           : undefined;
 
+  // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
 
+  // ── FX rates to INR, seeded from cache or bundled fallback ──
   const [fxRatesToInr, setFxRatesToInr] = useState(() => (
     readCachedRatesToInr() || getFallbackRatesToInr()
   ));
 
+  // ── Refresh FX rates on mount; keep bundled rates while offline ──
   useEffect(() => {
     const controller = new AbortController();
     fetchRatesToInr(controller.signal)
@@ -198,16 +236,25 @@ export default function Accounts() {
   }, []);
 
   /* ---------------- UI state ---------------- */
+
+  // ── Modal visibility ──
   const [showAdd, setShowAdd] = useState(false);
+
+  // ── Currently-edited / target-for-action account ──
   const [editingAccount, setEditingAccount] = useState(null);
   const [accountToDelete, setAccountToDelete] = useState(null);
   const [customTypeToRemove, setCustomTypeToRemove] = useState(null);
+
+  // ── In-flight flags ──
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRemovingType, setIsRemovingType] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
   // Use a Set so multiple archive operations can run in parallel.
   const [archivingIds, setArchivingIds] = useState(() => new Set());
+
+  // ── View toggles ──
   const [showArchived, setShowArchived] = useState(false);
 
   // Search / sort / view
@@ -219,6 +266,8 @@ export default function Accounts() {
   const sortButtonRef = useRef(null);
 
   /* ---------------- Form state ---------------- */
+
+  // ── Fields for the add/edit account form ──
   const [name, setName] = useState('');
   const [type, setType] = useState('bank');
   const [currency, setCurrency] = useState(userCurrency);
@@ -229,11 +278,14 @@ export default function Accounts() {
   const [formError, setFormError] = useState('');
 
   /* ---------------- Derived lists ---------------- */
+
+  // ── Custom account types stored on the user ──
   const customTypes = useMemo(
     () => (Array.isArray(user?.custom_account_types) ? user.custom_account_types : []),
     [user]
   );
 
+  // ── All type options: built-ins + custom + 'other' ──
   const allTypeOptions = useMemo(() => {
     const set = new Set([...BASE_ACCOUNT_TYPES, ...customTypes, 'other']);
     return Array.from(set);
@@ -251,6 +303,7 @@ export default function Accounts() {
   useEffect(() => {
     if (!showSortMenu) return undefined;
 
+    // ── Close on outside click ──
     const onClickOutside = (e) => {
       if (
         sortMenuRef.current && !sortMenuRef.current.contains(e.target) &&
@@ -259,6 +312,8 @@ export default function Accounts() {
         setShowSortMenu(false);
       }
     };
+
+    // ── Close on Escape and return focus to the trigger ──
     const onKey = (e) => {
       if (e.key === 'Escape') {
         setShowSortMenu(false);
@@ -277,11 +332,13 @@ export default function Accounts() {
    * Derived data
    * ============================================================ */
 
+  // ── Filtered and sorted account list ──
   const displayedAccounts = useMemo(() => {
     let list = showArchived
       ? accounts
       : accounts.filter((a) => a.is_active !== false);
 
+    // ── Search filter (name, type, currency, balance) ──
     const q = searchQuery.trim().toLowerCase();
     if (q) {
       list = list.filter((a) => {
@@ -298,6 +355,7 @@ export default function Accounts() {
       });
     }
 
+    // ── Sorting ──
     const sorted = [...list];
     switch (sortBy) {
       case 'name_asc':
@@ -337,6 +395,7 @@ export default function Accounts() {
       groups.get(key).push(acc);
     });
 
+    // ── Order groups: canonical first, 'other' last, custom alphabetical ──
     const orderedKeys = Array.from(groups.keys()).sort((a, b) => {
       // 'other' always sinks to the bottom.
       if (a === 'other' && b !== 'other') return 1;
@@ -370,6 +429,7 @@ export default function Accounts() {
     const base = userCurrency || 'USD';
     const unknownRates = new Set();
 
+    // ── Sum balances per currency and convert to base ──
     accounts
       .filter((a) => a.is_active !== false)
       .forEach((a) => {
@@ -434,6 +494,7 @@ export default function Accounts() {
    * Form helpers
    * ============================================================ */
 
+  // ── Reset the form to default create-account values ──
   const resetForm = useCallback(() => {
     setName('');
     setType('bank');
@@ -446,6 +507,7 @@ export default function Accounts() {
     setFormError('');
   }, [userCurrency]);
 
+  // ── Populate the form for editing an existing account ──
   const openEdit = useCallback(
     (account) => {
       setEditingAccount(account);
@@ -463,6 +525,7 @@ export default function Accounts() {
     [userCurrency]
   );
 
+  // ── Clear the form error when the user edits any field ──
   const clearError = useCallback(() => {
     setFormError((prev) => (prev ? '' : prev));
   }, []);
@@ -504,6 +567,7 @@ export default function Accounts() {
       return { ok: false, error: 'Account name must be 100 characters or fewer.' };
     }
 
+    // ── Reject duplicate names (excluding the account being edited) ──
     const editingId = accountId(editingAccount);
     const duplicate = accounts.some(
       (a) =>
@@ -561,6 +625,7 @@ export default function Accounts() {
       e.preventDefault();
       if (isSubmitting) return;
 
+      // ── Validate first ──
       const result = validateForm();
       if (!result.ok) {
         setFormError(result.error);
@@ -587,6 +652,7 @@ export default function Accounts() {
           }
         }
 
+        // ── Edit path vs. create path ──
         if (editingAccount) {
           const payload = {
             name: result.payload.name,
@@ -678,8 +744,10 @@ export default function Accounts() {
       if (!id) return;
       if (archivingIds.has(id)) return;
 
+      // ── Restore when currently archived; otherwise archive ──
       const willRestore = account.is_active === false;
 
+      // ── Track in-flight id ──
       setArchivingIds((prev) => {
         const next = new Set(prev);
         next.add(id);
@@ -693,6 +761,7 @@ export default function Accounts() {
       } catch (err) {
         showToast('error', err?.response?.data?.error || 'Failed to update archive status.');
       } finally {
+        // ── Remove id from in-flight set ──
         setArchivingIds((prev) => {
           const next = new Set(prev);
           next.delete(id);
@@ -722,6 +791,7 @@ export default function Accounts() {
     (async () => {
       try {
         await api.updateSettings(uid, { custom_account_types: newCustom });
+        // ── Reset the form type if the removed one was selected ──
         if (type === customTypeToRemove) setType('bank');
         showToast('success', 'Custom type removed.');
         setCustomTypeToRemove(null);
@@ -755,10 +825,12 @@ export default function Accounts() {
    * Render
    * ============================================================ */
 
+  // ── Show skeleton until the first load completes ──
   if (loading && accounts.length === 0) {
     return <AccountsSkeleton />;
   }
 
+  // ── Derived flags used by the form ──
   const isEditing = Boolean(editingAccount);
   const editingBalanceIsZero =
     isEditing && Math.abs(Number(editingAccount?.current_balance) || 0) < 0.005;
@@ -768,6 +840,7 @@ export default function Accounts() {
       className="account-page"
       style={{ padding: 'var(--spacing-lg, 24px)', maxWidth: 'var(--content-max-width, 1240px)', margin: '0 auto' }}
     >
+      {/* ── Local styles for cards, swatches, toolbar, and icon buttons ── */}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
@@ -813,6 +886,7 @@ export default function Accounts() {
           flexWrap: 'wrap',
         }}
       >
+        {/* ── Page title + subtitle ── */}
         <div style={{ flex: '1 1 300px' }}>
           <h1
             style={{
@@ -829,6 +903,7 @@ export default function Accounts() {
           </p>
         </div>
 
+        {/* ── Header actions: archive toggle, refresh, add ── */}
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             className="btn-secondary"
@@ -888,6 +963,7 @@ export default function Accounts() {
           marginBottom: 'var(--spacing-lg, 24px)',
         }}
       >
+        {/* ── Net worth (base currency) ── */}
         <StatCard
           icon={<DollarSign size={14} />}
           label={`${tr('net_worth', 'Net Worth')} (${userCurrency})`}
@@ -898,18 +974,24 @@ export default function Accounts() {
               : undefined
           }
         />
+
+        {/* ── Total accounts (active + archived) ── */}
         <StatCard
           icon={<Hash size={14} />}
           label={tr('accounts_count', 'Accounts')}
           value={stats.active}
           sub={`${stats.archived} ${tr('archived', 'archived')} · ${stats.total} ${tr('total', 'total')}`}
         />
+
+        {/* ── Positive balances count ── */}
         <StatCard
           icon={<TrendingUp size={14} />}
           label={tr('positive_balances', 'Positive Balances')}
           value={stats.positive}
           tone="success"
         />
+
+        {/* ── Negative balances count (danger tone when > 0) ── */}
         <StatCard
           icon={<TrendingDown size={14} />}
           label={tr('negative_balances', 'Negative Balances')}
@@ -964,6 +1046,7 @@ export default function Accounts() {
             flexWrap: 'wrap',
           }}
         >
+          {/* ── Search input ── */}
           <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
             <Search
               size={15}
@@ -987,6 +1070,7 @@ export default function Accounts() {
             />
           </div>
 
+          {/* ── Sort dropdown ── */}
           <div ref={sortMenuRef} style={{ position: 'relative' }}>
             <button
               ref={sortButtonRef}
@@ -1055,6 +1139,7 @@ export default function Accounts() {
             </AnimatePresence>
           </div>
 
+          {/* ── Grid / list view toggle ── */}
           <div
             role="radiogroup"
             aria-label="View mode"
@@ -1089,6 +1174,7 @@ export default function Accounts() {
             </button>
           </div>
 
+          {/* ── Clear search (only when a query is present) ── */}
           {searchQuery && (
             <button
               className="icon-btn"
@@ -1104,6 +1190,7 @@ export default function Accounts() {
 
       {/* ===================== Account groups ===================== */}
       {displayedAccounts.length === 0 ? (
+        /* ── Empty state: search vs. no accounts ── */
         <div
           className="accounts-empty glass"
           style={{ padding: '3rem 1rem', textAlign: 'center', borderRadius: 14 }}
@@ -1156,8 +1243,10 @@ export default function Accounts() {
           )}
         </div>
       ) : (
+        /* ── Grouped account cards ── */
         groupedAccounts.map((group) => (
           <section key={group.type} style={{ marginBottom: '2rem' }}>
+            {/* ── Group header: label + count ── */}
             <h4
               style={{
                 textTransform: 'capitalize',
@@ -1217,6 +1306,7 @@ export default function Accounts() {
                       justifyContent: 'space-between',
                     }}
                   >
+                    {/* ── Left column: icon + name + type/currency chips ── */}
                     <div
                       style={{
                         display: 'flex',
@@ -1293,6 +1383,7 @@ export default function Accounts() {
                       </div>
                     </div>
 
+                    {/* ── Right column: balance + action buttons ── */}
                     <div
                       style={{
                         display: 'flex',
@@ -1329,6 +1420,7 @@ export default function Accounts() {
                       </div>
 
                       <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                        {/* ── Transaction count hint ── */}
                         {account.transaction_count > 0 && (
                           <span
                             title={`${account.transaction_count} transaction(s)`}
@@ -1345,6 +1437,8 @@ export default function Accounts() {
                             {account.transaction_count}
                           </span>
                         )}
+
+                        {/* ── Edit ── */}
                         <button
                           className="icon-btn"
                           onClick={() => openEdit(account)}
@@ -1353,6 +1447,8 @@ export default function Accounts() {
                         >
                           <Edit3 size={15} />
                         </button>
+
+                        {/* ── Archive / restore ── */}
                         <button
                           className="icon-btn"
                           onClick={() => toggleArchive(account)}
@@ -1372,6 +1468,8 @@ export default function Accounts() {
                             <Archive size={15} />
                           )}
                         </button>
+
+                        {/* ── Delete ── */}
                         <button
                           className="icon-btn"
                           onClick={() => setAccountToDelete(account)}
@@ -1404,6 +1502,7 @@ export default function Accounts() {
             }}
           >
             <form onSubmit={handleSubmit} className="account-form" noValidate>
+              {/* ── Account name ── */}
               <div className="form-field account-form-name">
                 <label htmlFor="account-name">Account Name *</label>
                 <input
@@ -1425,6 +1524,7 @@ export default function Accounts() {
               </div>
 
               <div className="account-form-grid">
+                {/* ── Account type + custom type ── */}
                 <div className="form-field">
                   <label htmlFor="account-type">Type *</label>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -1443,6 +1543,8 @@ export default function Accounts() {
                         </option>
                       ))}
                     </select>
+
+                    {/* ── Remove custom type (only when the current type is custom) ── */}
                     {customTypes.includes(type) && (
                       <button
                         type="button"
@@ -1456,6 +1558,8 @@ export default function Accounts() {
                       </button>
                     )}
                   </div>
+
+                  {/* ── Custom type input (only when "other" is selected) ── */}
                   {type === 'other' && (
                     <input
                       type="text"
@@ -1473,6 +1577,7 @@ export default function Accounts() {
                   )}
                 </div>
 
+                {/* ── Currency ── */}
                 <div className="form-field">
                   <label htmlFor="account-currency">Currency *</label>
                   <select
@@ -1504,6 +1609,7 @@ export default function Accounts() {
                   )}
                 </div>
 
+                {/* ── Balance (initial on create, read-only on edit) ── */}
                 <div className="form-field">
                   <label htmlFor="account-balance">
                     {isEditing ? 'Current Balance' : 'Initial Balance *'}
@@ -1535,6 +1641,7 @@ export default function Accounts() {
                   )}
                 </div>
 
+                {/* ── Icon ── */}
                 <div className="form-field">
                   <label htmlFor="account-icon">Icon</label>
                   <select
@@ -1551,6 +1658,7 @@ export default function Accounts() {
                 </div>
               </div>
 
+              {/* ── Color picker with presets ── */}
               <div className="form-field">
                 <label>Color</label>
                 <div
@@ -1590,6 +1698,7 @@ export default function Accounts() {
                 </div>
               </div>
 
+              {/* ── Form error ── */}
               {formError && (
                 <p
                   id="account-form-error"
@@ -1606,6 +1715,7 @@ export default function Accounts() {
                 </p>
               )}
 
+              {/* ── Actions ── */}
               <div className="account-form-actions">
                 <button
                   type="button"
@@ -1646,6 +1756,8 @@ export default function Accounts() {
                 Are you sure you want to permanently delete{' '}
                 <strong>{accountToDelete.name}</strong>?
               </p>
+
+              {/* ── Known non-zero transaction warning ── */}
               {typeof accountToDelete.transaction_count === 'number' &&
                 accountToDelete.transaction_count > 0 && (
                   <p
@@ -1663,6 +1775,8 @@ export default function Accounts() {
                     deleted or reassigned first.
                   </p>
                 )}
+
+              {/* ── Unknown transaction count warning ── */}
               {typeof accountToDelete.transaction_count !== 'number' && (
                 <p
                   style={{
@@ -1678,6 +1792,8 @@ export default function Accounts() {
                   transactions. The server will refuse the deletion if any exist.
                 </p>
               )}
+
+              {/* ── Irreversible-action notice ── */}
               <p
                 style={{
                   color: 'var(--text-muted)',
@@ -1687,6 +1803,8 @@ export default function Accounts() {
               >
                 This action cannot be undone. Consider archiving instead.
               </p>
+
+              {/* ── Actions ── */}
               <div
                 style={{
                   display: 'flex',
@@ -1735,6 +1853,8 @@ export default function Accounts() {
                 Remove <strong>{humanizeType(customTypeToRemove)}</strong> from your
                 custom account types?
               </p>
+
+              {/* ── Explains the effect on existing accounts ── */}
               <p
                 style={{
                   color: 'var(--text-muted)',
@@ -1745,6 +1865,8 @@ export default function Accounts() {
                 Accounts that already use this type will keep it, but it will no
                 longer appear when creating new accounts.
               </p>
+
+              {/* ── Actions ── */}
               <div
                 style={{
                   display: 'flex',

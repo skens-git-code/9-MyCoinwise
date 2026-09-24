@@ -1,25 +1,35 @@
-/**
- * transactions.js — Transaction management, statement import, recurring processing
+/* —————————————————————————————————————
+ * Transaction Routes
+ * Management, statement import, and recurring processing.
  *
  * Endpoints:
- *   POST   /api/transactions/statement/preview    Parse + classify a bank CSV
- *   POST   /api/transactions/statement/import     Import selected rows
- *   GET    /api/transactions/:userId              List (processes recurring first)
- *   POST   /api/transactions/process-recurring    Force-process recurring
- *   POST   /api/transactions                      Create
- *   PUT    /api/transactions/:id                  Update
- *   DELETE /api/transactions/:id                  Soft delete
- *   POST   /api/transactions/bulk-delete          Soft delete many
+ *   POST   /statement/preview    Parse + classify a bank CSV
+ *   POST   /statement/import     Import selected rows
+ *   GET    /:userId              List (processes recurring first)
+ *   POST   /process-recurring    Force-process recurring
+ *   POST   /                     Create
+ *   PUT    /:id                  Update
+ *   DELETE /:id                  Soft delete
+ *   POST   /bulk-delete          Soft delete many
+ *
+ * Key behaviors:
+ *   - Statement parsing supports CSV (comma or semicolon) up to 5 MB
+ *     and 1000 rows per request.
+ *   - Recurring instances are created via an atomic upsert keyed on
+ *     `recurrence_instance_key`, so concurrent requests cannot
+ *     produce duplicates.
+ *   - GET /:userId throttles recurring processing with a 15-minute
+ *     per-user cooldown to avoid heavy loops on every read.
+ *   - Balances are re-synced (user + affected accounts) after every
+ *     mutation.
  *
  * Fixes applied vs. the original:
- *
  *   CRITICAL
  *   - parseTransactionAmount no longer uses a raw float comparison to
  *     enforce 2 decimal places. The original check
  *       `Math.round(amount * 100) !== amount * 100`
  *     rejected most normal amounts (12.34, 0.10, 5.55, …) because of
  *     IEEE 754 imprecision. Now uses an epsilon comparison.
- *
  *   HIGH
  *   - Router-level auth guard. Without it, POST /statement/* and
  *     POST /process-recurring read req.user.id unguarded and would
@@ -28,7 +38,6 @@
  *     `exists()` then `create()`, allowing two concurrent GETs to
  *     generate duplicate instances of the same recurrence. Now uses
  *     an atomic upsert keyed on recurrence_instance_key.
- *
  *   MEDIUM
  *   - syncAccountBalances runs in parallel and validates ObjectIds.
  *     The original could pass an invalid id to `new ObjectId(...)`
@@ -41,13 +50,13 @@
  *   - Statement preview and import now apply ownership on the
  *     fingerprint query, and empty-string fingerprints are rejected
  *     up front.
- *
  *   LOW
  *   - logger.error instead of console.error for consistency.
  *   - Cache-Control middleware on every response.
  *   - Response shapes aligned across mutation endpoints.
- */
+ * ————————————————————————————————————— */
 
+// ── Load dependencies ──
 const express = require('express');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
@@ -59,31 +68,44 @@ const auth = require('../middleware/auth');
 const { logger } = require('../utils/logger');
 const { dedupeTransactions } = require('../utils/transactionIntegrity');
 
+// ── Create router ──
 const router = express.Router();
 
-/* ============================================================
+/* —————————————————————————————————————
  * Constants
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Allowed transaction types ──
 const TRANSACTION_TYPES = new Set(['income', 'expense']);
+
+// ── Statement import limits ──
 const IMPORT_LIMIT = 1000;
 const MAX_AMOUNT = 999_999_999.99;
+
+// ── Safety cap on recurring instances generated per template ──
 const RECURRING_SAFETY_CAP = 240;
+
+// ── Fallback FX rates to INR (used when no live rate is available) ──
 const FALLBACK_RATES_TO_INR = Object.freeze({
   INR: 1, USD: 83.5, EUR: 90.2, GBP: 105.8, JPY: 0.56, CAD: 61.2,
   AUD: 53.8, SGD: 61.5, AED: 22.7, CHF: 95, CNY: 11.5, MXN: 4.9,
   BRL: 16.4, KRW: 0.063, THB: 2.35,
 });
 
-/* ============================================================
- * Text / amount / date parsing helpers
- * ============================================================ */
+/* —————————————————————————————————————
+ * Text / Amount / Date Parsing Helpers
+ * ————————————————————————————————————— */
 
+// ── Collapse whitespace and trim ──
 const cleanText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 
+// ── Normalize a string for fuzzy merchant matching ──
 const normalizeForMatch = (value) =>
   cleanText(value).toLowerCase().replace(/[^a-z0-9@]/g, '');
 
+// ── Parse an amount out of a raw statement cell ──
+// Handles currency symbols, thousands separators, parenthesised
+// negatives, and blank/null markers.
 const parseStatementAmount = (value) => {
   const raw = cleanText(value).replace(/[₹$€£,\s]/g, '');
   if (!raw || raw === '-' || raw.toLowerCase() === 'null') return null;
@@ -92,16 +114,9 @@ const parseStatementAmount = (value) => {
   return Number.isFinite(amount) && amount !== 0 ? Math.abs(amount) : null;
 };
 
-/**
- * Validate and normalize a transaction amount.
- *
- * The original used `Math.round(amount * 100) !== amount * 100` to
- * enforce at most two decimal places. That test fails for most
- * amounts with cents because of floating point imprecision:
- *   `12.34 * 100 === 1234.0000000000002`  →  rejected
- *   `0.10 * 100 === 10.000000000000002`   →  rejected
- * This version uses an epsilon comparison.
- */
+// ── Validate and normalize a transaction amount ──
+// Enforces at most two decimals using an epsilon tolerance (see the
+// CRITICAL fix note in the header).
 const parseTransactionAmount = (value) => {
   const amount =
     typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
@@ -116,6 +131,9 @@ const parseTransactionAmount = (value) => {
   return Math.round(scaled) / 100;
 };
 
+// ── Parse a transaction date (defaults to now when absent) ──
+// `YYYY-MM-DD` is interpreted as a noon-local date so timezone shifts
+// never move it to the previous/next day.
 const parseTransactionDate = (value) => {
   if (value === undefined || value === null || value === '') return new Date();
   const dateOnly = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -135,6 +153,7 @@ const parseTransactionDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+// ── Return true when the date is after the end of today ──
 const isFutureDate = (date) => {
   if (!date) return false;
   const endOfToday = new Date();
@@ -142,11 +161,13 @@ const isFutureDate = (date) => {
   return date.getTime() > endOfToday.getTime();
 };
 
+// ── Normalize a currency code (uppercase, default fallback) ──
 const normalizeCurrency = (value, fallback = 'USD') => {
   const normalized = String(value || '').trim().toUpperCase();
   return normalized || fallback;
 };
 
+// ── Convert an amount between currencies using fallback rates ──
 const convertToCurrency = (amount, fromCurrency, toCurrency) => {
   const from = normalizeCurrency(fromCurrency);
   const to = normalizeCurrency(toCurrency);
@@ -157,10 +178,13 @@ const convertToCurrency = (amount, fromCurrency, toCurrency) => {
   return (Number(amount) || 0) * fromRate / toRate;
 };
 
-/* ============================================================
- * CSV parsing
- * ============================================================ */
+/* —————————————————————————————————————
+ * CSV Parsing
+ * ————————————————————————————————————— */
 
+// ── Parse CSV text into a 2D array of trimmed cells ──
+// Auto-detects comma vs. semicolon delimiter, honours quoted fields
+// with "" escapes, and strips a leading BOM.
 const parseCsv = (content) => {
   const rows = [];
   let row = [], field = '', quoted = false;
@@ -195,9 +219,15 @@ const parseCsv = (content) => {
   return rows;
 };
 
+// ── Normalize a header cell for column matching ──
 const headerKey = (value) => cleanText(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// ── Find the first header index matching one of the given names ──
 const findColumn = (headers, names) => headers.findIndex((h) => names.includes(h));
 
+// ── Convert a date cell into an ISO YYYY-MM-DD string ──
+// Handles DD/MM/YYYY vs MM/DD/YYYY ambiguity by assuming the larger
+// number is the day when it exceeds 12.
 const toIsoDay = (value) => {
   const source = cleanText(value);
   if (!source) return null;
@@ -216,10 +246,11 @@ const toIsoDay = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 };
 
-/* ============================================================
- * Classification rules
- * ============================================================ */
+/* —————————————————————————————————————
+ * Classification Rules
+ * ————————————————————————————————————— */
 
+// ── Payment-method detection rules (ordered by precedence) ──
 const PAYMENT_RULES = [
   ['upi', /\bupi\b|@\w+|gpay|google pay|phonepe|phone pe|bhim/],
   ['card', /\b(pos|card|visa|mastercard|rupay|amex)\b/],
@@ -227,6 +258,7 @@ const PAYMENT_RULES = [
   ['wallet', /paytm|mobikwik|freecharge|amazon pay/],
 ];
 
+// ── Category detection rules (ordered by precedence) ──
 const CATEGORY_RULES = [
   ['Groceries', /grocery|supermarket|mart|bigbasket|blinkit|zepto|dmart/],
   ['Food', /restaurant|cafe|coffee|swiggy|zomato|food|dining/],
@@ -241,6 +273,7 @@ const CATEGORY_RULES = [
   ['Investment', /mutual fund|zerodha|groww|sip|investment/],
 ];
 
+// ── Extract UPI handle / IFSC / account number from a description ──
 const extractBankDetails = (description) => {
   const upiHandle = description.match(/@([a-z0-9._-]+)/i)?.[1];
   const ifsc = description.match(/\b[A-Z]{4}0[A-Z0-9]{6}\b/i)?.[0];
@@ -260,6 +293,7 @@ const extractBankDetails = (description) => {
   );
 };
 
+// ── Extract a merchant name from a raw description ──
 const extractMerchant = (description) => {
   const value = cleanText(description)
     .replace(/\b(upi|imps|neft|rtgs|pos|dr|cr|debit|credit|transfer|payment|txn|transaction)\b/gi, ' ')
@@ -274,6 +308,9 @@ const extractMerchant = (description) => {
   return cleanText(candidate).slice(0, 150) || 'Bank transaction';
 };
 
+// ── Classify a single CSV row into a normalized transaction ──
+// Returns null when the row is unusable (missing description, amount,
+// or date).
 const classifyStatementRow = (row, columns, merchantCategories) => {
   const description = cleanText(
     row[columns.description] ||
@@ -336,10 +373,13 @@ const classifyStatementRow = (row, columns, merchantCategories) => {
   };
 };
 
-/* ============================================================
- * Payload validation
- * ============================================================ */
+/* —————————————————————————————————————
+ * Payload Validation
+ * ————————————————————————————————————— */
 
+// ── Validate and normalize a transaction payload ──
+// Returns { error } on failure, or a normalized object of parsed
+// fields on success.
 const validateTransactionPayload = (payload) => {
   const {
     type, category, amount, date, note, merchant, tags, payment_method,
@@ -373,6 +413,7 @@ const validateTransactionPayload = (payload) => {
     return { error: 'Account ID is invalid.' };
   }
 
+  // ── Build normalized output ──
   const parsed = { numericAmount, parsedDate };
   if (currency !== undefined) parsed.currency = normalizeCurrency(currency);
   if (merchant !== undefined) parsed.merchant = merchant ? String(merchant).trim() : null;
@@ -400,10 +441,12 @@ const validateTransactionPayload = (payload) => {
   return parsed;
 };
 
-/* ============================================================
- * Balance sync
- * ============================================================ */
+/* —————————————————————————————————————
+ * Balance Sync
+ * ————————————————————————————————————— */
 
+// ── Aggregate the user's net transaction balance ──
+// Returns 0 for invalid user IDs.
 const getTransactionBalance = async (userId) => {
   if (!mongoose.isValidObjectId(userId)) return 0;
   const [user, transactions, accounts] = await Promise.all([
@@ -426,16 +469,15 @@ const getTransactionBalance = async (userId) => {
   return Number(balance.toFixed(2));
 };
 
+// ── Recalculate and persist the user's cached balance ──
 const syncUserBalance = async (userId) => {
   const balance = await getTransactionBalance(userId);
   await User.findByIdAndUpdate(userId, { $set: { balance } });
   return balance;
 };
 
-/**
- * Recalculate current_balance for the given accounts.
- * Runs in parallel; skips invalid ids instead of throwing.
- */
+// ── Recalculate current_balance for the given accounts ──
+// Runs in parallel; skips invalid ids instead of throwing.
 const syncAccountBalances = async (accountIds = []) => {
   const uniqueIds = [...new Set(accountIds.filter(Boolean).map(String))].filter(
     (id) => mongoose.isValidObjectId(id)
@@ -474,10 +516,11 @@ const syncAccountBalances = async (accountIds = []) => {
   );
 };
 
-/* ============================================================
- * Recurring transactions
- * ============================================================ */
+/* —————————————————————————————————————
+ * Recurring Transactions
+ * ————————————————————————————————————— */
 
+// ── Compute the next occurrence date for a given interval ──
 const nextOccurrence = (date, interval) => {
   const next = new Date(date);
   if (interval === 'daily') next.setDate(next.getDate() + 1);
@@ -488,15 +531,11 @@ const nextOccurrence = (date, interval) => {
   return next;
 };
 
-/**
- * Materialise any overdue occurrences of recurring transactions for a user.
- * Uses an atomic upsert keyed on `recurrence_instance_key`, so two
- * concurrent requests cannot create the same instance twice.
- *
- * A unique index on `{ user_id, recurrence_instance_key }` should exist
- * in models/Transaction.js. Without it, the upsert still works but is
- * not fully race-safe at the database level.
- */
+// ── Materialise overdue occurrences of recurring transactions ──
+// Uses an atomic upsert keyed on `recurrence_instance_key`, so two
+// concurrent requests cannot create the same instance twice. A unique
+// index on { user_id, recurrence_instance_key } in models/Transaction.js
+// strengthens the guarantee at the DB level.
 const processRecurringForUser = async (userId) => {
   const now = new Date();
   const templates = await Transaction.find({
@@ -573,10 +612,14 @@ const processRecurringForUser = async (userId) => {
   return created;
 };
 
-// Cooldown map to prevent running heavy upsert loops on every single GET request
+/* —————————————————————————————————————
+ * Recurring Cooldown
+ * Prevents running heavy upsert loops on every single GET request.
+ * ————————————————————————————————————— */
 const lastRecurringProcessMap = new Map();
 const RECURRING_CHECK_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
 
+// ── Return true when the cooldown for this user has elapsed ──
 const shouldProcessRecurring = (userId) => {
   const key = String(userId);
   const last = lastRecurringProcessMap.get(key);
@@ -588,10 +631,11 @@ const shouldProcessRecurring = (userId) => {
   return false;
 };
 
-/* ============================================================
- * Router middleware
- * ============================================================ */
+/* —————————————————————————————————————
+ * Router Middleware
+ * ————————————————————————————————————— */
 
+// ── Auth + user-id guard + Cache-Control applied to every route ──
 router.use(auth);
 
 router.use((req, res, next) => {
@@ -608,17 +652,19 @@ router.use((req, res, next) => {
   next();
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * POST /statement/preview
- * ============================================================ */
-
+ * Parse and classify a bank statement CSV.
+ * ————————————————————————————————————— */
 router.post('/statement/preview', async (req, res) => {
   try {
+    // ── Guard size and shape of the uploaded content ──
     const content = typeof req.body?.content === 'string' ? req.body.content : '';
     if (!content || Buffer.byteLength(content, 'utf8') > 5 * 1024 * 1024) {
       return res.status(400).json({ error: 'Upload a CSV statement smaller than 5 MB.' });
     }
 
+    // ── Parse rows and enforce the import cap ──
     const csvRows = parseCsv(content);
     if (csvRows.length < 2 || csvRows.length > IMPORT_LIMIT + 1) {
       return res.status(400).json({
@@ -626,6 +672,7 @@ router.post('/statement/preview', async (req, res) => {
       });
     }
 
+    // ── Resolve column indexes ──
     const headers = csvRows[0].map(headerKey);
     const columns = {
       date: findColumn(headers, ['date', 'transactiondate', 'txndate']),
@@ -649,6 +696,7 @@ router.post('/statement/preview', async (req, res) => {
       });
     }
 
+    // ── Load user history to inform classification and dedup ──
     const historical = await Transaction.find({
       user_id: req.userId,
       is_deleted: { $ne: true },
@@ -679,6 +727,7 @@ router.post('/statement/preview', async (req, res) => {
       );
     }
 
+    // ── Classify each row and flag duplicates ──
     const seen = new Set();
     const transactions = csvRows
       .slice(1)
@@ -718,12 +767,13 @@ router.post('/statement/preview', async (req, res) => {
   }
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * POST /statement/import
- * ============================================================ */
-
+ * Import selected statement rows into the user's wallet.
+ * ————————————————————————————————————— */
 router.post('/statement/import', async (req, res) => {
   try {
+    // ── Validate the request payload ──
     const requested = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
     if (!requested.length || requested.length > IMPORT_LIMIT) {
       return res.status(400).json({
@@ -731,6 +781,7 @@ router.post('/statement/import', async (req, res) => {
       });
     }
 
+    // ── Look up fingerprints already present for this user ──
     const fingerprints = requested
       .map((item) => String(item.import_fingerprint || ''))
       .filter(Boolean);
@@ -746,6 +797,7 @@ router.post('/statement/import', async (req, res) => {
       ).map((tx) => tx.import_fingerprint)
     );
 
+    // ── Filter and normalize the batch ──
     const batchKeys = new Set();
     const accepted = [];
     const owner = await User.findById(req.userId).select('currency').lean();
@@ -804,6 +856,7 @@ router.post('/statement/import', async (req, res) => {
       });
     }
 
+    // ── Second-pass dedup against existing rows in the same window ──
     const dates = accepted.map((tx) => tx.date.getTime());
     const existingTransactions = await Transaction.find({
       user_id: req.userId,
@@ -849,6 +902,7 @@ router.post('/statement/import', async (req, res) => {
       });
     }
 
+    // ── Insert and refresh balances ──
     const created = await Transaction.insertMany(newTransactions, { ordered: false });
     const balance = await syncUserBalance(req.userId);
     return res.status(201).json({
@@ -863,11 +917,12 @@ router.post('/statement/import', async (req, res) => {
   }
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * GET /:userId
- * ============================================================ */
-
+ * List a user's transactions, newest first.
+ * ————————————————————————————————————— */
 router.get('/:userId', checkOwnership('userId'), async (req, res) => {
+  // ── Validate and authorize the target user ──
   if (!mongoose.isValidObjectId(req.params.userId)) {
     return res.status(400).json({ error: 'Invalid user ID.' });
   }
@@ -876,15 +931,14 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   }
 
   try {
-    /* Original unthrottled code:
-    await processRecurringForUser(req.params.userId);
-    // Issue: Running full recurring transaction processing and balance syncs on EVERY GET request
-    // created a massive database bottleneck and latency spike on reads.
-    */
+    // Note: an earlier version ran full recurring processing and
+    // balance syncs on every GET, causing a heavy read-path
+    // bottleneck. Now throttled to once per 15 minutes per user.
     if (shouldProcessRecurring(req.params.userId)) {
       await processRecurringForUser(req.params.userId);
     }
 
+    // ── Paginate and load non-deleted transactions ──
     const limit = Math.min(
       2000,
       Math.max(1, Number.parseInt(req.query.limit, 10) || 2000)
@@ -907,13 +961,16 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   }
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * POST /process-recurring
- * ============================================================ */
-
+ * Force-process recurring transactions for the authenticated user.
+ * ————————————————————————————————————— */
 router.post('/process-recurring', async (req, res) => {
   try {
+    // ── Reset the cooldown since this was an explicit request ──
     lastRecurringProcessMap.set(String(req.userId), Date.now());
+
+    // ── Process and report ──
     const created = await processRecurringForUser(req.userId);
     return res.json({
       created,
@@ -927,15 +984,17 @@ router.post('/process-recurring', async (req, res) => {
   }
 });
 
-/* ============================================================
- * POST / — create
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /
+ * Create a new transaction.
+ * ————————————————————————————————————— */
 router.post('/', async (req, res) => {
   try {
+    // ── Validate the payload ──
     const validation = validateTransactionPayload(req.body);
     if (validation.error) return res.status(400).json({ error: validation.error });
 
+    // ── Resolve the account (when provided) ──
     let selectedAccount = null;
     if (validation.account_id) {
       selectedAccount = await Account.findOne({
@@ -946,11 +1005,14 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ error: 'Selected account was not found.' });
       }
     }
+
+    // ── Determine the effective currency ──
     const owner = await User.findById(req.userId).select('currency').lean();
     const transactionCurrency = normalizeCurrency(
       validation.currency || selectedAccount?.currency || owner?.currency
     );
 
+    // ── Persist the transaction ──
     const transaction = await Transaction.create({
       user_id: req.userId,
       type: req.body.type,
@@ -972,6 +1034,7 @@ router.post('/', async (req, res) => {
       audit_logs: [{ action: 'Created', timestamp: new Date() }],
     });
 
+    // ── Refresh cached balances ──
     const balance = await syncUserBalance(req.userId);
     await syncAccountBalances([transaction.account_id]);
 
@@ -982,22 +1045,25 @@ router.post('/', async (req, res) => {
   }
 });
 
-/* ============================================================
- * PUT /:id — update
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * PUT /:id
+ * Update a transaction owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.put('/:id', async (req, res) => {
+  // ── Validate transaction ID ──
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ error: 'Invalid transaction ID' });
   }
 
   try {
+    // ── Load the transaction ──
     const t = await Transaction.findOne({
       _id: req.params.id,
       is_deleted: { $ne: true },
     });
     if (!t) return res.status(404).json({ error: 'Transaction not found' });
 
+    // ── Verify ownership (String vs String handles ObjectId ids) ──
     if (String(t.user_id) !== String(req.userId)) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -1014,6 +1080,7 @@ router.put('/:id', async (req, res) => {
     const validation = validateTransactionPayload(next);
     if (validation.error) return res.status(400).json({ error: validation.error });
 
+    // ── Resolve the (possibly changed) account ──
     let selectedAccount = null;
     if (validation.account_id) {
       selectedAccount = await Account.findOne({
@@ -1025,6 +1092,7 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    // ── Determine the effective currency ──
     const owner = await User.findById(req.userId).select('currency').lean();
     const transactionCurrency = normalizeCurrency(
       validation.currency || selectedAccount?.currency || t.currency || owner?.currency
@@ -1032,6 +1100,7 @@ router.put('/:id', async (req, res) => {
 
     const previousAccountId = t.account_id;
 
+    // ── Apply the changes ──
     t.type = next.type;
     t.amount = validation.numericAmount;
     t.currency = transactionCurrency;
@@ -1057,6 +1126,7 @@ router.put('/:id', async (req, res) => {
 
     await t.save();
 
+    // ── Refresh cached balances (old and new account) ──
     const balance = await syncUserBalance(req.userId);
     await syncAccountBalances([previousAccountId, t.account_id]);
 
@@ -1067,16 +1137,18 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-/* ============================================================
- * DELETE /:id — soft delete
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * DELETE /:id
+ * Soft delete a transaction owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.delete('/:id', async (req, res) => {
+  // ── Validate transaction ID ──
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ error: 'Invalid transaction ID' });
   }
 
   try {
+    // ── Load and authorize ──
     const t = await Transaction.findById(req.params.id);
     if (!t) return res.status(404).json({ error: 'Transaction not found' });
 
@@ -1084,6 +1156,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
+    // ── Soft delete and refresh balances ──
     t.is_deleted = true;
     await t.save();
 
@@ -1097,33 +1170,39 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-/* ============================================================
+/* —————————————————————————————————————
  * POST /bulk-delete
- * ============================================================ */
-
+ * Soft delete many transactions owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.post('/bulk-delete', async (req, res) => {
   const { ids } = req.body || {};
+
+  // ── Validate the request shape ──
   if (!Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: 'Array of transaction IDs is required' });
   }
 
   try {
+    // ── Filter to valid ObjectIds ──
     const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
     if (validIds.length === 0) {
       return res.status(400).json({ error: 'No valid transaction IDs provided' });
     }
 
+    // ── Snapshot affected accounts before updating ──
     const affectedAccountIds = await Transaction.find({
       _id: { $in: validIds },
       user_id: req.userId,
       is_deleted: { $ne: true },
     }).distinct('account_id');
 
+    // ── Soft delete in one updateMany ──
     const result = await Transaction.updateMany(
       { _id: { $in: validIds }, user_id: req.userId },
       { $set: { is_deleted: true } }
     );
 
+    // ── Refresh balances ──
     const balance = await syncUserBalance(req.userId);
     await syncAccountBalances(affectedAccountIds);
 
@@ -1138,4 +1217,9 @@ router.post('/bulk-delete', async (req, res) => {
   }
 });
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;

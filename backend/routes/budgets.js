@@ -1,11 +1,21 @@
-/**
- * budgets.js — Budget management routes
+/* —————————————————————————————————————
+ * Budget Routes
+ * CRUD endpoints for user budgets with progress and rollover.
  *
  * Endpoints:
- *   GET    /api/budgets/:userId   List budgets with progress + rollover
- *   POST   /api/budgets           Create a budget
- *   PUT    /api/budgets/:id       Update a budget
- *   DELETE /api/budgets/:id       Delete a budget
+ *   GET    /:userId   List budgets with progress + rollover
+ *   POST   /          Create a budget
+ *   PUT    /:id       Update a budget
+ *   DELETE /:id       Delete a budget
+ *
+ * Key behaviors:
+ *   - Router-level auth guard returns 401 when req.user is missing.
+ *   - Cache-Control applied to every response, including errors.
+ *   - GET loads expense transactions once and reuses them for
+ *     progress + rollover (avoids N+1 queries).
+ *   - Rollover is only recomputed for budgets whose period has ended.
+ *   - POST accepts both a single `category` string and a `categories`
+ *     array to match the frontend contract.
  *
  * Fixes applied vs. the previous version:
  *   - Router-level auth guard (POST/PUT/DELETE no longer throw on
@@ -19,8 +29,9 @@
  *   - MIN_LIMIT extracted as a constant matching the schema's min.
  *   - Consistent logger.error usage.
  *   - Cache-Control middleware applied to every response.
- */
+ * ————————————————————————————————————— */
 
+// ── Load dependencies ──
 const express = require('express');
 const mongoose = require('mongoose');
 const Budget = require('../models/Budget');
@@ -28,27 +39,30 @@ const Transaction = require('../models/Transaction');
 const checkOwnership = require('../middleware/ownership');
 const { logger } = require('../utils/logger');
 
+// ── Create router ──
 const router = express.Router();
 
-/* ============================================================
+/* —————————————————————————————————————
  * Constants
- * ============================================================ */
+ * ————————————————————————————————————— */
 
+// ── Allowed budget types ──
 const BUDGET_TYPES = new Set(['monthly', 'weekly', 'custom']);
+
+// ── Monetary bounds ──
 const MAX_MONEY = 999_999_999.99;
-const MIN_MONEY = 0.01;                       // Matches the schema's min for total_limit
+const MIN_MONEY = 0.01;                 // Matches the schema's min for total_limit
 const MAX_NAME_LENGTH = 100;
+
+// ── Default warning thresholds when none are supplied ──
 const DEFAULT_WARNING_THRESHOLDS = [50, 80, 100];
 
-/* ============================================================
+/* —————————————————————————————————————
  * Helpers
- * ============================================================ */
+ * ————————————————————————————————————— */
 
-/**
- * Parse a monetary value.
- * - `allowZero: false` enforces MIN_MONEY (0.01) as the lower bound.
- * - Returns null on any invalid input (empty, NaN, negative, out of range).
- */
+// ── Parse a monetary value; null on invalid input ──
+// `allowZero: false` enforces MIN_MONEY as the lower bound.
 const parseMoney = (value, { allowZero = true } = {}) => {
   if (value === '' || value === null || value === undefined) return null;
   const amount = typeof value === 'string' ? Number(value.trim()) : value;
@@ -59,15 +73,9 @@ const parseMoney = (value, { allowZero = true } = {}) => {
   return Number(amount.toFixed(2));
 };
 
-/**
- * Parse a date boundary from a `YYYY-MM-DD` string (or any ISO string).
- * `endOfDay` sets the time to 23:59:59.999.
- *
- * Note: `YYYY-MM-DD` is interpreted as a UTC-day boundary. This is
- * consistent with the frontend, which extracts the first 10 characters
- * of the ISO string when displaying these fields — so no shift occurs
- * on read-back.
- */
+// ── Parse a date boundary from YYYY-MM-DD or any ISO string ──
+// `YYYY-MM-DD` is treated as a UTC-day boundary, matching the frontend
+// which slices the first 10 characters of the ISO string on display.
 const parseDateBoundary = (value, endOfDay = false) => {
   if (typeof value !== 'string' || !value.trim()) return null;
   const raw = value.trim();
@@ -77,14 +85,13 @@ const parseDateBoundary = (value, endOfDay = false) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+// ── Coerce common truthy values into a boolean ──
 const parseBoolean = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
 
-/**
- * Validate an array of warning thresholds.
- * Returns a clean number[] on success, or null on failure.
- * Matches the schema's validator (1–10 values, each in (0, 500]).
- */
+// ── Validate and normalize warning thresholds ──
+// Returns a clean number[] on success, or null on failure.
+// Matches the schema's validator (1–10 values, each in (0, 500]).
 const normalizeWarningThresholds = (value) => {
   if (value === undefined) return DEFAULT_WARNING_THRESHOLDS;
   if (!Array.isArray(value)) return null;
@@ -94,10 +101,7 @@ const normalizeWarningThresholds = (value) => {
   return parsed;
 };
 
-/**
- * Normalize the categories array: trim names, coerce limits, drop
- * entries missing a name or with an invalid limit.
- */
+// ── Normalize category entries; drop those with missing name or invalid limit ──
 const normalizeCategories = (categories) =>
   (Array.isArray(categories) ? categories : [])
     .map((category) => {
@@ -112,25 +116,22 @@ const normalizeCategories = (categories) =>
     })
     .filter((category) => category.name && category.limit > 0);
 
-/* ============================================================
- * Rollover computation
- * ============================================================ */
+/* —————————————————————————————————————
+ * Rollover Computation
+ * ————————————————————————————————————— */
 
-/**
- * Compute the rollover amount for a budget if its period has ended.
- * Mutates `budget.rollover_amount` in place.
- *
- * `presuppliedExpenses` — optional array of expense transactions with
- * `{ date, amount }`. When provided, rollover is computed without an
- * additional DB query. The caller is responsible for ensuring the
- * array covers at least the budget's period.
- */
+// ── Compute rollover for a budget whose period has ended ──
+// Mutates `budget.rollover_amount` in place.
+// Pass `presuppliedExpenses` to avoid an extra DB query — the caller
+// must ensure the list covers the budget's period.
 const computeRollover = async (budget, presuppliedExpenses = null) => {
+  // ── Skip when rollover is disabled ──
   if (!budget.rollover_enabled) {
     budget.rollover_amount = 0;
     return;
   }
 
+  // ── Leave current rollover alone while the period is still open ──
   const now = new Date();
   const periodEnd = new Date(budget.period_end);
 
@@ -139,6 +140,7 @@ const computeRollover = async (budget, presuppliedExpenses = null) => {
     return;
   }
 
+  // ── Load expenses, or filter the pre-supplied list ──
   let expenses = presuppliedExpenses;
   if (!expenses) {
     expenses = await Transaction.find({
@@ -150,7 +152,6 @@ const computeRollover = async (budget, presuppliedExpenses = null) => {
       .select('date amount')
       .lean();
   } else {
-    // Filter the pre-supplied array to this budget's period.
     const start = new Date(budget.period_start).getTime();
     const end = new Date(budget.period_end).getTime();
     expenses = expenses.filter((exp) => {
@@ -159,6 +160,7 @@ const computeRollover = async (budget, presuppliedExpenses = null) => {
     });
   }
 
+  // ── Compute leftover and store it as the new rollover ──
   const totalSpent = expenses.reduce(
     (sum, exp) => sum + (Number(exp.amount) || 0),
     0
@@ -168,14 +170,16 @@ const computeRollover = async (budget, presuppliedExpenses = null) => {
   budget.rollover_amount = Number(remaining.toFixed(2));
 };
 
-/* ============================================================
- * Progress enrichment
- * ============================================================ */
+/* —————————————————————————————————————
+ * Progress Enrichment
+ * ————————————————————————————————————— */
 
+// ── Compute per-budget progress using a pre-loaded expense list ──
 const getBudgetProgress = (budget, expenses) => {
   const start = new Date(budget.period_start).getTime();
   const end = new Date(budget.period_end).getTime();
 
+  // ── Aggregate spend per category and overall ──
   const categorySpent = new Map();
   let totalSpent = 0;
 
@@ -188,6 +192,7 @@ const getBudgetProgress = (budget, expenses) => {
     categorySpent.set(key, (categorySpent.get(key) || 0) + amount);
   }
 
+  // ── Build the response object ──
   const result = budget.toObject({ virtuals: true });
   result.total_spent = Number(totalSpent.toFixed(2));
   result.categories = (budget.categories || []).map((category) => ({
@@ -199,12 +204,9 @@ const getBudgetProgress = (budget, expenses) => {
 
   const available = Number(budget.total_limit || 0) + Number(budget.rollover_amount || 0);
 
-  // `remaining` and `progress_percentage` are intentionally clamped:
-  //   - remaining never goes below 0
-  //   - progress_percentage never exceeds 100
-  // This matches the schema's virtual definitions. If your UI wants to
-  // show overspending, remove the clamps here and in the schema together
-  // (the frontend recomputes both from total_spent / total_limit anyway).
+  // `remaining` and `progress_percentage` are intentionally clamped to
+  // match the schema's virtuals. If your UI wants to show overspending,
+  // remove the clamps here and in the schema together.
   result.remaining = Number(Math.max(0, available - result.total_spent).toFixed(2));
   result.progress_percentage = available > 0
     ? Math.min(100, Math.round((result.total_spent / available) * 100))
@@ -213,6 +215,7 @@ const getBudgetProgress = (budget, expenses) => {
   return result;
 };
 
+// ── Load all expenses across the min–max range of the given budgets ──
 const loadProgressData = async (userId, budgets) => {
   if (!budgets.length) return [];
 
@@ -236,11 +239,11 @@ const loadProgressData = async (userId, budgets) => {
     .lean();
 };
 
-/* ============================================================
- * Router-level middleware
- * ============================================================ */
+/* —————————————————————————————————————
+ * Router Middleware
+ * ————————————————————————————————————— */
 
-// Every route on this router requires an authenticated user.
+// ── Require authentication and expose req.userId ──
 router.use((req, res, next) => {
   if (req.method === 'OPTIONS') return next();
   if (!req.user || (!req.user.id && !req.user._id)) {
@@ -250,17 +253,18 @@ router.use((req, res, next) => {
   return next();
 });
 
-// Cache-Control on every response, including errors.
+// ── Disable caching on every response, including errors ──
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   next();
 });
 
-/* ============================================================
- * GET /:userId — List budgets with progress and rollover
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * GET /:userId
+ * List budgets with progress and rollover applied.
+ * ————————————————————————————————————— */
 router.get('/:userId', checkOwnership('userId'), async (req, res) => {
+  // ── Validate user ID ──
   if (!mongoose.isValidObjectId(req.params.userId)) {
     return res.status(400).json({ error: 'Invalid user ID.' });
   }
@@ -272,30 +276,33 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   }
 
   try {
+    // ── Load the user's budgets, newest period first ──
     const budgets = await Budget.find({ user_id: req.params.userId })
       .sort({ period_start: -1 });
 
-    // Load all transactions in the min-max range ONCE. Pass this list
+    // Load all transactions in the min–max range ONCE. Pass this list
     // to computeRollover so each budget doesn't fire its own query.
     const expenses = await loadProgressData(req.params.userId, budgets);
 
-    // Compute rollovers against the shared expense list.
+    // ── Snapshot original rollover values to detect changes ──
     const rolloverStates = budgets.map((budget) => ({
       budget,
       original: Number(budget.rollover_amount || 0),
     }));
 
+    // ── Recompute rollover for each budget in parallel ──
     await Promise.all(
       rolloverStates.map(({ budget }) => computeRollover(budget, expenses))
     );
 
-    // Persist only budgets whose rollover value actually changed.
+    // ── Persist only budgets whose rollover value actually changed ──
     await Promise.all(
       rolloverStates
         .filter(({ budget, original }) => Number(budget.rollover_amount || 0) !== original)
         .map(({ budget }) => budget.save())
     );
 
+    // ── Enrich each budget with progress data ──
     const enrichedBudgets = budgets.map((budget) => getBudgetProgress(budget, expenses));
 
     return res.json(enrichedBudgets);
@@ -305,26 +312,14 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   }
 });
 
-/* ============================================================
- * POST / — Create a budget
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * POST /
+ * Create a budget for the authenticated user.
+ * ————————————————————————————————————— */
 router.post('/', async (req, res) => {
-  /* Original body destructuring omitting single category:
-  const {
-    name,
-    type,
-    period_start,
-    period_end,
-    total_limit,
-    categories,
-    rollover_enabled,
-    warning_thresholds,
-    template,
-    is_active,
-  } = req.body || {};
-  // Issue: The frontend sends a single 'category' string, but backend only extracted 'categories' array.
-  */
+  // ── Destructure request body (includes single `category` for the frontend) ──
+  // Note: an earlier version omitted `category`, which caused a single
+  // category string from the frontend to be dropped on save.
   const {
     name,
     type,
@@ -339,6 +334,7 @@ router.post('/', async (req, res) => {
     is_active,
   } = req.body || {};
 
+  // ── Parse and validate input ──
   const trimmedName = String(name || '').trim();
   const limitNum = parseMoney(total_limit, { allowZero: false });
   const periodStart = parseDateBoundary(period_start);
@@ -361,6 +357,7 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Budget period dates are invalid.' });
   }
 
+  // ── Validate warning thresholds ──
   const normalizedThresholds = normalizeWarningThresholds(warning_thresholds);
   if (normalizedThresholds === null) {
     return res.status(400).json({
@@ -368,9 +365,11 @@ router.post('/', async (req, res) => {
     });
   }
 
+  // ── Determine active state ──
   const active = is_active === undefined ? true : parseBoolean(is_active);
 
   try {
+    // ── Reject overlapping active budgets ──
     if (active) {
       const overlap = await Budget.findOne({
         user_id: req.userId,
@@ -388,23 +387,9 @@ router.post('/', async (req, res) => {
       }
     }
 
-    /* Original budget creation omitting category field:
-    const budget = await Budget.create({
-      user_id: req.userId,
-      name: trimmedName,
-      type: type || 'monthly',
-      period_start: periodStart,
-      period_end: periodEnd,
-      total_limit: limitNum,
-      rollover_enabled: parseBoolean(rollover_enabled),
-      rollover_amount: 0,
-      warning_thresholds: normalizedThresholds,
-      template: template || null,
-      categories: normalizeCategories(categories),
-      is_active: active,
-    });
-    // Issue: Dropped single 'category' on save, causing category-filtered budgets in UI to become global.
-    */
+    // ── Create the budget ──
+    // Note: an earlier version omitted `category` here, which caused
+    // category-filtered budgets in the UI to become global.
     const budget = await Budget.create({
       user_id: req.userId,
       name: trimmedName,
@@ -427,8 +412,9 @@ router.post('/', async (req, res) => {
       budget,
     });
   } catch (error) {
+    // ── Map duplicate-key errors to a friendly message ──
     if (error?.code === 11000) {
-      // Duplicate-key. Could be the compound unique index on
+      // Could be the compound unique index on
       // { user_id, name, period_start } if it exists in the schema.
       const field = error.keyPattern
         ? Object.keys(error.keyPattern)[0]
@@ -442,37 +428,27 @@ router.post('/', async (req, res) => {
   }
 });
 
-/* ============================================================
- * PUT /:id — Update a budget
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * PUT /:id
+ * Update a budget owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.put('/:id', async (req, res) => {
+  // ── Validate budget ID ──
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ error: 'Invalid budget ID.' });
   }
 
   try {
+    // ── Load the budget, scoped to the authenticated user ──
     const budget = await Budget.findOne({
       _id: req.params.id,
       user_id: req.userId,
     });
     if (!budget) return res.status(404).json({ error: 'Budget not found.' });
 
-    /* Original PUT destructuring without category:
-    const {
-      name,
-      type,
-      total_limit,
-      period_start,
-      period_end,
-      categories,
-      rollover_enabled,
-      warning_thresholds,
-      is_active,
-      auto_renew,
-    } = req.body || {};
-    // Issue: Category was not extracted or updated in PUT handler.
-    */
+    // ── Destructure request body (includes single `category`) ──
+    // Note: an earlier version omitted `category` from PUT, which meant
+    // the single-category string could never be updated.
     const {
       name,
       type,
@@ -487,6 +463,7 @@ router.put('/:id', async (req, res) => {
       auto_renew,
     } = req.body || {};
 
+    // ── Update name ──
     if (name !== undefined) {
       const trimmedName = String(name).trim();
       if (!trimmedName || trimmedName.length > MAX_NAME_LENGTH) {
@@ -495,6 +472,7 @@ router.put('/:id', async (req, res) => {
       budget.name = trimmedName;
     }
 
+    // ── Update type ──
     if (type !== undefined) {
       if (!BUDGET_TYPES.has(type)) {
         return res.status(400).json({ error: 'Budget type is invalid.' });
@@ -502,6 +480,7 @@ router.put('/:id', async (req, res) => {
       budget.type = type;
     }
 
+    // ── Update total limit ──
     if (total_limit !== undefined) {
       const limitNum = parseMoney(total_limit, { allowZero: false });
       if (limitNum === null) {
@@ -512,6 +491,7 @@ router.put('/:id', async (req, res) => {
       budget.total_limit = limitNum;
     }
 
+    // ── Update period (rejects overlap with other active budgets) ──
     if (period_start !== undefined || period_end !== undefined) {
       const nextStart = period_start === undefined
         ? budget.period_start
@@ -542,6 +522,7 @@ router.put('/:id', async (req, res) => {
       budget.period_end = nextEnd;
     }
 
+    // ── Update rollover toggle; clear amount when disabled ──
     if (rollover_enabled !== undefined) {
       budget.rollover_enabled = parseBoolean(rollover_enabled);
       if (!budget.rollover_enabled) {
@@ -549,6 +530,7 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    // ── Update warning thresholds ──
     if (warning_thresholds !== undefined) {
       const normalized = normalizeWarningThresholds(warning_thresholds);
       if (normalized === null) {
@@ -559,22 +541,16 @@ router.put('/:id', async (req, res) => {
       budget.warning_thresholds = normalized;
     }
 
+    // ── Update status flags ──
     if (is_active !== undefined) budget.is_active = parseBoolean(is_active);
     if (auto_renew !== undefined) budget.auto_renew = parseBoolean(auto_renew);
 
-    /* Original categories update without category:
-    if (categories !== undefined) {
-      if (!Array.isArray(categories)) {
-        return res.status(400).json({ error: 'Categories must be an array.' });
-      }
-      budget.categories = normalizeCategories(categories);
-    }
-    // Issue: Did not update single category string on budget update.
-    */
+    // ── Update single category string ──
     if (category !== undefined) {
       budget.category = category ? String(category).trim().slice(0, 80) : null;
     }
 
+    // ── Update category array ──
     if (categories !== undefined) {
       if (!Array.isArray(categories)) {
         return res.status(400).json({ error: 'Categories must be an array.' });
@@ -589,6 +565,7 @@ router.put('/:id', async (req, res) => {
 
     return res.json({ message: 'Budget updated', budget });
   } catch (error) {
+    // ── Map duplicate-key errors to a friendly message ──
     if (error?.code === 11000) {
       const field = error.keyPattern ? Object.keys(error.keyPattern)[0] : 'field';
       return res.status(409).json({
@@ -600,16 +577,18 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-/* ============================================================
- * DELETE /:id — Delete a budget
- * ============================================================ */
-
+/* —————————————————————————————————————
+ * DELETE /:id
+ * Delete a budget owned by the authenticated user.
+ * ————————————————————————————————————— */
 router.delete('/:id', async (req, res) => {
+  // ── Validate budget ID ──
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ error: 'Invalid budget ID.' });
   }
 
   try {
+    // ── Find and delete in a single atomic operation ──
     const deleted = await Budget.findOneAndDelete({
       _id: req.params.id,
       user_id: req.userId,
@@ -622,4 +601,9 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+/* —————————————————————————————————————
+ * Export
+ * ————————————————————————————————————— */
+
+// ── Export router ──
 module.exports = router;

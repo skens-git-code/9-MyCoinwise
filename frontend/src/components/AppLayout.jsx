@@ -1,3 +1,22 @@
+/* —————————————————————————————————————
+ * App Layout
+ * Root layout that wraps every page with the app shell:
+ *   - Error boundary
+ *   - Desktop sidebar / mobile bottom dock + drawer
+ *   - Top header (search, converter, AI, theme, alerts, profile)
+ *   - Route transition container
+ *   - Overlay surfaces (Command Palette, Shortcuts, Help, Onboarding,
+ *     Transaction form, Currency converter, Alerts center, AI panel)
+ *
+ * Key behaviors:
+ *   - Responsive layout driven by useMediaQuery (no resize debouncing).
+ *   - Keyboard shortcuts: Ctrl/Cmd+K (search), ? (shortcuts), Ctrl/Cmd+B
+ *     (sidebar), Escape (closes topmost overlay only).
+ *   - Focus trap and Escape handling for modal overlays.
+ *   - Online/offline/sync status surfaced in the header.
+ *   - Optimistic balance = starting balance + net of live transactions.
+ * ————————————————————————————————————— */
+
 import React, { useState, useContext, useMemo, useCallback, useEffect, useRef } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
@@ -26,10 +45,11 @@ import TransactionForm from './TransactionForm';
 import DOMPurify from 'dompurify';
 import QuantumRuntime from '../services/quantumRuntime';
 
-// ==============================
-// 1. CONSTANTS & CONFIGURATION
-// ==============================
+/* ==============================
+ * 1. Constants & Configuration
+ * ============================== */
 
+// ── Desktop sidebar navigation items ──
 const NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, labelKey: 'dashboard' },
   { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions' },
@@ -55,6 +75,7 @@ const MOBILE_NAV_ITEMS = [
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics', mobileLabel: 'Analytics' },
 ];
 
+// ── Rules for how user names are displayed ──
 const USER_DISPLAY_RULES = {
   randomIdPattern: /^[0-9a-f]{24}$/i,
   defaultDisplayName: 'friend',
@@ -62,18 +83,21 @@ const USER_DISPLAY_RULES = {
   maxDisplayNameLength: 50
 };
 
+// ── Responsive breakpoints (px) ──
 const BREAKPOINTS = {
   mobile: 768,
   tablet: 1024,
   desktop: 1280
 };
 
+// ── Shared animation durations (seconds) ──
 const ANIMATION_DURATIONS = {
   fast: 0.1,
   normal: 0.2,
   slow: 0.35
 };
 
+// ── localStorage key for the sync toggle ──
 const SYNC_STORAGE_KEY = 'mcw-sync-enabled';
 
 // Fallback labels for the page title. Keys must match `labelKey`
@@ -95,14 +119,17 @@ const PAGE_TITLE_FALLBACKS = {
   settings: 'Settings',
 };
 
-// ==============================
-// 2. UTILITY FUNCTIONS
-// ==============================
+/* ==============================
+ * 2. Utility Functions
+ * ============================== */
 
+// ── Return a valid hex color, or the fallback when invalid ──
 const validateColorHex = (color) => {
   return /^#[0-9A-F]{6}$/i.test(color) ? color : '#059669';
 };
 
+// ── Sanitize a user-supplied display name ──
+// Trims, caps length, and strips all HTML via DOMPurify.
 const sanitizeUserInput = (input) => {
   if (!input) return null;
   if (typeof input === 'string') {
@@ -116,10 +143,12 @@ const sanitizeUserInput = (input) => {
   return null;
 };
 
+// ── Map app language codes to BCP-47 locales ──
 const LOCALE_MAP = {
   en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
 };
 
+// ── Format a balance with the currency symbol and locale ──
 const formatBalance = (balance, currencySymbol = '$', langOrLocale = 'en-US') => {
   const numBalance = Number(balance);
   if (!Number.isFinite(numBalance)) return `${currencySymbol}0.00`;
@@ -142,6 +171,7 @@ const getDeviceType = () => {
 // Migrated to dynamic, hardware-accelerated media queries via `useMediaQuery` from react-responsive.
 */
 
+// ── Read the stored sync preference (default: enabled) ──
 const getStoredSyncEnabled = () => {
   if (typeof window === 'undefined') return true;
   try {
@@ -152,13 +182,14 @@ const getStoredSyncEnabled = () => {
   }
 };
 
-// ==============================
-// 3. INLINE STYLES (for ErrorBoundary)
-// ==============================
+/* ==============================
+ * 3. Inline Styles (for ErrorBoundary)
+ * ============================== */
 // [FIX #13] Moved styles ABOVE the ErrorBoundary class so the
 // dependency is declared before use. Behaviorally identical, but
 // no longer relies on hoisting order.
 const styles = {
+  // ── Fallback screen shown by ErrorBoundary ──
   errorFallback: {
     padding: '40px 20px',
     textAlign: 'center',
@@ -206,10 +237,11 @@ const styles = {
   // userTrigger, waveEmoji, avatarButton — none are referenced anywhere.
 };
 
-// ==============================
-// 4. CUSTOM HOOKS
-// ==============================
+/* ==============================
+ * 4. Custom Hooks
+ * ============================== */
 
+// ── Tracks which dropdown is open; toggles one at a time ──
 const useDropdownManager = () => {
   const [activeDropdown, setActiveDropdown] = useState(null);
   const toggleDropdown = useCallback((name) => {
@@ -219,8 +251,10 @@ const useDropdownManager = () => {
   return { activeDropdown, toggleDropdown, closeAll };
 };
 
+// ── Derives the display name, avatar, role, and color from the user ──
 const useUserDisplay = (user, t) => {
   return useMemo(() => {
+    // ── Guest fallback ──
     if (!user) {
       return {
         displayName: t?.('guest') || 'Guest',
@@ -232,6 +266,7 @@ const useUserDisplay = (user, t) => {
       };
     }
 
+    // ── Combine first name and surname without duplicating ──
     const firstName = String(user?.username || user?.name || '').trim();
     const surname = String(user?.last_name || user?.surname || '').trim();
     const hasSurnameAlready = surname && firstName.toLocaleLowerCase().endsWith(surname.toLocaleLowerCase());
@@ -244,9 +279,12 @@ const useUserDisplay = (user, t) => {
       !USER_DISPLAY_RULES.excludedIds.has(sanitizedRawName);
 
     const fullDisplayName = isValidDisplayName ? sanitizedRawName : USER_DISPLAY_RULES.defaultDisplayName;
+
+    // ── Avatar: emoji or image URL ──
     const avatarStr = String(user?.profile_avatar || fullDisplayName.charAt(0).toUpperCase()).trim();
     const isImageAvatar = /^(?:data:image\/|blob:|https?:\/\/|\/(?!\/))/i.test(avatarStr);
 
+    // ── Role localization ──
     const rawRole = sanitizeUserInput(user?.profession || user?.role) || 'Trader';
     const lowerRole = rawRole.toLowerCase().trim();
     let localizedRole = rawRole;
@@ -315,6 +353,10 @@ const useResponsiveSidebar = (initialState = true) => {
   return { sidebarOpen, setSidebarOpen: setSidebarOpenWithMemory, deviceType };
 };
 */
+
+// ── Sidebar open state + device type via live media queries ──
+// Remembers the desktop preference so the sidebar returns to the
+// same state when resizing back up from mobile.
 const useResponsiveSidebar = (initialState = true) => {
   const isMobile = useMediaQuery(`(max-width: ${BREAKPOINTS.mobile - 1}px)`);
   const isTablet = useMediaQuery(`(min-width: ${BREAKPOINTS.mobile}px) and (max-width: ${BREAKPOINTS.tablet}px)`);
@@ -333,6 +375,7 @@ const useResponsiveSidebar = (initialState = true) => {
   return { sidebarOpen, setSidebarOpen: setSidebarOpenWithMemory, deviceType };
 };
 
+// ── Close the active dropdown on outside click or Escape ──
 const useClickOutside = (activeDropdown, onClose) => {
   useEffect(() => {
     if (!activeDropdown) return undefined;
@@ -362,9 +405,9 @@ const useClickOutside = (activeDropdown, onClose) => {
   }, [activeDropdown, onClose]);
 };
 
-// ==============================
-// 5. ERROR BOUNDARY COMPONENT
-// ==============================
+/* ==============================
+ * 5. Error Boundary Component
+ * ============================== */
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -393,6 +436,7 @@ class ErrorBoundary extends React.Component {
     }
   }
 
+  // ── Retry up to 3 times, then full page reload ──
   handleReset = () => {
     const { retryCount } = this.state;
     if (retryCount < 3) {
@@ -437,11 +481,12 @@ class ErrorBoundary extends React.Component {
 // It was defined but never rendered anywhere in this file or imported
 // by any other module. Language switching lives in the profile dropdown.
 
-// ==============================
-// 6. MAIN COMPONENT
-// ==============================
+/* ==============================
+ * 6. Main Component
+ * ============================== */
 
 export default function AppLayout({ children }) {
+  // ── Overlay visibility state ──
   const [showConverter, setShowConverter] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [isAIOpen, setIsAIOpen] = useState(false);
@@ -453,9 +498,11 @@ export default function AppLayout({ children }) {
   const [showAddTx, setShowAddTx] = useState(false);
   const [dismissedAlertIds, setDismissedAlertIds] = useState(() => new Set());
 
+  // ── Shared hooks ──
   const { activeDropdown, toggleDropdown, closeAll } = useDropdownManager();
   const { sidebarOpen, setSidebarOpen, deviceType } = useResponsiveSidebar(true);
 
+  // ── First-visit onboarding ──
   useEffect(() => {
     const isCompleted = localStorage.getItem('mcw-onboarding-completed');
     if (!isCompleted) {
@@ -465,6 +512,7 @@ export default function AppLayout({ children }) {
     return undefined;
   }, []);
 
+  // ── App context: user, theme, i18n, data, actions ──
   const contextData = useContext(AppContext) || {};
   const {
     user, theme, toggleTheme, currencyInfo, alerts = [], transactions = [],
@@ -481,6 +529,7 @@ export default function AppLayout({ children }) {
     setDrawerOpen((open) => (open ? false : open));
   }, [location.pathname]);
 
+  // Lock body scroll while the mobile drawer is open.
   useEffect(() => {
     if (!drawerOpen || typeof document === 'undefined') return undefined;
     const previousOverflow = document.body.style.overflow;
@@ -488,9 +537,11 @@ export default function AppLayout({ children }) {
     return () => { document.body.style.overflow = previousOverflow; };
   }, [drawerOpen]);
 
+  // ── Derived user display info; close dropdowns on outside click ──
   const userInfo = useUserDisplay(user, t);
   useClickOutside(activeDropdown, closeAll);
 
+  // ── One-time setup: inject keyframes and start QuantumRuntime ──
   useEffect(() => {
     const styleId = 'app-layout-animations';
     if (!document.getElementById(styleId)) {
@@ -511,16 +562,19 @@ export default function AppLayout({ children }) {
     };
   }, []);
 
+  // ── Active alerts = alerts minus dismissed ──
   const activeAlerts = useMemo(() => {
     const safeAlerts = Array.isArray(alerts) ? alerts : [];
     return safeAlerts.filter(a => a && !dismissedAlertIds.has(a.id || a.title));
   }, [alerts, dismissedAlertIds]);
 
+  // ── Urgent count (danger + warning) ──
   const urgentAlertsCount = useMemo(
     () => activeAlerts.filter(a => a.type === 'danger' || a.type === 'warning').length,
     [activeAlerts]
   );
 
+  // ── Mark every alert as dismissed locally ──
   const handleDismissAllAlerts = useCallback(() => {
     const safeAlerts = Array.isArray(alerts) ? alerts : [];
     setDismissedAlertIds(new Set(safeAlerts.map(a => a?.id || a?.title).filter(Boolean)));
@@ -534,12 +588,14 @@ export default function AppLayout({ children }) {
     return map;
   }, []);
 
+  // ── Localized page title ──
   const pageTitle = useMemo(() => {
     const key = pageTitleKey[location.pathname] || 'dashboard';
     const translated = t?.(key);
     return (translated && translated !== key ? translated : PAGE_TITLE_FALLBACKS[key]) || 'Dashboard';
   }, [location.pathname, t, pageTitleKey]);
 
+  // ── Income / expense / net / savings-rate summary ──
   const financialSummary = useMemo(() => {
     const safeTxs = Array.isArray(transactions) ? transactions : [];
     const liveTxs = safeTxs.filter(t => t && t.is_deleted !== true);
@@ -560,6 +616,7 @@ export default function AppLayout({ children }) {
     return { income, expense, net, rate };
   }, [transactions]);
 
+  // ── Sum of initial balances for liquid-type accounts ──
   const startingBalance = useMemo(() => {
     if (!Array.isArray(accounts) || accounts.length === 0) return 0;
     const liquidTypes = new Set(['bank', 'wallet', 'cash', 'credit_card', 'other']);
@@ -571,12 +628,14 @@ export default function AppLayout({ children }) {
       }, 0);
   }, [accounts]);
 
+  // ── Effective balance = base + net of live transactions ──
   const totalBalance = useMemo(() => {
     const net = financialSummary?.net ?? 0;
     const base = Number(user?.startingBalance ?? (startingBalance > 0 ? startingBalance : (user?.balance && user?.balance !== 0 ? user.balance : 0)));
     return base + net;
   }, [user, startingBalance, financialSummary?.net]);
 
+  // ── Format the balance for display ──
   const formattedBalance = useMemo(() => {
     if (fmt) {
       return fmt(totalBalance);
@@ -584,6 +643,7 @@ export default function AppLayout({ children }) {
     return formatBalance(totalBalance, currencyInfo?.symbol, lang);
   }, [totalBalance, currencyInfo?.symbol, fmt, lang]);
 
+  // ── Handlers ──
   const handleSidebarToggle = useCallback(() => {
     setSidebarOpen(prev => !prev);
   }, [setSidebarOpen]);
@@ -710,6 +770,7 @@ export default function AppLayout({ children }) {
       {/* App.jsx already wraps the full tree in <MotionConfig reducedMotion="user">,
           so we don't nest a second one here. */}
       <div className="app-island-layout" data-theme={theme}>
+          {/* ── Ambient background layers ── */}
           <div className="portfolio-bg-layer" aria-hidden="true" />
           <div className="d3-ambient" aria-hidden="true">
             <div className="d3-ambient__grid" />
@@ -718,7 +779,7 @@ export default function AppLayout({ children }) {
             <div className="d3-ambient__shard" />
           </div>
 
-          {/* Desktop Sidebar */}
+          {/* ── Desktop Sidebar (+ backdrop when open) ── */}
           {deviceType === 'desktop' && (
             <>
               <AnimatePresence>
@@ -745,7 +806,7 @@ export default function AppLayout({ children }) {
             </>
           )}
 
-          {/* Main Content */}
+          {/* ── Main Content ── */}
           <main className="island-main">
             <Header
               sidebarOpen={sidebarOpen}
@@ -782,6 +843,7 @@ export default function AppLayout({ children }) {
               isBackgroundSyncing={isBackgroundSyncing}
             />
 
+            {/* ── Global error banner ── */}
             {globalError && (
               <div className="sync-error-banner" role="alert">
                 <div className="sync-error-copy">
@@ -814,6 +876,7 @@ export default function AppLayout({ children }) {
                 </motion.div>
               </AnimatePresence>
               */}
+              {/* ── Route transition: opacity-only for perf ── */}
               <AnimatePresence mode="wait">
                 <motion.div
                   key={location.pathname}
@@ -838,11 +901,13 @@ export default function AppLayout({ children }) {
             </div>
           </main>
 
+          {/* ── Mobile bottom dock ── */}
           <MobileBottomNav
             t={t}
             onOpenDrawer={handleOpenDrawer}
           />
 
+          {/* ── Mobile drawer overlay + panel ── */}
           <AnimatePresence>
             {drawerOpen && (
               <>
@@ -875,6 +940,7 @@ export default function AppLayout({ children }) {
             )}
           </AnimatePresence>
 
+          {/* ── Overlay surfaces ── */}
           <CommandPalette
             isOpen={showCmdPalette}
             onClose={() => setShowCmdPalette(false)}
@@ -929,10 +995,11 @@ export default function AppLayout({ children }) {
   );
 }
 
-// ==============================
-// 7. SUB-COMPONENTS
-// ==============================
+/* ==============================
+ * 7. Sub-Components
+ * ============================== */
 
+// ── Desktop sidebar: brand, user card, nav items, footer ──
 const DesktopSidebar = React.memo(({
   sidebarOpen, onToggle,
   userInfo, t, logout
@@ -946,6 +1013,7 @@ const DesktopSidebar = React.memo(({
       aria-expanded={isOpen}
       id="desktop-navigation"
     >
+      {/* ── Brand block ── */}
       <div className="island-brand">
         <motion.div
           className="brand-icon"
@@ -989,6 +1057,7 @@ const DesktopSidebar = React.memo(({
         </button>
       </div>
 
+      {/* ── User card ── */}
       <div className="island-user dropdown-container">
         <div className="user-trigger">
           <div className="user-avatar-wrapper">
@@ -1018,6 +1087,7 @@ const DesktopSidebar = React.memo(({
         </div>
       </div>
 
+      {/* ── Primary navigation ── */}
       <nav className="island-nav" aria-label="Primary navigation">
         {NAV_ITEMS.map((item) => (
           <NavLink
@@ -1060,6 +1130,7 @@ const DesktopSidebar = React.memo(({
         ))}
       </nav>
 
+      {/* ── Footer: settings and logout ── */}
       <div className="island-footer">
         <NavLink
           to="/settings"
@@ -1107,6 +1178,7 @@ const DesktopSidebar = React.memo(({
 });
 DesktopSidebar.displayName = 'DesktopSidebar';
 
+// ── Inline hexagon logo used in the header brand link ──
 const BrandLogo = ({ size = 20, className = 'brand-logo-svg' }) => (
   <svg
     width={size}
@@ -1134,6 +1206,8 @@ const BrandLogo = ({ size = 20, className = 'brand-logo-svg' }) => (
   </svg>
 );
 
+// ── Header: brand, nav links, actions (search, converter, AI, theme,
+//    alerts, profile) ──
 const Header = React.memo(({
   sidebarOpen, onToggleSidebar,
   pageTitle, userInfo,
@@ -1147,12 +1221,14 @@ const Header = React.memo(({
   financialSummary, currencySymbol,
   logout, user, fmt, navigate, refetch, isBackgroundSyncing
 }) => {
+  // ── Online/offline, sync preference, scroll state ──
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === 'undefined' ? true : navigator.onLine
   );
   const [syncEnabled, setSyncEnabled] = useState(getStoredSyncEnabled);
   const [isScrolled, setIsScrolled] = useState(false);
 
+  // ── React to online/offline and tab visibility changes ──
   useEffect(() => {
     let lastVisibilityRefetch = 0;
     const handleOnline = () => {
@@ -1180,6 +1256,7 @@ const Header = React.memo(({
     };
   }, [refetch, syncEnabled]);
 
+  // ── Persist the sync preference ──
   useEffect(() => {
     try {
       window.localStorage.setItem(SYNC_STORAGE_KEY, String(syncEnabled));
@@ -1205,6 +1282,7 @@ const Header = React.memo(({
     disabled: t?.('connection_disabled') || 'Sync off',
   }[syncState];
 
+  // ── Toggle sync (ignored while a sync is in flight) ──
   const toggleSync = () => {
     if (isBackgroundSyncing) return;
     setSyncEnabled((enabled) => {
@@ -1239,6 +1317,7 @@ const Header = React.memo(({
       aria-label={`Coinwise Navigation - ${pageTitle}`}
     >
       <div className={`nav-container ${isScrolled ? 'is-scrolled' : ''}`}>
+        {/* ── Brand + mobile title ── */}
         <div className="nav-brand-group">
           <NavLink to="/" className="port" aria-label="Coinwise Home">
             <BrandLogo size={22} className="brand-logo-svg" />
@@ -1248,6 +1327,7 @@ const Header = React.memo(({
           </span>
         </div>
 
+        {/* ── Primary nav links ── */}
         <nav className="nav-links" aria-label="Main Navigation">
           <NavLink to="/" end className={({ isActive }) => `nav-link nav-link-core ${isActive ? 'active' : ''}`}>
             {t?.('dashboard') || 'Dashboard'}
@@ -1274,7 +1354,9 @@ const Header = React.memo(({
 
         <div className="nav-separator" aria-hidden="true" />
 
+        {/* ── Action buttons ── */}
         <div className="nav-actions">
+          {/* ── Sync toggle ── */}
           <button
             type="button"
             className={`connection-toggle nav-btn-sync connection-toggle-${syncState}`}
@@ -1287,6 +1369,7 @@ const Header = React.memo(({
             <span className="connection-toggle-dot" aria-hidden="true" />
           </button>
 
+          {/* ── Search / command palette ── */}
           <button
             type="button"
             className="theme-toggle nav-btn-search"
@@ -1297,6 +1380,7 @@ const Header = React.memo(({
             <Search size={18} strokeWidth={1.75} />
           </button>
 
+          {/* ── Currency converter ── */}
           <button
             type="button"
             className="theme-toggle nav-btn-converter"
@@ -1307,6 +1391,7 @@ const Header = React.memo(({
             <Coins size={18} strokeWidth={1.75} />
           </button>
 
+          {/* ── AI assistant ── */}
           <button
             type="button"
             className="theme-toggle nav-btn-ai"
@@ -1317,6 +1402,7 @@ const Header = React.memo(({
             <Sparkles size={18} strokeWidth={1.75} />
           </button>
 
+          {/* ── Theme toggle ── */}
           <button
             type="button"
             className="theme-toggle nav-btn-theme"
@@ -1332,6 +1418,7 @@ const Header = React.memo(({
             )}
           </button>
 
+          {/* ── Alerts dropdown ── */}
           <div className="dropdown-container nav-dropdown-alerts" style={{ position: 'relative' }}>
             <button
               type="button"
@@ -1420,6 +1507,8 @@ const Header = React.memo(({
             </button>
           </div>
           */}
+
+          {/* ── Profile dropdown ── */}
           <div className="dropdown-container nav-dropdown-profile" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
             <button
               type="button"
@@ -1462,6 +1551,7 @@ const Header = React.memo(({
                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
                   onClick={e => e.stopPropagation()}
                 >
+                  {/* ── User card ── */}
                   <div className="hpd-user-card">
                     <div className="hpd-avatar" style={{ background: userInfo.avatarColor }}>
                       {userInfo.isBase64Avatar ? (
@@ -1485,6 +1575,7 @@ const Header = React.memo(({
                     </div>
                   </div>
 
+                  {/* ── Net & savings quick summary ── */}
                   {financialSummary && (
                     <div
                       className="hpd-quick-summary"
@@ -1513,6 +1604,7 @@ const Header = React.memo(({
                     </div>
                   )}
 
+                  {/* ── Action list ── */}
                   <div className="hpd-actions">
                     <button
                       type="button"
@@ -1596,6 +1688,7 @@ const Header = React.memo(({
                     </button>
                   </div>
 
+                  {/* ── Logout ── */}
                   <div className="hpd-footer">
                     <button
                       type="button"
@@ -1617,6 +1710,7 @@ const Header = React.memo(({
 });
 Header.displayName = 'Header';
 
+// ── Mobile bottom dock (fixed nav for small screens) ──
 const MobileBottomNav = React.memo(({ t, onOpenDrawer }) => {
   return (
     <nav className="mobile-bottom-dock glass" aria-label="Mobile navigation">
@@ -1669,6 +1763,7 @@ const MobileBottomNav = React.memo(({ t, onOpenDrawer }) => {
 });
 MobileBottomNav.displayName = 'MobileBottomNav';
 
+// ── Mobile drawer (slide-in nav for small screens) ──
 const MobileDrawer = React.memo(({
   userInfo, formattedBalance, theme, onToggleTheme,
   lang, onLanguageChange, onShowConverter, onShowAlerts, onShowAI,
@@ -1685,6 +1780,7 @@ const MobileDrawer = React.memo(({
       exit={{ x: '-100%' }}
       transition={{ type: 'spring', stiffness: 320, damping: 32 }}
     >
+      {/* ── Drawer header ── */}
       <div className="mobile-drawer-header">
         <div className="drawer-brand">
           <div className="brand-icon" aria-hidden="true">
@@ -1702,6 +1798,7 @@ const MobileDrawer = React.memo(({
         </button>
       </div>
 
+      {/* ── User card ── */}
       <div className="drawer-user-card">
         <div className="user-avatar" style={{ background: userInfo.avatarColor }}>
           {userInfo.isBase64Avatar ? (
@@ -1721,6 +1818,7 @@ const MobileDrawer = React.memo(({
         <span className="drawer-balance-pill">{formattedBalance}</span>
       </div>
 
+      {/* ── Navigation list ── */}
       <p className="drawer-section-title">{t?.('navigation') || 'Navigation'}</p>
       <div className="drawer-nav-list">
         {NAV_ITEMS.map((item) => (
@@ -1759,6 +1857,7 @@ const MobileDrawer = React.memo(({
         </NavLink>
       </div>
 
+      {/* ── Tools grid ── */}
       <p className="drawer-section-title">{t?.('tools') || 'Tools'}</p>
       <div className="drawer-tools-grid">
         <button type="button" className="drawer-tool-chip" onClick={onShowConverter}>
@@ -1791,6 +1890,7 @@ const MobileDrawer = React.memo(({
         </button>
       </div>
 
+      {/* ── Language selector ── */}
       <p className="drawer-section-title">{t?.('language') || 'Language'}</p>
       <div className="drawer-preferences-row">
         {Object.entries(LANGUAGES || {}).map(([code, info]) => (
@@ -1809,6 +1909,7 @@ const MobileDrawer = React.memo(({
         ))}
       </div>
 
+      {/* ── Logout ── */}
       <div className="drawer-footer">
         <button
           type="button"
@@ -1824,6 +1925,7 @@ const MobileDrawer = React.memo(({
 });
 MobileDrawer.displayName = 'MobileDrawer';
 
+// ── AI panel: slide-in side panel wrapping AIChat with focus trap ──
 const AIPanelOverlay = React.memo(({ onClose, t }) => {
   const panelRef = useRef(null);
 
@@ -1834,6 +1936,7 @@ const AIPanelOverlay = React.memo(({ onClose, t }) => {
     const node = panelRef.current;
     if (!node) return undefined;
 
+    // ── Collect focusable elements inside the panel ──
     const getFocusable = () =>
       Array.from(
         node.querySelectorAll(
@@ -1841,9 +1944,11 @@ const AIPanelOverlay = React.memo(({ onClose, t }) => {
         )
       ).filter((el) => el.offsetParent !== null);
 
+    // ── Focus the first focusable element on mount ──
     const initial = getFocusable();
     if (initial.length > 0) initial[0].focus();
 
+    // ── Cycle Tab focus within the panel ──
     const handleTab = (e) => {
       if (e.key !== 'Tab') return;
       const list = getFocusable();
@@ -1866,6 +1971,7 @@ const AIPanelOverlay = React.memo(({ onClose, t }) => {
 
   return (
     <>
+      {/* ── Backdrop ── */}
       <motion.div
         className="ac-overlay"
         initial={{ opacity: 0 }}
@@ -1875,6 +1981,8 @@ const AIPanelOverlay = React.memo(({ onClose, t }) => {
         aria-hidden="true"
         style={{ zIndex: 'var(--z-modal)' }}
       />
+
+      {/* ── Panel ── */}
       <motion.aside
         ref={panelRef}
         className="ai-panel"

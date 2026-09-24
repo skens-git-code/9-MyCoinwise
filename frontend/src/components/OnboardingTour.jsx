@@ -1,3 +1,23 @@
+/* —————————————————————————————————————
+ * Onboarding Tour Component
+ * Step-by-step modal that introduces the app's key features to
+ * first-time users and marks onboarding complete in localStorage.
+ *
+ * Props:
+ *   - isOpen  : controls visibility.
+ *   - onClose : callback fired when the tour finishes or is skipped.
+ *
+ * Behavior:
+ *   - Steps are defined in the STEPS array (title, description, icon,
+ *     action text).
+ *   - The current step is tracked in local state.
+ *   - "Next" advances the step; on the last step it marks
+ *     'mcw-onboarding-completed' in localStorage and closes.
+ *   - "Skip" (button, X icon, or backdrop click) also marks onboarding
+ *     complete and closes.
+ *   - Step dots below the body indicate progress.
+ * ————————————————————————————————————— */
+
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -5,6 +25,11 @@ import {
   X, ChevronRight, Check, ArrowRight
 } from 'lucide-react';
 
+/* —————————————————————————————————————
+ * Tour Steps
+ * Ordered list of the steps shown in the tour. Each step has a title,
+ * description, icon, and CTA text.
+ * ————————————————————————————————————— */
 const STEPS = [
   {
     title: 'Welcome to MyCoinwise 🚀',
@@ -32,14 +57,20 @@ const STEPS = [
   }
 ];
 
+/* —————————————————————————————————————
+ * Component
+ * ————————————————————————————————————— */
 export default function OnboardingTour({ isOpen, onClose }) {
+  // ── Currently displayed step index ──
   const [currentStep, setCurrentStep] = useState(0);
 
+  // ── Render nothing when closed ──
   if (!isOpen) return null;
 
   const step = STEPS[currentStep];
   const isLast = currentStep === STEPS.length - 1;
 
+  // ── Advance to the next step, or finish the tour on the last step ──
   const handleNext = () => {
     if (isLast) {
       localStorage.setItem('mcw-onboarding-completed', 'true');
@@ -49,6 +80,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
     }
   };
 
+  // ── Skip the tour from any step and mark completion ──
   const handleSkip = () => {
     localStorage.setItem('mcw-onboarding-completed', 'true');
     onClose();
@@ -56,6 +88,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
 
   return (
     <AnimatePresence>
+      {/* ── Backdrop: click to skip ── */}
       <motion.div
         className="shortcuts-backdrop"
         initial={{ opacity: 0 }}
@@ -63,6 +96,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
         exit={{ opacity: 0 }}
         onClick={handleSkip}
       >
+        {/* ── Tour card ── */}
         <motion.div
           className="shortcuts-modal glass onboarding-tour-card"
           initial={{ opacity: 0, scale: 0.92, y: 20 }}
@@ -71,7 +105,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
           onClick={e => e.stopPropagation()}
           style={{ maxWidth: '480px', padding: 0, overflow: 'hidden' }}
         >
-          {/* Top Illustration Area */}
+          {/* ── Top illustration area ── */}
           <div style={{
             padding: '32px 24px 20px',
             background: 'linear-gradient(135deg, rgba(5, 150, 105, 0.12) 0%, rgba(14, 165, 233, 0.08) 100%)',
@@ -79,6 +113,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
             borderBottom: '1px solid var(--glass-border)',
             position: 'relative'
           }}>
+            {/* ── Close (X) button ── */}
             <button
               onClick={handleSkip}
               style={{
@@ -89,6 +124,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
               <X size={16} />
             </button>
 
+            {/* ── Step icon badge ── */}
             <div style={{
               width: 64, height: 64, borderRadius: 20, margin: '0 auto 16px',
               background: 'var(--glass-2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -97,18 +133,20 @@ export default function OnboardingTour({ isOpen, onClose }) {
               {step.icon}
             </div>
 
+            {/* ── Step title ── */}
             <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               {step.title}
             </h3>
           </div>
 
-          {/* Body Content */}
+          {/* ── Body content ── */}
           <div style={{ padding: '24px' }}>
+            {/* ── Step description ── */}
             <p style={{ margin: '0 0 24px', fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.6, textAlign: 'center' }}>
               {step.description}
             </p>
 
-            {/* Step Dots */}
+            {/* ── Step dots (current step is wider and full-opacity) ── */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 20 }}>
               {STEPS.map((_, idx) => (
                 <span
@@ -125,7 +163,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
               ))}
             </div>
 
-            {/* Actions */}
+            {/* ── Actions: skip and next ── */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <button
                 className="btn-secondary"

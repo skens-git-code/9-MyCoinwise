@@ -1,50 +1,69 @@
+/* —————————————————————————————————————
+ * Ownership Authorization Middleware
+ * Factory that verifies a target resource belongs to
+ * the authenticated user or their household.
+ * ————————————————————————————————————— */
+
+// ── Load mongoose ──
 const mongoose = require('mongoose');
 
-const checkOwnership = (paramName = 'userId', options = {}) => {
+// ── Create ownership-check middleware ──
+const checkOwnership = (idParamName = 'userId', ownershipOptions = {}) => {
   return async (req, res, next) => {
-    // Determine the target ID from req.params based on the provided param name
-    const targetId = req.params[paramName] || req.params.id;
-    
-    // If there is no target ID in the params, let the route handle it
+    // ── Resolve target ID from route params ──
+    const targetId = req.params[idParamName] || req.params.id;
+
+    // ── Skip when no target ID is present ──
     if (!targetId) return next();
-    
-    if (options.model) {
+
+    // ── Verify ownership through a model ──
+    if (ownershipOptions.model) {
       if (!mongoose.isValidObjectId(targetId)) {
         return res.status(400).json({ error: 'Invalid resource ID.' });
       }
-      const ownerField = options.ownerField || 'user_id';
-      const resource = await options.model.findOne({
+
+      const ownerField = ownershipOptions.ownerField || 'user_id';
+      const ownedResource = await ownershipOptions.model.findOne({
         _id: targetId,
         [ownerField]: req.user.id,
       }).select('_id').lean();
-      if (!resource) {
+
+      if (!ownedResource) {
         return res.status(404).json({ error: 'Resource not found.' });
       }
-      req.ownedResource = resource;
+
+      req.ownedResource = ownedResource;
       return next();
     }
 
-    if (options.household) {
+    // ── Verify household access ──
+    if (ownershipOptions.household) {
       const User = require('../models/User');
+
       if (!mongoose.isValidObjectId(targetId)) {
         return res.status(400).json({ error: 'Invalid user ID.' });
       }
-      const targetUser = await User.findById(targetId).select('household_id').lean();
-      const targetHousehold = String(targetUser?.household_id || targetUser?._id || '');
-      const currentHousehold = String(req.user.household_id || req.user.id);
-      if (!targetUser || targetHousehold !== currentHousehold) {
+
+      const targetUserRecord = await User.findById(targetId).select('household_id').lean();
+      const targetHouseholdId = String(targetUserRecord?.household_id || targetUserRecord?._id || '');
+      const currentHouseholdId = String(req.user.household_id || req.user.id);
+
+      if (!targetUserRecord || targetHouseholdId !== currentHouseholdId) {
         return res.status(403).json({ error: 'Access denied: profile is not linked to your household.' });
       }
+
       return next();
     }
 
-    // Ensure the requested user ID matches the authenticated user's ID.
+    // ── Verify direct user match ──
     if (String(targetId) !== String(req.user.id)) {
       return res.status(403).json({ error: 'Access denied: You do not have permission to access or modify this resource.' });
     }
-    
+
+    // ── Continue to next middleware ──
     next();
   };
 };
 
+// ── Export middleware factory ──
 module.exports = checkOwnership;

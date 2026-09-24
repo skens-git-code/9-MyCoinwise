@@ -1,22 +1,38 @@
-// =============================================
-// MyCoinwise – PDF Export (client-side using jsPDF-like approach)
-// Generates a styled PDF report from transaction data
-// =============================================
+/* —————————————————————————————————————
+ * PDF Export
+ * Generates a styled PDF report from transaction data using jsPDF
+ * and jspdf-autotable. Loaded lazily from the UI.
+ *
+ * Sections:
+ *   - Header banner with brand, user, and date.
+ *   - Summary tiles: balance, income, expense, savings rate.
+ *   - Transactions table (date, type, category, note, amount).
+ *   - Footer with page numbers.
+ *
+ * Exports:
+ *   - exportToPDF(user, transactions, currencyInfo, localeOpt)
+ * ————————————————————————————————————— */
 
+// ── Build and download a PDF report for the given user + transactions ──
 export async function exportToPDF(user, transactions = [], currencyInfo, localeOpt) {
   // Dynamically import jsPDF + autoTable
   const { default: jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
 
+  // ── Document setup ──
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  // ── Resolve display currency, symbol, and locale ──
   const symbol = currencyInfo?.symbol || '$';
   const currency = user?.currency || 'USD';
   const activeLocale = localeOpt || user?.locale || (typeof navigator !== 'undefined' ? navigator.language : 'en-US') || 'en-US';
 
   // ── Header ──────────────────────────────────────────────────────────────────
+  // Brand banner: solid emerald strip at the top of the page
   doc.setFillColor(5, 150, 105);
   doc.rect(0, 0, 210, 42, 'F');
 
+  // Brand mark and subtitle
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(26);
   doc.setFont('helvetica', 'bold');
@@ -26,12 +42,13 @@ export async function exportToPDF(user, transactions = [], currencyInfo, localeO
   doc.text('AI-Powered Finance Tracker', 15, 28);
   doc.text(`Report for: ${user?.username || 'User'}`, 15, 35);
 
-  // Date
+  // Right-aligned generated date and currency
   doc.setFontSize(9);
   doc.text(`Generated: ${new Date().toLocaleString(activeLocale)}`, 140, 28);
   doc.text(`Currency: ${currency}`, 140, 35);
 
   // ── Summary Box ─────────────────────────────────────────────────────────────
+  // Compute totals and savings rate from the transaction list
   const income = transactions.filter(t => t.type === 'income').reduce((a, c) => {
     const val = Number(c.amount);
     return a + (Number.isFinite(val) ? val : 0);
@@ -43,6 +60,7 @@ export async function exportToPDF(user, transactions = [], currencyInfo, localeO
   const balance = Number.isFinite(Number(user?.balance)) ? Number(user.balance) : 0;
   const savingsRate = income > 0 ? ((income - expense) / income * 100).toFixed(1) : 0;
 
+  // ── Lay out four summary tiles in a single row ──
   const summaryY = 52;
   const cols = [
     { label: 'Balance', value: `${symbol}${balance.toFixed(2)}`, color: balance >= 0 ? [16, 185, 129] : [239, 68, 68] },
@@ -53,16 +71,23 @@ export async function exportToPDF(user, transactions = [], currencyInfo, localeO
 
   cols.forEach((col, i) => {
     const x = 10 + i * 47.5;
+
+    // Tile background
     doc.setFillColor(248, 248, 255);
     doc.roundedRect(x, summaryY, 45, 22, 3, 3, 'F');
+
+    // Top accent strip (with square bottom edge)
     doc.setFillColor(...col.color);
     doc.roundedRect(x, summaryY, 45, 5, 3, 3, 'F');
     doc.rect(x, summaryY + 2.5, 45, 2.5, 'F'); // flat bottom on top rect
 
+    // Value
     doc.setTextColor(...col.color);
     doc.setFontSize(13);
     doc.setFont('helvetica', 'bold');
     doc.text(col.value, x + 22.5, summaryY + 14, { align: 'center' });
+
+    // Label
     doc.setTextColor(100, 100, 120);
     doc.setFontSize(7.5);
     doc.setFont('helvetica', 'normal');
@@ -70,6 +95,7 @@ export async function exportToPDF(user, transactions = [], currencyInfo, localeO
   });
 
   // ── Table ────────────────────────────────────────────────────────────────────
+  // Normalize each transaction into the table's column shape
   const tableData = transactions.map(t => {
     const parsedDate = t.date ? new Date(t.date) : new Date();
     const formattedDate = !isNaN(parsedDate.getTime())
@@ -86,6 +112,7 @@ export async function exportToPDF(user, transactions = [], currencyInfo, localeO
     ];
   });
 
+  // ── Render the transactions table ──
   autoTable(doc, {
     startY: summaryY + 28,
     head: [['Date', 'Type', 'Category', 'Note', `Amount (${currency})`]],
@@ -106,18 +133,23 @@ export async function exportToPDF(user, transactions = [], currencyInfo, localeO
       4: { cellWidth: 32, halign: 'right', fontStyle: 'bold' },
     },
     alternateRowStyles: { fillColor: [250, 248, 255] },
+
+    // ── Color the amount column red for expenses, green for income ──
     willDrawCell: (data) => {
       if (data.section === 'body' && data.column.index === 4) {
         const val = data.cell.raw || '';
         doc.setTextColor(val.startsWith('+') ? 16 : 239, val.startsWith('+') ? 185 : 68, val.startsWith('+') ? 129 : 68);
       }
     },
+
+    // ── Reset the fill color after each body cell ──
     didDrawCell: (data) => {
       if (data.section === 'body') doc.setTextColor(30, 30, 60);
     },
   });
 
   // ── Footer ───────────────────────────────────────────────────────────────────
+  // Add a page-number footer to every page
   const pageCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -129,6 +161,7 @@ export async function exportToPDF(user, transactions = [], currencyInfo, localeO
     );
   }
 
+  // ── Save the finished PDF with a dated filename ──
   const now = new Date();
   const dateStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   doc.save(`MyCoinwise_${user?.username || 'Report'}_${dateStamp}.pdf`);

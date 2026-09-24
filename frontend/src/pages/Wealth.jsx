@@ -1,3 +1,23 @@
+/* —————————————————————————————————————
+ * Wealth Portfolio Page
+ * Tracks assets and liabilities with:
+ *   - Net worth hero card (assets − liabilities).
+ *   - Asset allocation pie chart + net worth trajectory chart.
+ *   - High-interest debt warning.
+ *   - AI wealth advisor card.
+ *   - Debt payoff simulator with base vs. accelerated payments.
+ *   - Searchable / filterable / sortable portfolio list.
+ *   - Add / edit / delete entries with an undo toast.
+ *   - JSON / PDF export and clipboard summary.
+ *
+ * Key behaviors:
+ *   - Dates are treated as local (YYYY-MM-DD), never UTC.
+ *   - Deleting an entry offers a 6-second undo that re-creates it.
+ *   - Debt simulator enforces a payment that covers monthly interest.
+ *   - AI insights are debounced and throttled by a trigger key.
+ *   - Keyboard: `/` focuses search, `N` opens add, `Escape` clears search.
+ * ————————————————————————————————————— */
+
 import React, {
   useState, useEffect, useCallback, useContext, useMemo, useRef,
 } from 'react';
@@ -20,6 +40,8 @@ import { api } from '../services/api';
 /* ============================================================
  * Constants
  * ============================================================ */
+
+// ── Color per asset class (used by charts and accents) ──
 const CLASS_COLORS = {
   liquid_asset: '#3b82f6',
   illiquid_asset: '#8b5cf6',
@@ -28,6 +50,7 @@ const CLASS_COLORS = {
   liability: '#ef4444',
 };
 
+// ── Verbose labels per asset class (for select options and badges) ──
 const CLASS_LABELS = {
   liquid_asset: '💧 Stocks, Cash & Crypto',
   illiquid_asset: '🏠 Real Estate, Gold & Physical',
@@ -36,6 +59,7 @@ const CLASS_LABELS = {
   liability: '💳 Liability / Debt',
 };
 
+// ── Short labels per asset class (for chart legends and pills) ──
 const CLASS_SHORT = {
   liquid_asset: 'Liquid',
   illiquid_asset: 'Physical',
@@ -44,8 +68,10 @@ const CLASS_SHORT = {
   liability: 'Liability',
 };
 
+// ── Allowed asset classes ──
 const ASSET_CLASSES = ['liquid_asset', 'illiquid_asset', 'business_equity', 'retirement', 'liability'];
 
+// ── Sort menu options ──
 const SORT_OPTIONS = [
   { value: 'value_desc', labelKey: 'sort_value_high', fallback: 'Value (High → Low)' },
   { value: 'value_asc', labelKey: 'sort_value_low', fallback: 'Value (Low → High)' },
@@ -55,7 +81,7 @@ const SORT_OPTIONS = [
   { value: 'oldest', labelKey: 'sort_oldest', fallback: 'Oldest' },
 ];
 
-
+// ── Undo window and field limits ──
 const UNDO_TIMEOUT_MS = 6000;
 const MAX_DEBT_MONTHS = 600;
 const MAX_SYMBOL_LENGTH = 12;
@@ -64,13 +90,17 @@ const MAX_NOTE_LENGTH = 200;
 /* ============================================================
  * Helpers
  * ============================================================ */
+
+// ── Zero-pad a number to 2 digits ──
 const pad2 = (n) => String(n).padStart(2, '0');
 
+// ── Coerce a value into a finite number with fallback ──
 const safeNumber = (v, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 };
 
+// ── Normalize a date into a local YYYY-MM-DD string ──
 const toLocalDateKey = (value) => {
   if (!value) return '';
   if (typeof value === 'string') {
@@ -82,6 +112,7 @@ const toLocalDateKey = (value) => {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
 
+// ── Parse YYYY-MM-DD as a local Date (never UTC) ──
 const parseLocalDate = (value) => {
   if (!value) return null;
   if (typeof value === 'string') {
@@ -95,13 +126,16 @@ const parseLocalDate = (value) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
+// ── Extract an id from a doc / plain object ──
 const getId = (item) => {
   const id = item?._id ?? item?.id;
   return id == null ? '' : String(id);
 };
 
+// ── True when the item is not soft-deleted ──
 const isLiveItem = (item) => item && typeof item === 'object' && item.is_deleted !== true;
 
+// ── Normalize history payloads into { month, netWorth } rows ──
 const formatHistoryData = (rawData) => {
   if (!Array.isArray(rawData)) return [];
   return rawData
@@ -115,20 +149,25 @@ const formatHistoryData = (rawData) => {
 };
 
 /* ============================================================
- * Component
+ * Main Component
  * ============================================================ */
 export default function Wealth() {
+  // ── App context: formatter, auth token, i18n, theme, logout ──
   const { fmt, token, t, theme, logout } = useContext(AppContext);
   const { showToast } = useToast();
 
+  // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
 
+  // ── Dark theme detection for chart strokes and tooltips ──
   const isDark = useMemo(() => {
     const themes = new Set(['amoled', 'dark', 'midnight', 'black']);
     return themes.has(String(theme || '').toLowerCase());
   }, [theme]);
 
-  /* ---------------- Data state ---------------- */
+  /* ---------------- Data State ---------------- */
+
+  // ── Portfolio items, net-worth history, and loading state ──
   const [wealthItems, setWealthItems] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -136,7 +175,9 @@ export default function Wealth() {
   const [aiInsight, setAiInsight] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  /* ---------------- Modal / CRUD state ---------------- */
+  /* ---------------- Modal / CRUD State ---------------- */
+
+  // ── Add / edit / delete modals and their in-flight flags ──
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
@@ -144,33 +185,44 @@ export default function Wealth() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
 
-  /* ---------------- UI state: search, filter, sort ---------------- */
+  /* ---------------- UI State: search, filter, sort ---------------- */
+
+  // ── List controls ──
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('all');
   const [sortBy, setSortBy] = useState('value_desc');
   const [showExportMenu, setShowExportMenu] = useState(false);
 
-  /* ---------------- Debt simulator ---------------- */
+  /* ---------------- Debt Simulator State ---------------- */
+
+  // ── Target debt and payment inputs ──
   const [selectedDebtId, setSelectedDebtId] = useState('');
   const [extraPayment, setExtraPayment] = useState(2000);
   const [monthlyBasePayment, setMonthlyBasePayment] = useState(5000);
 
-  /* ---------------- Undo ---------------- */
+  /* ---------------- Undo State ---------------- */
+
+  // ── Undo toast + auto-dismiss timer ──
   const [undoState, setUndoState] = useState(null);
   const undoTimerRef = useRef(null);
 
   /* ---------------- Refs ---------------- */
+
+  // ── AI throttle refs + search input ref ──
   const aiTriggerKey = useRef('');
   const aiCooldown = useRef(0);
   const searchRef = useRef(null);
 
+  // ── Clear pending undo timer on unmount ──
   useEffect(() => () => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
   }, []);
 
   /* ============================================================
-   * Form state
+   * Form State
    * ============================================================ */
+
+  // ── Build an empty form payload for add / reset ──
   const emptyForm = useCallback(() => ({
     name: '',
     asset_class: 'liquid_asset',
@@ -182,11 +234,12 @@ export default function Wealth() {
     note: '',
   }), []);
 
+  // ── Form values + validation error ──
   const [formData, setFormData] = useState(emptyForm);
   const [formError, setFormError] = useState('');
 
   /* ============================================================
-   * Data fetching
+   * Data Fetching
    * ============================================================ */
   const fetchWealthData = useCallback(async () => {
     if (!token) return;
@@ -215,18 +268,22 @@ export default function Wealth() {
     }
   }, [token, showToast, tr, logout]);
 
+  // ── Fetch on mount / when the token becomes available ──
   useEffect(() => {
     if (token) fetchWealthData();
   }, [token, fetchWealthData]);
 
   /* ============================================================
-   * Derived metrics
+   * Derived Metrics
    * ============================================================ */
+
+  // ── Live items only ──
   const liveItems = useMemo(
     () => (Array.isArray(wealthItems) ? wealthItems.filter(isLiveItem) : []),
     [wealthItems]
   );
 
+  // ── Totals, allocation, and liability lists derived from live items ──
   const metrics = useMemo(() => {
     let totalAssets = 0;
     let totalLiabilities = 0;
@@ -276,10 +333,11 @@ export default function Wealth() {
     };
   }, [liveItems]);
 
+  // ── Color for the net worth hero (positive/negative) ──
   const nwColor = metrics.netWorth >= 0 ? 'var(--brand-primary)' : 'var(--danger)';
 
   /* ============================================================
-   * Filtered + sorted list
+   * Filtered + Sorted List
    * ============================================================ */
   const filteredSortedItems = useMemo(() => {
     let list = liveItems;
@@ -317,6 +375,7 @@ export default function Wealth() {
 
   /* ============================================================
    * AI Insights
+   * Debounced request throttled by payload equality + cooldown.
    * ============================================================ */
   useEffect(() => {
     if (liveItems.length === 0 || !token) {
@@ -363,7 +422,8 @@ export default function Wealth() {
   ]);
 
   /* ============================================================
-   * Debt payoff simulator (recalibrated)
+   * Debt Payoff Simulator
+   * Enforces a payment that covers monthly interest.
    * ============================================================ */
   const debtPayoff = useMemo(() => {
     const list = metrics.liabilitiesList;
@@ -384,6 +444,7 @@ export default function Wealth() {
     // If base payment doesn't cover interest, warn
     const baseCoversInterest = basePay > monthlyInterestAtStart;
 
+    // ── Month-by-month simulation with a hard cap ──
     const simulate = (payment) => {
       let balance = principal;
       let months = 0;
@@ -416,19 +477,23 @@ export default function Wealth() {
   }, [metrics.liabilitiesList, selectedDebtId, extraPayment, monthlyBasePayment]);
 
   /* ============================================================
-   * CRUD handlers
+   * CRUD Handlers
    * ============================================================ */
+
+  // ── Reset the form to its empty state ──
   const resetForm = useCallback(() => {
     setFormData(emptyForm());
     setFormError('');
   }, [emptyForm]);
 
+  // ── Open the add modal ──
   const openAdd = useCallback(() => {
     resetForm();
     setEditingItem(null);
     setIsAddingItem(true);
   }, [resetForm]);
 
+  // ── Populate the form for editing an existing item ──
   const openEdit = useCallback((item) => {
     if (!item) return;
     setEditingItem(item);
@@ -445,16 +510,19 @@ export default function Wealth() {
     setFormError('');
   }, []);
 
+  // ── Close the form modal and clear the form ──
   const closeFormModal = useCallback(() => {
     setIsAddingItem(false);
     setEditingItem(null);
     resetForm();
   }, [resetForm]);
 
+  // ── Clear the form error when the user edits any field ──
   const clearError = useCallback(() => {
     setFormError((prev) => (prev ? '' : prev));
   }, []);
 
+  // ── Validate and persist the form ──
   const handleSaveItem = useCallback(async () => {
     if (isSubmitting) return;
 
@@ -486,6 +554,7 @@ export default function Wealth() {
     setFormError('');
 
     try {
+      // ── Build the payload with normalized values ──
       const payload = {
         name: trimmedName,
         asset_class: formData.asset_class,
@@ -499,6 +568,7 @@ export default function Wealth() {
         note: formData.note.trim().slice(0, MAX_NOTE_LENGTH) || undefined,
       };
 
+      // ── Update vs. create ──
       if (editingItem) {
         const id = getId(editingItem);
         if (!id) {
@@ -527,12 +597,15 @@ export default function Wealth() {
   /* ============================================================
    * Delete (with undo)
    * ============================================================ */
+
+  // ── Show the undo bar for the configured window ──
   const armUndo = useCallback((label, restoreFn) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     setUndoState({ label, restoreFn });
     undoTimerRef.current = setTimeout(() => setUndoState(null), UNDO_TIMEOUT_MS);
   }, []);
 
+  // ── Execute the pending undo action ──
   const runUndo = useCallback(async () => {
     if (!undoState) return;
     const { restoreFn } = undoState;
@@ -546,6 +619,7 @@ export default function Wealth() {
     }
   }, [undoState, fetchWealthData, showToast, tr]);
 
+  // ── Confirm and execute a delete, then arm the undo bar ──
   const confirmDelete = useCallback(async () => {
     if (!itemToDelete || isDeleting) return;
     const item = liveItems.find((i) => getId(i) === String(itemToDelete));
@@ -584,6 +658,8 @@ export default function Wealth() {
   /* ============================================================
    * Export
    * ============================================================ */
+
+  // ── Export the portfolio as a sanitized JSON file ──
   const exportPortfolioJSON = useCallback(() => {
     if (liveItems.length === 0) {
       showToast('info', tr('nothing_to_export', 'Nothing to export.'));
@@ -618,6 +694,7 @@ export default function Wealth() {
     }
   }, [liveItems, showToast, tr]);
 
+  // ── Export the portfolio as a PDF via the shared exporter ──
   const exportPortfolioPDF = useCallback(async () => {
     if (liveItems.length === 0 || isExportingPDF) {
       showToast('info', tr('nothing_to_export', 'Nothing to export.'));
@@ -651,6 +728,7 @@ export default function Wealth() {
     }
   }, [liveItems, isExportingPDF, showToast, tr]);
 
+  // ── Copy a plain-text portfolio summary to the clipboard ──
   const copyPortfolioSummary = useCallback(async () => {
     const summary = [
       `${tr('net_worth', 'Net Worth')}: ${fmt(metrics.netWorth)}`,
@@ -672,7 +750,8 @@ export default function Wealth() {
   }, [fmt, metrics, liveItems.length, showToast, tr]);
 
   /* ============================================================
-   * Keyboard shortcuts
+   * Keyboard Shortcuts
+   * `/` focuses search, `N` opens add, `Escape` clears search.
    * ============================================================ */
   useEffect(() => {
     const onKey = (e) => {
@@ -700,8 +779,10 @@ export default function Wealth() {
   }, [openAdd, search]);
 
   /* ============================================================
-   * Loading state
+   * Loading State
    * ============================================================ */
+
+  // ── Show the loading skeleton until the first fetch resolves ──
   if (isLoading && wealthItems.length === 0) {
     return (
       <div className="masonry-layout-page wealth-page-wrap">
@@ -723,11 +804,13 @@ export default function Wealth() {
    * ============================================================ */
   return (
     <div className="masonry-layout-page wealth-page-wrap">
+      {/* ── Local spin keyframe ── */}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
       `}</style>
 
+      {/* ===================== Header ===================== */}
       <div className="masonry-header">
         <div className="mh-titles">
           <h2>{tr('wealth', 'Wealth Portfolio')}</h2>
@@ -736,6 +819,7 @@ export default function Wealth() {
           </span>
         </div>
         <div className="mh-actions" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {/* ── Refresh ── */}
           <button
             type="button"
             className="btn-secondary"
@@ -746,6 +830,7 @@ export default function Wealth() {
             {isLoading ? <Loader2 size={15} className="spin" /> : <RefreshCw size={15} />} {tr('refresh', 'Refresh')}
           </button>
 
+          {/* ── Export dropdown ── */}
           <div className="dropdown-container" style={{ position: 'relative' }}>
             <button
               type="button"
@@ -766,9 +851,11 @@ export default function Wealth() {
                   exit={{ opacity: 0, y: -8 }}
                   onClick={(e) => e.stopPropagation()}
                 >
+                  {/* ── JSON export ── */}
                   <button type="button" role="menuitem" className="tx-export-item" onClick={exportPortfolioJSON}>
                     <FileText size={15} className="text-success" aria-hidden /> {tr('export_json', 'Export JSON')}
                   </button>
+                  {/* ── PDF export ── */}
                   <button
                     type="button"
                     role="menuitem"
@@ -779,6 +866,7 @@ export default function Wealth() {
                     {isExportingPDF ? <Loader2 size={15} className="spin" /> : <FileText size={15} className="text-danger" aria-hidden />}
                     {isExportingPDF ? tr('generating', 'Generating…') : tr('export_pdf', 'Export PDF')}
                   </button>
+                  {/* ── Copy summary ── */}
                   <button type="button" role="menuitem" className="tx-export-item" onClick={copyPortfolioSummary}>
                     <Copy size={15} aria-hidden /> {tr('copy_summary', 'Copy summary')}
                   </button>
@@ -787,6 +875,7 @@ export default function Wealth() {
             </AnimatePresence>
           </div>
 
+          {/* ── Add entry ── */}
           <button
             type="button"
             className="btn-primary"
@@ -798,6 +887,7 @@ export default function Wealth() {
         </div>
       </div>
 
+      {/* ===================== Fetch Error Banner ===================== */}
       {fetchError && (
         <div
           className="glass"
@@ -816,7 +906,7 @@ export default function Wealth() {
         </div>
       )}
 
-      {/* Hero net worth */}
+      {/* ===================== Hero Net Worth Card ===================== */}
       <motion.div
         className="glass bento-tile hero-networth-card"
         style={{
@@ -836,6 +926,7 @@ export default function Wealth() {
         <div style={{ fontSize: 'clamp(2.4rem, 5vw, 3.4rem)', fontWeight: 900, fontFamily: 'var(--font-mono)', color: nwColor }}>
           {fmt(metrics.netWorth)}
         </div>
+        {/* ── Sub-stats: assets, liabilities, debt-to-asset ── */}
         <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 32, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>{tr('assets', 'Assets')}</div>
@@ -858,7 +949,7 @@ export default function Wealth() {
         </div>
       </motion.div>
 
-      {/* High interest warning */}
+      {/* ===================== High-Interest Debt Warning ===================== */}
       {metrics.hasHighInterestDebts && (
         <motion.div
           className="glass"
@@ -880,7 +971,7 @@ export default function Wealth() {
         </motion.div>
       )}
 
-      {/* AI Coach */}
+      {/* ===================== AI Advisor Card ===================== */}
       <motion.div
         className="glass bento-tile"
         style={{
@@ -897,8 +988,9 @@ export default function Wealth() {
         </p>
       </motion.div>
 
-      {/* Charts */}
+      {/* ===================== Charts ===================== */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20, marginBottom: 20 }}>
+        {/* ── Net worth trajectory ── */}
         <motion.div className="glass bento-tile" style={{ padding: 20 }}>
           <h3 className="heading-accent" style={{ fontSize: '0.95rem', marginBottom: 12 }}>{tr('net_worth_trajectory', 'Net Worth Trajectory')}</h3>
           <div style={{ height: 220 }}>
@@ -926,6 +1018,7 @@ export default function Wealth() {
           </div>
         </motion.div>
 
+        {/* ── Asset allocation pie ── */}
         <motion.div className="glass bento-tile" style={{ padding: 20 }}>
           <h3 className="heading-accent" style={{ fontSize: '0.95rem', marginBottom: 12 }}>{tr('asset_allocation', 'Asset Allocation')}</h3>
           <div style={{ height: 220, position: 'relative' }}>
@@ -950,7 +1043,7 @@ export default function Wealth() {
         </motion.div>
       </div>
 
-      {/* Debt payoff simulator */}
+      {/* ===================== Debt Payoff Simulator ===================== */}
       {metrics.liabilitiesList.length > 0 && debtPayoff && (
         <motion.div className="glass bento-tile" style={{ padding: 22, marginBottom: 20 }}>
           <div className="bt-header" style={{ marginBottom: 14 }}>
@@ -960,6 +1053,7 @@ export default function Wealth() {
             </h3>
           </div>
 
+          {/* ── Inputs: target debt, base pay, extra pay ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 16 }}>
             <div>
               <label htmlFor="debt_select" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -1014,6 +1108,7 @@ export default function Wealth() {
             </div>
           </div>
 
+          {/* ── Low-payment warning ── */}
           {!debtPayoff.baseCoversInterest && (
             <div
               role="alert"
@@ -1029,6 +1124,7 @@ export default function Wealth() {
             </div>
           )}
 
+          {/* ── Result summary ── */}
           <div
             className="glass"
             style={{
@@ -1056,7 +1152,7 @@ export default function Wealth() {
         </motion.div>
       )}
 
-      {/* Portfolio list */}
+      {/* ===================== Portfolio List ===================== */}
       <motion.div className="glass bento-tile" style={{ padding: 22 }}>
         <div
           className="bt-header"
@@ -1070,7 +1166,7 @@ export default function Wealth() {
           </h3>
         </div>
 
-        {/* Search / sort / filter */}
+        {/* ── Search / sort / filter toolbar ── */}
         <div
           style={{
             display: 'flex', gap: 8, flexWrap: 'wrap',
@@ -1097,6 +1193,7 @@ export default function Wealth() {
             />
           </div>
           */}
+          {/* ── Search input (fixed max width) ── */}
           <div style={{ position: 'relative', flex: '0 1 280px', minWidth: 200, maxWidth: 320 }}>
             <Search
               size={14}
@@ -1131,6 +1228,7 @@ export default function Wealth() {
                 boxSizing: 'border-box',
               }}
             />
+            {/* ── Clear search ── */}
             {search && (
               <button
                 type="button"
@@ -1155,6 +1253,7 @@ export default function Wealth() {
             )}
           </div>
 
+          {/* ── Class filter pills ── */}
           <div
             role="group"
             aria-label={tr('filter_by_class', 'Filter by class')}
@@ -1185,6 +1284,7 @@ export default function Wealth() {
             })}
           </div>
 
+          {/* ── Sort selector ── */}
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
@@ -1199,10 +1299,12 @@ export default function Wealth() {
           </select>
         </div>
 
+        {/* ── Keyboard hint ── */}
         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'right', marginBottom: 8 }}>
           <Keyboard size={11} aria-hidden /> {tr('shortcuts', 'Press / to search, N for new')}
         </div>
 
+        {/* ── Empty / no-match / list branches ── */}
         {liveItems.length === 0 ? (
           <div style={{ padding: '36px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
             <Briefcase size={40} style={{ margin: '0 auto 10px', opacity: 0.3 }} aria-hidden />
@@ -1240,6 +1342,7 @@ export default function Wealth() {
                     flexWrap: 'wrap', gap: 8,
                   }}
                 >
+                  {/* ── Item info column ── */}
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.92rem' }}>
                       {item.name}
@@ -1266,6 +1369,7 @@ export default function Wealth() {
                     </div>
                   </div>
 
+                  {/* ── Value + actions column ── */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div
                       style={{
@@ -1275,6 +1379,7 @@ export default function Wealth() {
                     >
                       {isLiability ? '-' : ''}{fmt(val)}
                     </div>
+                    {/* ── Edit ── */}
                     <button
                       type="button"
                       className="del-btn"
@@ -1284,6 +1389,7 @@ export default function Wealth() {
                     >
                       <Edit3 size={15} aria-hidden />
                     </button>
+                    {/* ── Delete ── */}
                     <button
                       type="button"
                       className="del-btn"
@@ -1301,7 +1407,7 @@ export default function Wealth() {
         )}
       </motion.div>
 
-      {/* Add / Edit modal */}
+      {/* ===================== Add / Edit Modal ===================== */}
       <Modal
         isOpen={isAddingItem || editingItem !== null}
         onClose={isSubmitting ? null : closeFormModal}
@@ -1312,6 +1418,7 @@ export default function Wealth() {
         onConfirm={handleSaveItem}
         isLoading={isSubmitting}
       >
+        {/* ── Name ── */}
         <div className="form-group" style={{ marginBottom: 14 }}>
           <label htmlFor="wealth_name">{tr('name_required', 'Name *')}</label>
           <input
@@ -1325,6 +1432,7 @@ export default function Wealth() {
           />
         </div>
 
+        {/* ── Class + value ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
           <div className="form-group">
             <label htmlFor="wealth_class">{tr('asset_class', 'Asset Category')}</label>
@@ -1360,6 +1468,7 @@ export default function Wealth() {
           </div>
         </div>
 
+        {/* ── Liquid-asset extras: symbol + quantity ── */}
         {formData.asset_class === 'liquid_asset' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
             <div className="form-group">
@@ -1388,6 +1497,7 @@ export default function Wealth() {
           </div>
         )}
 
+        {/* ── Liability extra: interest rate ── */}
         {formData.asset_class === 'liability' && (
           <div className="form-group" style={{ marginBottom: 14 }}>
             <label htmlFor="wealth_rate">{tr('interest_rate', 'Annual Interest Rate (%)')}</label>
@@ -1405,6 +1515,7 @@ export default function Wealth() {
           </div>
         )}
 
+        {/* ── Acquisition date + note ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
           <div className="form-group">
             <label htmlFor="wealth_date">{tr('acquisition_date', 'Acquisition Date')}</label>
@@ -1429,6 +1540,7 @@ export default function Wealth() {
           </div>
         </div>
 
+        {/* ── Form error ── */}
         {formError && (
           <p role="alert" style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
             <AlertOctagon size={14} aria-hidden /> {formError}
@@ -1436,7 +1548,7 @@ export default function Wealth() {
         )}
       </Modal>
 
-      {/* Delete modal */}
+      {/* ===================== Delete Modal ===================== */}
       <Modal
         isOpen={itemToDelete !== null}
         onClose={isDeleting ? null : () => setItemToDelete(null)}
@@ -1456,7 +1568,7 @@ export default function Wealth() {
         </p>
       </Modal>
 
-      {/* Undo bar */}
+      {/* ===================== Undo Bar ===================== */}
       <AnimatePresence>
         {undoState && (
           <motion.div

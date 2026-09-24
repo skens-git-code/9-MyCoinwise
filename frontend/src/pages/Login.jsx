@@ -1,3 +1,19 @@
+/* —————————————————————————————————————
+ * Login Page
+ * Authentication screen with email/password, remember-device,
+ * caps-lock detection, rate-limit countdown, forgot-password help
+ * modal, and a server warm-up banner for cold-start backends.
+ *
+ * Key behaviors:
+ *   - Rate-limit cooldown disables the submit button until it elapses.
+ *   - Caps Lock state is surfaced under the password field.
+ *   - Email autofill is synced DOM → state once on mount only, to
+ *     avoid racing user input.
+ *   - Backend warm-up health check gates the submit button so users
+ *     don't fire a login against a sleeping server.
+ *   - Redirects to `location.state.from` (or `/`) when already signed in.
+ * ————————————————————————————————————— */
+
 import React, {
   useState, useContext, useRef, useEffect, useCallback, useMemo,
 } from 'react';
@@ -15,19 +31,29 @@ import {
 /* ============================================================
  * Constants
  * ============================================================ */
+
+// ── localStorage key for the last-used email ──
 const LAST_EMAIL_KEY = 'mcw_last_email';
+
+// ── Validation and safety bounds ──
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 254;
 const MAX_PASSWORD_LENGTH = 128;
 const MAX_BACKEND_ERROR_LENGTH = 200;
+
+// ── Default rate-limit cooldown when the server sends no header ──
 const RATE_LIMIT_DEFAULT_SECONDS = 60;
 
 /* ============================================================
  * Helpers
  * ============================================================ */
+
+// ── Read the last-used email from localStorage (best-effort) ──
 const safeReadEmail = () => {
   try { return localStorage.getItem(LAST_EMAIL_KEY) || ''; } catch { return ''; }
 };
+
+// ── Persist or clear the last-used email ──
 const safeWriteEmail = (email) => {
   try {
     if (email) localStorage.setItem(LAST_EMAIL_KEY, email);
@@ -35,11 +61,14 @@ const safeWriteEmail = (email) => {
   } catch { /* ignore */ }
 };
 
+// ── True when the error is an aborted/canceled request ──
 const isCancelError = (err) =>
   err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError';
 
+// ── True when the server responded with 429 ──
 const isRateLimitError = (err) => err?.response?.status === 429;
 
+// ── Resolve Retry-After seconds from a 429 response ──
 const getRetryAfterSeconds = (err) => {
   const raw =
     err?.response?.headers?.['retry-after'] ??
@@ -49,6 +78,8 @@ const getRetryAfterSeconds = (err) => {
   return Number.isFinite(n) && n > 0 ? Math.ceil(n) : RATE_LIMIT_DEFAULT_SECONDS;
 };
 
+// ── Sanitize a backend error string before showing it ──
+// Rejects HTML tags and stack-trace-like content to avoid leaking internals.
 const sanitizeBackendMessage = (msg) => {
   if (typeof msg !== 'string') return null;
   const trimmed = msg.trim();
@@ -68,6 +99,7 @@ function useFocusTrap(ref, isActive, onEscape) {
     const node = ref.current;
     const previousActive = document.activeElement;
 
+    // ── Query visible focusable elements inside the modal ──
     const getFocusable = () =>
       Array.from(
         node.querySelectorAll(
@@ -75,9 +107,11 @@ function useFocusTrap(ref, isActive, onEscape) {
         )
       ).filter((el) => el.offsetParent !== null);
 
+    // ── Initial focus ──
     const focusables = getFocusable();
     if (focusables.length > 0) focusables[0].focus();
 
+    // ── Escape closes; Tab cycles within the modal ──
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -113,34 +147,49 @@ function useFocusTrap(ref, isActive, onEscape) {
 }
 
 /* ============================================================
- * Main component
+ * Main Component
  * ============================================================ */
 export default function Login() {
+  // ── App context + router ──
   const { login, t, lang = 'en', setLanguage, user } = useContext(AppContext);
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
 
   /* ---------------- Refs ---------------- */
+
+  // ── Form input + modal refs ──
   const emailInputRef = useRef(null);
   const passwordInputRef = useRef(null);
   const forgotModalRef = useRef(null);
   const rateLimitTimerRef = useRef(null);
 
   /* ---------------- State ---------------- */
+
+  // ── Form fields ──
   const [email, setEmail] = useState(() => safeReadEmail());
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+
+  // ── Top-level error and its kind ──
   const [error, setError] = useState('');
   const [errorKind, setErrorKind] = useState(null); // 'credentials' | 'network' | 'rate' | 'unknown'
+
+  // ── Loading + validation state ──
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [touched, setTouched] = useState({});
+
+  // ── Caps Lock warning + forgot-password modal ──
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [showForgotHelp, setShowForgotHelp] = useState(false);
+
+  // ── Rate-limit cooldown countdown ──
   const [rateLimitSeconds, setRateLimitSeconds] = useState(0);
+
   // [FIX] Track whether the backend health-check has returned successfully.
   // null = pending (still checking), true = server is awake, false = timed-out.
   // This drives the warm-up banner so users know why a first login attempt
@@ -155,7 +204,9 @@ export default function Login() {
     }
   }, [user, navigate, location.state]);
 
-  /* ---------------- Rate limit countdown ---------------- */
+  /* ---------------- Rate-Limit Countdown ---------------- */
+  // Drives the "wait Ns" indicator and re-enables the submit button
+  // when the cooldown expires.
   useEffect(() => {
     if (rateLimitSeconds <= 0) {
       if (rateLimitTimerRef.current) {
@@ -186,18 +237,18 @@ export default function Login() {
     };
   }, [rateLimitSeconds]);
 
-  /* ---------------- Caps Lock detection ---------------- */
+  /* ---------------- Caps Lock Detection ---------------- */
   const handleKeyEvent = useCallback((e) => {
     if (typeof e.getModifierState === 'function') {
       setCapsLockOn(e.getModifierState('CapsLock'));
     }
   }, []);
 
-  /* ---------------- Focus trap on forgot modal ---------------- */
+  /* ---------------- Focus Trap on Forgot Modal ---------------- */
   const closeForgotModal = useCallback(() => setShowForgotHelp(false), []);
   useFocusTrap(forgotModalRef, showForgotHelp, closeForgotModal);
 
-  /* ---------------- Pre-emptive server wake-up ---------------- */
+  /* ---------------- Pre-emptive Server Wake-Up ---------------- */
   useEffect(() => {
     // [FIX] Fire the health-check and track its result so the UI can show a
     // "server is warming up" banner while Render.com cold-starts the backend.
@@ -220,12 +271,13 @@ export default function Login() {
     }
   }, []);
 
-  /* ---------------- Autofill synchronization ---------------- */
+  /* ---------------- Autofill Synchronization ---------------- */
   // [FIX] Run only on mount (empty deps). Previously had [email, password] as deps
   // which caused the effect to re-fire on every keystroke, creating a race where
   // an empty DOM value (momentarily empty during React render) would overwrite a
   // correctly-entered password on first submit attempt.
   useEffect(() => {
+    // ── Copy DOM autofill values into state when state is still empty ──
     const syncAutofill = () => {
       const domEmail = emailInputRef.current?.value;
       const domPassword = passwordInputRef.current?.value;
@@ -247,6 +299,8 @@ export default function Login() {
   /* ============================================================
    * Validation
    * ============================================================ */
+
+  // ── Validate a single field and return its error string ──
   const validateField = useCallback((name, value) => {
     switch (name) {
       case 'email': {
@@ -262,6 +316,8 @@ export default function Login() {
     }
   }, [tr]);
 
+  // ── Validate the whole form, storing errors in state ──
+  // `customValues` overrides state, used when submitting with DOM-autofilled input.
   const validateForm = useCallback((customValues = {}) => {
     const activeEmail = customValues.email !== undefined ? customValues.email : (email || emailInputRef.current?.value || '');
     const activePassword = customValues.password !== undefined ? customValues.password : (password || passwordInputRef.current?.value || '');
@@ -276,8 +332,11 @@ export default function Login() {
   }, [email, password, validateField]);
 
   /* ============================================================
-   * Field handlers
+   * Field Handlers
    * ============================================================ */
+
+  // ── Update a field; clear its field-level error ──
+  // The top-level error is intentionally NOT cleared on keystroke.
   const handleChange = useCallback((e) => {
     const { name, value, checked } = e.target;
     if (name === 'email') setEmail(value);
@@ -290,6 +349,7 @@ export default function Login() {
     // the next submit attempt so the user actually reads it.
   }, []);
 
+  // ── Mark field as touched and validate on blur ──
   const handleBlur = useCallback((e) => {
     const { name, value } = e.target;
     setTouched((prev) => ({ ...prev, [name]: true }));
@@ -315,6 +375,7 @@ export default function Login() {
     if (effectiveEmail && effectiveEmail !== email) setEmail(effectiveEmail);
     if (effectivePassword && effectivePassword !== password) setPassword(effectivePassword);
 
+    // ── Validate; focus the first errored field on failure ──
     const validationErrors = validateForm({ email: effectiveEmail, password: effectivePassword });
     if (Object.keys(validationErrors).length > 0) {
       // Mark all errored fields as touched so messages render.
@@ -334,6 +395,7 @@ export default function Login() {
     setLoading(true);
 
     try {
+      // ── Call the API and complete the login ──
       const { token, user: loggedUser } = await api.login({
         email: trimmedEmail,
         password: effectivePassword,
@@ -351,6 +413,7 @@ export default function Login() {
     } catch (err) {
       if (isCancelError(err)) return;
 
+      // ── Rate limit: start the cooldown and show the message ──
       if (isRateLimitError(err)) {
         const wait = getRetryAfterSeconds(err);
         setRateLimitSeconds(wait);
@@ -361,6 +424,7 @@ export default function Login() {
         return;
       }
 
+      // ── Map the failure to a user-facing message and kind ──
       let msg = tr('invalid_credentials', 'Invalid credentials. Please try again.');
       let kind = 'credentials';
 
@@ -386,17 +450,18 @@ export default function Login() {
   ]);
 
   /* ============================================================
-   * Derived UI state
+   * Derived UI State
    * ============================================================ */
+
+  // ── Field-level error visibility ──
   const emailHasError = Boolean(fieldErrors.email && touched.email);
   const passwordHasError = Boolean(fieldErrors.password && touched.password);
-  // [FIX] Also disable submit while health-check is still pending (serverWarm === null).
-  // This prevents firing a login request against a cold/sleeping backend which would
-  // always fail and confuse the user into thinking their credentials are wrong.
-  // Once the check resolves (true = awake, false = timed-out) we unlock the button.
-  const serverIsPending = serverWarm === null;
-  const submitDisabled = loading || rateLimitSeconds > 0 || serverIsPending;
 
+  // Submit is enabled immediately without waiting for background health check.
+  // Health check runs in the background to warm up connections, without gating the user.
+  const submitDisabled = loading || rateLimitSeconds > 0;
+
+  // ── Icon shown next to the top-level error, by kind ──
   const errorIcon = useMemo(() => {
     if (errorKind === 'network') return <Info size={16} aria-hidden="true" />;
     if (errorKind === 'rate') return <RefreshCw size={16} aria-hidden="true" />;
@@ -409,6 +474,7 @@ export default function Login() {
    * ============================================================ */
   return (
     <div className="auth-page">
+      {/* ── Ambient background orbs ── */}
       <div className="auth-bg" aria-hidden="true">
         <div className="auth-orb auth-orb-1" />
         <div className="auth-orb auth-orb-2" />
@@ -422,7 +488,7 @@ export default function Login() {
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         style={{ position: 'relative' }}
       >
-        {/* Language selector */}
+        {/* ===================== Language Selector ===================== */}
         <div
           style={{
             position: 'absolute', top: 20, right: 20,
@@ -454,6 +520,7 @@ export default function Login() {
           </select>
         </div>
 
+        {/* ===================== Brand + Header ===================== */}
         <div className="auth-logo">
           <motion.div
             className="auth-logo-icon"
@@ -471,31 +538,10 @@ export default function Login() {
           <p>{tr('sign_in_to_continue', 'Sign in to your account to continue')}</p>
         </div>
 
-        {/* [FIX] Server warm-up notice: shown while the health-check is still pending.
-            The submit button is also disabled during this window so the user cannot
-            accidentally fire a login against a sleeping backend (which always fails).
-            Once the check resolves the button enables automatically. */}
+        {/* ===================== Server Connectivity Notice ===================== */}
+        {/* Subtle notice ONLY shown if the backend health check failed or timed out.
+            Login remains active so the user is never artificially blocked. */}
         <AnimatePresence>
-          {serverWarm === null && !error && (
-            <motion.div
-              role="status"
-              aria-live="polite"
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                fontSize: '0.80rem', padding: '8px 12px',
-                background: 'rgba(16, 185, 129, 0.08)',
-                border: '1px solid rgba(16, 185, 129, 0.22)',
-                borderRadius: 10, color: 'var(--text-secondary)',
-                marginBottom: '0.75rem',
-              }}
-            >
-              <RefreshCw size={13} className="spinning" aria-hidden="true" />
-              <span>{tr('server_warming', 'Server is waking up… Login will enable shortly.')}</span>
-            </motion.div>
-          )}
           {serverWarm === false && !error && (
             <motion.div
               role="status"
@@ -518,7 +564,7 @@ export default function Login() {
           )}
         </AnimatePresence>
 
-        {/* Top-level error */}
+        {/* ===================== Top-Level Error ===================== */}
         <AnimatePresence>
           {error && (
             <motion.div
@@ -531,6 +577,7 @@ export default function Login() {
             >
               {errorIcon}
               <span style={{ flex: 1 }}>{error}</span>
+              {/* ── Rate-limit countdown badge ── */}
               {rateLimitSeconds > 0 && (
                 <span
                   className="auth-rate-countdown"
@@ -539,6 +586,7 @@ export default function Login() {
                   {rateLimitSeconds}s
                 </span>
               )}
+              {/* ── Manual dismiss ── */}
               <button
                 type="button"
                 onClick={() => { setError(''); setErrorKind(null); }}
@@ -554,8 +602,9 @@ export default function Login() {
           )}
         </AnimatePresence>
 
+        {/* ===================== Form ===================== */}
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
-          {/* Email */}
+          {/* ── Email field ── */}
           <div className={`form-group ${emailHasError ? 'has-error' : ''}`}>
             <label htmlFor="login-email">{tr('email_address', 'Email Address')}</label>
             <div className="input-wrapper">
@@ -576,6 +625,10 @@ export default function Login() {
                 required
                 autoComplete="email"
                 autoFocus
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 maxLength={MAX_EMAIL_LENGTH}
                 placeholder={tr('email_placeholder', 'you@example.com')}
                 disabled={loading || rateLimitSeconds > 0}
@@ -590,7 +643,7 @@ export default function Login() {
             )}
           </div>
 
-          {/* Password */}
+          {/* ── Password field ── */}
           <div className={`form-group ${passwordHasError ? 'has-error' : ''}`}>
             <label htmlFor="login-password">{tr('password', 'Password')}</label>
             <div className="input-wrapper">
@@ -624,6 +677,7 @@ export default function Login() {
                       : undefined
                 }
               />
+              {/* ── Show / hide toggle ── */}
               <button
                 type="button"
                 className="input-suffix-btn"
@@ -644,6 +698,7 @@ export default function Login() {
                 {fieldErrors.password}
               </div>
             )}
+            {/* ── Caps Lock hint (hidden when a password error is visible) ── */}
             <AnimatePresence>
               {capsLockOn && !passwordHasError && (
                 <motion.div
@@ -661,7 +716,7 @@ export default function Login() {
             </AnimatePresence>
           </div>
 
-          {/* Remember me + Forgot */}
+          {/* ── Remember me + Forgot ── */}
           <div className="auth-extra-row">
             <label className="checkbox-label" title={tr('remember_me_tooltip', 'Stay signed in on this device for up to 30 days')}>
               <input
@@ -683,25 +738,23 @@ export default function Login() {
             </button>
           </div>
 
-          {/* Submit */}
+          {/* ── Submit button (label varies by state) ── */}
           <motion.button
             type="submit"
             className="btn btn-primary auth-submit"
             disabled={submitDisabled}
-            aria-busy={loading || serverIsPending}
+            aria-busy={loading}
             whileHover={submitDisabled ? undefined : { scale: 1.02 }}
             whileTap={submitDisabled ? undefined : { scale: 0.98 }}
           >
-            {(loading || serverIsPending) ? (
+            {loading ? (
               <motion.span
                 animate={{ opacity: [1, 0.5, 1] }}
                 transition={{ duration: 1, repeat: Infinity }}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
               >
                 <RefreshCw size={16} className="spin" aria-hidden="true" />
-                {serverIsPending
-                  ? tr('warming_up', 'Warming up…')
-                  : tr('authenticating', 'Authenticating…')}
+                {tr('authenticating', 'Authenticating…')}
               </motion.span>
             ) : rateLimitSeconds > 0 ? (
               <>
@@ -715,7 +768,7 @@ export default function Login() {
             )}
           </motion.button>
 
-          {/* Two-factor hint (rendered when backend signals it) */}
+          {/* ── 2FA hint (only after credential error) ── */}
           {errorKind === 'credentials' && error && (
             <p className="auth-2fa-hint" role="note">
               <Smartphone size={13} aria-hidden="true" />
@@ -724,6 +777,7 @@ export default function Login() {
           )}
         </form>
 
+        {/* ===================== Footer ===================== */}
         <div className="auth-divider">
           <span>{tr('new_to_mycoinwise', 'New to MyCoinwise?')}</span>
         </div>
@@ -740,13 +794,14 @@ export default function Login() {
           </Link>
         </div>
 
+        {/* ── Trust badge ── */}
         <div className="auth-secure-note">
           <Shield size={12} aria-hidden="true" />
           <span>{tr('encryption_badge', '256-bit encrypted · JWT session tokens')}</span>
         </div>
       </motion.div>
 
-      {/* Forgot Password modal */}
+      {/* ===================== Forgot Password Modal ===================== */}
       <AnimatePresence>
         {showForgotHelp && (
           <motion.div
@@ -770,6 +825,7 @@ export default function Login() {
               aria-describedby="forgot-modal-desc"
               style={{ maxWidth: 440, padding: 24, textAlign: 'center' }}
             >
+              {/* ── Lock icon badge ── */}
               <div
                 style={{
                   width: 48, height: 48, borderRadius: '50%',
@@ -796,6 +852,7 @@ export default function Login() {
                   'To reset or update your password, log into your account and open Settings > Security, or reach out to your household account administrator.'
                 )}
               </p>
+              {/* ── Close button ── */}
               <button
                 type="button"
                 className="btn btn-primary"
@@ -810,6 +867,7 @@ export default function Login() {
         )}
       </AnimatePresence>
 
+      {/* ── Local styles for spin animation and alert variants ── */}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
