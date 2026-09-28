@@ -19,7 +19,6 @@
 
 import React, {
   useState,
-  useContext,
   useMemo,
   useCallback,
   useEffect,
@@ -32,7 +31,7 @@ import {
   LayoutGrid, List, ArrowUpDown, TrendingUp, TrendingDown,
   AlertTriangle, RefreshCw, DollarSign, Hash, Loader2,
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import { api, CURRENCIES } from '../services/api';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
@@ -203,13 +202,15 @@ export default function Accounts() {
   const {
     accounts = [],
     transactions: rawTransactions = [],
-    refetch,
     currency: userCurrency = 'USD',
     lang,
     loading,
-    t,
     user,
-  } = useContext(AppContext);
+  } = useAppState();
+  const {
+    refetch,
+    t,
+  } = useAppActions();
   const { showToast } = useToast();
 
   // ── Locale hint derived from the app language ──

@@ -22,7 +22,7 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useState, useContext, useEffect, useRef, useCallback, useMemo, useReducer,
+  useState, useEffect, useRef, useCallback, useMemo, useReducer,
   lazy, Suspense,
 } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -34,7 +34,7 @@ import {
   Lock, LogOut, RefreshCw, AlertTriangle, EyeOff, Search,
   Monitor, Calendar, Activity, Upload, Clock,
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import { CURRENCIES, AVATAR_COLORS, api } from '../services/api';
 import { LANGUAGES } from '../services/i18n';
 
@@ -395,7 +395,7 @@ const ReAuthModal = ({ isOpen, onClose, onConfirmed, actionLabel, isLoading }) =
  * ============================================================ */
 const BackupRestore = ({ userId, showMessage }) => {
   const navigate = useNavigate();
-  const { refetch } = useContext(AppContext) || {};
+  const { refetch } = useAppActions() || {};
 
   // ── Local state: export/restore in-flight + auto-backup toggle ──
   const [backupLoading, setBackupLoading] = useState(false);
@@ -3001,7 +3001,9 @@ function SettingsInner({ context }) {
 
 // ── Guard: show a loading fallback when there's no AppContext ──
 function SettingsPage() {
-  const context = useContext(AppContext);
+  const state = useAppState();
+  const actions = useAppActions();
+  const context = state && actions ? { ...state, ...actions } : null;
 
   if (!context) {
     return (

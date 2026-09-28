@@ -1,12 +1,12 @@
 import React, {
-  useCallback, useContext, useEffect, useMemo, useRef, useState,
+  useCallback, useEffect, useMemo, useRef, useState,
 } from 'react';
 import { motion } from 'framer-motion';
 import {
   Calculator as CalculatorIcon, Check, Clock3, Copy, Delete,
   ChevronDown, History, Keyboard, Sparkles, Trash2, X,
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import { api } from '../services/api';
 
 /* 
@@ -362,7 +362,8 @@ const KEY_LAYOUTS = {
  * ————————————————————————————————————————————
  */
 export default function ScientificCalculator() {
-  const { USER_ID, t: translate } = useContext(AppContext);
+  const { USER_ID } = useAppState();
+  const { t: translate } = useAppActions();
 
   // Core State
   const [currentExpression, setCurrentExpression] = useState('');
