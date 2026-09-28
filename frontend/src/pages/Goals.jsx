@@ -441,18 +441,6 @@ const GoalsSkeleton = ({ tr }) => (
  * Main Component
  * ============================================================ */
 export default function Goals() {
-  /* Original context destructuring without loading:
-  const {
-    transactions = [],
-    goals = [],
-    fmt,
-    refetch,
-    USER_ID,
-    t,
-    lang = 'en',
-  } = useContext(AppContext);
-  // Issue: loading was not destructured, preventing Goals from showing a loading skeleton while fetching.
-  */
   // ── App context (loading added so the skeleton can render) ──
   const {
     transactions = [],
