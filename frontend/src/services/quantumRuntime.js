@@ -31,6 +31,11 @@ const QuantumRuntime = (() => {
       let lastRun = 0;
       let timeoutId;
       return (...args) => {
+        if (typeof document !== 'undefined' && document.hidden) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+          return;
+        }
         const now = performance.now();
         const remaining = limit - (now - lastRun);
         if (remaining <= 0) {
@@ -40,6 +45,7 @@ const QuantumRuntime = (() => {
         } else if (!timeoutId) {
           timeoutId = setTimeout(() => {
             timeoutId = null;
+            if (typeof document !== 'undefined' && document.hidden) return;
             lastRun = performance.now();
             fn(...args);
           }, remaining);

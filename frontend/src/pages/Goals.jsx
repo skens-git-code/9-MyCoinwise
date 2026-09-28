@@ -21,6 +21,8 @@ import React, {
   useState, useContext, useMemo, useRef, useEffect, useCallback,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { FixedSizeList } from '../components/FixedSizeList';
+import debounce from 'lodash.debounce';
 import {
   Plus, Target, Trash2, Edit3, PlusCircle, Clock, Zap,
   FileText, Calendar, AlertTriangle, ArrowUpDown, History,
@@ -484,7 +486,32 @@ export default function Goals() {
   const [activeCategoryFilter, setActiveCategoryFilter] = useState('all');
 
   /* ✨ NEW: view / sort / filter / search state */
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const debouncedSetSearch = useMemo(
+    () => debounce((val) => setSearchQuery(val), 300),
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      debouncedSetSearch.cancel();
+    };
+  }, [debouncedSetSearch]);
+
+  const handleSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setSearchInput(val);
+    debouncedSetSearch(val);
+  }, [debouncedSetSearch]);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchInput('');
+    setSearchQuery('');
+    debouncedSetSearch.cancel();
+  }, [debouncedSetSearch]);
+
   const [sortBy, setSortBy] = useState('created_desc');
   const [showCompleted, setShowCompleted] = useState(false);
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
@@ -1160,6 +1187,55 @@ export default function Goals() {
 
   const closeHistory = useCallback(() => setHistoryGoal(null), []);
 
+  /** ✨ NEW: history entries for the current goal. */
+  const historyEntries = useMemo(() => {
+    if (!historyGoal) return [];
+    return readHistory(USER_ID, historyGoal).slice().reverse();
+  }, [historyGoal, USER_ID]);
+
+  // ── Row component for virtualized goal history list (>15 entries) ──
+  const VirtualizedHistoryRow = useCallback(({ index, style }) => {
+    const entry = historyEntries[index];
+    if (!entry) return null;
+    const amt = safeNumber(entry.amount, 0);
+
+    return (
+      <div style={style}>
+        <div
+          key={`${entry.timestamp}-${index}`}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '8px 0',
+            borderBottom: '1px solid var(--border-color)',
+            fontSize: '0.86rem',
+            height: '100%',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontWeight: 600,
+                color: amt > 0 ? 'var(--success)' : 'var(--danger)',
+              }}
+            >
+              {amt > 0 ? '+' : ''}{fmt(amt)}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              {formatTimestamp(entry.timestamp, locale)}
+            </div>
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'right' }}>
+            {fmt(entry.previousSaved)} → {fmt(entry.newSaved)}
+          </div>
+        </div>
+      </div>
+    );
+  }, [historyEntries, fmt, locale]);
+
+
   /* ============================================================
    * Render Helpers
    * ============================================================ */
@@ -1179,12 +1255,6 @@ export default function Goals() {
   const viewingHistoryGoal = goals.find(
     (g) => g.id === historyGoal || g._id === historyGoal
   );
-
-  /** ✨ NEW: history entries for the current goal. */
-  const historyEntries = useMemo(() => {
-    if (!historyGoal) return [];
-    return readHistory(USER_ID, historyGoal).slice().reverse();
-  }, [historyGoal, USER_ID]);
 
   /* ============================================================
    * Render
@@ -1375,14 +1445,14 @@ export default function Goals() {
           />
           <input
             type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchInput}
+            onChange={handleSearchChange}
             placeholder={tr('search_goals', 'Search goals…')}
             aria-label={tr('search_goals', 'Search goals')}
             style={{
               width: '100%',
               paddingLeft: 34,
-              paddingRight: searchQuery ? 30 : 12,
+              paddingRight: searchInput ? 30 : 12,
               height: 36,
               borderRadius: 9999,
               border: '1px solid var(--glass-border)',
@@ -1394,10 +1464,10 @@ export default function Goals() {
             }}
           />
           {/* ── Clear search (only when there is a query) ── */}
-          {searchQuery && (
+          {searchInput && (
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
+              onClick={handleClearSearch}
               aria-label={tr('clear_search', 'Clear search')}
               style={{
                 position: 'absolute',
@@ -1510,7 +1580,7 @@ export default function Goals() {
                 className="btn-secondary"
                 style={{ marginTop: 20 }}
                 onClick={() => {
-                  setSearchQuery('');
+                  handleClearSearch();
                   setActiveCategoryFilter('all');
                   setShowOverdueOnly(false);
                   setShowCompleted(false);
@@ -2066,6 +2136,15 @@ export default function Goals() {
               {tr('no_history_yet', 'No contributions logged yet.')}
             </p>
           </div>
+        ) : historyEntries.length > 15 ? (
+          <FixedSizeList
+            height={Math.min(historyEntries.length * 52, 320)}
+            itemCount={historyEntries.length}
+            itemSize={52}
+            width="100%"
+          >
+            {VirtualizedHistoryRow}
+          </FixedSizeList>
         ) : (
           /* ── History entries (newest first) ── */
           <div style={{ maxHeight: 320, overflowY: 'auto' }}>

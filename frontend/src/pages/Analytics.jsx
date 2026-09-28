@@ -1664,11 +1664,6 @@ export default function Analytics() {
         locale={locale}
       />
 
-      {/* Local spin keyframe for the export button */}
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 1s linear infinite; }
-      `}</style>
     </div>
   );
 }

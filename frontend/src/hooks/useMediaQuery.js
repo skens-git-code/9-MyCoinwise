@@ -72,5 +72,9 @@ export function useMediaQuery(query) {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
+export function usePrefersReducedMotion() {
+  return useMediaQuery('(prefers-reduced-motion: reduce)');
+}
+
 export default useMediaQuery;
 

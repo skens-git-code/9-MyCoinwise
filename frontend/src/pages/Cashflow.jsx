@@ -36,6 +36,8 @@ import {
 import { AppContext } from '../contexts/AppContext';
 import { useToast } from '../components/ToastProvider';
 import { api } from '../services/api';
+import debounce from 'lodash.debounce';
+import { usePrefersReducedMotion } from '../hooks/useMediaQuery';
 import {
   convertCurrency,
   fetchRatesToInr,
@@ -323,9 +325,30 @@ export default function Cashflow() {
   const [scenarioType, setScenarioType] = useState(() =>
     readStoredString('type', DEFAULT_STATE.scenarioType)
   );
+  const [whatIfInput, setWhatIfInput] = useState(() =>
+    readStoredString('amt', DEFAULT_STATE.whatIfAmount)
+  );
   const [whatIfAmount, setWhatIfAmount] = useState(() =>
     readStoredString('amt', DEFAULT_STATE.whatIfAmount)
   );
+
+  const debouncedSetWhatIf = useMemo(
+    () => debounce((val) => setWhatIfAmount(val), 300),
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      debouncedSetWhatIf.cancel();
+    };
+  }, [debouncedSetWhatIf]);
+
+  const handleWhatIfChange = useCallback((e) => {
+    const val = e.target.value;
+    setWhatIfInput(val);
+    debouncedSetWhatIf(val);
+  }, [debouncedSetWhatIf]);
+
   const [scenarioFrequency, setScenarioFrequency] = useState(() =>
     readStoredString('freq', DEFAULT_STATE.frequency)
   );
@@ -350,6 +373,7 @@ export default function Cashflow() {
   // ── Stable gradient ids for the two SVG fills ──
   const gradientId = useStableId('cashflow-gradient');
   const uncertaintyId = useStableId('cashflow-uncertainty');
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   /* ---------------- Persist Settings ---------------- */
   useEffect(() => {
@@ -1041,7 +1065,7 @@ export default function Cashflow() {
                     stackId="uncertainty"
                     stroke="none"
                     fill={`url(#${uncertaintyId})`}
-                    isAnimationActive
+                    isAnimationActive={!prefersReducedMotion}
                     name="uncertaintyBand"
                   />
 
@@ -1055,8 +1079,10 @@ export default function Cashflow() {
                     fill={`url(#${gradientId})`}
                     activeDot={{ r: 6, fill: gradientColor, strokeWidth: 0 }}
                     dot={<CustomizedDot />}
+                    isAnimationActive={!prefersReducedMotion}
                     name="balance"
                   />
+
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -1293,8 +1319,8 @@ export default function Cashflow() {
               <input
                 id="whatif-amount"
                 type="number"
-                value={whatIfAmount}
-                onChange={(e) => setWhatIfAmount(e.target.value)}
+                value={whatIfInput}
+                onChange={handleWhatIfChange}
                 placeholder={tr('whatif_placeholder', 'e.g. 5000 (positive to spend, negative to gain)')}
                 style={{ width: '100%', padding: '8px 12px', borderRadius: 8 }}
                 aria-label={tr('whatif_amount', 'What-if amount')}

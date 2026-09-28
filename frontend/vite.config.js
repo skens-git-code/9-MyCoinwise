@@ -34,6 +34,23 @@ export default defineConfig({
     },
   },
   build: {
-    chunkSizeWarningLimit: 2000, // This increases the limit to 2000kb
+    sourcemap: false,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('recharts')) return 'recharts';
+            if (id.includes('framer-motion')) return 'framer-motion';
+            if (id.includes('lucide-react')) return 'icons';
+            if (id.includes('exceljs') || id.includes('jspdf')) return 'export-vendor';
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              return 'react-vendor';
+            }
+            return 'vendor';
+          }
+        },
+      },
+    },
   },
 })

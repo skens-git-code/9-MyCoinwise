@@ -81,6 +81,9 @@ export const ToastProvider = ({ children }) => {
 
       {/* ── Toast stack: top-right, right-aligned column ── */}
       <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
         style={{
           position: 'fixed',
           top: 24,

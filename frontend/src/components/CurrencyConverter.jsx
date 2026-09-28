@@ -126,13 +126,14 @@ const useExchangeRates = (baseCurrency = 'INR') => {
   const abortControllerRef = useRef(null);
 
   // ── Retry wrapper with linear backoff ──
-  const fetchWithRetry = useCallback(async (url, retries = API_CONFIG.RETRY_ATTEMPTS) => {
+  const fetchWithRetry = useCallback(async (url, retries = API_CONFIG.RETRY_ATTEMPTS, signal = null) => {
     for (let i = 0; i < retries; i++) {
       try {
-        const response = await fetch(url);
+        const response = await fetch(url, { signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return await response.json();
       } catch (err) {
+        if (err.name === 'AbortError' || signal?.aborted) throw err;
         if (i === retries - 1) throw err;
         await new Promise(resolve => setTimeout(resolve, API_CONFIG.RETRY_DELAY * (i + 1)));
       }
@@ -164,7 +165,7 @@ const useExchangeRates = (baseCurrency = 'INR') => {
       }
 
       // Fetch fresh rates
-      const data = await fetchWithRetry(`${API_CONFIG.BASE_URL}/${baseCurrency}`);
+      const data = await fetchWithRetry(`${API_CONFIG.BASE_URL}/${baseCurrency}`, API_CONFIG.RETRY_ATTEMPTS, abortControllerRef.current?.signal);
 
       if (data?.rates) {
         setRates(data.rates);
@@ -183,6 +184,7 @@ const useExchangeRates = (baseCurrency = 'INR') => {
         throw new Error('Invalid response format');
       }
     } catch (err) {
+      if (err.name === 'AbortError') return;
       console.error('Failed to fetch rates:', err);
 
       // Use fallback rates
@@ -195,13 +197,24 @@ const useExchangeRates = (baseCurrency = 'INR') => {
     }
   }, [baseCurrency, fetchWithRetry]);
 
-  // ── Fetch on mount and refresh on the cache interval ──
+  // ── Fetch on mount and refresh on the cache interval (pausing when tab is hidden) ──
   useEffect(() => {
     fetchExchangeRates();
-    const interval = setInterval(fetchExchangeRates, API_CONFIG.CACHE_DURATION);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      fetchExchangeRates();
+    }, API_CONFIG.CACHE_DURATION);
+
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        fetchExchangeRates();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }

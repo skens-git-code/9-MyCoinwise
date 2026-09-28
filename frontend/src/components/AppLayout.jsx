@@ -17,33 +17,36 @@
  *   - Optimistic balance = starting balance + net of live transactions.
  * ————————————————————————————————————— */
 
-import React, { useState, useContext, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useContext, useMemo, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
+import throttle from 'lodash.throttle';
 // [OPTIMIZATION: Removed external 'react-responsive' dependency in favor of native window.matchMedia hook]
 // import { useMediaQuery } from 'react-responsive';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import {
   LayoutDashboard, ArrowLeftRight, BarChart3, Target, Activity, Briefcase,
-  CreditCard, Settings, ChevronRight, TrendingUp, TrendingDown,
+  Settings, ChevronRight,
   Bell, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon,
-  Menu, X, Zap, Search, Keyboard, User, Users, Sun, Moon, Check, CheckCircle2,
-  HelpCircle, Shield, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon, ReceiptText
+  Menu, X, Zap, Search, Keyboard, User, Users, Sun, Moon, Check,
+  HelpCircle, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon, ReceiptText
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
 import { LANGUAGES } from '../services/i18n';
-import CurrencyConverter from './CurrencyConverter';
-import AlertsCenter from './AlertsCenter';
-import AIChat from './AIChat';
 import Breadcrumbs from './Breadcrumbs';
-import CommandPalette from './CommandPalette';
-import KeyboardShortcutsModal from './KeyboardShortcutsModal';
-import HelpModal from './HelpModal';
-import OnboardingTour from './OnboardingTour';
-import TransactionForm from './TransactionForm';
 import DOMPurify from 'dompurify';
 import QuantumRuntime from '../services/quantumRuntime';
+
+const CurrencyConverter = lazy(() => import('./CurrencyConverter'));
+const AlertsCenter = lazy(() => import('./AlertsCenter'));
+const AIChat = lazy(() => import('./AIChat'));
+const CommandPalette = lazy(() => import('./CommandPalette'));
+const KeyboardShortcutsModal = lazy(() => import('./KeyboardShortcutsModal'));
+const HelpModal = lazy(() => import('./HelpModal'));
+const OnboardingTour = lazy(() => import('./OnboardingTour'));
+const TransactionForm = lazy(() => import('./TransactionForm'));
+
 
 /* ==============================
  * 1. Constants & Configuration
@@ -74,6 +77,27 @@ const MOBILE_NAV_ITEMS = [
   { to: '/calendar', icon: CalendarIcon, labelKey: 'calendar', mobileLabel: 'Calendar' },
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics', mobileLabel: 'Analytics' },
 ];
+
+// ── Instant Route Preloader on Hover / Focus ──
+const preloadRoute = (to) => {
+  switch (to) {
+    case '/': import('../pages/Dashboard'); break;
+    case '/transactions': import('../pages/Transactions'); break;
+    case '/calendar': import('../pages/Calendar'); break;
+    case '/analytics': import('../pages/Analytics'); break;
+    case '/calculator': import('../pages/Calculator'); break;
+    case '/tax': import('../pages/Tax'); break;
+    case '/accounts': import('../pages/Accounts'); break;
+    case '/budgets': import('../pages/Budgets'); break;
+    case '/goals': import('../pages/Goals'); break;
+    case '/subscriptions': import('../pages/Subscriptions'); break;
+    case '/cashflow': import('../pages/Cashflow'); break;
+    case '/wealth': import('../pages/Wealth'); break;
+    case '/about': import('../pages/About'); break;
+    case '/settings': import('../pages/SettingsPage'); break;
+    default: break;
+  }
+};
 
 // ── Rules for how user names are displayed ──
 const USER_DISPLAY_RULES = {
@@ -436,19 +460,14 @@ class ErrorBoundary extends React.Component {
     }
   }
 
-  // ── Retry up to 3 times, then full page reload ──
+  // ── Reset error state gracefully without full browser reload ──
   handleReset = () => {
-    const { retryCount } = this.state;
-    if (retryCount < 3) {
-      this.setState({
-        hasError: false,
-        error: null,
-        errorInfo: null,
-        retryCount: retryCount + 1
-      });
-    } else {
-      window.location.reload();
-    }
+    this.setState({
+      hasError: false,
+      error: null,
+      errorInfo: null,
+      retryCount: 0
+    });
   };
 
   render() {
@@ -541,21 +560,8 @@ export default function AppLayout({ children }) {
   const userInfo = useUserDisplay(user, t);
   useClickOutside(activeDropdown, closeAll);
 
-  // ── One-time setup: inject keyframes and start QuantumRuntime ──
+  // ── One-time setup: start QuantumRuntime with full unmount cleanup ──
   useEffect(() => {
-    const styleId = 'app-layout-animations';
-    if (!document.getElementById(styleId)) {
-      const styleSheet = document.createElement('style');
-      styleSheet.id = styleId;
-      styleSheet.textContent = `
-        @keyframes slideIn {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-      `;
-      document.head.appendChild(styleSheet);
-    }
-
     const runtime = QuantumRuntime?.create?.(document);
     return () => {
       runtime?.destroy?.();
@@ -723,15 +729,15 @@ export default function AppLayout({ children }) {
       // Escape — close ONLY the topmost overlay. Order defines priority.
       if (event.key === 'Escape') {
         const stack = [
-          [showCmdPalette,      () => setShowCmdPalette(false)],
-          [showShortcuts,       () => setShowShortcuts(false)],
-          [showHelpModal,       () => setShowHelpModal(false)],
-          [showOnboardingTour,  () => setShowOnboardingTour(false)],
-          [showAddTx,           () => setShowAddTx(false)],
-          [drawerOpen,          () => setDrawerOpen(false)],
-          [isAIOpen,            () => setIsAIOpen(false)],
-          [showAlerts,          () => setShowAlerts(false)],
-          [showConverter,       () => setShowConverter(false)],
+          [showCmdPalette, () => setShowCmdPalette(false)],
+          [showShortcuts, () => setShowShortcuts(false)],
+          [showHelpModal, () => setShowHelpModal(false)],
+          [showOnboardingTour, () => setShowOnboardingTour(false)],
+          [showAddTx, () => setShowAddTx(false)],
+          [drawerOpen, () => setDrawerOpen(false)],
+          [isAIOpen, () => setIsAIOpen(false)],
+          [showAlerts, () => setShowAlerts(false)],
+          [showConverter, () => setShowConverter(false)],
           [Boolean(activeDropdown), () => closeAll()],
         ];
         for (const [isOpen, closeFn] of stack) {
@@ -770,95 +776,95 @@ export default function AppLayout({ children }) {
       {/* App.jsx already wraps the full tree in <MotionConfig reducedMotion="user">,
           so we don't nest a second one here. */}
       <div className="app-island-layout" data-theme={theme}>
-          {/* ── Ambient background layers ── */}
-          <div className="portfolio-bg-layer" aria-hidden="true" />
-          <div className="d3-ambient" aria-hidden="true">
-            <div className="d3-ambient__grid" />
-            <div className="d3-ambient__shard" />
-            <div className="d3-ambient__shard" />
-            <div className="d3-ambient__shard" />
-          </div>
+        {/* ── Ambient background layers ── */}
+        <div className="portfolio-bg-layer" aria-hidden="true" />
+        <div className="d3-ambient" aria-hidden="true">
+          <div className="d3-ambient__grid" />
+          <div className="d3-ambient__shard" />
+          <div className="d3-ambient__shard" />
+          <div className="d3-ambient__shard" />
+        </div>
 
-          {/* ── Desktop Sidebar (+ backdrop when open) ── */}
-          {deviceType === 'desktop' && (
-            <>
-              <AnimatePresence>
-                {sidebarOpen && (
-                  <motion.div
-                    className="sidebar-backdrop-overlay"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={handleSidebarToggle}
-                    aria-hidden="true"
-                  />
-                )}
-              </AnimatePresence>
-              <DesktopSidebar
-                sidebarOpen={sidebarOpen}
-                onToggle={handleSidebarToggle}
-                userInfo={userInfo}
-                currencyInfo={currencyInfo}
-                lang={lang}
-                t={t}
-                logout={handleLogout}
-              />
-            </>
-          )}
-
-          {/* ── Main Content ── */}
-          <main className="island-main">
-            <Header
+        {/* ── Desktop Sidebar (+ backdrop when open) ── */}
+        {deviceType === 'desktop' && (
+          <>
+            <AnimatePresence>
+              {sidebarOpen && (
+                <motion.div
+                  className="sidebar-backdrop-overlay"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={handleSidebarToggle}
+                  aria-hidden="true"
+                />
+              )}
+            </AnimatePresence>
+            <DesktopSidebar
               sidebarOpen={sidebarOpen}
-              onToggleSidebar={handleSidebarToggle}
-              pageTitle={pageTitle}
+              onToggle={handleSidebarToggle}
               userInfo={userInfo}
-              activeDropdown={activeDropdown}
-              onDropdownToggle={toggleDropdown}
-              onCloseDropdowns={closeAll}
-              onShowConverter={handleOpenConverter}
-              onShowAlerts={handleOpenAlerts}
-              onShowAI={handleOpenAI}
-              urgentAlertsCount={urgentAlertsCount}
-              formattedBalance={formattedBalance}
-              theme={theme}
-              onToggleTheme={handleToggleTheme}
+              currencyInfo={currencyInfo}
               lang={lang}
               t={t}
-              onLanguageChange={handleLanguageChange}
-              onOpenProfile={handleOpenProfile}
-              onOpenCmdPalette={handleOpenCmdPalette}
-              onOpenShortcuts={handleOpenShortcuts}
-              onOpenHelp={() => setShowHelpModal(true)}
-              onOpenTour={() => setShowOnboardingTour(true)}
-              activeAlerts={activeAlerts}
-              onDismissAllAlerts={handleDismissAllAlerts}
-              financialSummary={financialSummary}
-              currencySymbol={currencyInfo?.symbol || '$'}
               logout={handleLogout}
-              user={user}
-              fmt={fmt}
-              navigate={navigate}
-              refetch={refetch}
-              isBackgroundSyncing={isBackgroundSyncing}
             />
+          </>
+        )}
 
-            {/* ── Global error banner ── */}
-            {globalError && (
-              <div className="sync-error-banner" role="alert">
-                <div className="sync-error-copy">
-                  <AlertCircle size={16} aria-hidden="true" />
-                  <span>{globalError}</span>
-                </div>
-                <button type="button" className="sync-error-retry" onClick={() => refetch?.()} disabled={isBackgroundSyncing}>
-                  <RefreshCw size={14} aria-hidden="true" />
-                  {isBackgroundSyncing ? (t?.('loading') || 'Retrying…') : (t?.('retry') || 'Retry')}
-                </button>
+        {/* ── Main Content ── */}
+        <main className="island-main">
+          <Header
+            sidebarOpen={sidebarOpen}
+            onToggleSidebar={handleSidebarToggle}
+            pageTitle={pageTitle}
+            userInfo={userInfo}
+            activeDropdown={activeDropdown}
+            onDropdownToggle={toggleDropdown}
+            onCloseDropdowns={closeAll}
+            onShowConverter={handleOpenConverter}
+            onShowAlerts={handleOpenAlerts}
+            onShowAI={handleOpenAI}
+            urgentAlertsCount={urgentAlertsCount}
+            formattedBalance={formattedBalance}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+            lang={lang}
+            t={t}
+            onLanguageChange={handleLanguageChange}
+            onOpenProfile={handleOpenProfile}
+            onOpenCmdPalette={handleOpenCmdPalette}
+            onOpenShortcuts={handleOpenShortcuts}
+            onOpenHelp={() => setShowHelpModal(true)}
+            onOpenTour={() => setShowOnboardingTour(true)}
+            activeAlerts={activeAlerts}
+            onDismissAllAlerts={handleDismissAllAlerts}
+            financialSummary={financialSummary}
+            currencySymbol={currencyInfo?.symbol || '$'}
+            logout={handleLogout}
+            user={user}
+            fmt={fmt}
+            navigate={navigate}
+            refetch={refetch}
+            isBackgroundSyncing={isBackgroundSyncing}
+          />
+
+          {/* ── Global error banner ── */}
+          {globalError && (
+            <div className="sync-error-banner" role="alert">
+              <div className="sync-error-copy">
+                <AlertCircle size={16} aria-hidden="true" />
+                <span>{globalError}</span>
               </div>
-            )}
+              <button type="button" className="sync-error-retry" onClick={() => refetch?.()} disabled={isBackgroundSyncing}>
+                <RefreshCw size={14} aria-hidden="true" />
+                {isBackgroundSyncing ? (t?.('loading') || 'Retrying…') : (t?.('retry') || 'Retry')}
+              </button>
+            </div>
+          )}
 
-            <div className="island-content-wrapper">
-              {/* Original route transition (Problematic - animated scale and vertical displacement simultaneously during route change, triggering layout shifts and animation queue bottlenecks):
+          <div className="island-content-wrapper">
+            {/* Original route transition (Problematic - animated scale and vertical displacement simultaneously during route change, triggering layout shifts and animation queue bottlenecks):
               <AnimatePresence mode="wait">
                 <motion.div
                   key={location.pathname}
@@ -876,71 +882,72 @@ export default function AppLayout({ children }) {
                 </motion.div>
               </AnimatePresence>
               */}
-              {/* ── Route transition: opacity-only for perf ── */}
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={location.pathname}
-                  className="island-page"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{
-                    duration: 0.14,
-                    ease: [0.16, 1, 0.3, 1]
-                  }}
-                  style={{
-                    willChange: 'opacity',
-                    backfaceVisibility: 'hidden',
-                    WebkitBackfaceVisibility: 'hidden'
-                  }}
-                >
-                  <Breadcrumbs />
-                  {children}
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          </main>
+            {/* ── Route transition: opacity-only for perf ── */}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={location.pathname}
+                className="island-page"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{
+                  duration: 0.14,
+                  ease: [0.16, 1, 0.3, 1]
+                }}
+                style={{
+                  willChange: 'opacity',
+                  backfaceVisibility: 'hidden',
+                  WebkitBackfaceVisibility: 'hidden'
+                }}
+              >
+                <Breadcrumbs />
+                {children}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </main>
 
-          {/* ── Mobile bottom dock ── */}
-          <MobileBottomNav
-            t={t}
-            onOpenDrawer={handleOpenDrawer}
-          />
+        {/* ── Mobile bottom dock ── */}
+        <MobileBottomNav
+          t={t}
+          onOpenDrawer={handleOpenDrawer}
+        />
 
-          {/* ── Mobile drawer overlay + panel ── */}
-          <AnimatePresence>
-            {drawerOpen && (
-              <>
-                <motion.div
-                  className="mobile-drawer-overlay"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.22 }}
-                  onClick={handleCloseDrawer}
-                  aria-hidden="true"
-                />
-                <MobileDrawer
-                  userInfo={userInfo}
-                  currencyInfo={currencyInfo}
-                  formattedBalance={formattedBalance}
-                  theme={theme}
-                  onToggleTheme={handleToggleTheme}
-                  lang={lang}
-                  onLanguageChange={handleLanguageChange}
-                  onShowConverter={handleDrawerConverter}
-                  onShowAlerts={handleDrawerAlerts}
-                  onShowAI={handleDrawerAI}
-                  urgentAlertsCount={urgentAlertsCount}
-                  logout={handleLogout}
-                  onClose={handleCloseDrawer}
-                  t={t}
-                />
-              </>
-            )}
-          </AnimatePresence>
+        {/* ── Mobile drawer overlay + panel ── */}
+        <AnimatePresence>
+          {drawerOpen && (
+            <>
+              <motion.div
+                className="mobile-drawer-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22 }}
+                onClick={handleCloseDrawer}
+                aria-hidden="true"
+              />
+              <MobileDrawer
+                userInfo={userInfo}
+                currencyInfo={currencyInfo}
+                formattedBalance={formattedBalance}
+                theme={theme}
+                onToggleTheme={handleToggleTheme}
+                lang={lang}
+                onLanguageChange={handleLanguageChange}
+                onShowConverter={handleDrawerConverter}
+                onShowAlerts={handleDrawerAlerts}
+                onShowAI={handleDrawerAI}
+                urgentAlertsCount={urgentAlertsCount}
+                logout={handleLogout}
+                onClose={handleCloseDrawer}
+                t={t}
+              />
+            </>
+          )}
+        </AnimatePresence>
 
-          {/* ── Overlay surfaces ── */}
+        {/* ── Overlay surfaces (lazy loaded to prevent initial bundle bloat) ── */}
+        <Suspense fallback={null}>
           <CommandPalette
             isOpen={showCmdPalette}
             onClose={() => setShowCmdPalette(false)}
@@ -990,7 +997,8 @@ export default function AppLayout({ children }) {
               />
             )}
           </AnimatePresence>
-        </div>
+        </Suspense>
+      </div>
     </ErrorBoundary>
   );
 }
@@ -1094,6 +1102,8 @@ const DesktopSidebar = React.memo(({
             key={item.to}
             to={item.to}
             end={item.to === '/'}
+            onMouseEnter={() => preloadRoute(item.to)}
+            onFocus={() => preloadRoute(item.to)}
             className={({ isActive }) => `inav-item ${isActive ? 'active' : ''}`}
             title={!isOpen ? t?.(item.labelKey) : undefined}
           >
@@ -1134,6 +1144,8 @@ const DesktopSidebar = React.memo(({
       <div className="island-footer">
         <NavLink
           to="/settings"
+          onMouseEnter={() => preloadRoute('/settings')}
+          onFocus={() => preloadRoute('/settings')}
           className={({ isActive }) => `inav-item ${isActive ? 'active' : ''}`}
           title={!isOpen ? (t?.('settings') || 'Settings') : undefined}
         >
@@ -1304,11 +1316,14 @@ const Header = React.memo(({
       ? scroller.scrollTop
       : (window.scrollY || window.pageYOffset || 0);
 
-    const handleScroll = () => setIsScrolled(readScrollTop() > 8);
+    const handleScroll = throttle(() => setIsScrolled(readScrollTop() > 8), 100);
 
     target.addEventListener('scroll', handleScroll, { passive: true });
     handleScroll();
-    return () => target.removeEventListener('scroll', handleScroll);
+    return () => {
+      target.removeEventListener('scroll', handleScroll);
+      handleScroll.cancel?.();
+    };
   }, []);
 
   return (
@@ -1479,35 +1494,7 @@ const Header = React.memo(({
             </AnimatePresence>
           </div>
 
-          {/* Original dropdown-container and nav-avatar-btn (Problematic - lacked inline-flex layout and display:block on image, resulting in vertical baseline offset):
-          <div className="dropdown-container" style={{ position: 'relative' }}>
-            <button
-              type="button"
-              className="theme-toggle nav-avatar-btn"
-              onClick={onOpenProfile}
-              title="User profile"
-              aria-expanded={activeDropdown === 'profile'}
-              aria-label="User profile"
-              style={{
-                background: userInfo.avatarColor,
-                overflow: 'hidden',
-                padding: 0,
-                border: '1px solid rgba(0, 212, 255, 0.35)'
-              }}
-            >
-              {userInfo.isBase64Avatar ? (
-                <img
-                  src={userInfo.avatar}
-                  alt=""
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              ) : (
-                userInfo.avatar
-              )}
-            </button>
-          </div>
-          */}
-
+      
           {/* ── Profile dropdown ── */}
           <div className="dropdown-container nav-dropdown-profile" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
             <button
@@ -1723,6 +1710,8 @@ const MobileBottomNav = React.memo(({ t, onOpenDrawer }) => {
             key={item.to}
             to={item.to}
             end={item.to === '/'}
+            onMouseEnter={() => preloadRoute(item.to)}
+            onTouchStart={() => preloadRoute(item.to)}
             className={({ isActive }) => `dock-item ${isActive ? 'active' : ''}`}
             aria-label={visibleLabel}
           >
@@ -1826,6 +1815,8 @@ const MobileDrawer = React.memo(({
             key={item.to}
             to={item.to}
             end={item.to === '/'}
+            onMouseEnter={() => preloadRoute(item.to)}
+            onTouchStart={() => preloadRoute(item.to)}
             className={({ isActive }) => `drawer-nav-item ${isActive ? 'active' : ''}`}
             onClick={onClose}
           >
@@ -1842,6 +1833,8 @@ const MobileDrawer = React.memo(({
         ))}
         <NavLink
           to="/settings"
+          onMouseEnter={() => preloadRoute('/settings')}
+          onTouchStart={() => preloadRoute('/settings')}
           className={({ isActive }) => `drawer-nav-item ${isActive ? 'active' : ''}`}
           onClick={onClose}
         >

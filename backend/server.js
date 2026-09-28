@@ -20,23 +20,33 @@ const aiRoutes = require('./routes/ai');
 const securityRoutes = require('./routes/security');
 const taxRoutes = require('./routes/tax');
 
-const { cleanEnv, str, port } = require('envalid');
+const { cleanEnv, str, port, bool, num } = require('envalid');
 const mongoSanitize = require('express-mongo-sanitize');
+const Sentry = require('@sentry/node');
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: 0.2,
+    beforeSend(event) {
+      const scrub = (obj) => {
+        if (!obj || typeof obj !== 'object') return;
+        for (const k of ['password', 'currentPassword', 'newPassword', 'token', 'authorization', 'cookie']) {
+          if (obj[k]) obj[k] = '[REDACTED]';
+        }
+        for (const val of Object.values(obj)) {
+          if (val && typeof val === 'object') scrub(val);
+        }
+      };
+      scrub(event.request?.data);
+      scrub(event.request?.headers);
+      return event;
+    },
+  });
+}
 
 // ─── Environment Validation (envalid) ───────────────────────────────────────
-// [ORIGINAL CODE PRESERVED - Manual process.env checking]
-// if (!process.env.MONGO_URI) {
-//   console.error('FATAL ERROR: MONGO_URI is not defined in the environment variables.');
-//   process.exit(1);
-// }
-// if (!process.env.JWT_SECRET) {
-//   console.error('FATAL ERROR: JWT_SECRET is not defined in the environment variables.');
-//   process.exit(1);
-// }
-// if (!process.env.GEMINI_API_KEY) {
-//   console.warn('WARNING: GEMINI_API_KEY is not defined. AI features will be unavailable.');
-// }
-
 cleanEnv(process.env, {
   MONGO_URI: str({ desc: 'MongoDB connection string URI' }),
   JWT_SECRET: str({ desc: 'Secret key for signing JSON Web Tokens' }),
@@ -45,6 +55,14 @@ cleanEnv(process.env, {
   GEMINI_API_KEY: str({ default: '', desc: 'Google Gemini AI API Key' }),
   GEMINI_MODEL: str({ default: 'gemini-2.5-flash', desc: 'Google Gemini Model version' }),
   SENTRY_DSN: str({ default: '', desc: 'Sentry DSN for error monitoring' }),
+  SMTP_HOST: str({ default: '', desc: 'SMTP host for outbound emails' }),
+  SMTP_PORT: port({ default: 587, desc: 'SMTP port' }),
+  SMTP_SECURE: bool({ default: false, desc: 'Whether SMTP uses TLS' }),
+  SMTP_USER: str({ default: '', desc: 'SMTP username' }),
+  SMTP_PASS: str({ default: '', desc: 'SMTP password' }),
+  EMAIL_FROM: str({ default: 'MyCoinwise <noreply@mycoinwise.app>', desc: 'Outbound sender name/address' }),
+  RESET_TOKEN_EXPIRY_MINUTES: num({ default: 60, desc: 'Password reset token expiration' }),
+  FINNHUB_API_KEY: str({ default: '', desc: 'Finnhub API key for market data' }),
 });
 
 const app = express();
@@ -70,8 +88,10 @@ const allowedOrigins = Array.from(new Set(defaultAllowed.filter(Boolean).map((va
 
 const corsOptions = {
   origin: function (origin, callback) {
+    // Allow server-to-server (no origin) and whitelisted origins only.
+    // SECURITY: No wildcard subdomains — each allowed origin is explicit.
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || origin.includes('localhost')) {
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     callback(new Error('Not allowed by CORS'));
@@ -80,6 +100,7 @@ const corsOptions = {
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 200,
+  maxAge: 86400,
 };
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
@@ -98,6 +119,20 @@ app.use(morgan(':id :method :url :status :res[content-length] - :response-time m
 // ─── Security & compression ─────────────────────────────────────────────────
 app.use(helmet());
 app.use(compression());
+app.set('etag', 'strong');
+
+// Cache-Control headers: no-store on user-specific data; public max-age=300 on public endpoints/rates
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/currency') || req.path.startsWith('/api/rates') || req.path === '/api/health') {
+    res.setHeader('Cache-Control', 'public, max-age=300');
+  } else if (req.path.startsWith('/api/')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -158,7 +193,7 @@ const exportLimiter = rateLimit({
 
 // Public routes (no authentication)
 const authRoutes = require('./routes/auth');
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
 
 // Protected routes (authentication applied inside each router)
 app.use('/api/users', auth, writeLimiter, require('./routes/users'));
@@ -170,11 +205,11 @@ app.use('/api/export', auth, exportLimiter, require('./routes/export'));
 app.use('/api/budgets', auth, writeLimiter, require('./routes/budgets'));
 app.use('/api/accounts', auth, writeLimiter, require('./routes/accounts'));
 app.use('/api/calculations', auth, writeLimiter, require('./routes/calculations'));
-app.use('/api/tax', taxRoutes);
+app.use('/api/tax', auth, taxRoutes);
 
-// Wealth & Cashflow (auth applied inside their own routers)
-app.use('/api/wealth', wealthRoutes);
-app.use('/api/cashflow', cashflowRoutes);
+// Wealth & Cashflow — defense-in-depth auth at the mount level
+app.use('/api/wealth', auth, wealthRoutes);
+app.use('/api/cashflow', auth, cashflowRoutes);
 
 // AI & Security routes
 app.use('/api/ai', auth, aiRoutes);
@@ -187,9 +222,15 @@ app.use((req, res) => {
 
 // ─── Global error handler ──────────────────────────────────────────────────
 app.use((err, req, res, next) => {
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(err);
+  }
   logger.error(`[${req.id}] ${err.stack}`);
   const status = err.status || 500;
-  const message = err.message || 'Internal Server Error';
+  // SECURITY: Don't leak internal error details in production
+  const message = (process.env.NODE_ENV === 'production' && status >= 500)
+    ? 'Internal Server Error'
+    : (err.message || 'Internal Server Error');
   res.status(status).json({
     error: message,
     code: err.code || 'INTERNAL_ERROR',

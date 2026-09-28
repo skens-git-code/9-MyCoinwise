@@ -4,9 +4,15 @@ node_modules/
 
 # Environment variables (NEVER commit secrets)
 .env
-.env.local
-.env.*.local
+.env.*
 *.env
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+**/.env
+**/.env.*
+!**/.env.example
 
 # Build output & caches
 dist/

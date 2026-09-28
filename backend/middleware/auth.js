@@ -12,21 +12,24 @@ const Session = require('../models/Session');
 // ── Define authentication middleware ──
 const authenticateRequest = async (req, res, next) => {
   try {
-    // ── Read Authorization header ──
+    // ── Extract token from Authorization header or cookie ──
+    let bearerToken = null;
     const authorizationHeader = req.header('Authorization');
-    if (!authorizationHeader || !authorizationHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No authentication token, authorization denied.' });
+    if (authorizationHeader && authorizationHeader.startsWith('Bearer ')) {
+      bearerToken = authorizationHeader.split(' ')[1];
+    } else if (req.cookies && req.cookies.token) {
+      bearerToken = req.cookies.token;
+    } else if (req.headers.cookie) {
+      const match = req.headers.cookie.match(/(?:^|;\s*)token=([^;]+)/);
+      if (match) bearerToken = decodeURIComponent(match[1]);
     }
-
-    // ── Extract Bearer token ──
-    const bearerToken = authorizationHeader.split(' ')[1];
 
     if (!bearerToken) {
       return res.status(401).json({ error: 'No authentication token, authorization denied.' });
     }
 
-    // ── Verify token signature and expiration ──
-    const decodedToken = jwt.verify(bearerToken, process.env.JWT_SECRET);
+    // ── Verify token signature and expiration with explicit algorithm whitelist ──
+    const decodedToken = jwt.verify(bearerToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
     // ── Load user and validate session version ──
     const authenticatedUser = await User.findById(decodedToken.id || decodedToken._id);

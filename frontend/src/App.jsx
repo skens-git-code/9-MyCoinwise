@@ -10,9 +10,9 @@ import { generateAlerts, getSpendingInsights } from './services/aiEngine';
 import i18n, { getT, LANGUAGES } from './services/i18n';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './components/ToastProvider';
-import { MotionConfig } from 'framer-motion';
+import { MotionConfig, LazyMotion, domAnimation } from 'framer-motion';
 
-import { AppContext } from './contexts/AppContext';
+import { AppContext, AppStateContext, AppActionsContext } from './contexts/AppContext';
 import { dedupeTransactions } from './utils/transactionIntegrity';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -28,6 +28,9 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const About = lazy(() => import('./pages/About'));
 const Calculator = lazy(() => import('./pages/Calculator'));
 const Tax = lazy(() => import('./pages/Tax'));
@@ -220,34 +223,39 @@ export default function App() {
     }
   }, []);
 
-  const installPWA = async () => {
+  const previousSessionRef = useRef(previousSession);
+  useEffect(() => {
+    previousSessionRef.current = previousSession;
+  }, [previousSession]);
+
+  const installPWA = useCallback(async () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
     await deferredPrompt.userChoice;
     setDeferredPrompt(null);
-  };
+  }, [deferredPrompt]);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     setTheme(prev => {
       const idx = AVAILABLE_THEMES.indexOf(prev);
       const next = AVAILABLE_THEMES[(idx + 1) % AVAILABLE_THEMES.length];
       localStorage.setItem('mcw-theme', next);
       return next;
     });
-  };
+  }, []);
 
-  const setThemeDirect = (t) => {
+  const setThemeDirect = useCallback((t) => {
     const nextTheme = normalizeTheme(t);
     setTheme(nextTheme);
     localStorage.setItem('mcw-theme', nextTheme);
     document.documentElement.setAttribute('data-theme', nextTheme);
-  };
+  }, []);
 
-  const setLanguage = (code) => {
+  const setLanguage = useCallback((code) => {
     if (!LANGUAGES[code]) return;
     setLang(code);
     localStorage.setItem('mcw-lang', code);
-  };
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -319,7 +327,7 @@ export default function App() {
     };
   }, [user]);
 
-  const login = async (newToken, userData, rememberMe = true) => {
+  const login = useCallback(async (newToken, userData, rememberMe = true) => {
     localStorage.removeItem('mcw-token');
     sessionStorage.removeItem('mcw-token');
     (rememberMe ? localStorage : sessionStorage).setItem('mcw-token', newToken);
@@ -329,7 +337,7 @@ export default function App() {
       setUser(userData);
       setIsInitialAuthLoad(false);
     }
-  };
+  }, []);
 
   const logout = useCallback(() => {
     api.logout().catch(() => { });
@@ -466,59 +474,37 @@ export default function App() {
 
   useEffect(() => { fetchData(); }, [token]);
 
-  const applyBalance = (balance) => {
+  const applyBalance = useCallback((balance) => {
     if (balance === undefined || balance === null) return;
     setUser(prev => prev ? { ...prev, balance: Number(balance) } : prev);
-  };
+  }, []);
 
-  /* Original mutation handlers without accounts resync:
-  const addTransaction = async (tx) => {
-    const result = await api.addTransaction({ ...tx, user_id: user?.id || user?._id });
-    if (result.transaction) setTransactions(prev => [result.transaction, ...prev]);
-    applyBalance(result.balance);
-    return result;
-  };
-  const deleteTransaction = async (id) => {
-    const result = await api.deleteTransaction(id);
-    setTransactions(prev => prev.filter(tx => tx.id !== id && tx._id !== id));
-    applyBalance(result.balance);
-    return result;
-  };
-  const editTransaction = async (id, data) => {
-    const result = await api.editTransaction(id, data);
-    if (result.transaction) {
-      setTransactions(prev => prev.map(tx => (tx.id === id || tx._id === id) ? result.transaction : tx));
-    }
-    applyBalance(result.balance);
-    return result;
-  };
-  // Issue: When transactions were added, edited, or deleted, account balances in accounts state
-  // remained stale until full page reload, causing desynchronization with the backend.
-  */
-  const syncAccountsSilently = async () => {
-    const activeId = user?.id || user?._id;
+  const syncAccountsSilently = useCallback(async () => {
+    const activeId = userRef.current?.id || userRef.current?._id;
     if (!activeId) return;
     try {
       const refreshedAccounts = await api.getAccounts(activeId);
       if (Array.isArray(refreshedAccounts)) setAccounts(refreshedAccounts);
     } catch { /* best effort */ }
-  };
+  }, []);
 
-  const addTransaction = async (tx) => {
-    const result = await api.addTransaction({ ...tx, user_id: user?.id || user?._id });
+  const addTransaction = useCallback(async (tx) => {
+    const result = await api.addTransaction({ ...tx, user_id: userRef.current?.id || userRef.current?._id });
     if (result.transaction) setTransactions(prev => [result.transaction, ...prev]);
     applyBalance(result.balance);
     syncAccountsSilently();
     return result;
-  };
-  const deleteTransaction = async (id) => {
+  }, [applyBalance, syncAccountsSilently]);
+
+  const deleteTransaction = useCallback(async (id) => {
     const result = await api.deleteTransaction(id);
     setTransactions(prev => prev.filter(tx => tx.id !== id && tx._id !== id));
     applyBalance(result.balance);
     syncAccountsSilently();
     return result;
-  };
-  const editTransaction = async (id, data) => {
+  }, [applyBalance, syncAccountsSilently]);
+
+  const editTransaction = useCallback(async (id, data) => {
     const result = await api.editTransaction(id, data);
     if (result.transaction) {
       setTransactions(prev => prev.map(tx => (tx.id === id || tx._id === id) ? result.transaction : tx));
@@ -526,31 +512,37 @@ export default function App() {
     applyBalance(result.balance);
     syncAccountsSilently();
     return result;
-  };
-  const resetAccount = async () => { await api.resetAccount(user?.id || user?._id); await fetchData(); };
+  }, [applyBalance, syncAccountsSilently]);
 
-  const createUser = async (data) => {
+  const resetAccount = useCallback(async () => {
+    await api.resetAccount(userRef.current?.id || userRef.current?._id);
+    await fetchData();
+  }, [fetchData]);
+
+  const createUser = useCallback(async (data) => {
     const result = await api.createUser(data);
     await fetchData();
     return result;
-  };
+  }, [fetchData]);
 
-  const switchUser = async (userId) => {
+  const switchUser = useCallback(async (userId) => {
     try {
       setIsBackgroundSyncing(true);
 
+      const curSession = previousSessionRef.current;
+      const curUser = userRef.current;
       // If switching back to previous session, clear it; otherwise record current user
-      if (previousSession && String(previousSession.id) === String(userId)) {
+      if (curSession && String(curSession.id) === String(userId)) {
         sessionStorage.removeItem('mcw-previous-session');
         setPreviousSession(null);
-      } else if (user) {
+      } else if (curUser) {
         const prevSessionData = {
-          id: user.id || user._id,
-          username: user.username,
-          last_name: user.last_name || '',
-          profile_avatar: user.profile_avatar,
-          profile_color: user.profile_color,
-          email: user.email,
+          id: curUser.id || curUser._id,
+          username: curUser.username,
+          last_name: curUser.last_name || '',
+          profile_avatar: curUser.profile_avatar,
+          profile_color: curUser.profile_color,
+          email: curUser.email,
           switchedAt: Date.now(),
         };
         sessionStorage.setItem('mcw-previous-session', JSON.stringify(prevSessionData));
@@ -575,19 +567,83 @@ export default function App() {
       setIsBackgroundSyncing(false);
       setIsInitialAuthLoad(false);
     }
-  };
+  }, [fetchData]);
 
-  const revertSession = async () => {
-    if (!previousSession?.id) return;
-    return await switchUser(previousSession.id);
-  };
+  const revertSession = useCallback(async () => {
+    if (!previousSessionRef.current?.id) return;
+    return await switchUser(previousSessionRef.current.id);
+  }, [switchUser]);
 
   const currency = user?.currency || 'USD';
   const currencyInfo = CURRENCIES[currency] || CURRENCIES.USD;
-  const fmt = (amount) => formatCurrency(amount, currency, lang);
+  const fmt = useCallback((amount) => formatCurrency(amount, currency, lang), [currency, lang]);
 
   const alerts = useMemo(() => generateAlerts(transactions, user, goals), [transactions, user, goals]);
-  const insights = useMemo(() => getSpendingInsights(transactions, fmt), [transactions, currency, lang]);
+  const insights = useMemo(() => getSpendingInsights(transactions, fmt), [transactions, fmt]);
+
+  // Memoized State Context (data and status)
+  const stateValue = useMemo(() => ({
+    user,
+    allUsers,
+    transactions,
+    theme,
+    lang,
+    token,
+    alerts,
+    insights,
+    deferredPrompt,
+    goals,
+    budgets,
+    accounts,
+    subscriptions,
+    events,
+    isInitialAuthLoad,
+    isBackgroundSyncing,
+    globalError,
+    loading: isInitialAuthLoad || isBackgroundSyncing,
+    USER_ID: user?.id || user?._id,
+    currency,
+    currencyInfo,
+    previousSession,
+  }), [
+    user, allUsers, transactions, theme, lang, token,
+    alerts, insights, deferredPrompt, goals, budgets,
+    accounts, subscriptions, events, isInitialAuthLoad,
+    isBackgroundSyncing, globalError, currency, currencyInfo, previousSession
+  ]);
+
+  // Memoized Actions Context (functions only - stable references)
+  const actionsValue = useMemo(() => ({
+    toggleTheme,
+    setThemeDirect,
+    setLanguage,
+    t,
+    login,
+    logout,
+    fetchTransactions: fetchData,
+    refetch: fetchData,
+    addTransaction,
+    deleteTransaction,
+    editTransaction,
+    updateTransaction: editTransaction,
+    resetAccount,
+    createUser,
+    switchUser,
+    revertSession,
+    fmt,
+    installPWA,
+  }), [
+    toggleTheme, setThemeDirect, setLanguage, t,
+    login, logout, fetchData, addTransaction,
+    deleteTransaction, editTransaction, resetAccount,
+    createUser, switchUser, revertSession, fmt, installPWA
+  ]);
+
+  // Combined context value strictly memoized for backward compatibility
+  const combinedContextValue = useMemo(() => ({
+    ...stateValue,
+    ...actionsValue,
+  }), [stateValue, actionsValue]);
 
   // While the initial token validation is in flight, show a spinner so neither
   // the login page nor the protected app content flashes before auth is known.
@@ -595,23 +651,19 @@ export default function App() {
     return (
       <ErrorBoundary>
         <I18nextProvider i18n={i18n}>
-          <AppContext.Provider value={{
-            user, allUsers, transactions, theme, toggleTheme, setThemeDirect,
-            addTransaction, deleteTransaction, editTransaction,
-            updateTransaction: editTransaction,
-            resetAccount, createUser, switchUser, login, logout,
-            previousSession, revertSession,
-            isInitialAuthLoad, isBackgroundSyncing, globalError,
-            loading: isInitialAuthLoad || isBackgroundSyncing,
-            fetchTransactions: fetchData,
-            refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
-            lang, setLanguage, t, token,
-            alerts, insights, deferredPrompt, installPWA, goals, budgets, accounts, subscriptions, events,
-          }}>
-            <ToastProvider>
-              <Loader fullScreen mode={token ? "auth" : "inline"} />
-            </ToastProvider>
-          </AppContext.Provider>
+          <AppStateContext.Provider value={stateValue}>
+            <AppActionsContext.Provider value={actionsValue}>
+              <AppContext.Provider value={combinedContextValue}>
+                <ToastProvider>
+                  <LazyMotion features={domAnimation}>
+                    <MotionConfig reducedMotion="user">
+                      <Loader fullScreen mode={token ? "auth" : "inline"} />
+                    </MotionConfig>
+                  </LazyMotion>
+                </ToastProvider>
+              </AppContext.Provider>
+            </AppActionsContext.Provider>
+          </AppStateContext.Provider>
         </I18nextProvider>
       </ErrorBoundary>
     );
@@ -620,59 +672,36 @@ export default function App() {
   return (
     <ErrorBoundary>
       <I18nextProvider i18n={i18n}>
-        <AppContext.Provider value={{
-          user, allUsers, transactions, theme, toggleTheme, setThemeDirect,
-          addTransaction, deleteTransaction, editTransaction,
-          updateTransaction: editTransaction,
-          resetAccount, createUser, switchUser, login, logout,
-          previousSession, revertSession,
-          isInitialAuthLoad, isBackgroundSyncing, globalError,
-          loading: isInitialAuthLoad || isBackgroundSyncing,
-          fetchTransactions: fetchData,
-          refetch: fetchData, USER_ID: user?.id || user?._id, currency, fmt, currencyInfo,
-          lang, setLanguage, t, token,
-          alerts, insights, deferredPrompt, installPWA, goals, budgets, accounts, subscriptions, events,
-        }}>
-          <ToastProvider>
-            <MotionConfig reducedMotion="user">
-              <Router>
-                <Suspense fallback={<Loader />}>
-                  <Routes>
-                    <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-                    <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
-                    <Route path="/*" element={
-                      <ProtectedRoute>
-                        <AppLayout>
-                          {/* Original inline Routes without location tracking (Problematic - caused unmount race conditions where outgoing route immediately re-rendered incoming route before exit animation completed):
-                          <Suspense fallback={<Loader />}>
-                            <Routes>
-                              <Route path="/" element={<Dashboard />} />
-                              <Route path="/transactions" element={<Transactions />} />
-                              <Route path="/analytics" element={<Analytics />} />
-                              <Route path="/accounts" element={<Accounts />} />
-                              <Route path="/budgets" element={<Budgets />} />
-                              <Route path="/goals" element={<Goals />} />
-                              <Route path="/subscriptions" element={<Subscriptions />} />
-                              <Route path="/cashflow" element={<Cashflow />} />
-                              <Route path="/wealth" element={<Wealth />} />
-                              <Route path="/calendar" element={<Calendar />} />
-                              <Route path="/settings" element={<SettingsPage />} />
-                              <Route path="/about" element={<About />} />
-                              <Route path="/calculator" element={<Calculator />} />
-                              <Route path="*" element={<Navigate to="/" />} />
-                            </Routes>
-                          </Suspense>
-                          */}
-                          <AppRoutes />
-                        </AppLayout>
-                      </ProtectedRoute>
-                    } />
-                  </Routes>
-                </Suspense>
-              </Router>
-            </MotionConfig>
-          </ToastProvider>
-        </AppContext.Provider>
+        <AppStateContext.Provider value={stateValue}>
+          <AppActionsContext.Provider value={actionsValue}>
+            <AppContext.Provider value={combinedContextValue}>
+              <ToastProvider>
+                <LazyMotion features={domAnimation}>
+                  <MotionConfig reducedMotion="user">
+                    <Router>
+                      <Suspense fallback={<Loader />}>
+                        <Routes>
+                          <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+                          <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+                          <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" />} />
+                          <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" />} />
+                          <Route path="/verify-email" element={<VerifyEmail />} />
+                          <Route path="/*" element={
+                            <ProtectedRoute>
+                              <AppLayout>
+                                <AppRoutes />
+                              </AppLayout>
+                            </ProtectedRoute>
+                          } />
+                        </Routes>
+                      </Suspense>
+                    </Router>
+                  </MotionConfig>
+                </LazyMotion>
+              </ToastProvider>
+            </AppContext.Provider>
+          </AppActionsContext.Provider>
+        </AppStateContext.Provider>
       </I18nextProvider>
     </ErrorBoundary>
   );

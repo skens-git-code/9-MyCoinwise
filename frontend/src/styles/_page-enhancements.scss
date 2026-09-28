@@ -1,0 +1,157 @@
+/* ============================================================
+ * Page Enhancements & Keyframe Styles
+ * Extracted from inline JSX <style> blocks to eliminate
+ * GC pressure, DOM diffing overhead, and browser re-parsing.
+ * ============================================================ */
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ── Transactions search highlight ── */
+.tx-highlight {
+  background: rgba(245, 158, 11, 0.35);
+  padding: 0 2px;
+  border-radius: 3px;
+  color: inherit;
+}
+
+/* ── Accounts enhancements ── */
+.account-card {
+  border-left: 4px solid var(--account-accent, #3b82f6);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.color-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &.active {
+    border-color: var(--text-main);
+    transform: scale(1.1);
+  }
+
+  &:hover {
+    transform: scale(1.05);
+  }
+}
+
+.account-toolbar input,
+.account-toolbar select,
+.account-form input,
+.account-form select {
+  background: var(--bg-color);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.875rem;
+
+  &:focus {
+    outline: 2px solid var(--primary-color, #10b981);
+    outline-offset: 1px;
+  }
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: var(--bg-color);
+    color: var(--text-main);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+/* ── Subscriptions card states ── */
+.sub-paused {
+  opacity: 0.85;
+}
+
+/* ── Auth alert and countdown badges ── */
+.auth-alert-rate {
+  border-left: 3px solid #f59e0b;
+}
+
+.auth-alert-network {
+  border-left: 3px solid #3b82f6;
+}
+
+.auth-alert-unknown {
+  border-left: 3px solid #ef4444;
+}
+
+.auth-rate-countdown {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.2);
+  font-size: 0.78rem;
+}
+
+.auth-2fa-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-hint-warning {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--warning-color, #f59e0b);
+  margin-top: 4px;
+}
+
+.input-suffix-icon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.auth-inline-link {
+  color: var(--brand-primary, #10b981);
+  text-decoration: underline;
+
+  &:hover {
+    opacity: 0.85;
+  }
+}
+

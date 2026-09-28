@@ -158,7 +158,8 @@ const subscriptionSchema = new mongoose.Schema({
 // ── Listing active subscriptions per user ──
 subscriptionSchema.index({ user_id: 1, is_active: 1 });
 
-// ── Upcoming billing / renewal queries ──
+// ── Upcoming billing / renewal queries per user ──
+subscriptionSchema.index({ user_id: 1, next_billing_date: 1 });
 subscriptionSchema.index({ next_billing_date: 1 });
 
 // ── Unique, case-insensitive name per user ──

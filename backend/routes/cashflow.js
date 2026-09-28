@@ -18,10 +18,20 @@
 // ── Load dependencies ──
 const express = require('express');
 const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const axios = require('axios');
 const { logger } = require('../utils/logger');
+
+// Limit AI requests to 20 per 15 minutes per user/IP
+const aiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => String(req.userId || req.user?.id || req.ip || 'anonymous'),
+  validate: { keyGeneratorIpFallback: false },
+  message: { error: 'Too many AI requests. Please try again later.' },
+});
 
 /* —————————————————————————————————————
  * Helpers
@@ -82,6 +92,7 @@ const fetchGemini = async (prompt) => {
 router.post(
   '/ai-insights',
   auth,
+  aiLimiter,
   [
     // ── Validate numeric inputs ──
     body('averageDailyIncome').isFloat({ min: 0 }).toFloat(),

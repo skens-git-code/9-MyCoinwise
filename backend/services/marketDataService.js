@@ -13,8 +13,9 @@
  *   getLivePrices(symbols) → { [symbol]: price }
  * ————————————————————————————————————— */
 
-// ── Simple in-memory cache (replace with Redis in production) ──
-const priceCache = new Map();
+// ── LRU price cache (max 500 symbols) prevents unbounded memory growth ──
+const { LRUCache } = require('lru-cache');
+const priceCache = new LRUCache({ max: 500, ttl: 15 * 60 * 1000 });
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 // ── Fetch live prices for an array of ticker symbols ──

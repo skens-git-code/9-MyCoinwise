@@ -307,8 +307,32 @@ const userSchema = new mongoose.Schema({
 }, {
   // ── Auto-managed created_at / updated_at fields ──
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toJSON: {
+    virtuals: true,
+    transform: (_doc, ret) => {
+      delete ret.password;
+      delete ret.session_version;
+      delete ret.reset_password_token;
+      delete ret.reset_password_expires;
+      delete ret.email_verify_token;
+      delete ret.email_verify_expires;
+      delete ret.__v;
+      return ret;
+    }
+  },
+  toObject: {
+    virtuals: true,
+    transform: (_doc, ret) => {
+      delete ret.password;
+      delete ret.session_version;
+      delete ret.reset_password_token;
+      delete ret.reset_password_expires;
+      delete ret.email_verify_token;
+      delete ret.email_verify_expires;
+      delete ret.__v;
+      return ret;
+    }
+  }
 });
 
 /* —————————————————————————————————————
@@ -379,6 +403,14 @@ userSchema.methods.generatePasswordResetToken = function() {
   const token = crypto.randomBytes(32).toString('hex');
   this.reset_password_token   = crypto.createHash('sha256').update(token).digest('hex');
   this.reset_password_expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+  return token; // Return raw token to send in email
+};
+
+// ── Generate an email verification token; store only its SHA-256 hash ──
+userSchema.methods.generateEmailVerificationToken = function() {
+  const token = crypto.randomBytes(32).toString('hex');
+  this.email_verify_token   = crypto.createHash('sha256').update(token).digest('hex');
+  this.email_verify_expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
   return token; // Return raw token to send in email
 };
 

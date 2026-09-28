@@ -128,6 +128,7 @@ const wealthItemSchema = new mongoose.Schema({
 
 // ── Fast per-user lookups (avoids COLLSCAN on /api/wealth/items) ──
 wealthItemSchema.index({ user_id: 1 });
+wealthItemSchema.index({ user_id: 1, asset_class: 1 });
 
 /* —————————————————————————————————————
  * Export

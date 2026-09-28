@@ -60,6 +60,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const { LRUCache } = require('lru-cache');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const Account = require('../models/Account');
@@ -469,7 +470,33 @@ const getTransactionBalance = async (userId) => {
   return Number(balance.toFixed(2));
 };
 
-// ── Recalculate and persist the user's cached balance ──
+// ── Calculate signed amount in user's display currency ──
+const getTransactionSignedAmountForUser = async (userId, transaction) => {
+  if (!transaction || !Number.isFinite(transaction.amount)) return 0;
+  const user = await User.findById(userId).select('currency').lean();
+  const displayCurrency = normalizeCurrency(user?.currency);
+  const sourceCurrency = normalizeCurrency(transaction.currency, displayCurrency);
+  const convertedAmount = convertToCurrency(transaction.amount, sourceCurrency, displayCurrency);
+  return transaction.type === 'income' ? convertedAmount : -convertedAmount;
+};
+
+// ── Incremental balance update for a user (O(1)) ──
+const adjustUserBalanceIncrementally = async (userId, signedDelta) => {
+  if (!mongoose.isValidObjectId(userId)) return 0;
+  if (!Number.isFinite(signedDelta) || Math.abs(signedDelta) < 1e-4) {
+    const user = await User.findById(userId).select('balance').lean();
+    return Number((user?.balance || 0).toFixed(2));
+  }
+  const delta = Math.round(signedDelta * 100) / 100;
+  const updatedUser = await User.findByIdAndUpdate(
+    userId,
+    { $inc: { balance: delta } },
+    { new: true }
+  ).select('balance').lean();
+  return Number((updatedUser?.balance || 0).toFixed(2));
+};
+
+// ── Recalculate and persist the user's cached balance (Reconciliation) ──
 const syncUserBalance = async (userId) => {
   const balance = await getTransactionBalance(userId);
   await User.findByIdAndUpdate(userId, { $set: { balance } });
@@ -616,7 +643,8 @@ const processRecurringForUser = async (userId) => {
  * Recurring Cooldown
  * Prevents running heavy upsert loops on every single GET request.
  * ————————————————————————————————————— */
-const lastRecurringProcessMap = new Map();
+// Max 10,000 entries prevents unbounded memory growth.
+const lastRecurringProcessMap = new LRUCache({ max: 10000, ttl: 15 * 60 * 1000 });
 const RECURRING_CHECK_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
 
 // ── Return true when the cooldown for this user has elapsed ──
@@ -1034,9 +1062,15 @@ router.post('/', async (req, res) => {
       audit_logs: [{ action: 'Created', timestamp: new Date() }],
     });
 
-    // ── Refresh cached balances ──
-    const balance = await syncUserBalance(req.userId);
-    await syncAccountBalances([transaction.account_id]);
+    // ── Refresh cached balances incrementally (O(1)) ──
+    const signedAmount = await getTransactionSignedAmountForUser(req.userId, transaction);
+    const balance = await adjustUserBalanceIncrementally(req.userId, signedAmount);
+    if (transaction.account_id) {
+      const accountDelta = transaction.type === 'income' ? transaction.amount : -transaction.amount;
+      await Account.findByIdAndUpdate(transaction.account_id, {
+        $inc: { current_balance: Math.round(accountDelta * 100) / 100 },
+      });
+    }
 
     return res.status(201).json({ transaction, balance, message: 'Transaction added' });
   } catch (error) {
@@ -1099,6 +1133,9 @@ router.put('/:id', async (req, res) => {
     );
 
     const previousAccountId = t.account_id;
+    const oldType = t.type;
+    const oldAmount = t.amount;
+    const oldCurrency = t.currency;
 
     // ── Apply the changes ──
     t.type = next.type;
@@ -1126,9 +1163,40 @@ router.put('/:id', async (req, res) => {
 
     await t.save();
 
-    // ── Refresh cached balances (old and new account) ──
-    const balance = await syncUserBalance(req.userId);
-    await syncAccountBalances([previousAccountId, t.account_id]);
+    // ── Refresh cached balances incrementally (O(1)) ──
+    const oldSigned = await getTransactionSignedAmountForUser(req.userId, {
+      type: oldType,
+      amount: oldAmount,
+      currency: oldCurrency,
+    });
+    const newSigned = await getTransactionSignedAmountForUser(req.userId, t);
+    const delta = newSigned - oldSigned;
+    const balance = await adjustUserBalanceIncrementally(req.userId, delta);
+
+    // Update account balances incrementally
+    const oldAccId = previousAccountId ? String(previousAccountId) : null;
+    const newAccId = t.account_id ? String(t.account_id) : null;
+    if (oldAccId === newAccId && oldAccId) {
+      const oldAccSigned = oldType === 'income' ? oldAmount : -oldAmount;
+      const newAccSigned = t.type === 'income' ? t.amount : -t.amount;
+      const accDelta = Math.round((newAccSigned - oldAccSigned) * 100) / 100;
+      if (accDelta !== 0) {
+        await Account.findByIdAndUpdate(oldAccId, { $inc: { current_balance: accDelta } });
+      }
+    } else {
+      if (oldAccId) {
+        const oldAccSigned = oldType === 'income' ? oldAmount : -oldAmount;
+        await Account.findByIdAndUpdate(oldAccId, {
+          $inc: { current_balance: Math.round(-oldAccSigned * 100) / 100 },
+        });
+      }
+      if (newAccId) {
+        const newAccSigned = t.type === 'income' ? t.amount : -t.amount;
+        await Account.findByIdAndUpdate(newAccId, {
+          $inc: { current_balance: Math.round(newAccSigned * 100) / 100 },
+        });
+      }
+    }
 
     return res.json({ transaction: t, balance, message: 'Transaction updated' });
   } catch (error) {
@@ -1156,12 +1224,18 @@ router.delete('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // ── Soft delete and refresh balances ──
+    // ── Soft delete and refresh balances incrementally (O(1)) ──
+    const oldSigned = await getTransactionSignedAmountForUser(req.userId, t);
     t.is_deleted = true;
     await t.save();
 
-    const balance = await syncUserBalance(req.userId);
-    await syncAccountBalances([t.account_id]);
+    const balance = await adjustUserBalanceIncrementally(req.userId, -oldSigned);
+    if (t.account_id) {
+      const accDelta = t.type === 'income' ? -t.amount : t.amount;
+      await Account.findByIdAndUpdate(t.account_id, {
+        $inc: { current_balance: Math.round(accDelta * 100) / 100 },
+      });
+    }
 
     return res.json({ balance, message: 'Transaction deleted' });
   } catch (error) {
@@ -1221,5 +1295,7 @@ router.post('/bulk-delete', async (req, res) => {
  * Export
  * ————————————————————————————————————— */
 
-// ── Export router ──
+// ── Export router and reconciliation helpers ──
+router.syncUserBalance = syncUserBalance;
+router.adjustUserBalanceIncrementally = adjustUserBalanceIncrementally;
 module.exports = router;

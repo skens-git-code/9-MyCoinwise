@@ -1,0 +1,17 @@
+{
+  "ci": {
+    "collect": {
+      "staticDistDir": "./frontend/dist",
+      "numberOfRuns": 3,
+      "settings": {
+        "preset": "mobile"
+      }
+    },
+    "assert": {
+      "assertions": {
+        "categories:performance": ["error", { "minScore": 0.85 }],
+        "categories:accessibility": ["warn", { "minScore": 0.90 }]
+      }
+    }
+  }
+}
