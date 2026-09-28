@@ -14,37 +14,58 @@ export const AppStateContext = createContext(null);
 export const AppActionsContext = createContext(null);
 
 /**
- * Unified AppContext: Preserved for backwards compatibility with
- * existing consumers and tests. Combines memoized state + actions.
+ * @deprecated Legacy monolithic context. Scheduled for deletion in Stage 5.
+ * Only retained for backward-compatibility with test fixtures that wrap <AppContext.Provider>.
+ * All production code MUST consume AppStateContext or AppActionsContext directly.
  */
 export const AppContext = createContext(null);
 
+const isTestEnv = import.meta.env?.MODE === 'test';
+
 /**
  * Hook to consume only data slices.
+ * Throws in production if called outside AppStateContext.Provider.
  */
 export function useAppState() {
   const stateContext = useContext(AppStateContext);
   const appContext = useContext(AppContext);
-  return stateContext || appContext || {};
+  const ctx = stateContext || (isTestEnv ? appContext : null);
+
+  if (!ctx) {
+    throw new Error('useAppState used outside AppStateContext.Provider — this is a bug.');
+  }
+  return ctx;
 }
 
 /**
  * Hook to consume only action handlers.
+ * Throws in production if called outside AppActionsContext.Provider.
  */
 export function useAppActions() {
   const actionsContext = useContext(AppActionsContext);
   const appContext = useContext(AppContext);
-  return actionsContext || appContext || {};
+  const ctx = actionsContext || (isTestEnv ? appContext : null);
+
+  if (!ctx) {
+    throw new Error('useAppActions used outside AppActionsContext.Provider — this is a bug.');
+  }
+  return ctx;
 }
 
 /**
- * Hook to consume combined context with graceful fallback.
+ * @deprecated Legacy hook to consume combined context.
  */
 export function useAppContext() {
-  const combined = useContext(AppContext);
-  if (combined) return combined;
+  const stateContext = useContext(AppStateContext);
+  const actionsContext = useContext(AppActionsContext);
+  const appContext = useContext(AppContext);
 
-  const state = useContext(AppStateContext) || {};
-  const actions = useContext(AppActionsContext) || {};
-  return { ...state, ...actions };
+  if (isTestEnv && appContext) {
+    return appContext;
+  }
+
+  if (!stateContext && !actionsContext) {
+    throw new Error('useAppContext used outside Provider — this is a bug.');
+  }
+  return { ...(stateContext || {}), ...(actionsContext || {}) };
 }
