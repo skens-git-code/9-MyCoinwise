@@ -6,7 +6,6 @@
 
 import React, {
   useState,
-  useContext,
   useMemo,
   useCallback,
   useEffect,
@@ -36,7 +35,7 @@ import {
   Repeat,
   List as ListIcon,
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
 import { useToast } from '../components/ToastProvider';
 import { getAppDate } from '../utils/dateUtils';
@@ -362,14 +361,16 @@ export default function Calendar() {
   const {
     transactions = [],
     subscriptions = [],
+    lang = 'en',
+    loading,
+  } = useAppState();
+  const {
     addTransaction,
     updateTransaction,
     deleteTransaction,
     fmt: contextFmt,
     t: translate,
-    lang = 'en',
-    loading,
-  } = useContext(AppContext);
+  } = useAppActions();
   const { showToast } = useToast();
 
   const locale = useMemo(() => resolveLocale(lang), [lang]);

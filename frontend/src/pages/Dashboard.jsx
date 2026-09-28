@@ -20,7 +20,7 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useContext, useState, useMemo, useCallback, useEffect, useRef, useId,
+  useState, useMemo, useCallback, useEffect, useRef, useId,
 } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,7 +31,7 @@ import {
   Rocket, LineChart, Tag, RefreshCw, Share2,
   Edit3, Trash2, ChevronDown, AlertTriangle, X,
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import ErrorBoundary from '../components/ErrorBoundary';
 import TransactionForm from '../components/TransactionForm';
 import PropTypes from 'prop-types';
@@ -537,28 +537,27 @@ ConfirmDeleteModal.propTypes = {
  * Main Component
  * ============================================================ */
 export default function Dashboard() {
-  // ── App context (safe default so an empty context doesn't crash) ──
-  const contextValue = useContext(AppContext);
-  const context = useMemo(() => contextValue || {}, [contextValue]);
-
   const {
     user = null,
     transactions: rawTransactions = [],
     accounts = [],
     subscriptions = [],
     theme = 'light',
+    USER_ID = null,
+    lang = 'en',
+    currency = 'USD',
+    currencyInfo,
+    loading,
+  } = useAppState();
+
+  const {
     addTransaction,
     updateTransaction,
     deleteTransaction,
-    USER_ID = null,
     fmt,
     t,
-    lang = 'en',
-    currency = 'USD',
     fetchTransactions,
-    currencyInfo,
-    loading,
-  } = context;
+  } = useAppActions();
 
   const { showToast } = useToast();
   const prefersReducedMotion = usePrefersReducedMotion();

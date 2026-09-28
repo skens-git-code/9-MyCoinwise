@@ -20,7 +20,7 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useState, useContext, useMemo, useCallback, useEffect, useRef,
+  useState, useMemo, useCallback, useEffect, useRef,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FixedSizeList } from '../components/FixedSizeList';
@@ -32,7 +32,7 @@ import {
   Gamepad2, Package, Sparkles, Loader2, X, Palette, Search,
   ArrowUpRight, ArrowDownRight, PiggyBank, Undo2,
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import { api } from '../services/api';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
@@ -251,12 +251,14 @@ export default function Subscriptions() {
     user,
     subscriptions: subs = [],
     transactions = [],
-    refetch,
     USER_ID,
-    t,
     lang = 'en',
     loading: contextLoading,
-  } = useContext(AppContext);
+  } = useAppState();
+  const {
+    refetch,
+    t,
+  } = useAppActions();
   const { showToast } = useToast();
 
   // ── Translation helper with inline fallback ──
@@ -304,12 +306,6 @@ export default function Subscriptions() {
     const val = e.target.value;
     setSearchInput(val);
     debouncedSetSearch(val);
-  }, [debouncedSetSearch]);
-
-  const handleClearSearch = useCallback(() => {
-    setSearchInput('');
-    setSearch('');
-    debouncedSetSearch.cancel();
   }, [debouncedSetSearch]);
 
 

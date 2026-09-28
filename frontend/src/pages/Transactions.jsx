@@ -20,7 +20,7 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useState, useContext, useMemo, useDeferredValue, useRef, useEffect, useCallback,
+  useState, useMemo, useDeferredValue, useRef, useEffect, useCallback,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FixedSizeList } from '../components/FixedSizeList';
@@ -33,7 +33,7 @@ import {
   Layers, RefreshCw, Undo2, AlertTriangle, Loader2, Tag,
   Calendar, DollarSign, Keyboard, Receipt, Share2,
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
@@ -141,19 +141,21 @@ export default function Transactions() {
   // ── App context: data, actions, i18n ──
   const {
     transactions: rawTransactions = [],
-    deleteTransaction,
-    editTransaction,
-    addTransaction,
-    fmt,
     user,
     theme = 'dark',
     currencyInfo,
     USER_ID,
-    refetch,
-    t,
     lang = 'en',
     loading: contextLoading,
-  } = useContext(AppContext);
+  } = useAppState();
+  const {
+    deleteTransaction,
+    editTransaction,
+    addTransaction,
+    fmt,
+    refetch,
+    t,
+  } = useAppActions();
   const { showToast } = useToast();
 
   // ── Translation helper with inline fallback ──

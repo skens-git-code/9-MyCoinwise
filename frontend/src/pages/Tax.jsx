@@ -16,10 +16,10 @@
  *   - Duplicate deduction claims are rejected by the server.
  * ————————————————————————————————————— */
 
-import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, BarChart3, CheckCircle2, Circle, Download, FileText, Plus, RefreshCw, Trash2, Wallet, X } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import { api } from '../services/api';
 import { useToast } from '../components/ToastProvider';
 import TaxDisclaimer from '../components/tax/TaxDisclaimer';
@@ -64,7 +64,8 @@ const shiftDateByYear = (date, years) => { const shifted = new Date(date); shift
  * ============================================================ */
 export default function Tax() {
   // ── App context: user, transactions, currency, i18n ──
-  const { user, transactions = [], currency = 'INR', t, lang } = useContext(AppContext);
+  const { user, transactions = [], currency = 'INR', lang } = useAppState();
+  const { t } = useAppActions();
   const navigate = useNavigate();
   const { showToast } = useToast();
 

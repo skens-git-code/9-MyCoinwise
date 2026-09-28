@@ -18,12 +18,12 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useState, useContext, useRef, useEffect, useCallback, useMemo,
+  useState, useRef, useEffect, useCallback, useMemo,
 } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../services/api';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import { LANGUAGES } from '../services/i18n';
 import {
   User, Mail, KeyRound, AlertTriangle, Zap, Eye, EyeOff,
@@ -186,7 +186,8 @@ function useFocusTrap(ref, isActive, onEscape) {
  * ============================================================ */
 export default function Register() {
   // ── App context + router ──
-  const { login, t, lang = 'en', setLanguage, user } = useContext(AppContext);
+  const { lang = 'en', user } = useAppState();
+  const { login, t, setLanguage } = useAppActions();
   const navigate = useNavigate();
 
   // ── Translation helper with inline fallback ──

@@ -18,7 +18,7 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useState, useContext, useMemo, useRef, useEffect, useCallback,
+  useState, useMemo, useRef, useEffect, useCallback,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FixedSizeList } from '../components/FixedSizeList';
@@ -28,7 +28,7 @@ import {
   FileText, Calendar, AlertTriangle, ArrowUpDown, History,
   Undo2, Download, LayoutTemplate, X, CheckCircle2, Sparkles, Search,
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import { predictTimeToGoal } from '../services/aiEngine';
 import { api } from '../services/api';
 import Modal from '../components/Modal';
@@ -457,13 +457,15 @@ export default function Goals() {
   const {
     transactions = [],
     goals = [],
-    fmt,
-    refetch,
     USER_ID,
-    t,
     lang = 'en',
     loading,
-  } = useContext(AppContext);
+  } = useAppState();
+  const {
+    fmt,
+    refetch,
+    t,
+  } = useAppActions();
   const { showToast } = useToast();
 
   // ── Translation helper with inline fallback ──
