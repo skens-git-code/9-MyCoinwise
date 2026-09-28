@@ -28,11 +28,11 @@
  *   - `useId` generates an accessible title id for `aria-labelledby`.
  * ————————————————————————————————————— */
 
-import React, { useEffect, useId, useContext } from 'react';
+import React, { useEffect, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppActions } from '../contexts/AppContext';
 
 /* —————————————————————————————————————
  * Component
@@ -54,8 +54,8 @@ const Modal = ({
   const modalId = useId();
 
   // ── i18n and fallback labels ──
-  const context = useContext(AppContext);
-  const t = context?.t;
+  const actions = useAppActions();
+  const t = actions?.t;
   const resolvedCancelText = cancelText || t?.('cancel') || 'Cancel';
   const resolvedProcessingText = processingText || t?.('processing') || 'Processing...';
 

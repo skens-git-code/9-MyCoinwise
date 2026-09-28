@@ -13,19 +13,19 @@
  *   - Unknown routes fall back to a title-cased version of the path.
  * ————————————————————————————————————— */
 
-import React, { useContext } from 'react';
+import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { ChevronRight, Home } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppActions } from '../contexts/AppContext';
 
 /* —————————————————————————————————————
  * Component
  * ————————————————————————————————————— */
-export default function Breadcrumbs() {
+function Breadcrumbs() {
   // ── Current route and translation function ──
   const location = useLocation();
   const currentPath = location.pathname;
-  const { t } = useContext(AppContext);
+  const { t } = useAppActions();
 
   /* —————————————————————————————————————
    * Path Label Resolver
@@ -98,3 +98,5 @@ export default function Breadcrumbs() {
     </nav>
   );
 }
+
+export default React.memo(Breadcrumbs);
