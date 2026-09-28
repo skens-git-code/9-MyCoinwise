@@ -1,73 +1,66 @@
 import { useState, useEffect, useRef } from 'react';
+import { useMotionValue, animate } from 'framer-motion';
 
-// Cubic ease-out for natural deceleration
-const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-
+/**
+ * High-performance number tweening hook using Framer Motion's internal animation loop.
+ * Respects prefers-reduced-motion and document.hidden with instant snapping
+ * and deterministic stop() cleanup on unmount.
+ */
 export default function useCountUp(targetValue, duration = 800) {
-  const [value, setValue] = useState(0);
-  const [isFinished, setIsFinished] = useState(false);
-
-  const requestRef = useRef(null);
-  const startTimeRef = useRef(null);
-  const startValueRef = useRef(0); // Where the current animation started
-
-  // Track system preference without causing hydration mismatches
-  const prefersReducedMotion = typeof window !== 'undefined'
-    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    : false;
+  const [value, setValue] = useState(targetValue);
+  const [isFinished, setIsFinished] = useState(true);
+  const motionVal = useMotionValue(targetValue);
+  const prevTargetRef = useRef(targetValue);
 
   useEffect(() => {
-    if (prefersReducedMotion) {
-      setTimeout(() => {
-        setValue(targetValue);
-        startValueRef.current = targetValue;
-        setIsFinished(true);
-      }, 0);
-      return;
+    const isHidden = typeof document !== 'undefined' && document.hidden;
+    const prefersReducedMotion = typeof window !== 'undefined'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false;
+
+    // Immediately snap to target if motion is reduced, tab is hidden, or values match
+    if (prefersReducedMotion || isHidden || prevTargetRef.current === targetValue) {
+      motionVal.set(targetValue);
+      setValue(targetValue);
+      prevTargetRef.current = targetValue;
+      setIsFinished(true);
+      return undefined;
     }
 
-    // Prepare fresh animation
-    setTimeout(() => {
-      setIsFinished(false);
-    }, 0);
-    startTimeRef.current = undefined;
+    setIsFinished(false);
+    // Convert ms to seconds if > 10 (framer-motion expects seconds)
+    const durationSeconds = duration > 10 ? duration / 1000 : duration;
 
-    // Animate from wherever we currently are
-    const fromValue = startValueRef.current;
-
-    // If we're already exactly at the target, skip animation to save cycles
-    if (fromValue === targetValue) {
-      setTimeout(() => {
+    const controls = animate(motionVal, targetValue, {
+      duration: durationSeconds,
+      ease: [0.16, 1, 0.3, 1], // easeOutExpo
+      onUpdate: (latest) => {
+        setValue(latest);
+      },
+      onComplete: () => {
         setValue(targetValue);
+        prevTargetRef.current = targetValue;
         setIsFinished(true);
-      }, 0);
-      return;
-    }
+      },
+    });
 
-    const animate = (time) => {
-      if (!startTimeRef.current) startTimeRef.current = time;
-      const elapsedTime = time - startTimeRef.current;
-
-      if (elapsedTime >= duration) {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        controls.stop();
+        motionVal.set(targetValue);
         setValue(targetValue);
-        startValueRef.current = targetValue;
+        prevTargetRef.current = targetValue;
         setIsFinished(true);
-        return;
       }
-
-      const progress = easeOutCubic(elapsedTime / duration);
-      const nextValue = fromValue + (targetValue - fromValue) * progress;
-
-      setValue(nextValue);
-      requestRef.current = requestAnimationFrame(animate);
     };
 
-    requestRef.current = requestAnimationFrame(animate);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      controls.stop();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [targetValue, duration, prefersReducedMotion]);
+  }, [targetValue, duration, motionVal]);
 
   return { value, isFinished };
 }

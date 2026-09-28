@@ -1149,39 +1149,6 @@ export default function Register() {
         )}
       </AnimatePresence>
 
-      {/* ── Local styles for spin animation, hints, and helper classes ── */}
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 1s linear infinite; }
-        .auth-rate-countdown {
-          font-variant-numeric: tabular-nums;
-          font-weight: 700;
-          padding: 2px 8px;
-          border-radius: 999px;
-          background: rgba(245,158,11,0.2);
-          font-size: 0.78rem;
-        }
-        .form-hint-warning {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 0.75rem;
-          color: var(--warning-color, #f59e0b);
-          margin-top: 4px;
-        }
-        .input-suffix-icon {
-          position: absolute;
-          right: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          pointer-events: none;
-        }
-        .auth-inline-link {
-          color: var(--brand-primary);
-          text-decoration: underline;
-        }
-        .auth-inline-link:hover { opacity: 0.85; }
-      `}</style>
     </div>
   );
 }

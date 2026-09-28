@@ -293,6 +293,10 @@ const transactionSchema = new mongoose.Schema({
 // ── Listing: newest first per user ──
 transactionSchema.index({ user_id: 1, date: -1 });
 
+// ── Soft-delete filtering index ──
+transactionSchema.index({ user_id: 1, is_deleted: 1 });
+transactionSchema.index({ user_id: 1, is_deleted: 1, date: -1 });
+
 // ── Listing: filter by income/expense ──
 transactionSchema.index({ user_id: 1, type: 1 });
 

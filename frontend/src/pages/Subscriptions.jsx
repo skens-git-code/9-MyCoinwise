@@ -23,6 +23,8 @@ import React, {
   useState, useContext, useMemo, useCallback, useEffect, useRef,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { FixedSizeList } from '../components/FixedSizeList';
+import debounce from 'lodash.debounce';
 import {
   Plus, Trash2, Edit3, RefreshCw, Calendar, TrendingDown,
   Pause, Play, XCircle, AlertCircle, Clock, CheckCircle2,
@@ -284,7 +286,32 @@ export default function Subscriptions() {
 
   // ── Filter + search ──
   const [statusFilter, setStatusFilter] = useState('all');
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+
+  const debouncedSetSearch = useMemo(
+    () => debounce((val) => setSearch(val), 300),
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      debouncedSetSearch.cancel();
+    };
+  }, [debouncedSetSearch]);
+
+  const handleSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setSearchInput(val);
+    debouncedSetSearch(val);
+  }, [debouncedSetSearch]);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchInput('');
+    setSearch('');
+    debouncedSetSearch.cancel();
+  }, [debouncedSetSearch]);
+
 
   /* ---------------- Independent Loading Flags ---------------- */
 
@@ -706,6 +733,117 @@ export default function Subscriptions() {
     }
   }, [actingIds, refetch, showToast, tr]);
 
+  // ── Row component for virtualized subscriptions list (>20 items) ──
+  const VirtualizedSubRow = useCallback(({ index, style }) => {
+    const s = filteredSubs[index];
+    if (!s) return null;
+    const subId = s.id || s._id;
+    const monthly = getMonthlyEquivalent(s);
+    const isPaused = Boolean(s.is_paused);
+    const isCancelled = Boolean(s.cancelled_at);
+    const acting = actingIds.has(subId);
+    const IconCmp = s.icon && ICON_MAP[s.icon] ? ICON_MAP[s.icon] : null;
+
+    return (
+      <div style={{ ...style, paddingBottom: 8, boxSizing: 'border-box' }}>
+        <div
+          className={`glass ${isPaused ? 'sub-paused' : ''} ${isCancelled ? 'sub-cancelled' : ''}`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 16px',
+            borderRadius: 12,
+            height: '100%',
+            boxSizing: 'border-box',
+            borderLeft: isCancelled ? '4px solid var(--danger)' : `4px solid ${s.color || 'var(--brand-primary)'}`,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <div className="mc-icon" style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: 'var(--surface-1)' }} aria-hidden>
+              {IconCmp ? <IconCmp size={18} /> : (s.icon || '💳')}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontWeight: 700, fontSize: '0.95rem' }} className="truncate">{s.name}</span>
+                {isPaused && !isCancelled && (
+                  <span className="badge" style={{ background: 'rgba(245,158,11,0.2)', color: 'var(--warning)', fontSize: '0.68rem' }}>
+                    {tr('paused', 'Paused')}
+                  </span>
+                )}
+                {isCancelled && (
+                  <span className="badge" style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--danger)', fontSize: '0.68rem' }}>
+                    {tr('cancelled', 'Cancelled')}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {fmt(s.amount)} / {getCycleLabel(s.cycle, t)} · {isPaused || isCancelled ? tr('inactive', 'Inactive') : `~${fmt(monthly)}/mo`}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            {isCancelled ? (
+              <button
+                type="button"
+                className="del-btn"
+                onClick={() => reactivateSub(s)}
+                disabled={acting}
+                aria-label={`${tr('reactivate', 'Reactivate')} ${s.name || ''}`.trim()}
+                title={tr('reactivate', 'Reactivate')}
+              >
+                {acting ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="del-btn"
+                  onClick={() => togglePauseStatus(s)}
+                  disabled={acting}
+                  aria-label={isPaused
+                    ? `${tr('resume', 'Resume')} ${s.name || ''}`.trim()
+                    : `${tr('pause', 'Pause')} ${s.name || ''}`.trim()}
+                  title={isPaused ? tr('resume', 'Resume') : tr('pause', 'Pause')}
+                >
+                  {acting ? <Loader2 size={14} className="spin" /> : (isPaused ? <Play size={14} /> : <Pause size={14} />)}
+                </button>
+                <button
+                  type="button"
+                  className="del-btn"
+                  onClick={() => openEdit(s)}
+                  aria-label={`${tr('edit', 'Edit')} ${s.name || ''}`.trim()}
+                  title={tr('edit', 'Edit')}
+                >
+                  <Edit3 size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="del-btn"
+                  onClick={() => setSubToCancel(subId)}
+                  aria-label={`${tr('cancel', 'Cancel')} ${s.name || ''}`.trim()}
+                  title={tr('cancel', 'Cancel')}
+                >
+                  <XCircle size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="del-btn"
+                  onClick={() => setSubToDelete(subId)}
+                  aria-label={`${tr('delete', 'Delete')} ${s.name || ''}`.trim()}
+                  title={tr('delete', 'Delete')}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }, [filteredSubs, actingIds, fmt, t, tr, reactivateSub, togglePauseStatus, openEdit]);
+
   /* ---------------- Loading State ---------------- */
 
   // ── Show loading state while subscriptions have not loaded yet ──
@@ -948,8 +1086,8 @@ export default function Subscriptions() {
           />
           <input
             type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={handleSearchChange}
             placeholder={tr('search_subscriptions', 'Search subscriptions…')}
             aria-label={tr('search_subscriptions', 'Search subscriptions')}
             style={{ width: '100%', paddingLeft: 32, fontSize: '0.85rem' }}
@@ -979,6 +1117,15 @@ export default function Subscriptions() {
                 : tr('add_custom_subs_desc', 'Add custom subscriptions or use the quick presets above.')}
             </p>
           </motion.div>
+        ) : filteredSubs.length > 20 ? (
+          <FixedSizeList
+            height={Math.min(filteredSubs.length * 76, 600)}
+            itemCount={filteredSubs.length}
+            itemSize={76}
+            width="100%"
+          >
+            {VirtualizedSubRow}
+          </FixedSizeList>
         ) : (
           /* ── Grid of subscription cards ── */
           <div className="masonry-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
@@ -1392,12 +1539,6 @@ export default function Subscriptions() {
         )}
       </AnimatePresence>
 
-      {/* ── Local styles for spin animation and paused card state ── */}
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 1s linear infinite; }
-        .sub-paused { opacity: 0.85; }
-      `}</style>
     </div>
   );
 }

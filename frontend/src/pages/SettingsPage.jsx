@@ -28,11 +28,11 @@ import React, {
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
-  Save, User, Users, Target, Moon, Sun, Download, CheckCircle, AlertCircle,
-  Palette, Database, Plus, Settings, ShieldAlert, Globe, Bell, Zap, Smartphone,
-  FileText, Trash2, X, Loader, Key, Shield, Bell as BellIcon, Eye,
-  Lock, LogOut, ChevronRight, RefreshCw, AlertTriangle, EyeOff, Search,
-  Copy, Check, Monitor, Calendar, Activity, Upload, Clock,
+  Save, User, Users, Target, Moon, Sun, Download, CheckCircle,
+  Palette, Database, Plus, Settings, ShieldAlert, Globe, Bell, Bell as BellIcon, Zap, Smartphone,
+  FileText, Trash2, Loader, Key, Shield, Eye,
+  Lock, LogOut, RefreshCw, AlertTriangle, EyeOff, Search,
+  Monitor, Calendar, Activity, Upload, Clock,
 } from 'lucide-react';
 import { AppContext } from '../contexts/AppContext';
 import { CURRENCIES, AVATAR_COLORS, api } from '../services/api';
@@ -394,6 +394,9 @@ const ReAuthModal = ({ isOpen, onClose, onConfirmed, actionLabel, isLoading }) =
  * Backup & Restore
  * ============================================================ */
 const BackupRestore = ({ userId, showMessage }) => {
+  const navigate = useNavigate();
+  const { refetch } = useContext(AppContext) || {};
+
   // ── Local state: export/restore in-flight + auto-backup toggle ──
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
@@ -477,8 +480,9 @@ const BackupRestore = ({ userId, showMessage }) => {
     setConfirmRestoreFile(null);
     try {
       await api.importAllData(userId, restorePreview.parsedData);
-      showMessage('success', 'Backup restored successfully! Reloading…');
-      setTimeout(() => window.location.reload(), 1500);
+      showMessage('success', 'Backup restored successfully!');
+      await refetch?.();
+      navigate('/', { replace: true });
     } catch (error) {
       console.error('Restore error:', error);
       showMessage('error', 'Failed to restore backup: Invalid file format or corrupted data');
@@ -498,32 +502,53 @@ const BackupRestore = ({ userId, showMessage }) => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // ── Toggle auto-backup (weekly) ──
+  // ── Toggle auto-backup (weekly, paused when tab is hidden) ──
+  useEffect(() => {
+    if (!autoBackup) return undefined;
+
+    const scheduleBackup = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      const lastBackup = localStorage.getItem('last-auto-backup');
+      const lastTs = lastBackup ? new Date(lastBackup).getTime() : 0;
+      const validTs = Number.isFinite(lastTs) ? lastTs : 0;
+      const oneWeek = 7 * 24 * 60 * 60 * 1000;
+      if (!validTs || Date.now() - validTs > oneWeek) {
+        const ok = await handleExportBackup();
+        if (ok) {
+          try { localStorage.setItem('last-auto-backup', new Date().toISOString()); } catch { /* ignore */ }
+        }
+      }
+    };
+
+    scheduleBackup();
+    if (autoBackupIntervalRef.current) clearInterval(autoBackupIntervalRef.current);
+    autoBackupIntervalRef.current = setInterval(scheduleBackup, 7 * 24 * 60 * 60 * 1000);
+
+    const handleVisibility = () => {
+      if (document.hidden && autoBackupIntervalRef.current) {
+        clearInterval(autoBackupIntervalRef.current);
+        autoBackupIntervalRef.current = null;
+      } else if (!document.hidden && !autoBackupIntervalRef.current) {
+        scheduleBackup();
+        autoBackupIntervalRef.current = setInterval(scheduleBackup, 7 * 24 * 60 * 60 * 1000);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      if (autoBackupIntervalRef.current) {
+        clearInterval(autoBackupIntervalRef.current);
+        autoBackupIntervalRef.current = null;
+      }
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [autoBackup, handleExportBackup]);
+
   const toggleAutoBackup = async () => {
     const newState = !autoBackup;
     setAutoBackup(newState);
     try { localStorage.setItem('auto-backup-enabled', JSON.stringify(newState)); } catch { /* ignore */ }
-
-    if (newState) {
-      const scheduleBackup = async () => {
-        const lastBackup = localStorage.getItem('last-auto-backup');
-        const lastTs = lastBackup ? new Date(lastBackup).getTime() : 0;
-        const validTs = Number.isFinite(lastTs) ? lastTs : 0;
-        const oneWeek = 7 * 24 * 60 * 60 * 1000;
-        if (!validTs || Date.now() - validTs > oneWeek) {
-          const ok = await handleExportBackup();
-          if (ok) {
-            try { localStorage.setItem('last-auto-backup', new Date().toISOString()); } catch { /* ignore */ }
-          }
-        }
-      };
-      scheduleBackup();
-      if (autoBackupIntervalRef.current) clearInterval(autoBackupIntervalRef.current);
-      autoBackupIntervalRef.current = setInterval(scheduleBackup, 7 * 24 * 60 * 60 * 1000);
-    } else if (autoBackupIntervalRef.current) {
-      clearInterval(autoBackupIntervalRef.current);
-      autoBackupIntervalRef.current = null;
-    }
   };
 
   return (
@@ -1277,7 +1302,7 @@ const EmailChangeSection = ({ user, showMessage, logout, requestReAuth, t }) => 
 /* ============================================================
  * Profile tab
  * ============================================================ */
-const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout, requestReAuth }) => {
+const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMessage, logout, requestReAuth }) => {
   // ── File input + emoji tray visibility ──
   const fileInputRef = useRef(null);
   const [showEmojiTray, setShowEmojiTray] = useState(false);
@@ -1528,12 +1553,13 @@ const ProfileTab = ({ formState, handleFieldChange, t, user, showMessage, logout
       </div>
     </>
   );
-};
+});
+ProfileTab.displayName = 'ProfileTab';
 
 /* ============================================================
  * Preferences tab
  * ============================================================ */
-const PreferencesTab = ({ formState, handleFieldChange, t }) => (
+const PreferencesTab = React.memo(({ formState, handleFieldChange, t }) => (
   <>
     {/* ── Header ── */}
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
@@ -1588,12 +1614,13 @@ const PreferencesTab = ({ formState, handleFieldChange, t }) => (
       </div>
     </div>
   </>
-);
+));
+PreferencesTab.displayName = 'PreferencesTab';
 
 /* ============================================================
  * Language tab
  * ============================================================ */
-const LanguageTab = ({ lang, setLanguage, showMessage, t }) => (
+const LanguageTab = React.memo(({ lang, setLanguage, showMessage, t }) => (
   <>
     {/* ── Header ── */}
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
@@ -1643,12 +1670,13 @@ const LanguageTab = ({ lang, setLanguage, showMessage, t }) => (
       ))}
     </div>
   </>
-);
+));
+LanguageTab.displayName = 'LanguageTab';
 
 /* ============================================================
  * Appearance tab (adds Auto)
  * ============================================================ */
-const AppearanceTab = ({ theme, handleThemeChange }) => {
+const AppearanceTab = React.memo(({ theme, handleThemeChange }) => {
   // ── Available theme options ──
   const themes = [
     { id: 'light', label: 'Light', icon: <Sun size={18} />, bg: '#e8f7ed', accent: '#059669', sub: 'Clean Light' },
@@ -1717,7 +1745,8 @@ const AppearanceTab = ({ theme, handleThemeChange }) => {
       </div>
     </>
   );
-};
+});
+AppearanceTab.displayName = 'AppearanceTab';
 
 /* ============================================================
  * Users tab
@@ -1925,7 +1954,7 @@ UsersTab.propTypes = {
 /* ============================================================
  * Data tab
  * ============================================================ */
-const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, pdfLoading, t }) => (
+const DataTab = React.memo(({ setModals, handleExcelExport, handlePDFExport, excelLoading, pdfLoading, t }) => (
   <>
     {/* ── Header ── */}
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
@@ -1997,7 +2026,8 @@ const DataTab = ({ setModals, handleExcelExport, handlePDFExport, excelLoading, 
       </div>
     </div>
   </>
-);
+));
+DataTab.displayName = 'DataTab';
 
 /* ============================================================
  * Factory reset modal
@@ -2562,24 +2592,36 @@ function SettingsInner({ context }) {
     );
   }, [TABS, search]);
 
+  const commonProps = useMemo(() => ({
+    formState,
+    handleFieldChange,
+    t,
+    user,
+    theme,
+    handleThemeChange,
+    lang,
+    setLanguage,
+    showMessage,
+    logout,
+    requestReAuth,
+  }), [
+    formState,
+    handleFieldChange,
+    t,
+    user,
+    theme,
+    handleThemeChange,
+    lang,
+    setLanguage,
+    showMessage,
+    logout,
+    requestReAuth,
+  ]);
+
   /* ============================================================
    * Render tab content
    * ============================================================ */
   const renderTabContent = () => {
-    const commonProps = {
-      formState,
-      handleFieldChange,
-      t,
-      user,
-      theme,
-      handleThemeChange,
-      lang,
-      setLanguage,
-      showMessage,
-      logout,
-      requestReAuth,
-    };
-
     switch (activeTab) {
       case 'profile':
         return <ProfileTab {...commonProps} />;
@@ -2683,7 +2725,7 @@ function SettingsInner({ context }) {
 
       <div className="inbox-split-pane">
         {/* ── Sidebar with tab list + search ── */}
-        <div className="inbox-list-pane glass" role="tablist" aria-orientation="vertical">
+        <div className="inbox-list-pane glass" role="tablist" aria-orientation="vertical" style={{ minWidth: 0, maxWidth: '100%' }}>
           <div className="il-filters">
             <h3 className="il-title">{t?.('categories') || 'Categories'}</h3>
             <div style={{ position: 'relative', marginTop: 8 }}>

@@ -68,6 +68,15 @@ const securityLimiter = rateLimit({
 });
 router.use(securityLimiter);
 
+// ── Strict rate limit (5 per 15 min) for password & email alterations ──
+const sensitiveLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please wait 15 minutes before trying again.' },
+});
+
 // ── Disable caching on every response (session data must not be cached) ──
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -103,7 +112,7 @@ const passwordPolicyError = (password) => {
  * POST /change-password
  * Change the current user's password and revoke all sessions.
  * ————————————————————————————————————— */
-router.post('/change-password', auth, async (req, res) => {
+router.post('/change-password', auth, sensitiveLimiter, async (req, res) => {
   try {
     // ── Read and validate input ──
     const { current, new: newPassword } = req.body || {};
@@ -159,7 +168,7 @@ router.post('/change-password', auth, async (req, res) => {
  * POST /change-email
  * Change the current user's email and revoke all sessions.
  * ————————————————————————————————————— */
-router.post('/change-email', auth, async (req, res) => {
+router.post('/change-email', auth, sensitiveLimiter, async (req, res) => {
   try {
     // ── Read and validate input ──
     const { currentPassword, newEmail } = req.body || {};

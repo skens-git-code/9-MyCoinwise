@@ -923,7 +923,7 @@ router.post(
           jti: tokenId,
         },
         process.env.JWT_SECRET,
-        { expiresIn: '30d' }
+        { expiresIn: '30d', algorithm: 'HS256' }
       );
 
       await Session.create({

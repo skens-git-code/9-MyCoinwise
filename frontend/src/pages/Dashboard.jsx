@@ -143,16 +143,22 @@ const canonicalCategoryName = (value) => {
   return text.charAt(0).toUpperCase() + text.slice(1);
 };
 
-/** Safe localStorage write. */
+const storageCache = new Map();
+
+/** Safe localStorage write with in-memory cache update. */
 const safeSetItem = (key, value) => {
+  storageCache.set(key, value);
   try { localStorage.setItem(key, value); } catch { /* quota / private mode */ }
 };
 
-/** Safe localStorage read. */
+/** Safe localStorage read with in-memory caching to avoid blocking main thread. */
 const safeGetItem = (key, fallback) => {
+  if (storageCache.has(key)) return storageCache.get(key);
   try {
     const v = localStorage.getItem(key);
-    return v == null ? fallback : v;
+    const result = v == null ? fallback : v;
+    storageCache.set(key, result);
+    return result;
   } catch {
     return fallback;
   }

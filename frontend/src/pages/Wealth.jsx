@@ -22,6 +22,9 @@ import React, {
   useState, useEffect, useCallback, useContext, useMemo, useRef,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { FixedSizeList } from '../components/FixedSizeList';
+import debounce from 'lodash.debounce';
+import { usePrefersReducedMotion } from '../hooks/useMediaQuery';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
   PieChart, Pie, Cell, Legend, CartesianGrid,
@@ -187,11 +190,39 @@ export default function Wealth() {
 
   /* ---------------- UI State: search, filter, sort ---------------- */
 
+  const prefersReducedMotion = usePrefersReducedMotion();
+
   // ── List controls ──
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+
+  const debouncedSetSearch = useMemo(
+    () => debounce((val) => setSearch(val), 300),
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      debouncedSetSearch.cancel();
+    };
+  }, [debouncedSetSearch]);
+
+  const handleSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setSearchInput(val);
+    debouncedSetSearch(val);
+  }, [debouncedSetSearch]);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchInput('');
+    setSearch('');
+    debouncedSetSearch.cancel();
+  }, [debouncedSetSearch]);
+
   const [classFilter, setClassFilter] = useState('all');
   const [sortBy, setSortBy] = useState('value_desc');
   const [showExportMenu, setShowExportMenu] = useState(false);
+
 
   /* ---------------- Debt Simulator State ---------------- */
 
@@ -517,6 +548,89 @@ export default function Wealth() {
     resetForm();
   }, [resetForm]);
 
+  // ── Row component for virtualized wealth portfolio list (>20 items) ──
+  const VirtualizedWealthRow = useCallback(({ index, style }) => {
+    const item = filteredSortedItems[index];
+    if (!item) return null;
+    const id = getId(item);
+    const val = safeNumber(item.current_value ?? item.base_value, 0);
+    const isLiability = item.asset_class === 'liability';
+
+    return (
+      <div style={style}>
+        <div
+          key={id}
+          role="listitem"
+          style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '12px 0', borderBottom: '1px solid var(--glass-border)',
+            flexWrap: 'wrap', gap: 8, height: '100%', boxSizing: 'border-box',
+          }}
+        >
+          {/* ── Item info column ── */}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.92rem' }}>
+              {item.name}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2, flexWrap: 'wrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="badge" style={{ background: 'var(--glass-2)' }}>
+                {CLASS_LABELS[item.asset_class] || item.asset_class}
+              </span>
+              {item.symbol && (
+                <span style={{ color: '#3b82f6', fontWeight: 600 }}>
+                  {item.symbol} {item.quantity ? `× ${item.quantity}` : ''}
+                </span>
+              )}
+              {isLiability && item.interest_rate != null && (
+                <span style={{ color: 'var(--danger)' }}>
+                  {item.interest_rate}% {tr('interest', 'interest')}
+                </span>
+              )}
+              {item.note && (
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                  · {item.note}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* ── Value + actions column ── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                fontWeight: 800, fontSize: '1.05rem',
+                color: isLiability ? 'var(--danger)' : 'var(--brand-primary)',
+              }}
+            >
+              {isLiability ? '-' : ''}{fmt(val)}
+            </div>
+            {/* ── Edit ── */}
+            <button
+              type="button"
+              className="del-btn"
+              onClick={() => openEdit(item)}
+              aria-label={`${tr('edit', 'Edit')} ${item.name}`}
+              title={tr('edit', 'Edit')}
+            >
+              <Edit3 size={15} aria-hidden />
+            </button>
+            {/* ── Delete ── */}
+            <button
+              type="button"
+              className="del-btn"
+              onClick={() => setItemToDelete(id)}
+              aria-label={`${tr('delete', 'Delete')} ${item.name}`}
+              title={tr('delete', 'Delete')}
+            >
+              <Trash2 size={15} aria-hidden />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }, [filteredSortedItems, fmt, tr, openEdit]);
+
+
   // ── Clear the form error when the user edits any field ──
   const clearError = useCallback(() => {
     setFormError((prev) => (prev ? '' : prev));
@@ -804,11 +918,6 @@ export default function Wealth() {
    * ============================================================ */
   return (
     <div className="masonry-layout-page wealth-page-wrap">
-      {/* ── Local spin keyframe ── */}
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 1s linear infinite; }
-      `}</style>
 
       {/* ===================== Header ===================== */}
       <div className="masonry-header">
@@ -1007,7 +1116,7 @@ export default function Wealth() {
                   <XAxis dataKey="month" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} tickFormatter={(v) => fmt(v)} />
                   <Tooltip contentStyle={{ background: 'var(--surface-1)', borderRadius: 10 }} formatter={(v) => fmt(v)} />
-                  <Area type="monotone" dataKey="netWorth" stroke="#10b981" fill="url(#nwGrad)" strokeWidth={2} name={tr('net_worth', 'Net Worth')} />
+                  <Area isAnimationActive={!prefersReducedMotion} type="monotone" dataKey="netWorth" stroke="#10b981" fill="url(#nwGrad)" strokeWidth={2} name={tr('net_worth', 'Net Worth')} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -1025,7 +1134,7 @@ export default function Wealth() {
             {metrics.assetAllocationData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
                 <PieChart>
-                  <Pie data={metrics.assetAllocationData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
+                  <Pie isAnimationActive={!prefersReducedMotion} data={metrics.assetAllocationData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
                     {metrics.assetAllocationData.map((e, idx) => (
                       <Cell key={`cell-${e.name}-${idx}`} fill={e.color} />
                     ))}
@@ -1210,14 +1319,14 @@ export default function Wealth() {
             <input
               ref={searchRef}
               type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={handleSearchChange}
               placeholder={tr('search_portfolio_placeholder', 'Search name, symbol, note…')}
               aria-label={tr('search_portfolio', 'Search portfolio')}
               style={{
                 width: '100%',
                 paddingLeft: 34,
-                paddingRight: search ? 30 : 12,
+                paddingRight: searchInput ? 30 : 12,
                 height: 36,
                 borderRadius: 9999,
                 border: '1px solid var(--glass-border)',
@@ -1229,10 +1338,10 @@ export default function Wealth() {
               }}
             />
             {/* ── Clear search ── */}
-            {search && (
+            {searchInput && (
               <button
                 type="button"
-                onClick={() => setSearch('')}
+                onClick={handleClearSearch}
                 aria-label={tr('clear_search', 'Clear search')}
                 style={{
                   position: 'absolute',
@@ -1320,12 +1429,21 @@ export default function Wealth() {
             <button
               type="button"
               className="btn-secondary"
-              onClick={() => { setSearch(''); setClassFilter('all'); }}
+              onClick={() => { handleClearSearch(); setClassFilter('all'); }}
               style={{ marginTop: 10 }}
             >
               {tr('clear_filters', 'Clear filters')}
             </button>
           </div>
+        ) : filteredSortedItems.length > 20 ? (
+          <FixedSizeList
+            height={Math.min(filteredSortedItems.length * 68, 550)}
+            itemCount={filteredSortedItems.length}
+            itemSize={68}
+            width="100%"
+          >
+            {VirtualizedWealthRow}
+          </FixedSizeList>
         ) : (
           <div role="list">
             {filteredSortedItems.map((item) => {

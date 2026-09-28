@@ -23,6 +23,8 @@ import React, {
   useState, useContext, useMemo, useDeferredValue, useRef, useEffect, useCallback,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { FixedSizeList } from '../components/FixedSizeList';
+import debounce from 'lodash.debounce';
 import {
   Search, Filter, ArrowUpRight, ArrowDownRight,
   Trash2, Edit3, Plus, Wallet, FileText, X,
@@ -172,9 +174,34 @@ export default function Transactions() {
 
   /* ---------------- Search / Filter State ---------------- */
 
-  // ── Search query + deferred value for typing performance ──
+  // ── Search query + debounced/deferred values for typing performance ──
+  const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
+
+  const debouncedSetSearch = useMemo(
+    () => debounce((val) => setSearchTerm(val), 300),
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      debouncedSetSearch.cancel();
+    };
+  }, [debouncedSetSearch]);
+
+  const handleSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setSearchInput(val);
+    debouncedSetSearch(val);
+  }, [debouncedSetSearch]);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchInput('');
+    setSearchTerm('');
+    debouncedSetSearch.cancel();
+  }, [debouncedSetSearch]);
+
 
   // ── Primary filters ──
   const [filterType, setFilterType] = useState('all');
@@ -380,6 +407,7 @@ export default function Transactions() {
 
   // ── Reset all filters to their defaults ──
   const clearAllFilters = useCallback(() => {
+    setSearchInput('');
     setSearchTerm('');
     setFilterType('all');
     setFilterCategory('all');
@@ -427,6 +455,75 @@ export default function Transactions() {
 
   // ── Clear all selections ──
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  // ── Row component for virtualized transaction list (>25 items) ──
+  const VirtualizedTxRow = useCallback(({ index, style }) => {
+    const tx = filtered[index];
+    if (!tx) return null;
+    const transactionId = getTransactionId(tx);
+    const isSelected = selectedIds.has(transactionId);
+    const isActive = String(selectedTxId) === transactionId;
+    const rowKey = transactionId || `tx-${index}`;
+
+    return (
+      <div style={{ ...style, paddingBottom: 6 }}>
+        <div
+          key={rowKey}
+          className={`il-item ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`}
+          onClick={() => setSelectedTxId(transactionId)}
+          role="button"
+          tabIndex={0}
+          aria-label={`${tx.category}, ${tx.type}, ${fmt(tx.amount)}`}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setSelectedTxId(transactionId);
+            }
+          }}
+        >
+          {/* ── Selection checkbox ── */}
+          <button
+            type="button"
+            className="il-checkbox-btn"
+            onClick={(e) => toggleSelectOne(transactionId, e)}
+            aria-label={isSelected
+              ? tr('deselect_transaction', 'Deselect transaction')
+              : tr('select_transaction', 'Select transaction')}
+            aria-pressed={isSelected}
+          >
+            {isSelected ? (
+              <CheckSquare size={16} className="text-brand" aria-hidden />
+            ) : (
+              <Square size={16} aria-hidden />
+            )}
+          </button>
+
+          {/* ── Direction icon ── */}
+          <div className={`ili-icon ${tx.type}`} aria-hidden>
+            {tx.type === 'income' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+          </div>
+
+          {/* ── Category, date, snippet ── */}
+          <div className="ili-info">
+            <p className="ili-cat">{highlight(tx.category || '', deferredSearchTerm)}</p>
+            <p className="ili-date">
+              {new Date(tx.date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })}
+              {tx.merchant && <span className="ili-note-snip"> · {highlight(tx.merchant, deferredSearchTerm)}</span>}
+              {!tx.merchant && tx.note && <span className="ili-note-snip"> · {highlight(tx.note, deferredSearchTerm)}</span>}
+            </p>
+          </div>
+
+          {/* ── Amount ── */}
+          <div className="ili-amount">
+            <span className={tx.type}>
+              {tx.type === 'income' ? '+' : '-'}{fmt(tx.amount)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }, [filtered, selectedIds, selectedTxId, fmt, toggleSelectOne, tr, deferredSearchTerm, locale]);
+
 
   /* ============================================================
    * Bulk Delete (with undo)
@@ -932,17 +1029,6 @@ export default function Transactions() {
 
   return (
     <div className="inbox-layout-page">
-      {/* ── Local styles for spin and highlight ── */}
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 1s linear infinite; }
-        .tx-highlight {
-          background: rgba(245,158,11,0.35);
-          padding: 0 2px;
-          border-radius: 3px;
-          color: inherit;
-        }
-      `}</style>
 
       {/* ── Hidden file input for statement import ── */}
       <input
@@ -1109,19 +1195,20 @@ export default function Transactions() {
                 ref={searchInputRef}
                 aria-label={tr('search_transactions', 'Search transactions')}
                 placeholder={tr('search_transactions_placeholder', 'Search category, note, merchant, amount…')}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={searchInput}
+                onChange={handleSearchChange}
               />
-              {searchTerm && (
+              {searchInput && (
                 <button
                   type="button"
                   className="icon-btn il-search-clear"
-                  onClick={() => setSearchTerm('')}
+                  onClick={handleClearSearch}
                   aria-label={tr('clear_search', 'Clear search')}
                 >
                   <X size={14} />
                 </button>
               )}
+
             </div>
 
             {/* ── Type / category / tag / sort ── */}
@@ -1296,6 +1383,15 @@ export default function Transactions() {
                   {tr('clear_filters', 'Reset Filters')}
                 </button>
               </div>
+            ) : filtered.length > 25 ? (
+              <FixedSizeList
+                height={Math.min(filtered.length * 76, 680)}
+                itemCount={filtered.length}
+                itemSize={76}
+                width="100%"
+              >
+                {VirtualizedTxRow}
+              </FixedSizeList>
             ) : (
               <AnimatePresence>
                 {filtered.map((tx) => {

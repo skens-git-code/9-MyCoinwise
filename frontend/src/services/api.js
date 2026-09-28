@@ -54,6 +54,12 @@ export const getStoredToken = () => {
       if (urlToken) {
         localStorage.setItem('mcw-token', urlToken);
         localStorage.setItem('mcw-onboarding-completed', 'true');
+        // SECURITY: Strip the token from the URL to prevent leakage via
+        // browser history, Referer headers, screenshots, or shared links.
+        p.delete('token');
+        const cleanSearch = p.toString();
+        const cleanUrl = window.location.pathname + (cleanSearch ? `?${cleanSearch}` : '') + window.location.hash;
+        window.history.replaceState(null, '', cleanUrl);
         return urlToken;
       }
     }
@@ -73,6 +79,9 @@ axios.interceptors.request.use((config) => {
     requestUrl.includes('/auth/register') ||
     requestUrl.includes('/auth/check-username') ||
     requestUrl.includes('/auth/resend-verification') ||
+    requestUrl.includes('/auth/forgot-password') ||
+    requestUrl.includes('/auth/reset-password') ||
+    requestUrl.includes('/auth/verify-email') ||
     requestUrl.includes('/health');
 
   if (!isUnauthenticatedRoute) {
@@ -198,6 +207,27 @@ export const api = {
   // ── Invalidate the current session server-side ──
   logout: async () => {
     const res = await axios.post(`${API_URL}/auth/logout`);
+    return res.data;
+  },
+
+  // ── Request a password reset email ──
+  forgotPassword: async (email) => {
+    const res = await axios.post(`${API_URL}/auth/forgot-password`, { email });
+    return res.data;
+  },
+
+  // ── Reset password using a token ──
+  resetPassword: async (tokenOrObj, maybePassword) => {
+    const payload = typeof tokenOrObj === 'object' && tokenOrObj !== null
+      ? { token: tokenOrObj.token, password: tokenOrObj.newPassword || tokenOrObj.password }
+      : { token: tokenOrObj, password: maybePassword };
+    const res = await axios.post(`${API_URL}/auth/reset-password`, payload);
+    return res.data;
+  },
+
+  // ── Verify email address using a token ──
+  verifyEmail: async (token) => {
+    const res = await axios.get(`${API_URL}/auth/verify-email`, { params: { token } });
     return res.data;
   },
 

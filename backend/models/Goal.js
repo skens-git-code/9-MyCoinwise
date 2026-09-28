@@ -220,6 +220,7 @@ goalSchema.index({ user_id: 1, priority: 1 });
 goalSchema.index({ user_id: 1, is_archived: 1, is_completed: 1 });
 goalSchema.index({ user_id: 1, deadline: 1 });
 goalSchema.index({ user_id: 1, created_at: -1 });
+goalSchema.index({ user_id: 1, created_at: 1 });
 goalSchema.index({ user_id: 1, category: 1 });
 
 // ── Supports queries on the `status` virtual field ──

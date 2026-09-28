@@ -28,6 +28,7 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const { LRUCache } = require('lru-cache');
 const User = require('../models/User');
 const LoginLog = require('../models/LoginLog');
 const Transaction = require('../models/Transaction');
@@ -35,6 +36,7 @@ const Account = require('../models/Account');
 const Session = require('../models/Session');
 const auth = require('../middleware/auth');
 const { logger, auditLogger } = require('../utils/logger');
+const emailService = require('../services/emailService');
 const { dedupeTransactions } = require('../utils/transactionIntegrity');
 
 // ── Create router ──
@@ -158,7 +160,7 @@ const createSessionToken = async (user, req, { rememberMe = true, browser, os, d
   const token = jwt.sign(
     { id: user._id, session_version: sessionVersion, jti: tokenId },
     process.env.JWT_SECRET,
-    { expiresIn: rememberMe ? '30d' : '1d' }
+    { expiresIn: rememberMe ? '30d' : '1d', algorithm: 'HS256' }
   );
 
   // ── Compose a human-readable device label ──
@@ -528,8 +530,9 @@ router.post(
  * Return the authenticated user and refresh their cached balance.
  * ————————————————————————————————————— */
 
-// ── Cooldown map: avoids running the heavy balance sync on every read ──
-const lastMeBalanceSyncMap = new Map();
+// ── LRU cooldown cache: avoids running the heavy balance sync on every read ──
+// Max 10,000 entries prevents unbounded memory growth.
+const lastMeBalanceSyncMap = new LRUCache({ max: 10000, ttl: 60 * 60 * 1000 });
 const ME_SYNC_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 router.get('/me', auth, async (req, res) => {
@@ -678,17 +681,219 @@ router.post('/resend-verification', async (req, res) => {
     if (!email) {
       return res.status(400).json({ error: 'Email is required.' });
     }
-    const user = await User.findOne({ email }).select('_id email email_verified');
+
+    // Always return success to prevent email enumeration
+    const genericMessage = 'If the email exists and is unverified, a verification link has been sent.';
+
+    const user = await User.findOne({ email })
+      .select('_id email email_verified email_verify_token email_verify_expires');
+
     if (user && !user.email_verified) {
-      // In production, dispatch verification email.
+      // Generate a new verification token
+      const rawToken = user.generateEmailVerificationToken();
+      await user.save({ validateBeforeSave: false });
+
+      // Send the verification email
+      try {
+        await emailService.sendVerificationEmail(email, rawToken);
+      } catch (emailErr) {
+        logger.error('Failed to send verification email:', emailErr);
+      }
+
       auditLogger.info('Resent email verification', { userId: String(user._id), email });
     }
-    return res.json({ message: 'If the email exists and is unverified, a verification link has been sent.' });
+
+    return res.json({ message: genericMessage });
   } catch (err) {
     logger.error('Resend verification error:', err);
     return res.status(500).json({ error: 'Server error.' });
   }
 });
+
+/* —————————————————————————————————————
+ * GET /verify-email
+ * Verify a user's email address using the token from the link.
+ * ————————————————————————————————————— */
+router.get(['/verify-email', '/verify/:token'], async (req, res) => {
+  try {
+    const rawToken = req.params.token || req.query.token;
+    const clientUrl = (process.env.FRONTEND_URL || process.env.CLIENT_URL || '').replace(/\/$/, '');
+
+    if (!rawToken || typeof rawToken !== 'string' || rawToken.length < 10) {
+      if (req.accepts('html') && !req.xhr) {
+        return res.redirect(`${clientUrl}/login?error=invalid_token`);
+      }
+      return res.status(400).json({ error: 'Invalid or missing verification token.' });
+    }
+
+    // Hash the raw token to compare with the stored hash
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    const user = await User.findOne({
+      email_verify_token: hashedToken,
+      email_verify_expires: { $gt: new Date() },
+    }).select('_id email email_verified email_verify_token email_verify_expires');
+
+    if (!user) {
+      if (req.accepts('html') && !req.xhr) {
+        return res.redirect(`${clientUrl}/login?error=expired_token`);
+      }
+      return res.status(400).json({
+        error: 'Verification link is invalid or has expired. Please request a new one.',
+      });
+    }
+
+    // Mark email as verified and clear the token
+    user.email_verified = true;
+    user.email_verify_token = null;
+    user.email_verify_expires = null;
+    await user.save({ validateBeforeSave: false });
+
+    auditLogger.info('Email verified', { userId: String(user._id), email: user.email });
+
+    if (req.accepts('html') && !req.xhr) {
+      return res.redirect(`${clientUrl}/login?verified=1`);
+    }
+
+    return res.json({ message: 'Email verified successfully.' });
+  } catch (err) {
+    logger.error('Email verification error:', err);
+    return res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+/* —————————————————————————————————————
+ * POST /forgot-password
+ * Request a password reset email. Rate-limited.
+ * ————————————————————————————————————— */
+router.post('/forgot-password',
+  registerLimiter, // Reuse the strict register limiter (10/hour)
+  [
+    body('email').isEmail().withMessage('A valid email is required.'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    // Always return success to prevent email enumeration
+    const genericMessage = 'If an account with that email exists, a password reset link has been sent.';
+
+    try {
+      const email = normalizeEmail(req.body.email);
+      const user = await User.findOne({ email })
+        .select('_id email reset_password_token reset_password_expires');
+
+      if (!user) {
+        // Don't reveal that the email doesn't exist
+        return res.json({ message: genericMessage });
+      }
+
+      // Generate a reset token (already stores SHA-256 hash in the model)
+      const rawToken = user.generatePasswordResetToken();
+      await user.save({ validateBeforeSave: false });
+
+      // Send the reset email
+      try {
+        await emailService.sendPasswordResetEmail(email, rawToken);
+      } catch (emailErr) {
+        logger.error('Failed to send password reset email:', emailErr);
+        // Don't reveal the failure to the client
+      }
+
+      auditLogger.info('Password reset requested', {
+        userId: String(user._id),
+        email,
+        ip: req.ip,
+      });
+
+      return res.json({ message: genericMessage });
+    } catch (err) {
+      logger.error('Forgot password error:', err);
+      return res.status(500).json({ error: 'Server error.' });
+    }
+  }
+);
+
+/* —————————————————————————————————————
+ * POST /reset-password
+ * Reset the password using a valid reset token.
+ * ————————————————————————————————————— */
+router.post('/reset-password',
+  registerLimiter,
+  (req, _res, next) => {
+    if (!req.body.password && req.body.newPassword) {
+      req.body.password = req.body.newPassword;
+    }
+    next();
+  },
+  [
+    body('token').isString().isLength({ min: 10 }).withMessage('Reset token is required.'),
+    passwordPolicy('password'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      // Hash the raw token to compare with the stored hash
+      const hashedToken = crypto.createHash('sha256')
+        .update(req.body.token)
+        .digest('hex');
+
+      const user = await User.findOne({
+        reset_password_token: hashedToken,
+        reset_password_expires: { $gt: new Date() },
+      }).select('+password');
+
+      if (!user) {
+        return res.status(400).json({
+          error: 'Reset link is invalid or has expired. Please request a new one.',
+        });
+      }
+
+      // Prevent reusing the same password
+      const isSame = await user.comparePassword(req.body.password);
+      if (isSame) {
+        return res.status(400).json({
+          error: 'New password must be different from your current password.',
+        });
+      }
+
+      // Set the new password (pre-save hook will hash it)
+      user.password = req.body.password;
+      user.reset_password_token = null;
+      user.reset_password_expires = null;
+      // Bump session_version to invalidate all existing JWTs
+      user.session_version = (user.session_version || 0) + 1;
+      // Clear any account lock
+      user.failed_login_count = 0;
+      user.account_locked = false;
+      user.locked_until = null;
+      await user.save();
+
+      // Invalidate all sessions
+      const Session = require('../models/Session');
+      await Session.updateMany(
+        { user_id: user._id },
+        { $set: { is_active: false } }
+      );
+
+      auditLogger.info('Password reset completed', {
+        userId: String(user._id),
+        ip: req.ip,
+      });
+
+      return res.json({ message: 'Password has been reset. Please log in with your new password.' });
+    } catch (err) {
+      logger.error('Reset password error:', err);
+      return res.status(500).json({ error: 'Server error.' });
+    }
+  }
+);
 
 /* —————————————————————————————————————
  * Export

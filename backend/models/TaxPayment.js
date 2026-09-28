@@ -86,6 +86,9 @@ const taxPaymentSchema = new mongoose.Schema({
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
 
+taxPaymentSchema.index({ user_id: 1, fiscal_year: 1 });
+taxPaymentSchema.index({ user_id: 1, payment_date: -1 });
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

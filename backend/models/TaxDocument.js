@@ -97,6 +97,9 @@ const taxDocumentSchema = new mongoose.Schema({
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
 
+taxDocumentSchema.index({ user_id: 1, fiscal_year: 1 });
+taxDocumentSchema.index({ user_id: 1, created_at: -1 });
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

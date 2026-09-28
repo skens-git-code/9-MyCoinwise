@@ -728,14 +728,13 @@ export default function Login() {
               />
               <span>{tr('trust_this_device', 'Trust this device')}</span>
             </label>
-            <button
-              type="button"
+            <Link
+              to="/forgot-password"
               className="auth-forgot-link"
-              onClick={() => setShowForgotHelp(true)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              style={{ fontSize: '0.82rem', color: 'var(--brand-primary)', fontWeight: 600, textDecoration: 'none' }}
             >
               {tr('forgot_password', 'Forgot password?')}
-            </button>
+            </Link>
           </div>
 
           {/* ── Submit button (label varies by state) ── */}
@@ -867,38 +866,6 @@ export default function Login() {
         )}
       </AnimatePresence>
 
-      {/* ── Local styles for spin animation and alert variants ── */}
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 1s linear infinite; }
-        .auth-alert-${'rate'} { border-left: 3px solid #f59e0b; }
-        .auth-alert-network { border-left: 3px solid #3b82f6; }
-        .auth-alert-unknown { border-left: 3px solid #ef4444; }
-        .auth-rate-countdown {
-          font-variant-numeric: tabular-nums;
-          font-weight: 700;
-          padding: 2px 8px;
-          border-radius: 999px;
-          background: rgba(245,158,11,0.2);
-          font-size: 0.78rem;
-        }
-        .auth-2fa-hint {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 0.78rem;
-          color: var(--text-muted);
-          margin-top: 10px;
-        }
-        .form-hint-warning {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 0.75rem;
-          color: var(--warning-color, #f59e0b);
-          margin-top: 4px;
-        }
-      `}</style>
     </div>
   );
 }

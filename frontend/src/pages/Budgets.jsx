@@ -647,10 +647,6 @@ export default function BudgetManager() {
    */
   return (
     <div className="budget-page" style={{ padding: 'var(--spacing-lg)', maxWidth: 1200, margin: '0 auto' }}>
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 1s linear infinite; }
-      `}</style>
 
       {/* 
        * ————————————————————————————————————————————

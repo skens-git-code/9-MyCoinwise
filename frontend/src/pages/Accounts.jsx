@@ -123,7 +123,7 @@ const humanizeType = (type) =>
  * ============================================================ */
 
 // ── Summary stat tile used at the top of the page ──
-const StatCard = ({ icon, label, value, sub, tone = 'default' }) => (
+const StatCard = React.memo(({ icon, label, value, sub, tone = 'default' }) => (
   <motion.div
     className="glass stat-card"
     whileHover={{ y: -3 }}
@@ -177,7 +177,8 @@ const StatCard = ({ icon, label, value, sub, tone = 'default' }) => (
       {sub || ''}
     </div>
   </motion.div>
-);
+));
+StatCard.displayName = 'StatCard';
 
 // ── Skeleton shown while accounts are still loading ──
 const AccountsSkeleton = () => (
@@ -840,40 +841,6 @@ export default function Accounts() {
       className="account-page"
       style={{ padding: 'var(--spacing-lg, 24px)', maxWidth: 'var(--content-max-width, 1240px)', margin: '0 auto' }}
     >
-      {/* ── Local styles for cards, swatches, toolbar, and icon buttons ── */}
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 1s linear infinite; }
-        .account-card {
-          border-left: 4px solid var(--account-accent, #3b82f6);
-          transition: transform 0.15s ease, box-shadow 0.15s ease;
-        }
-        .account-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
-        .color-swatch {
-          width: 32px; height: 32px; border-radius: 50%;
-          border: 2px solid transparent; cursor: pointer;
-          transition: all 0.2s;
-        }
-        .color-swatch.active { border-color: var(--text-main); transform: scale(1.1); }
-        .color-swatch:hover { transform: scale(1.05); }
-        .account-toolbar input, .account-toolbar select,
-        .account-form input, .account-form select {
-          background: var(--bg-color); color: var(--text-main);
-          border: 1px solid var(--border-color); border-radius: 8px;
-          padding: 0.45rem 0.7rem; font-size: 0.875rem;
-        }
-        .account-toolbar input:focus, .account-toolbar select:focus,
-        .account-form input:focus, .account-form select:focus {
-          outline: 2px solid var(--primary-color); outline-offset: 1px;
-        }
-        .icon-btn {
-          background: transparent; border: none; color: var(--text-muted);
-          cursor: pointer; padding: 4px; border-radius: 6px;
-          display: inline-flex; align-items: center; justify-content: center;
-        }
-        .icon-btn:hover { background: var(--bg-color); color: var(--text-main); }
-        .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-      `}</style>
 
       {/* ===================== Header ===================== */}
       <header
