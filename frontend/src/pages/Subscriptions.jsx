@@ -220,9 +220,12 @@ const getNextBillDates = (sub, count = 3, now = new Date()) => {
     // Roll forward until we land on or after `now`
     cursor = new Date(anchor);
     let safety = 0;
-    while (cursor < now && safety < 500) {
+    while (cursor && cursor < now && safety < 500) {
       cursor = advanceByCycle(cursor, cycle);
       safety += 1;
+    }
+    if (!cursor) {
+      cursor = advanceByCycle(startOfToday(), cycle) || startOfToday();
     }
   } else {
     // No anchor — default to one cycle from today
@@ -246,7 +249,6 @@ const getNextBillDates = (sub, count = 3, now = new Date()) => {
 export default function Subscriptions() {
   // ── App context: data + i18n + currency + actions ──
   const {
-    fmt,
     currency,
     user,
     subscriptions: subs = [],
@@ -256,10 +258,29 @@ export default function Subscriptions() {
     loading: contextLoading,
   } = useAppState();
   const {
+    fmt: actionFmt,
     refetch,
     t,
   } = useAppActions();
   const { showToast } = useToast();
+
+  // ── Robust currency formatter with multiple layers of fallback ──
+  const fmt = useCallback(
+    (amount) => {
+      if (typeof actionFmt === 'function') {
+        try {
+          const res = actionFmt(amount);
+          if (res != null) return res;
+        } catch {
+          // fall through to fallback
+        }
+      }
+      const num = Number(amount || 0);
+      const symbol = currency === 'USD' ? '$' : (currency === 'EUR' ? '€' : '₹');
+      return `${symbol}${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    },
+    [actionFmt, currency]
+  );
 
   // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);

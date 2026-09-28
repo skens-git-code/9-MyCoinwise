@@ -605,11 +605,13 @@ export default function App() {
     currency,
     currencyInfo,
     previousSession,
+    fmt,
   }), [
     user, allUsers, transactions, theme, lang, token,
     alerts, insights, deferredPrompt, goals, budgets,
     accounts, subscriptions, events, isInitialAuthLoad,
-    isBackgroundSyncing, globalError, currency, currencyInfo, previousSession
+    isBackgroundSyncing, globalError, currency, currencyInfo, previousSession,
+    fmt,
   ]);
 
   // Memoized Actions Context (functions only - stable references)
