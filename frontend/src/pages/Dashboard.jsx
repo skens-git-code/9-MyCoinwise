@@ -612,6 +612,12 @@ export default function Dashboard() {
     [fmt, locale, currencyInfo]
   );
 
+  // ── Stable animated number formatter ensuring React.memo(AnimatedNumber) is not defeated ──
+  const formatAnimatedCurrency = useCallback(
+    (num) => formatCurrencyText(num, safeFmt, currencySymbol),
+    [safeFmt, currencySymbol]
+  );
+
   /* ---------------- State ---------------- */
 
   // ── Per-user storage keys for the filters ──
@@ -1620,7 +1626,7 @@ export default function Dashboard() {
                   <AnimatedNumber
                     value={rawBalance}
                     duration={900}
-                    format={(num) => formatCurrencyText(num, safeFmt, currencySymbol)}
+                    format={formatAnimatedCurrency}
                     onComplete={handleBalanceComplete}
                   />
                 </span>
@@ -1672,7 +1678,7 @@ export default function Dashboard() {
               <AnimatedNumber
                 value={rawIncome}
                 duration={800}
-                format={(num) => formatCurrencyText(num, safeFmt, currencySymbol)}
+                format={formatAnimatedCurrency}
               />
             }
             valueText={formatCurrencyText(rawIncome, safeFmt, currencySymbol)}
@@ -1693,7 +1699,7 @@ export default function Dashboard() {
               <AnimatedNumber
                 value={rawExpense}
                 duration={800}
-                format={(num) => formatCurrencyText(num, safeFmt, currencySymbol)}
+                format={formatAnimatedCurrency}
               />
             }
             valueText={formatCurrencyText(rawExpense, safeFmt, currencySymbol)}
