@@ -18,11 +18,11 @@
  *     for page-specific layout.
  * ————————————————————————————————————— */
 
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, ArrowLeftRight, Target, CreditCard, X, Sparkles } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { AppContext } from '../contexts/AppContext';
+import { useAppActions } from '../contexts/AppContext';
 
 /* —————————————————————————————————————
  * Component
@@ -34,8 +34,8 @@ export default function QuickActionFAB({ onAddTransaction }) {
   // ── Router hooks + i18n ──
   const location = useLocation();
   const navigate = useNavigate();
-  const context = useContext(AppContext);
-  const t = context?.t;
+  const appActions = useAppActions();
+  const t = appActions?.t;
 
   /* —————————————————————————————————————
    * Speed-Dial Actions
