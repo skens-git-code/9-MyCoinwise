@@ -21,11 +21,11 @@
  * ————————————————————————————————————— */
 
 // CurrencyConverter.jsx
-import React, { useState, useEffect, useCallback, useMemo, useRef, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { ArrowLeftRight, RefreshCw, X, TrendingUp, AlertCircle } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState } from '../contexts/AppContext';
 
 /* ==================== Constants ==================== */
 
@@ -238,8 +238,8 @@ const useDebounce = (value, delay) => {
 
 /* ==================== Main Component ==================== */
 export default function CurrencyConverter({ isOpen = true, onClose, initialFrom = 'USD', initialTo = 'INR', initialAmount = '1' }) {
-  const context = useContext(AppContext);
-  const locale = useMemo(() => resolveLocale(context?.lang), [context?.lang]);
+  const appState = useAppState();
+  const locale = useMemo(() => resolveLocale(appState?.lang), [appState?.lang]);
 
   // ── Form state ──
   const [amount, setAmount] = useState(initialAmount);
