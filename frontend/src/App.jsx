@@ -12,7 +12,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './components/ToastProvider';
 import { MotionConfig, LazyMotion, domAnimation } from 'framer-motion';
 
-import { AppContext, AppStateContext, AppActionsContext } from './contexts/AppContext';
+import { AppStateContext, AppActionsContext } from './contexts/AppContext';
 import { dedupeTransactions } from './utils/transactionIntegrity';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -639,12 +639,6 @@ export default function App() {
     createUser, switchUser, revertSession, fmt, installPWA
   ]);
 
-  // Combined context value strictly memoized for backward compatibility
-  const combinedContextValue = useMemo(() => ({
-    ...stateValue,
-    ...actionsValue,
-  }), [stateValue, actionsValue]);
-
   // While the initial token validation is in flight, show a spinner so neither
   // the login page nor the protected app content flashes before auth is known.
   if (isAppStarting || isInitialAuthLoad) {
@@ -653,15 +647,13 @@ export default function App() {
         <I18nextProvider i18n={i18n}>
           <AppStateContext.Provider value={stateValue}>
             <AppActionsContext.Provider value={actionsValue}>
-              <AppContext.Provider value={combinedContextValue}>
-                <ToastProvider>
-                  <LazyMotion features={domAnimation}>
-                    <MotionConfig reducedMotion="user">
-                      <Loader fullScreen mode={token ? "auth" : "inline"} />
-                    </MotionConfig>
-                  </LazyMotion>
-                </ToastProvider>
-              </AppContext.Provider>
+              <ToastProvider>
+                <LazyMotion features={domAnimation}>
+                  <MotionConfig reducedMotion="user">
+                    <Loader fullScreen mode={token ? "auth" : "inline"} />
+                  </MotionConfig>
+                </LazyMotion>
+              </ToastProvider>
             </AppActionsContext.Provider>
           </AppStateContext.Provider>
         </I18nextProvider>
@@ -674,32 +666,30 @@ export default function App() {
       <I18nextProvider i18n={i18n}>
         <AppStateContext.Provider value={stateValue}>
           <AppActionsContext.Provider value={actionsValue}>
-            <AppContext.Provider value={combinedContextValue}>
-              <ToastProvider>
-                <LazyMotion features={domAnimation}>
-                  <MotionConfig reducedMotion="user">
-                    <Router>
-                      <Suspense fallback={<Loader />}>
-                        <Routes>
-                          <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-                          <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
-                          <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" />} />
-                          <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" />} />
-                          <Route path="/verify-email" element={<VerifyEmail />} />
-                          <Route path="/*" element={
-                            <ProtectedRoute>
-                              <AppLayout>
-                                <AppRoutes />
-                              </AppLayout>
-                            </ProtectedRoute>
-                          } />
-                        </Routes>
-                      </Suspense>
-                    </Router>
-                  </MotionConfig>
-                </LazyMotion>
-              </ToastProvider>
-            </AppContext.Provider>
+            <ToastProvider>
+              <LazyMotion features={domAnimation}>
+                <MotionConfig reducedMotion="user">
+                  <Router>
+                    <Suspense fallback={<Loader />}>
+                      <Routes>
+                        <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+                        <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+                        <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" />} />
+                        <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" />} />
+                        <Route path="/verify-email" element={<VerifyEmail />} />
+                        <Route path="/*" element={
+                          <ProtectedRoute>
+                            <AppLayout>
+                              <AppRoutes />
+                            </AppLayout>
+                          </ProtectedRoute>
+                        } />
+                      </Routes>
+                    </Suspense>
+                  </Router>
+                </MotionConfig>
+              </LazyMotion>
+            </ToastProvider>
           </AppActionsContext.Provider>
         </AppStateContext.Provider>
       </I18nextProvider>
