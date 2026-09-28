@@ -17,9 +17,9 @@
  *     and there is no user.
  * ————————————————————————————————————— */
 
-import React, { useContext } from 'react';
+import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import Loader from './Loader';
 import ErrorState from './ErrorState';
 import useDelayedLoading from '../hooks/useDelayedLoading';
@@ -29,7 +29,8 @@ import useDelayedLoading from '../hooks/useDelayedLoading';
  * ————————————————————————————————————— */
 export default function ProtectedRoute({ children }) {
   // ── Auth state from context ──
-  const { user, isInitialAuthLoad, globalError, refetch } = useContext(AppContext);
+  const { user, isInitialAuthLoad, globalError } = useAppState();
+  const { refetch } = useAppActions();
 
   // ── Current location, needed to redirect back after login ──
   const location = useLocation();

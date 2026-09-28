@@ -19,7 +19,7 @@
  *   - Query and selection are reset each time the palette opens.
  * ————————————————————————————————————— */
 
-import React, { useState, useMemo, useEffect, useRef, useContext } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -27,7 +27,7 @@ import {
   Briefcase, Calendar, Settings, BarChart3,
   ArrowLeftRight, X, Zap, Tag, ReceiptText
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 
 /* —————————————————————————————————————
  * Component
@@ -35,7 +35,8 @@ import { AppContext } from '../contexts/AppContext';
 export default function CommandPalette({ isOpen, onClose }) {
   // ── Router and app context ──
   const navigate = useNavigate();
-  const { transactions = [], goals = [], subscriptions = [], fmt } = useContext(AppContext);
+  const { transactions = [], goals = [], subscriptions = [] } = useAppState();
+  const { fmt } = useAppActions();
 
   // ── Local state: query, selected index, refs ──
   const [query, setQuery] = useState('');
