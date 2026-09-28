@@ -19,7 +19,7 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useState, useEffect, useCallback, useContext, useMemo, useRef,
+  useState, useEffect, useCallback, useMemo, useRef,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FixedSizeList } from '../components/FixedSizeList';
@@ -35,7 +35,7 @@ import {
   Search, ArrowUpDown, Undo2, Copy, Keyboard, TrendingUp, TrendingDown,
   Loader2, Filter, ChevronDown, CheckCircle2,
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
 import { api } from '../services/api';
@@ -156,7 +156,8 @@ const formatHistoryData = (rawData) => {
  * ============================================================ */
 export default function Wealth() {
   // ── App context: formatter, auth token, i18n, theme, logout ──
-  const { fmt, token, t, theme, logout } = useContext(AppContext);
+  const { token, theme } = useAppState();
+  const { fmt, t, logout } = useAppActions();
   const { showToast } = useToast();
 
   // ── Translation helper with inline fallback ──

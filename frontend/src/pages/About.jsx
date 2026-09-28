@@ -18,7 +18,7 @@
  *     lives in module-level constants so the JSX stays declarative.
  * ————————————————————————————————————— */
 
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
@@ -28,7 +28,7 @@ import {
   CheckCircle2, ArrowRight, Linkedin, Phone, Calculator, Star, Coffee,
   Layers, Wrench, Target, Quote, ExternalLink
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppActions } from '../contexts/AppContext';
 
 /* ============================================================
    Static Data — Single Creator Profile
@@ -307,7 +307,7 @@ function Chip({ children }) {
 
 export default function About({ stats = DEFAULT_STATS }) {
   // ── i18n ──
-  const { t } = useContext(AppContext);
+  const { t } = useAppActions();
 
   // ── Respect the OS-level reduced-motion preference ──
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>

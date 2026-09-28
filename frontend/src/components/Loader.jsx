@@ -19,10 +19,10 @@
  *     assistive tech.
  * ————————————————————————————————————— */
 
-import React, { useContext } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpRight, Check, Zap } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppActions } from '../contexts/AppContext';
 
 // ── Style object for the visually-hidden accessibility text ──
 const visuallyHidden = { position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 };
@@ -32,8 +32,8 @@ const visuallyHidden = { position: 'absolute', width: 1, height: 1, padding: 0, 
  * ————————————————————————————————————— */
 export default function Loader({ fullScreen = false, mode = 'inline', text }) {
   // ── i18n and reduced-motion detection ──
-  const appContext = useContext(AppContext);
-  const t = appContext?.t;
+  const appActions = useAppActions();
+  const t = appActions?.t;
   const prefersReducedMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* —————————————————————————————————————

@@ -17,7 +17,7 @@
  *   - Optimistic balance = starting balance + net of live transactions.
  * ————————————————————————————————————— */
 
-import React, { useState, useContext, useMemo, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import throttle from 'lodash.throttle';
@@ -31,7 +31,7 @@ import {
   Menu, X, Zap, Search, Keyboard, User, Users, Sun, Moon, Check,
   HelpCircle, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon, ReceiptText
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
 import { LANGUAGES } from '../services/i18n';
 import Breadcrumbs from './Breadcrumbs';
@@ -532,7 +532,9 @@ export default function AppLayout({ children }) {
   }, []);
 
   // ── App context: user, theme, i18n, data, actions ──
-  const contextData = useContext(AppContext) || {};
+  const stateData = useAppState() || {};
+  const actionData = useAppActions() || {};
+  const contextData = { ...stateData, ...actionData };
   const {
     user, theme, toggleTheme, currencyInfo, alerts = [], transactions = [],
     accounts = [], addTransaction, t, lang, setLanguage, logout, fmt, refetch, isBackgroundSyncing,

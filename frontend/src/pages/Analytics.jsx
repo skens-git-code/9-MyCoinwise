@@ -18,10 +18,10 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useContext, useMemo, useState, useRef, useCallback, useEffect, memo,
+  useMemo, useState, useRef, useCallback, useEffect, memo,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, LineChart, Line,
@@ -390,29 +390,19 @@ DrillDownModal.displayName = 'DrillDownModal';
  * Main Component
  * ============================================================ */
 export default function Analytics() {
-  /* Original context destructuring without loading:
-  const {
-    transactions = [],
-    theme,
-    fmt: contextFmt,
-    user,
-    lang,
-    currency,
-    currencyInfo,
-  } = useContext(AppContext);
-  // Issue: loading was not destructured, preventing the component from showing a loading skeleton while fetches are in-flight.
-  */
   // ── App context (loading added so the skeleton can render) ──
   const {
     transactions = [],
     theme,
-    fmt: contextFmt,
     user,
     lang,
     currency,
     currencyInfo,
     loading,
-  } = useContext(AppContext);
+  } = useAppState();
+  const {
+    fmt: contextFmt,
+  } = useAppActions();
   const { showToast } = useToast();
 
   const prefersReducedMotion = usePrefersReducedMotion();

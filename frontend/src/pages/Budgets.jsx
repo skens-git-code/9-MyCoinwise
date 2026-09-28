@@ -1,12 +1,12 @@
 import React, {
-  useState, useContext, useMemo, useCallback, useEffect, useRef,
+  useState, useMemo, useCallback, useEffect, useRef,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Edit3, Trash2, AlertCircle, Calendar, Wallet, Copy,
   ToggleLeft, ToggleRight, Eye, EyeOff, Loader2,
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import { api } from '../services/api';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
@@ -208,13 +208,15 @@ const ActionIconButton = ({ onClick, accessibilityLabel, children, isDisabled, v
 export default function BudgetManager() {
   const {
     budgets = [],
-    refetch: refreshData,
-    fmt: formatCurrency,
     transactions = [],
     loading: isLoadingData,
-    t: translate,
     lang: currentLanguage,
-  } = useContext(AppContext);
+  } = useAppState();
+  const {
+    refetch: refreshData,
+    fmt: formatCurrency,
+    t: translate,
+  } = useAppActions();
   
   const { showToast } = useToast();
 

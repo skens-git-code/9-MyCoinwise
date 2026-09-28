@@ -21,7 +21,7 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useState, useContext, useMemo, useEffect, useRef, useCallback, useId,
+  useState, useMemo, useEffect, useRef, useCallback, useId,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -33,7 +33,7 @@ import {
   CheckCircle, Sliders, Download, Layers,
   RotateCcw,
 } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import { useToast } from '../components/ToastProvider';
 import { api } from '../services/api';
 import debounce from 'lodash.debounce';
@@ -263,13 +263,15 @@ export default function Cashflow() {
     subscriptions = [],
     accounts = [],
     currency = 'USD',
-    fmt,
-    t,
     token,
     theme,
     lang,
     loading,
-  } = useContext(AppContext);
+  } = useAppState();
+  const {
+    fmt,
+    t,
+  } = useAppActions();
   const { showToast } = useToast();
 
   // ── Locale derived from the app language ──
