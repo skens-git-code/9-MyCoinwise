@@ -39,7 +39,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from 'recharts';
-import useCountUp from '../hooks/useCountUp';
+import AnimatedNumber from '../components/AnimatedNumber';
 import { useToast } from '../components/ToastProvider';
 import {
   convertCurrency,
@@ -810,11 +810,6 @@ export default function Dashboard() {
     return Math.max(0, dailyCapped);
   }, [spendableBalance, subscriptions]);
 
-  // 7. Animated counters (respect timing curves, ignore reduced motion)
-  const { value: animatedBalance, isFinished: balanceDone } = useCountUp(rawBalance, 900);
-  const { value: animatedIncome } = useCountUp(rawIncome, 800);
-  const { value: animatedExpense } = useCountUp(rawExpense, 800);
-
   // 8. Goal progress (monthly)
   const goalProgress = useMemo(() => {
     if (monthlyGoal <= 0) return 0;
@@ -1571,7 +1566,7 @@ export default function Dashboard() {
           {/* ===================== Hero — Total Balance ===================== */}
           <motion.div
             variants={CARD_VARIANTS}
-            className={`bento-tile bento-hero stat-card glass ${balanceDone ? 'numberGlow' : ''}`}
+            className="bento-tile bento-hero stat-card glass numberGlow"
             style={{
               borderColor: rawBalance >= 0
                 ? 'rgba(var(--balance-accent-rgb), 0.34)'
@@ -1620,7 +1615,11 @@ export default function Dashboard() {
                 }}
               >
                 <span style={{ fontSize: 'inherit', color: 'inherit', fontWeight: 'inherit' }}>
-                  {formatCurrencyNode(animatedBalance, safeFmt, currencySymbol)}
+                  <AnimatedNumber
+                    value={rawBalance}
+                    duration={900}
+                    format={(num) => formatCurrencyText(num, safeFmt, currencySymbol)}
+                  />
                 </span>
               </h2>
 
@@ -1666,7 +1665,13 @@ export default function Dashboard() {
           <StatCard
             icon={TrendingUp}
             label={tr('total_income', 'Total Income')}
-            value={formatCurrencyNode(animatedIncome, safeFmt, currencySymbol)}
+            value={
+              <AnimatedNumber
+                value={rawIncome}
+                duration={800}
+                format={(num) => formatCurrencyText(num, safeFmt, currencySymbol)}
+              />
+            }
             valueText={formatCurrencyText(rawIncome, safeFmt, currencySymbol)}
             colorRgb="34, 197, 94"
             accentColor="var(--success)"
@@ -1681,7 +1686,13 @@ export default function Dashboard() {
           <StatCard
             icon={TrendingDown}
             label={tr('total_expenses', 'Total Expenses')}
-            value={formatCurrencyNode(animatedExpense, safeFmt, currencySymbol)}
+            value={
+              <AnimatedNumber
+                value={rawExpense}
+                duration={800}
+                format={(num) => formatCurrencyText(num, safeFmt, currencySymbol)}
+              />
+            }
             valueText={formatCurrencyText(rawExpense, safeFmt, currencySymbol)}
             colorRgb="239, 68, 68"
             accentColor="var(--danger)"
