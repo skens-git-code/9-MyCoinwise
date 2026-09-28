@@ -17,8 +17,9 @@ function AnimatedNumber({
   suffix = '',
   className = '',
   style = {},
+  onComplete,
 }) {
-  const mv = useCountUpMotion(value, duration);
+  const mv = useCountUpMotion(value, duration, onComplete);
   const display = useTransform(mv, (latest) => {
     const formatted = format(latest);
     return `${prefix}${formatted != null ? formatted : ''}${suffix}`;
@@ -42,6 +43,7 @@ AnimatedNumber.propTypes = {
   suffix: PropTypes.string,
   className: PropTypes.string,
   style: PropTypes.object,
+  onComplete: PropTypes.func,
 };
 
 export default React.memo(AnimatedNumber);

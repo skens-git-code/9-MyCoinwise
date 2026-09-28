@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useMotionValue, animate } from 'framer-motion';
+import { useMotionValue, animate, useReducedMotion } from 'framer-motion';
 
 /**
  * High-performance motion value hook for number tweening (Stage 2, RC#3).
@@ -8,22 +8,24 @@ import { useMotionValue, animate } from 'framer-motion';
  *
  * @param {number} targetValue - Target number to tween to
  * @param {number} duration - Duration in ms (default: 800ms)
+ * @param {() => void} [onComplete] - Callback invoked when the animation finishes
  * @returns {import('framer-motion').MotionValue<number>} Framer Motion motion value
  */
-export function useCountUpMotion(targetValue, duration = 800) {
+export function useCountUpMotion(targetValue, duration = 800, onComplete) {
   const motionVal = useMotionValue(targetValue);
   const prevTargetRef = useRef(targetValue);
+  const prefersReducedMotion = useReducedMotion();
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
     const isHidden = typeof document !== 'undefined' && document.hidden;
-    const prefersReducedMotion = typeof window !== 'undefined'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false;
 
     // Immediately snap to target if motion is reduced, tab is hidden, duration is 0, or values match
     if (prefersReducedMotion || isHidden || duration <= 0 || prevTargetRef.current === targetValue) {
       motionVal.set(targetValue);
       prevTargetRef.current = targetValue;
+      onCompleteRef.current?.();
       return undefined;
     }
 
@@ -35,6 +37,7 @@ export function useCountUpMotion(targetValue, duration = 800) {
       onComplete: () => {
         motionVal.set(targetValue);
         prevTargetRef.current = targetValue;
+        onCompleteRef.current?.();
       },
     });
 
@@ -43,18 +46,34 @@ export function useCountUpMotion(targetValue, duration = 800) {
         controls.stop();
         motionVal.set(targetValue);
         prevTargetRef.current = targetValue;
+        onCompleteRef.current?.();
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
 
     return () => {
       controls.stop();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
     };
-  }, [targetValue, duration, motionVal]);
+  }, [targetValue, duration, prefersReducedMotion, motionVal]);
 
   return motionVal;
+}
+
+/**
+ * @deprecated Removed in Stage 2 (RC#3). Calling this legacy hook causes per-frame
+ * React re-render storms (~180 renders during page load).
+ * Use <AnimatedNumber /> or useCountUpMotion() instead.
+ */
+export function useCountUp() {
+  throw new Error(
+    'useCountUp has been removed to eliminate per-frame setState re-render storms. Use <AnimatedNumber /> or useCountUpMotion() instead.'
+  );
 }
 
 export default useCountUpMotion;
