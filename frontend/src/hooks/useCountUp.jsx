@@ -1,14 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useMotionValue, animate } from 'framer-motion';
 
 /**
- * High-performance number tweening hook using Framer Motion's internal animation loop.
- * Respects prefers-reduced-motion and document.hidden with instant snapping
- * and deterministic stop() cleanup on unmount.
+ * High-performance motion value hook for number tweening (Stage 2, RC#3).
+ * Returns a Framer Motion `motionValue` directly and does NOT call `setState`
+ * during animation frames, eliminating React component re-renders.
+ *
+ * @param {number} targetValue - Target number to tween to
+ * @param {number} duration - Duration in ms (default: 800ms)
+ * @returns {import('framer-motion').MotionValue<number>} Framer Motion motion value
  */
-export default function useCountUp(targetValue, duration = 800) {
-  const [value, setValue] = useState(targetValue);
-  const [isFinished, setIsFinished] = useState(true);
+export function useCountUpMotion(targetValue, duration = 800) {
   const motionVal = useMotionValue(targetValue);
   const prevTargetRef = useRef(targetValue);
 
@@ -18,29 +20,21 @@ export default function useCountUp(targetValue, duration = 800) {
       ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
       : false;
 
-    // Immediately snap to target if motion is reduced, tab is hidden, or values match
-    if (prefersReducedMotion || isHidden || prevTargetRef.current === targetValue) {
+    // Immediately snap to target if motion is reduced, tab is hidden, duration is 0, or values match
+    if (prefersReducedMotion || isHidden || duration <= 0 || prevTargetRef.current === targetValue) {
       motionVal.set(targetValue);
-      setValue(targetValue);
       prevTargetRef.current = targetValue;
-      setIsFinished(true);
       return undefined;
     }
 
-    setIsFinished(false);
-    // Convert ms to seconds if > 10 (framer-motion expects seconds)
     const durationSeconds = duration > 10 ? duration / 1000 : duration;
 
     const controls = animate(motionVal, targetValue, {
       duration: durationSeconds,
       ease: [0.16, 1, 0.3, 1], // easeOutExpo
-      onUpdate: (latest) => {
-        setValue(latest);
-      },
       onComplete: () => {
-        setValue(targetValue);
+        motionVal.set(targetValue);
         prevTargetRef.current = targetValue;
-        setIsFinished(true);
       },
     });
 
@@ -48,9 +42,7 @@ export default function useCountUp(targetValue, duration = 800) {
       if (document.hidden) {
         controls.stop();
         motionVal.set(targetValue);
-        setValue(targetValue);
         prevTargetRef.current = targetValue;
-        setIsFinished(true);
       }
     };
 
@@ -62,5 +54,7 @@ export default function useCountUp(targetValue, duration = 800) {
     };
   }, [targetValue, duration, motionVal]);
 
-  return { value, isFinished };
+  return motionVal;
 }
+
+export default useCountUpMotion;
