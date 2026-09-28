@@ -9,66 +9,118 @@ describe('Stage 2: useCountUpMotion and AnimatedNumber', () => {
     expect(() => useCountUp()).toThrow(/useCountUp has been removed to eliminate per-frame setState/);
   });
 
-  it('does NOT invoke React.useState or setState inside useCountUpMotion during animation', () => {
-    const useStateSpy = vi.spyOn(React, 'useState');
-    const { result } = renderHook(() => useCountUpMotion(100, 500));
+  it('does NOT call setState or re-render the consumer during animation frames', async () => {
+    const probeRenderSpy = vi.fn();
 
-    expect(result.current).toBeDefined();
-    expect(typeof result.current.get).toBe('function');
-    expect(result.current.get()).toBe(100);
-
-    // Assert that useCountUpMotion does not introduce any internal React useState calls
-    expect(useStateSpy).not.toHaveBeenCalled();
-    useStateSpy.mockRestore();
-  });
-
-  it('guarantees parent component does NOT re-render during counter animation frames', async () => {
-    const renderSpy = vi.fn();
-
-    function ParentComponent({ target }) {
+    function Probe({ target }) {
       useEffect(() => {
-        renderSpy();
+        probeRenderSpy();
       });
-
-      return (
-        <div>
-          <AnimatedNumber
-            value={target}
-            duration={50}
-            format={(v) => Math.round(v)}
-          />
-        </div>
-      );
+      useCountUpMotion(target, 100);
+      return null;
     }
 
-    const { container } = render(<ParentComponent target={500} />);
-    expect(renderSpy).toHaveBeenCalledTimes(1);
+    const { rerender } = render(<Probe target={0} />);
+    expect(probeRenderSpy).toHaveBeenCalledTimes(1);
 
-    // Wait for the animation duration (50ms) to elapse
+    // Trigger value change from 0 to 500
+    rerender(<Probe target={500} />);
+    expect(probeRenderSpy).toHaveBeenCalledTimes(2); // mount + rerender trigger
+
+    // Wait during active animation window (50ms of 100ms duration)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    // Zero re-renders during animation frames
+    expect(probeRenderSpy).toHaveBeenCalledTimes(2);
+
+    // Wait for animation completion
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 80));
     });
 
-    // Parent component render count MUST stay strictly at 1 (zero animation frame re-renders)
-    expect(renderSpy).toHaveBeenCalledTimes(1);
+    // Still exactly 2 (zero setState frame commits)
+    expect(probeRenderSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not re-render the parent component during a value animation', async () => {
+    const parentRenderSpy = vi.fn();
+
+    function Parent({ target }) {
+      useEffect(() => {
+        parentRenderSpy();
+      });
+      return (
+        <AnimatedNumber
+          value={target}
+          duration={100}
+          format={(v) => Math.round(v)}
+        />
+      );
+    }
+
+    const { container, rerender } = render(<Parent target={0} />);
+    expect(parentRenderSpy).toHaveBeenCalledTimes(1);
+
+    // Trigger value change: 0 -> 500
+    rerender(<Parent target={500} />);
+    expect(parentRenderSpy).toHaveBeenCalledTimes(2);
+
+    // Mid-animation: parent should NOT have re-rendered on animation ticks
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(parentRenderSpy).toHaveBeenCalledTimes(2);
+
+    // Post-animation: parent stays at 2 renders, DOM contains final value
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+    expect(parentRenderSpy).toHaveBeenCalledTimes(2);
     expect(container.textContent).toContain('500');
   });
 
-  it('calls onComplete callback when counter animation finishes', async () => {
+  it('calls onComplete callback after animation duration when value changes', async () => {
     const onCompleteMock = vi.fn();
 
-    render(
+    const { rerender } = render(
+      <AnimatedNumber
+        value={0}
+        duration={100}
+        onComplete={onCompleteMock}
+      />
+    );
+    // Value is 0 on mount -> snaps immediately, or onCompleteMock called if targetValue === initialValue
+    onCompleteMock.mockClear();
+
+    // Trigger value change: 0 -> 300
+    rerender(
       <AnimatedNumber
         value={300}
-        duration={40}
+        duration={100}
         onComplete={onCompleteMock}
       />
     );
 
+    // Mid-animation (40ms into 100ms duration) - must NOT have completed yet
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 40));
     });
+    expect(onCompleteMock).not.toHaveBeenCalled();
 
+    // Post-animation (120ms total) - must have completed exactly once
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 90));
+    });
+    expect(onCompleteMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('immediately snaps to target without animation if duration <= 0', () => {
+    const onCompleteMock = vi.fn();
+    const { result } = renderHook(() => useCountUpMotion(250, 0, onCompleteMock));
+
+    expect(result.current.get()).toBe(250);
     expect(onCompleteMock).toHaveBeenCalledTimes(1);
   });
 
