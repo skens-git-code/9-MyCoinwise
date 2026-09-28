@@ -25,11 +25,11 @@
  *   - Submits through a portal into document.body.
  * ————————————————————————————————————— */
 
-import React, { useState, useEffect, useContext, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { X, Check } from 'lucide-react';
-import { AppContext } from '../contexts/AppContext';
+import { useAppState, useAppActions } from '../contexts/AppContext';
 import Modal from './Modal';
 
 /* —————————————————————————————————————
@@ -62,7 +62,8 @@ const formatDateForInput = (dateInput) => {
  * ————————————————————————————————————— */
 export default function TransactionForm({ isOpen = true, onClose, onSubmit, initialData = null }) {
   // ── Context: currency, accounts, i18n ──
-  const { currency, currencyInfo, accounts = [], t } = useContext(AppContext);
+  const { currency, currencyInfo, accounts = [] } = useAppState();
+  const { t } = useAppActions();
   const currSymbol = currencyInfo?.symbol || '₹';
 
   /* —————————————————————————————————————
