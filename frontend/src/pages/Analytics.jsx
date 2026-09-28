@@ -390,18 +390,6 @@ DrillDownModal.displayName = 'DrillDownModal';
  * Main Component
  * ============================================================ */
 export default function Analytics() {
-  /* Original context destructuring without loading:
-  const {
-    transactions = [],
-    theme,
-    fmt: contextFmt,
-    user,
-    lang,
-    currency,
-    currencyInfo,
-  } = useContext(AppContext);
-  // Issue: loading was not destructured, preventing the component from showing a loading skeleton while fetches are in-flight.
-  */
   // ── App context (loading added so the skeleton can render) ──
   const {
     transactions = [],
