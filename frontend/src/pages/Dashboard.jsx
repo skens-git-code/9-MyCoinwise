@@ -810,7 +810,9 @@ export default function Dashboard() {
     return Math.max(0, dailyCapped);
   }, [spendableBalance, subscriptions]);
 
-  // 8. Goal progress (monthly)
+  // 7. Animated counter completion state for hero card glow
+  const [balanceDone, setBalanceDone] = useState(false);
+  const handleBalanceComplete = useCallback(() => setBalanceDone(true), []);
   const goalProgress = useMemo(() => {
     if (monthlyGoal <= 0) return 0;
     return Math.max(0, Math.min((monthlyNetSavings / monthlyGoal) * 100, 100));
@@ -1566,7 +1568,7 @@ export default function Dashboard() {
           {/* ===================== Hero — Total Balance ===================== */}
           <motion.div
             variants={CARD_VARIANTS}
-            className="bento-tile bento-hero stat-card glass numberGlow"
+            className={`bento-tile bento-hero stat-card glass ${balanceDone ? 'numberGlow' : ''}`}
             style={{
               borderColor: rawBalance >= 0
                 ? 'rgba(var(--balance-accent-rgb), 0.34)'
@@ -1619,6 +1621,7 @@ export default function Dashboard() {
                     value={rawBalance}
                     duration={900}
                     format={(num) => formatCurrencyText(num, safeFmt, currencySymbol)}
+                    onComplete={handleBalanceComplete}
                   />
                 </span>
               </h2>
