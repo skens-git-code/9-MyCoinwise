@@ -338,7 +338,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       await onSubmit(transactionData);
 
       // Reset form only for new transactions, not for edits
-      if (!initialData) {
+      const isExistingEdit = Boolean(initialData && (initialData._id || initialData.id));
+      if (!isExistingEdit) {
         resetForm();
       }
     } catch (err) {

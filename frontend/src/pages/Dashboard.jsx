@@ -626,6 +626,7 @@ export default function Dashboard() {
 
   // ── UI state ──
   const [showForm, setShowForm] = useState(false);
+  const [formInstanceId, setFormInstanceId] = useState(0);
   const [editingTx, setEditingTx] = useState(null);
   const [dateFilter, setDateFilter] = useState(() => safeGetItem(dateFilterKey, 'all'));
   const [categoryFilter, setCategoryFilter] = useState(() => safeGetItem(categoryFilterKey, 'all'));
@@ -633,6 +634,12 @@ export default function Dashboard() {
   const [isExporting, setIsExporting] = useState(false);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
+
+  const handleOpenAddForm = useCallback(() => {
+    setEditingTx(null);
+    setFormInstanceId((prev) => prev + 1);
+    setShowForm(true);
+  }, []);
 
   /* ---------------- Reload filters when USER_ID changes ---------------- */
   useEffect(() => {
@@ -1298,6 +1305,7 @@ export default function Dashboard() {
         err?.message ||
         'Failed to add transaction.';
       showToast('error', errorMsg);
+      throw err;
     } finally {
       setIsLoadingAction(false);
     }
@@ -1306,6 +1314,7 @@ export default function Dashboard() {
   // ── Open the form in edit mode for a transaction ──
   const handleEditTransaction = useCallback((tx) => {
     setEditingTx(tx);
+    setFormInstanceId((prev) => prev + 1);
     setShowForm(true);
   }, []);
 
@@ -1385,12 +1394,12 @@ export default function Dashboard() {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
-        setShowForm(true);
+        handleOpenAddForm();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [handleOpenAddForm]);
 
   /* ============================================================
    * Modal Initial Data (stable)
@@ -1467,7 +1476,7 @@ export default function Dashboard() {
             <motion.button
               type="button"
               className="bbtn-pri bbtn-full"
-              onClick={() => setShowForm(true)}
+              onClick={handleOpenAddForm}
               title="Ctrl+N"
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
@@ -1721,7 +1730,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   className="bt-icon-btn"
-                  onClick={() => setShowForm(true)}
+                  onClick={handleOpenAddForm}
                   title="Add transaction"
                   aria-label="Add transaction"
                 >
@@ -1731,7 +1740,7 @@ export default function Dashboard() {
             </div>
 
             {parsedTransactions.length === 0 ? (
-              <EmptyTransactionState onAddClick={() => setShowForm(true)} />
+              <EmptyTransactionState onAddClick={handleOpenAddForm} />
             ) : (
               <>
                 {/* ── Grouped list (header rows + tx rows) ── */}
@@ -2086,7 +2095,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     className="bg-topup-btn"
-                    onClick={() => setShowForm(true)}
+                    onClick={handleOpenAddForm}
                     title="Contribute towards goal"
                   >
                     <Plus size={12} /> Top Up
@@ -2182,7 +2191,7 @@ export default function Dashboard() {
 
         {/* ===================== Transaction form ===================== */}
         <TransactionForm
-          key={editingTx ? `edit-${editingTx.id || editingTx._id}` : `add-${showForm}`}
+          key={editingTx ? `edit-${editingTx.id || editingTx._id}-${formInstanceId}` : `add-${formInstanceId}`}
           isOpen={showForm}
           initialData={initialFormData}
           onClose={() => { setShowForm(false); setEditingTx(null); }}
