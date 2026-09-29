@@ -297,6 +297,10 @@ transactionSchema.index({ user_id: 1, date: -1 });
 transactionSchema.index({ user_id: 1, is_deleted: 1 });
 transactionSchema.index({ user_id: 1, is_deleted: 1, date: -1 });
 
+// ── Compound index for cursor-based pagination (Sub-PR 3.1) ──
+transactionSchema.index({ user_id: 1, date: -1, _id: -1 });
+transactionSchema.index({ user_id: 1, is_deleted: 1, date: -1, _id: -1 });
+
 // ── Listing: filter by income/expense ──
 transactionSchema.index({ user_id: 1, type: 1 });
 

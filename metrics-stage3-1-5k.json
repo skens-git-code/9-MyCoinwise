@@ -1,0 +1,30 @@
+{
+  "sub_pr": "3.1",
+  "user_email": "bench_5k@mycoinwise.test",
+  "userId": "6abb41eefee13a3aa9ac9320",
+  "txCount": 5000,
+  "first_page_limit": 50,
+  "items_returned": 50,
+  "payload_bytes": 37817,
+  "payload_kb": 36.93,
+  "first_page_latency_ms": {
+    "min": 243.91,
+    "p50": 480.25,
+    "p95": 794.17,
+    "max": 794.17,
+    "avg": 470.27,
+    "all": [
+      243.91,
+      252.47,
+      426.23,
+      428.77,
+      474.94,
+      480.25,
+      493.26,
+      532.82,
+      575.84,
+      794.17
+    ]
+  },
+  "timestamp": "2026-09-29T04:53:31.265Z"
+}

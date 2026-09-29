@@ -945,9 +945,47 @@ router.post('/statement/import', async (req, res) => {
   }
 });
 
+// ── Cursor Pagination Helpers (Sub-PR 3.1) ──
+const encodeCursor = (doc) => {
+  if (!doc || !doc.date || !doc._id) return null;
+  const payload = {
+    date: doc.date instanceof Date ? doc.date.toISOString() : new Date(doc.date).toISOString(),
+    _id: String(doc._id),
+  };
+  return Buffer.from(JSON.stringify(payload)).toString('base64');
+};
+
+const decodeCursor = (cursorStr) => {
+  if (!cursorStr || typeof cursorStr !== 'string') return null;
+  try {
+    const raw = Buffer.from(cursorStr, 'base64').toString('utf8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Cursor must be a JSON object');
+    }
+    const { date, _id } = parsed;
+    if (!date || !_id || !mongoose.isValidObjectId(_id)) {
+      throw new Error('Invalid cursor shape');
+    }
+    const parsedDate = new Date(date);
+    if (Number.isNaN(parsedDate.getTime())) {
+      throw new Error('Invalid cursor date');
+    }
+    return {
+      date: parsedDate,
+      _id: new mongoose.Types.ObjectId(_id),
+    };
+  } catch {
+    const error = new Error('Malformed or invalid pagination cursor.');
+    error.statusCode = 400;
+    throw error;
+  }
+};
+
 /* —————————————————————————————————————
  * GET /:userId
- * List a user's transactions, newest first.
+ * List a user's transactions with cursor pagination.
+ * Supports ?legacy=true for backward compatibility.
  * ————————————————————————————————————— */
 router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   // ── Validate and authorize the target user ──
@@ -958,31 +996,93 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
     return res.status(403).json({ error: 'Forbidden.' });
   }
 
+  // ── Handle legacy query parameter for backward compatibility ──
+  if (req.query.legacy === 'true' || req.query.legacy === '1') {
+    try {
+      if (shouldProcessRecurring(req.params.userId)) {
+        await processRecurringForUser(req.params.userId);
+      }
+
+      const limit = Math.min(
+        2000,
+        Math.max(1, Number.parseInt(req.query.limit, 10) || 2000)
+      );
+      const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+      const skip = (page - 1) * limit;
+
+      const transactions = await Transaction.find({
+        user_id: req.params.userId,
+        is_deleted: { $ne: true },
+      })
+        .sort({ date: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit);
+
+      return res.json(dedupeTransactions(transactions.map((transaction) => transaction.toObject())));
+    } catch (error) {
+      logger.error('[Transactions] legacy list error:', error);
+      return res.status(500).json({ error: 'Unable to load transactions.' });
+    }
+  }
+
+  // ── Cursor-based pagination (Sub-PR 3.1) ──
+  let cursorObj = null;
+  if (req.query.cursor) {
+    try {
+      cursorObj = decodeCursor(req.query.cursor);
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'Malformed or invalid pagination cursor.' });
+    }
+  }
+
+  const limit = Math.min(
+    200,
+    Math.max(1, Number.parseInt(req.query.limit, 10) || 50)
+  );
+
   try {
-    // Note: an earlier version ran full recurring processing and
-    // balance syncs on every GET, causing a heavy read-path
-    // bottleneck. Now throttled to once per 15 minutes per user.
     if (shouldProcessRecurring(req.params.userId)) {
       await processRecurringForUser(req.params.userId);
     }
 
-    // ── Paginate and load non-deleted transactions ──
-    const limit = Math.min(
-      2000,
-      Math.max(1, Number.parseInt(req.query.limit, 10) || 2000)
-    );
-    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
-    const skip = (page - 1) * limit;
-
-    const transactions = await Transaction.find({
+    const query = {
       user_id: req.params.userId,
-      is_deleted: { $ne: true },
-    })
-      .sort({ date: -1, _id: -1 })
-      .skip(skip)
-      .limit(limit);
+      is_deleted: false,
+    };
 
-    return res.json(dedupeTransactions(transactions.map((transaction) => transaction.toObject())));
+    if (cursorObj) {
+      query.$or = [
+        { date: { $lt: cursorObj.date } },
+        { date: cursorObj.date, _id: { $lt: cursorObj._id } },
+      ];
+    }
+
+    const docs = await Transaction.find(query)
+      .sort({ date: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    const hasMore = docs.length > limit;
+    const rawItems = hasMore ? docs.slice(0, limit) : docs;
+    const items = dedupeTransactions(rawItems);
+    const lastItem = items.length > 0 ? items[items.length - 1] : null;
+    const nextCursor = (hasMore && lastItem) ? encodeCursor(lastItem) : null;
+
+    const responsePayload = {
+      items,
+      nextCursor,
+      hasMore,
+    };
+
+    // Total count is optional per spec (only computed when explicitly requested via ?total=true)
+    if (req.query.total === 'true' || req.query.include_total === 'true') {
+      responsePayload.total = await Transaction.countDocuments({
+        user_id: req.params.userId,
+        is_deleted: false,
+      });
+    }
+
+    return res.json(responsePayload);
   } catch (error) {
     logger.error('[Transactions] list error:', error);
     return res.status(500).json({ error: 'Unable to load transactions.' });
@@ -1298,4 +1398,6 @@ router.post('/bulk-delete', async (req, res) => {
 // ── Export router and reconciliation helpers ──
 router.syncUserBalance = syncUserBalance;
 router.adjustUserBalanceIncrementally = adjustUserBalanceIncrementally;
+router.encodeCursor = encodeCursor;
+router.decodeCursor = decodeCursor;
 module.exports = router;
