@@ -22,6 +22,10 @@ frontend/dist/
 frontend/node_modules/.vite/
 stats.html
 
+# Benchmark & Performance telemetry
+metrics-*.json
+baseline-*.json
+
 # Logs & Runtime telemetry
 *.log
 audit.log

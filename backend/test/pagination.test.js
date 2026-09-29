@@ -23,16 +23,86 @@ const Transaction = require('../models/Transaction');
 const Session = require('../models/Session');
 const { encodeCursor, decodeCursor } = require('../routes/transactions');
 
-const API_BASE = 'http://localhost:5001/api';
+const API_BASE = process.env.API_BASE || 'http://localhost:5001/api';
 
-async function run() {
-  console.log('🧪 Starting Cursor Pagination Tests (Sub-PR 3.1)...');
+// ── Unit Tests: Pure functions (always run in CI without DB) ──
+function runUnitTests() {
+  console.log('🧪 Running Cursor Pagination Unit Tests (CI-compatible)...');
+
+  // Test U1: encodeCursor produces valid base64
+  const mockTx = {
+    date: new Date('2026-09-29T10:00:00.000Z'),
+    _id: new mongoose.Types.ObjectId('6abb41eefee13a3aa9ac9320'),
+  };
+  const cursor = encodeCursor(mockTx);
+  assert(typeof cursor === 'string' && cursor.length > 0, 'Cursor must be a non-empty string');
+
+  // Test U2: decodeCursor recovers original date and ObjectId
+  const decoded = decodeCursor(cursor);
+  assert(decoded.date instanceof Date, 'Decoded date must be Date instance');
+  assert.strictEqual(decoded.date.toISOString(), mockTx.date.toISOString());
+  assert(decoded._id instanceof mongoose.Types.ObjectId, 'Decoded _id must be ObjectId');
+  assert.strictEqual(decoded._id.toString(), mockTx._id.toString());
+
+  // Test U3: decodeCursor returns null for null or non-string input
+  assert.strictEqual(decodeCursor(null), null);
+  assert.strictEqual(decodeCursor(undefined), null);
+  assert.strictEqual(decodeCursor(12345), null);
+
+  // Test U4: decodeCursor throws for malformed base64 or invalid JSON
+  assert.throws(() => decodeCursor('not-valid-base64!@#$'), /Malformed or invalid pagination cursor/);
+  assert.throws(() => decodeCursor(Buffer.from('not-json').toString('base64')), /Malformed or invalid pagination cursor/);
+
+  // Test U5: decodeCursor throws for missing or invalid fields
+  assert.throws(
+    () => decodeCursor(Buffer.from(JSON.stringify({ date: '2026-09-29' })).toString('base64')),
+    /Malformed or invalid pagination cursor/
+  );
+  assert.throws(
+    () => decodeCursor(Buffer.from(JSON.stringify({ _id: '6abb41eefee13a3aa9ac9320' })).toString('base64')),
+    /Malformed or invalid pagination cursor/
+  );
+  assert.throws(
+    () => decodeCursor(Buffer.from(JSON.stringify({ date: 'invalid-date', _id: '6abb41eefee13a3aa9ac9320' })).toString('base64')),
+    /Malformed or invalid pagination cursor/
+  );
+  assert.throws(
+    () => decodeCursor(Buffer.from(JSON.stringify({ date: '2026-09-29T10:00:00.000Z', _id: '123' })).toString('base64')),
+    /Malformed or invalid pagination cursor/
+  );
+
+  console.log('  ✅ All 5 Cursor Unit Tests Passed.');
+}
+
+async function runLiveIntegrationTests() {
+  if (!process.env.MONGO_URI) {
+    console.log('⚠️  MONGO_URI not set. Skipping live database pagination tests.');
+    return;
+  }
+
+  // Quick check if API server is reachable
+  try {
+    const probe = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(1000) }).catch(() => null);
+    if (!probe) {
+      console.log('⚠️  API server not reachable at ' + API_BASE + '. Skipping live DB HTTP tests.');
+      return;
+    }
+  } catch {
+    console.log('⚠️  Skipping live DB HTTP tests (server unreachable).');
+    return;
+  }
+
+  console.log('🧪 Starting Live Cursor Pagination Integration Tests...');
 
   await mongoose.connect(process.env.MONGO_URI);
 
   // Use seeded 5k user
   const user = await User.findOne({ email: 'bench_5k@mycoinwise.test' });
-  assert(user, 'Test user bench_5k@mycoinwise.test must exist');
+  if (!user) {
+    console.log('⚠️  bench_5k@mycoinwise.test user not found. Skipping live benchmark tests.');
+    await mongoose.disconnect();
+    return;
+  }
   const userId = String(user._id);
 
   // Generate test token
@@ -199,10 +269,14 @@ async function run() {
 
   console.log('\n🎉 ALL 7 PAGINATION TESTS PASSED CLEANLY!\n');
   await mongoose.disconnect();
-  process.exit(0);
 }
 
-run().catch(err => {
+async function main() {
+  runUnitTests();
+  await runLiveIntegrationTests();
+}
+
+main().catch(err => {
   console.error('❌ Pagination test failed:', err);
   process.exit(1);
 });
