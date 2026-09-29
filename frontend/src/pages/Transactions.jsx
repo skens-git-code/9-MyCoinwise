@@ -245,6 +245,14 @@ export default function Transactions() {
   const [editingTx, setEditingTx] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
   const [duplicateTxData, setDuplicateTxData] = useState(null);
+  const [formInstanceId, setFormInstanceId] = useState(0);
+
+  const handleOpenAdd = useCallback(() => {
+    setEditingTx(null);
+    setDuplicateTxData(null);
+    setFormInstanceId((prev) => prev + 1);
+    setIsAdding(true);
+  }, []);
 
   /* ---------------- Import State ---------------- */
 
@@ -682,6 +690,7 @@ export default function Transactions() {
 
   // ── Prepare a copy of the given transaction for the form ──
   const prepareDuplicate = useCallback((tx) => {
+    setFormInstanceId((prev) => prev + 1);
     setDuplicateTxData({
       type: tx.type,
       category: tx.category,
@@ -972,7 +981,7 @@ export default function Transactions() {
       }
       if ((e.key === 'n' || e.key === 'N') && !inField && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        setIsAdding(true);
+        handleOpenAdd();
         return;
       }
       if (e.key === 'Escape' && !inField) {
@@ -985,7 +994,7 @@ export default function Transactions() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedIds.size, hasActiveFilters, clearSelection, clearAllFilters]);
+  }, [selectedIds.size, hasActiveFilters, clearSelection, clearAllFilters, handleOpenAdd]);
 
   /* ============================================================
    * Memoized Totals
@@ -1118,7 +1127,7 @@ export default function Transactions() {
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             className="btn-primary"
-            onClick={() => setIsAdding(true)}
+            onClick={handleOpenAdd}
           >
             <Plus size={16} /> {tr('add_transaction', 'Add New')}
           </motion.button>
@@ -1371,7 +1380,7 @@ export default function Transactions() {
                 <button
                   type="button"
                   className="btn-primary"
-                  onClick={() => setIsAdding(true)}
+                  onClick={handleOpenAdd}
                   style={{ marginTop: 10 }}
                 >
                   <Plus size={14} aria-hidden /> {tr('add_first_transaction', 'Add First Transaction')}
@@ -1619,7 +1628,10 @@ export default function Transactions() {
                   <button
                     type="button"
                     className="tx-ticket-btn edit"
-                    onClick={() => setEditingTx(selectedTx)}
+                    onClick={() => {
+                      setFormInstanceId((prev) => prev + 1);
+                      setEditingTx(selectedTx);
+                    }}
                     title={tr('edit', 'Edit')}
                   >
                     <Edit3 size={15} aria-hidden />
@@ -1708,10 +1720,10 @@ export default function Transactions() {
       {(isAdding || duplicateTxData || editingTx) && (
         <TransactionForm
           key={
-            isAdding ? 'add'
-              : duplicateTxData ? 'duplicate'
-                : editingTx ? `edit-${getTransactionId(editingTx)}`
-                  : 'tx'
+            isAdding ? `add-${formInstanceId}`
+              : duplicateTxData ? `duplicate-${formInstanceId}`
+                : editingTx ? `edit-${getTransactionId(editingTx)}-${formInstanceId}`
+                  : `tx-${formInstanceId}`
           }
           isOpen={Boolean(isAdding || duplicateTxData || editingTx)}
           initialData={duplicateTxData || editingTx || undefined}

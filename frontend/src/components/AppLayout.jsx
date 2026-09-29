@@ -515,6 +515,7 @@ export default function AppLayout({ children }) {
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showOnboardingTour, setShowOnboardingTour] = useState(false);
   const [showAddTx, setShowAddTx] = useState(false);
+  const [addTxInstanceKey, setAddTxInstanceKey] = useState(0);
   const [dismissedAlertIds, setDismissedAlertIds] = useState(() => new Set());
 
   // ── Shared hooks ──
@@ -735,7 +736,7 @@ export default function AppLayout({ children }) {
           [showShortcuts, () => setShowShortcuts(false)],
           [showHelpModal, () => setShowHelpModal(false)],
           [showOnboardingTour, () => setShowOnboardingTour(false)],
-          [showAddTx, () => setShowAddTx(false)],
+          [showAddTx, () => { setShowAddTx(false); setAddTxInstanceKey((k) => k + 1); }],
           [drawerOpen, () => setDrawerOpen(false)],
           [isAIOpen, () => setIsAIOpen(false)],
           [showAlerts, () => setShowAlerts(false)],
@@ -768,8 +769,10 @@ export default function AppLayout({ children }) {
     try {
       await addTransaction(txData);
       setShowAddTx(false);
+      setAddTxInstanceKey((k) => k + 1);
     } catch (err) {
       console.error('addTransaction failed:', err);
+      throw err;
     }
   }, [addTransaction]);
 
@@ -973,8 +976,8 @@ export default function AppLayout({ children }) {
           <AnimatePresence mode="wait">
             {showAddTx && (
               <TransactionForm
-                key="tx-form"
-                onClose={() => setShowAddTx(false)}
+                key={`tx-form-${addTxInstanceKey}`}
+                onClose={() => { setShowAddTx(false); setAddTxInstanceKey((k) => k + 1); }}
                 onSubmit={handleAddTransactionSubmit}
               />
             )}

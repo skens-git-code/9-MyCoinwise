@@ -406,6 +406,7 @@ export default function Calendar() {
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [pickerYear, setPickerYear] = useState(currentDate.getFullYear());
   const [isAdding, setIsAdding] = useState(false);
+  const [formInstanceId, setFormInstanceId] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [newTransactionDate, setNewTransactionDate] = useState('');
@@ -797,6 +798,7 @@ export default function Calendar() {
     if (clickEvent && typeof clickEvent.stopPropagation === 'function') {
       clickEvent.stopPropagation();
     }
+    setFormInstanceId((prev) => prev + 1);
     setNewTransactionDate(dateKey);
     setIsAdding(true);
     setSelectedDate(null);
@@ -806,6 +808,7 @@ export default function Calendar() {
     if (clickEvent && typeof clickEvent.stopPropagation === 'function') {
       clickEvent.stopPropagation();
     }
+    setFormInstanceId((prev) => prev + 1);
     setEditingTransaction(transaction);
     setIsEditing(true);
   }, []);
@@ -844,6 +847,7 @@ export default function Calendar() {
           error?.message ||
             formatText('tx_add_failed', 'Failed to add transaction.')
         );
+        throw error;
       }
     },
     [addTransaction, showToast, closeAddTransactionModal, formatText]
@@ -2259,7 +2263,7 @@ export default function Calendar() {
 
           {isAdding && (
             <TransactionForm
-              key="add-modal"
+              key={`add-modal-${formInstanceId}`}
               isOpen
               initialData={initialAddTransactionFormData}
               onClose={closeAddTransactionModal}
@@ -2269,7 +2273,7 @@ export default function Calendar() {
 
           {isEditing && editingTransaction && (
             <TransactionForm
-              key={`edit-modal-${editingTransaction.id || editingTransaction._id || 'tx'}`}
+              key={`edit-modal-${editingTransaction.id || editingTransaction._id || 'tx'}-${formInstanceId}`}
               isOpen
               initialData={editingTransaction}
               onClose={closeEditTransactionModal}
