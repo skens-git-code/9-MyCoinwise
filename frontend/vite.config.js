@@ -14,16 +14,16 @@ import { visualizer } from 'rollup-plugin-visualizer';
 // })
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
-    visualizer({
+    mode !== 'production' && visualizer({
       filename: 'dist/stats.html',
       open: false,
       gzipSize: true,
       brotliSize: true,
     }),
-  ],
+  ].filter(Boolean),
   server: {
     port: 5173,
     proxy: {
@@ -53,4 +53,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))
