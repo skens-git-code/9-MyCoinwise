@@ -101,11 +101,17 @@ axios.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('mcw-token');
-      sessionStorage.removeItem('mcw-token');
       const requestUrl = String(error.config?.url || '');
       if (!requestUrl.includes('/auth/')) {
-        window.dispatchEvent(new CustomEvent('mcw:auth-expired'));
+        const reason = error.response?.data?.reason || 'token_expired';
+        window.dispatchEvent(new CustomEvent('mcw:auth-expired', {
+          detail: {
+            reason,
+            status: error.response?.status,
+            url: requestUrl,
+            timestamp: Date.now()
+          }
+        }));
       }
     }
     return Promise.reject(error);
