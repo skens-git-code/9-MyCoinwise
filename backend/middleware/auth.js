@@ -6,6 +6,7 @@
 
 // ── Load dependencies ──
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Session = require('../models/Session');
 
@@ -31,33 +32,56 @@ const authenticateRequest = async (req, res, next) => {
     // ── Verify token signature and expiration with explicit algorithm whitelist ──
     const decodedToken = jwt.verify(bearerToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
-    // ── Load user and validate session version ──
-    const authenticatedUser = await User.findById(decodedToken.id || decodedToken._id);
-    if (!authenticatedUser) {
+    // ── Load user and session in a single DB round-trip via $lookup ──
+    const userId = decodedToken.id || decodedToken._id;
+    if (!userId || !mongoose.isValidObjectId(userId)) {
       return res.status(401).json({ error: 'User associated with this token no longer exists.' });
     }
+    const uid = new mongoose.Types.ObjectId(userId);
 
-    // ── Reject revoked session versions ──
-    const tokenSessionVersion = decodedToken.session_version || 0;
-    if (authenticatedUser.session_version > tokenSessionVersion) {
-      return res.status(401).json({ error: 'Session has been revoked or expired. Please log in again.' });
-    }
-
-    // ── Validate or repair server-side session ──
+    let authenticatedUser = null;
     let activeSession = null;
+
     if (decodedToken.jti) {
-      activeSession = await Session.findOne({
-        token_id: decodedToken.jti,
-        user_id: authenticatedUser._id,
-      }).select('+token_id');
+      const results = await Session.aggregate([
+        { $match: { token_id: decodedToken.jti, user_id: uid, is_active: true } },
+        { $project: { _id: 1, last_active: 1, user_id: 1 } },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'user_id',
+            foreignField: '_id',
+            pipeline: [
+              { $project: { _id: 1, session_version: 1, household_id: 1 } }
+            ],
+            as: 'user',
+          },
+        },
+        { $unwind: '$user' },
+      ]);
 
-      // ── Reject explicitly deactivated sessions ──
-      if (activeSession && activeSession.is_active === false) {
-        return res.status(401).json({ error: 'This session has been revoked. Please log in again.' });
-      }
+      if (results.length > 0) {
+        activeSession = results[0];
+        authenticatedUser = results[0].user;
+      } else {
+        // Check if session was explicitly deactivated / revoked
+        const revokedSession = await Session.findOne({
+          token_id: decodedToken.jti,
+          user_id: uid,
+          is_active: false,
+        }).select('_id');
 
-      // ── Create missing session record ──
-      if (!activeSession) {
+        if (revokedSession) {
+          return res.status(401).json({ error: 'This session has been revoked. Please log in again.' });
+        }
+
+        // If not revoked, check if user exists to repair session or reject
+        authenticatedUser = await User.findById(uid);
+        if (!authenticatedUser) {
+          return res.status(401).json({ error: 'User associated with this token no longer exists.' });
+        }
+
+        // Create missing session record
         activeSession = await Session.create({
           user_id: authenticatedUser._id,
           token_id: decodedToken.jti,
@@ -66,16 +90,30 @@ const authenticateRequest = async (req, res, next) => {
           user_agent: req.headers['user-agent'] || '',
           is_active: true,
         }).catch(() => null);
-      } else if (!activeSession.last_active || Date.now() - activeSession.last_active.getTime() > 60_000) {
-        // ── Refresh stale last_active timestamp ──
-        Session.updateOne(
-          { _id: activeSession._id },
-          { $set: { last_active: new Date() } }
-        ).catch(() => {});
+      }
+    } else {
+      // Legacy token without jti claim
+      authenticatedUser = await User.findById(uid);
+      if (!authenticatedUser) {
+        return res.status(401).json({ error: 'User associated with this token no longer exists.' });
       }
     }
 
-    // ── Repair missing household_id on root accounts ──
+    // ── Reject revoked session versions ──
+    const tokenSessionVersion = decodedToken.session_version || 0;
+    if ((authenticatedUser.session_version || 0) > tokenSessionVersion) {
+      return res.status(401).json({ error: 'Session has been revoked or expired. Please log in again.' });
+    }
+
+    // ── Refresh stale last_active timestamp (fire-and-forget) ──
+    if (activeSession && (!activeSession.last_active || Date.now() - new Date(activeSession.last_active).getTime() > 60_000)) {
+      Session.updateOne(
+        { _id: activeSession._id },
+        { $set: { last_active: new Date() } }
+      ).catch(() => {});
+    }
+
+    // ── Repair missing household_id on root accounts (fire-and-forget) ──
     if (!authenticatedUser.household_id) {
       authenticatedUser.household_id = authenticatedUser._id;
       User.updateOne(
@@ -85,8 +123,10 @@ const authenticateRequest = async (req, res, next) => {
     }
 
     // ── Attach authenticated user to request ──
+    const userIdStr = String(authenticatedUser.id || authenticatedUser._id);
+    req.userId = userIdStr;
     req.user = {
-      id: String(authenticatedUser.id || authenticatedUser._id),
+      id: userIdStr,
       household_id: String(authenticatedUser.household_id || authenticatedUser._id),
       session_id: activeSession?._id ? String(activeSession._id) : null,
       ...decodedToken,

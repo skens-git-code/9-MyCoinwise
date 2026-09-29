@@ -647,8 +647,8 @@ const processRecurringForUser = async (userId) => {
  * Prevents running heavy upsert loops on every single GET request.
  * ————————————————————————————————————— */
 // Max 10,000 entries prevents unbounded memory growth.
-const lastRecurringProcessMap = new LRUCache({ max: 10000, ttl: 15 * 60 * 1000 });
-const RECURRING_CHECK_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
+const lastRecurringProcessMap = new LRUCache({ max: 10000, ttl: 5 * 60 * 1000 });
+const RECURRING_CHECK_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes (Stage 3.1.5 non-blocking)
 
 // ── Return true when the cooldown for this user has elapsed ──
 const shouldProcessRecurring = (userId) => {
@@ -1003,7 +1003,9 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   if (req.query.legacy === 'true' || req.query.legacy === '1') {
     try {
       if (shouldProcessRecurring(req.params.userId)) {
-        await processRecurringForUser(req.params.userId);
+        processRecurringForUser(req.params.userId).catch((err) => {
+          logger.error('[Transactions] Background recurring process error:', err);
+        });
       }
 
       const limit = Math.min(
@@ -1045,7 +1047,9 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
 
   try {
     if (shouldProcessRecurring(req.params.userId)) {
-      await processRecurringForUser(req.params.userId);
+      processRecurringForUser(req.params.userId).catch((err) => {
+        logger.error('[Transactions] Background recurring process error:', err);
+      });
     }
 
     const query = {
