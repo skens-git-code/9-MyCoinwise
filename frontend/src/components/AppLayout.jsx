@@ -1244,10 +1244,10 @@ const Header = React.memo(({
   );
   const [syncEnabled, setSyncEnabled] = useState(getStoredSyncEnabled);
   const [isScrolled, setIsScrolled] = useState(false);
+  const lastRefetchRef = useRef(0);
 
   // ── React to online/offline and tab visibility changes ──
   useEffect(() => {
-    let lastVisibilityRefetch = 0;
     const handleOnline = () => {
       setIsOnline(true);
       if (syncEnabled) refetch?.();
@@ -1256,10 +1256,9 @@ const Header = React.memo(({
     const handleVisibilityChange = () => {
       const now = Date.now();
       if (document.visibilityState === 'visible' && navigator.onLine && syncEnabled) {
-        if (now - lastVisibilityRefetch > 15000) {
-          lastVisibilityRefetch = now;
-          refetch?.();
-        }
+        if (now - lastRefetchRef.current < 30000) return;
+        lastRefetchRef.current = now;
+        refetch?.();
       }
     };
 
