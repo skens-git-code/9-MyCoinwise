@@ -361,22 +361,33 @@ export default function App() {
     userRef.current = user;
   }, [user]);
 
+  const lastAuthRedirectRef = useRef(0);
+
   useEffect(() => {
-    const handleAuthExpired = () => {
+    const handleAuthExpired = (event) => {
+      const now = Date.now();
+      if (now - lastAuthRedirectRef.current < 60000) return;
+      lastAuthRedirectRef.current = now;
+
+      const reason = event.detail?.reason || 'token_expired';
+
       localStorage.removeItem('mcw-token');
       sessionStorage.removeItem('mcw-token');
-      sessionStorage.removeItem('mcw-previous-session');
-      setPreviousSession(null);
       setToken(null);
       setUser(null);
-      setAllUsers([]);
-      setTransactions([]);
-      setGoals([]);
-      setBudgets([]);
-      setAccounts([]);
-      setSubscriptions([]);
-      setEvents([]);
-      setGlobalError(null);
+
+      if (reason === 'session_revoked' || reason === 'user_deleted') {
+        sessionStorage.removeItem('mcw-previous-session');
+        setPreviousSession(null);
+        setAllUsers([]);
+        setTransactions([]);
+        setGoals([]);
+        setBudgets([]);
+        setAccounts([]);
+        setSubscriptions([]);
+        setEvents([]);
+        setGlobalError(null);
+      }
     };
     window.addEventListener('mcw:auth-expired', handleAuthExpired);
     return () => window.removeEventListener('mcw:auth-expired', handleAuthExpired);
