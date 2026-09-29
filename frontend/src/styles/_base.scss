@@ -581,7 +581,7 @@ body::after {
   }
 
   100% {
-    transform: translateY(-100vh) translateX(55px);
+    transform: translateY(-100dvh) translateX(55px);
     opacity: 0;
   }
 }
@@ -692,6 +692,7 @@ body::after {
   right: 0;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   width: min(380px, 90vw);
   padding: 1.5rem;
   z-index: 1100;

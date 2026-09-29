@@ -207,6 +207,7 @@ h1, h2, h3, h4, h5, h6 {
   inset: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   pointer-events: none;
   z-index: 0;
   transition: background 0.4s ease;
@@ -1511,6 +1512,7 @@ body,
   width: 100%;
   min-width: 0 !important;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   position: relative;

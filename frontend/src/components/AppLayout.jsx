@@ -217,7 +217,7 @@ const styles = {
   errorFallback: {
     padding: '40px 20px',
     textAlign: 'center',
-    minHeight: '100vh',
+    minHeight: '100dvh',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',

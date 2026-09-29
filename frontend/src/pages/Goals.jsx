@@ -1288,7 +1288,7 @@ export default function Goals() {
           pointerEvents: 'none',
           zIndex: 9999,
           width: '100vw',
-          height: '100vh',
+          height: '100dvh',
         }}
       />
 

@@ -72,7 +72,7 @@ class ErrorBoundary extends React.Component {
           padding: '40px', 
           textAlign: 'center', 
           color: 'var(--text-primary)', 
-          minHeight: isFullScreen ? '100vh' : '60vh', 
+          minHeight: isFullScreen ? '100dvh' : '60vh', 
           display: 'flex', 
           flexDirection: 'column', 
           alignItems: 'center', 
