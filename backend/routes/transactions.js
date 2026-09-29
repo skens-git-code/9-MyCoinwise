@@ -154,12 +154,15 @@ const parseTransactionDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-// ── Return true when the date is after the end of today ──
+// ── Return true when the date is more than 1 day in the future ──
+// Allows a 1-day grace period to accommodate client timezones up to UTC+14 (e.g., Kiribati)
+// without rejecting valid local-date transactions submitted by users east of UTC.
 const isFutureDate = (date) => {
   if (!date) return false;
-  const endOfToday = new Date();
-  endOfToday.setHours(23, 59, 59, 999);
-  return date.getTime() > endOfToday.getTime();
+  const endOfGracePeriod = new Date();
+  endOfGracePeriod.setDate(endOfGracePeriod.getDate() + 1);
+  endOfGracePeriod.setHours(23, 59, 59, 999);
+  return date.getTime() > endOfGracePeriod.getTime();
 };
 
 // ── Normalize a currency code (uppercase, default fallback) ──
@@ -398,7 +401,7 @@ const validateTransactionPayload = (payload) => {
   }
   const parsedDate = parseTransactionDate(date);
   if (!parsedDate) return { error: 'Date must be valid.' };
-  if (isFutureDate(parsedDate)) return { error: 'Transaction date cannot be in the future.' };
+  if (isFutureDate(parsedDate)) return { error: 'Transaction date cannot be more than 1 day in the future.' };
   if (currency !== undefined && currency !== null && currency !== '' && !/^[A-Z]{3}$/i.test(String(currency).trim())) {
     return { error: 'Currency must be a valid 3-letter code.' };
   }
@@ -1400,4 +1403,6 @@ router.syncUserBalance = syncUserBalance;
 router.adjustUserBalanceIncrementally = adjustUserBalanceIncrementally;
 router.encodeCursor = encodeCursor;
 router.decodeCursor = decodeCursor;
+router.isFutureDate = isFutureDate;
+router.validateTransactionPayload = validateTransactionPayload;
 module.exports = router;
