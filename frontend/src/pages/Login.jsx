@@ -489,49 +489,52 @@ export default function Login() {
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         style={{ position: 'relative' }}
       >
-        {/* ===================== Language Selector ===================== */}
-        <div
-          style={{
-            position: 'absolute', top: 20, right: 20,
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}
-        >
-          <Globe size={14} style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
-          <select
-            value={lang}
-            onChange={(e) => setLanguage && setLanguage(e.target.value)}
-            aria-label={tr('language', 'Language')}
+        {/* ===================== Top Bar: Brand & Language ===================== */}
+        <div className="auth-header-row auth-top-row">
+          <div className="auth-logo" style={{ margin: 0 }}>
+            <motion.div
+              className="auth-logo-icon"
+              whileHover={{ rotate: 20, scale: 1.1 }}
+              transition={{ type: 'spring', stiffness: 300 }}
+              aria-hidden="true"
+            >
+              <Zap size={26} />
+            </motion.div>
+            <span className="auth-logo-text">MyCoinwise</span>
+          </div>
+
+          <div
+            className="auth-lang-selector"
             style={{
-              background: 'var(--glass-2)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--glass-border)',
-              borderRadius: 8,
-              padding: '4px 8px',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              outline: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
             }}
           >
-            {Object.entries(LANGUAGES).map(([code, l]) => (
-              <option key={code} value={code}>
-                {l.flag} {l.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* ===================== Brand + Header ===================== */}
-        <div className="auth-logo">
-          <motion.div
-            className="auth-logo-icon"
-            whileHover={{ rotate: 20, scale: 1.1 }}
-            transition={{ type: 'spring', stiffness: 300 }}
-            aria-hidden="true"
-          >
-            <Zap size={26} />
-          </motion.div>
-          <span className="auth-logo-text">MyCoinwise</span>
+            <Globe size={14} style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
+            <select
+              value={lang}
+              onChange={(e) => setLanguage && setLanguage(e.target.value)}
+              aria-label={tr('language', 'Language')}
+              style={{
+                background: 'var(--glass-2)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--glass-border)',
+                borderRadius: 8,
+                padding: '4px 8px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              {Object.entries(LANGUAGES).map(([code, l]) => (
+                <option key={code} value={code}>
+                  {l.flag} {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="auth-header">
@@ -565,43 +568,45 @@ export default function Login() {
           )}
         </AnimatePresence>
 
-        {/* ===================== Top-Level Error ===================== */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              className={`auth-alert auth-alert-${errorKind || 'default'}`}
-              role="alert"
-              aria-live="assertive"
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-            >
-              {errorIcon}
-              <span style={{ flex: 1 }}>{error}</span>
-              {/* ── Rate-limit countdown badge ── */}
-              {rateLimitSeconds > 0 && (
-                <span
-                  className="auth-rate-countdown"
-                  aria-label={tr('seconds_remaining', `${rateLimitSeconds} seconds remaining`)}
-                >
-                  {rateLimitSeconds}s
-                </span>
-              )}
-              {/* ── Manual dismiss ── */}
-              <button
-                type="button"
-                onClick={() => { setError(''); setErrorKind(null); }}
-                aria-label={tr('dismiss', 'Dismiss')}
-                style={{
-                  background: 'transparent', border: 'none',
-                  color: 'inherit', cursor: 'pointer', padding: 0,
-                }}
+        {/* ===================== Top-Level Error (Layout-Stable Container) ===================== */}
+        <div className="auth-alert-slot">
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                className={`auth-alert auth-alert-${errorKind || 'default'}`}
+                role="alert"
+                aria-live="assertive"
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
               >
-                <X size={14} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                {errorIcon}
+                <span style={{ flex: 1 }}>{error}</span>
+                {/* ── Rate-limit countdown badge ── */}
+                {rateLimitSeconds > 0 && (
+                  <span
+                    className="auth-rate-countdown"
+                    aria-label={tr('seconds_remaining', `${rateLimitSeconds} seconds remaining`)}
+                  >
+                    {rateLimitSeconds}s
+                  </span>
+                )}
+                {/* ── Manual dismiss ── */}
+                <button
+                  type="button"
+                  onClick={() => { setError(''); setErrorKind(null); }}
+                  aria-label={tr('dismiss', 'Dismiss')}
+                  style={{
+                    background: 'transparent', border: 'none',
+                    color: 'inherit', cursor: 'pointer', padding: 0,
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         {/* ===================== Form ===================== */}
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
@@ -621,11 +626,13 @@ export default function Login() {
                   if (emailInputRef.current?.value && !email) {
                     setEmail(emailInputRef.current.value);
                   }
+                  // Preload dashboard chunk
+                  import('./Dashboard').catch(() => {});
                 }}
                 onBlur={handleBlur}
                 required
                 autoComplete="email"
-                autoFocus
+                autoFocus={typeof window !== 'undefined' && window.innerWidth > 900}
                 inputMode="email"
                 autoCapitalize="none"
                 autoCorrect="off"
@@ -767,14 +774,6 @@ export default function Login() {
               </>
             )}
           </motion.button>
-
-          {/* ── 2FA hint (only after credential error) ── */}
-          {errorKind === 'credentials' && error && (
-            <p className="auth-2fa-hint" role="note">
-              <Smartphone size={13} aria-hidden="true" />
-              {tr('two_factor_hint', 'Have 2FA enabled? Enter the code from your authenticator app after your password.')}
-            </p>
-          )}
         </form>
 
         {/* ===================== Footer ===================== */}
