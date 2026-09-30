@@ -7,7 +7,8 @@ export function initTilt(root = typeof document !== 'undefined' ? document : nul
 
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const noHover = window.matchMedia && window.matchMedia('(hover: none)').matches;
-  if (reduce || noHover) return;
+  const isMobile = window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
+  if (reduce || noHover || isMobile) return;
 
   const MAX = 12; // degrees
 

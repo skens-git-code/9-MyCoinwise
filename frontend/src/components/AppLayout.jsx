@@ -781,14 +781,16 @@ export default function AppLayout({ children }) {
       {/* App.jsx already wraps the full tree in <MotionConfig reducedMotion="user">,
           so we don't nest a second one here. */}
       <div className="app-island-layout" data-theme={theme}>
-        {/* ── Ambient background layers ── */}
+        {/* ── Ambient background layers (Desktop only) ── */}
         <div className="portfolio-bg-layer" aria-hidden="true" />
-        <div className="d3-ambient" aria-hidden="true">
-          <div className="d3-ambient__grid" />
-          <div className="d3-ambient__shard" />
-          <div className="d3-ambient__shard" />
-          <div className="d3-ambient__shard" />
-        </div>
+        {deviceType === 'desktop' && (
+          <div className="d3-ambient" aria-hidden="true">
+            <div className="d3-ambient__grid" />
+            <div className="d3-ambient__shard" />
+            <div className="d3-ambient__shard" />
+            <div className="d3-ambient__shard" />
+          </div>
+        )}
 
         {/* ── Desktop Sidebar (+ backdrop when open) ── */}
         {deviceType === 'desktop' && (
