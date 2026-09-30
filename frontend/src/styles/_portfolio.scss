@@ -3102,7 +3102,8 @@ body,
   gap: 6px !important;
   font-size: 0.80rem !important;
   color: var(--text-secondary) !important;
-  white-space: nowrap !important;
+  white-space: normal !important;
+  line-height: 1.35 !important;
   cursor: pointer !important;
   user-select: none !important;
 
@@ -3113,6 +3114,7 @@ body,
     margin: 0 !important;
     accent-color: var(--brand-primary, #00d4ff) !important;
     cursor: pointer !important;
+    transition: all 0.2s ease !important;
   }
 }
 
