@@ -19,10 +19,11 @@
  * ————————————————————————————————————— */
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Sparkles, Search, PlusCircle, Target, TrendingUp,
-  X, ChevronRight, Check, ArrowRight
+  Sparkles, Search, PlusCircle, TrendingUp,
+  X, ArrowRight
 } from 'lucide-react';
 
 /* —————————————————————————————————————
@@ -64,10 +65,10 @@ export default function OnboardingTour({ isOpen, onClose }) {
   // ── Currently displayed step index ──
   const [currentStep, setCurrentStep] = useState(0);
 
-  // ── Render nothing when closed ──
-  if (!isOpen) return null;
+  // ── SSR guard ──
+  if (typeof document === 'undefined') return null;
 
-  const step = STEPS[currentStep];
+  const step = STEPS[currentStep] || STEPS[0];
   const isLast = currentStep === STEPS.length - 1;
 
   // ── Advance to the next step, or finish the tour on the last step ──
@@ -86,104 +87,147 @@ export default function OnboardingTour({ isOpen, onClose }) {
     onClose();
   };
 
-  return (
+  const modalContent = (
     <AnimatePresence>
-      {/* ── Backdrop: click to skip ── */}
-      <motion.div
-        className="shortcuts-backdrop"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={handleSkip}
-      >
-        {/* ── Tour card ── */}
+      {isOpen && (
+        /* ── Backdrop: click to skip, fixed to body with highest modal z-index ── */
         <motion.div
-          className="shortcuts-modal glass onboarding-tour-card"
-          initial={{ opacity: 0, scale: 0.92, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.92, y: 20 }}
-          onClick={e => e.stopPropagation()}
-          style={{ maxWidth: '480px', padding: 0, overflow: 'hidden' }}
+          className="shortcuts-backdrop onboarding-tour-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={handleSkip}
+          style={{
+            zIndex: 'var(--z-onboarding, 1100)',
+            position: 'fixed',
+            inset: 0
+          }}
         >
-          {/* ── Top illustration area ── */}
-          <div style={{
-            padding: '32px 24px 20px',
-            background: 'linear-gradient(135deg, rgba(5, 150, 105, 0.12) 0%, rgba(14, 165, 233, 0.08) 100%)',
-            textAlign: 'center',
-            borderBottom: '1px solid var(--glass-border)',
-            position: 'relative'
-          }}>
-            {/* ── Close (X) button ── */}
-            <button
-              onClick={handleSkip}
-              style={{
-                position: 'absolute', top: 14, right: 14, background: 'none', border: 'none',
-                color: 'var(--text-muted)', cursor: 'pointer', padding: 4
-              }}
-            >
-              <X size={16} />
-            </button>
-
-            {/* ── Step icon badge ── */}
+          {/* ── Tour card ── */}
+          <motion.div
+            className="shortcuts-modal glass onboarding-tour-card"
+            initial={{ opacity: 0, scale: 0.92, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 20 }}
+            onClick={e => e.stopPropagation()}
+            style={{
+              maxWidth: 'min(480px, calc(100vw - 32px))',
+              maxHeight: 'min(580px, calc(100dvh - 32px))',
+              padding: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              boxSizing: 'border-box',
+              zIndex: 'var(--z-onboarding, 1100)'
+            }}
+          >
+            {/* ── Top illustration area ── */}
             <div style={{
-              width: 64, height: 64, borderRadius: 20, margin: '0 auto 16px',
-              background: 'var(--glass-2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: '1px solid var(--glass-border)', boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
+              padding: '24px 20px 16px',
+              background: 'linear-gradient(135deg, rgba(5, 150, 105, 0.12) 0%, rgba(14, 165, 233, 0.08) 100%)',
+              textAlign: 'center',
+              borderBottom: '1px solid var(--glass-border)',
+              position: 'relative',
+              flexShrink: 0
             }}>
-              {step.icon}
-            </div>
-
-            {/* ── Step title ── */}
-            <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-              {step.title}
-            </h3>
-          </div>
-
-          {/* ── Body content ── */}
-          <div style={{ padding: '24px' }}>
-            {/* ── Step description ── */}
-            <p style={{ margin: '0 0 24px', fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.6, textAlign: 'center' }}>
-              {step.description}
-            </p>
-
-            {/* ── Step dots (current step is wider and full-opacity) ── */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 20 }}>
-              {STEPS.map((_, idx) => (
-                <span
-                  key={idx}
-                  style={{
-                    width: idx === currentStep ? 20 : 6,
-                    height: 6,
-                    borderRadius: 3,
-                    background: idx === currentStep ? 'var(--brand-primary)' : 'var(--text-muted)',
-                    opacity: idx === currentStep ? 1 : 0.3,
-                    transition: 'all 0.25s ease'
-                  }}
-                />
-              ))}
-            </div>
-
-            {/* ── Actions: skip and next ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              {/* ── Close (X) button ── */}
               <button
-                className="btn-secondary"
+                type="button"
                 onClick={handleSkip}
-                style={{ fontSize: '0.82rem', padding: '8px 14px' }}
+                style={{
+                  position: 'absolute', top: 12, right: 12, background: 'none', border: 'none',
+                  color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'inline-flex',
+                  alignItems: 'center', justifyContent: 'center', minWidth: '32px', minHeight: '32px'
+                }}
+                aria-label="Skip tour"
               >
-                Skip Tour
+                <X size={18} />
               </button>
 
-              <button
-                className="btn-primary"
-                onClick={handleNext}
-                style={{ fontSize: '0.85rem', padding: '8px 18px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              >
-                {step.actionText} <ArrowRight size={14} />
-              </button>
+              {/* ── Step icon badge ── */}
+              <div style={{
+                width: 56, height: 56, borderRadius: 18, margin: '0 auto 12px',
+                background: 'var(--glass-2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: '1px solid var(--glass-border)', boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
+              }}>
+                {step.icon}
+              </div>
+
+              {/* ── Step title ── */}
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                {step.title}
+              </h3>
             </div>
-          </div>
+
+            {/* ── Body content (scrollable on ultra-short screens) ── */}
+            <div style={{
+              padding: '20px',
+              overflowY: 'auto',
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              {/* ── Step description ── */}
+              <p style={{ margin: '0 0 20px', fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.55, textAlign: 'center' }}>
+                {step.description}
+              </p>
+
+              {/* ── Step dots (current step is wider and full-opacity) ── */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 20 }}>
+                {STEPS.map((_, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      width: idx === currentStep ? 20 : 6,
+                      height: 6,
+                      borderRadius: 3,
+                      background: idx === currentStep ? 'var(--brand-primary)' : 'var(--text-muted)',
+                      opacity: idx === currentStep ? 1 : 0.3,
+                      transition: 'all 0.25s ease'
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* ── Actions: skip and next ── */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                marginTop: 'auto'
+              }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleSkip}
+                  style={{ fontSize: '0.84rem', padding: '10px 16px', minHeight: '40px' }}
+                >
+                  Skip Tour
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleNext}
+                  style={{
+                    fontSize: '0.86rem',
+                    padding: '10px 18px',
+                    minHeight: '40px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  {step.actionText} <ArrowRight size={14} />
+                </button>
+              </div>
+            </div>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      )}
     </AnimatePresence>
   );
+
+  return createPortal(modalContent, document.body);
 }

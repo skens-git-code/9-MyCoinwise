@@ -88,7 +88,7 @@ export const ToastProvider = ({ children }) => {
           position: 'fixed',
           top: 24,
           right: 24,
-          zIndex: 'var(--z-tooltip, 2000)',
+          zIndex: 'var(--z-toast, 1200)',
           pointerEvents: 'none',
           display: 'flex',
           flexDirection: 'column',
