@@ -1,7 +1,7 @@
 {
-  "name": "9-budgettracker",
+  "name": "9-mycoinwise",
   "version": "1.0.0",
-  "description": "Budget Tracker Full Stack App",
+  "description": "MyCoinwise - Smart Personal Finance & Budgeting Tracker",
   "main": "backend/server.js",
   "type": "commonjs",
   "scripts": {
@@ -13,13 +13,18 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/skens-git-code/9-BudgetTracker.git"
+    "url": "git+https://github.com/skens-git-code/9-MyCoinwise.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "finance",
+    "budget",
+    "tracker",
+    "money-management"
+  ],
+  "author": "Sarthak Mathapati",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/skens-git-code/9-BudgetTracker/issues"
+    "url": "https://github.com/skens-git-code/9-MyCoinwise/issues"
   },
-  "homepage": "https://github.com/skens-git-code/9-BudgetTracker#readme"
+  "homepage": "https://github.com/skens-git-code/9-MyCoinwise#readme"
 }

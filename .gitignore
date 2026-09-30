@@ -26,6 +26,9 @@ stats.html
 # Benchmark & Performance telemetry
 metrics-*.json
 baseline-*.json
+soak-*.json
+soak*.json
+benchmark-*.json
 
 # Logs & Runtime telemetry
 *.log

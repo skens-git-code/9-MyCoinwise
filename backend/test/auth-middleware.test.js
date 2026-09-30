@@ -6,6 +6,9 @@ const mongoose = require('mongoose');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
+// Ensure fallback JWT_SECRET for test environments
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'ci-test-jwt-secret-key-32-chars-long!';
+
 const User = require('../models/User');
 const Session = require('../models/Session');
 const authenticateRequest = require('../middleware/auth');
@@ -37,8 +40,89 @@ function createMockReqRes(token) {
   };
 }
 
-async function runTests() {
-  console.log('🧪 Running Auth Middleware Consolidation Tests (Stage 3.1.5)...');
+async function runUnitTests() {
+  console.log('🧪 Running Auth Middleware Unit Tests (CI-compatible)...');
+
+  // Unit Test 1: Missing token returns 401
+  {
+    const { req, res, getStatus, getBody } = createMockReqRes(null);
+    let nextCalled = false;
+    await authenticateRequest(req, res, () => { nextCalled = true; });
+    assert.strictEqual(getStatus(), 401, 'Expected 401 status for missing token');
+    assert.strictEqual(nextCalled, false, 'next() should not be called');
+    assert.strictEqual(getBody().error, 'No authentication token, authorization denied.');
+    console.log('  ✅ Unit Test 1: Missing token rejected with 401');
+  }
+
+  // Unit Test 2: Expired token rejected with 401
+  {
+    const expiredToken = jwt.sign(
+      { id: '65f1a2b3c4d5e6f7a8b9c0d1', session_version: 1, jti: crypto.randomUUID() },
+      process.env.JWT_SECRET,
+      { expiresIn: '-10s', algorithm: 'HS256' }
+    );
+    const { req, res, getStatus, getBody } = createMockReqRes(expiredToken);
+    let nextCalled = false;
+    await authenticateRequest(req, res, () => { nextCalled = true; });
+    assert.strictEqual(getStatus(), 401, 'Expected 401 status for expired token');
+    assert.strictEqual(nextCalled, false, 'next() should not be called');
+    assert.strictEqual(getBody().error, 'Token is invalid or expired.');
+    console.log('  ✅ Unit Test 2: Expired token rejected with 401');
+  }
+
+  // Unit Test 3: Malformed / tampered token rejected with 401
+  {
+    const { req, res, getStatus, getBody } = createMockReqRes('invalid.token.signature');
+    let nextCalled = false;
+    await authenticateRequest(req, res, () => { nextCalled = true; });
+    assert.strictEqual(getStatus(), 401, 'Expected 401 status for tampered token');
+    assert.strictEqual(nextCalled, false, 'next() should not be called');
+    assert.strictEqual(getBody().error, 'Token is invalid or expired.');
+    console.log('  ✅ Unit Test 3: Tampered token rejected with 401');
+  }
+
+  // Unit Test 4: Invalid ObjectId in token rejected with 401
+  {
+    const invalidIdToken = jwt.sign(
+      { id: 'not-a-valid-object-id', session_version: 1, jti: crypto.randomUUID() },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h', algorithm: 'HS256' }
+    );
+    const { req, res, getStatus, getBody } = createMockReqRes(invalidIdToken);
+    let nextCalled = false;
+    await authenticateRequest(req, res, () => { nextCalled = true; });
+    assert.strictEqual(getStatus(), 401, 'Expected 401 status for invalid ObjectId');
+    assert.strictEqual(nextCalled, false, 'next() should not be called');
+    assert.strictEqual(getBody().error, 'User associated with this token no longer exists.');
+    console.log('  ✅ Unit Test 4: Invalid user ID format rejected with 401');
+  }
+
+  // Unit Test 5: Missing user id claim rejected with 401
+  {
+    const noIdToken = jwt.sign(
+      { role: 'admin', session_version: 1, jti: crypto.randomUUID() },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h', algorithm: 'HS256' }
+    );
+    const { req, res, getStatus, getBody } = createMockReqRes(noIdToken);
+    let nextCalled = false;
+    await authenticateRequest(req, res, () => { nextCalled = true; });
+    assert.strictEqual(getStatus(), 401, 'Expected 401 status for token without user id');
+    assert.strictEqual(nextCalled, false, 'next() should not be called');
+    assert.strictEqual(getBody().error, 'User associated with this token no longer exists.');
+    console.log('  ✅ Unit Test 5: Missing user ID rejected with 401');
+  }
+
+  console.log('  ✅ All 5 Auth Middleware Unit Tests Passed.');
+}
+
+async function runLiveIntegrationTests() {
+  if (!process.env.MONGO_URI) {
+    console.log('⚠️  MONGO_URI not set. Skipping live database auth middleware tests.');
+    return;
+  }
+
+  console.log('🧪 Running Live Auth Middleware Database Tests (Stage 3.1.5)...');
   await mongoose.connect(process.env.MONGO_URI);
 
   const testEmail = `auth_test_${Date.now()}@example.com`;
@@ -159,10 +243,15 @@ async function runTests() {
   await User.deleteOne({ _id: user._id });
   await mongoose.disconnect();
 
-  console.log('✅ ALL 5 AUTH MIDDLEWARE TESTS PASSED CLEANLY!\n');
+  console.log('✅ ALL 5 LIVE AUTH MIDDLEWARE TESTS PASSED CLEANLY!\n');
 }
 
-runTests().catch((err) => {
+async function main() {
+  await runUnitTests();
+  await runLiveIntegrationTests();
+}
+
+main().catch((err) => {
   console.error('❌ Auth middleware test failure:', err);
   process.exit(1);
 });

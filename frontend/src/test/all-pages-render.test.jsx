@@ -40,6 +40,8 @@ vi.mock('../services/api', () => ({
     getAllUsers: vi.fn().mockResolvedValue([]),
     getWealthItems: vi.fn().mockResolvedValue([]),
     getWealthHistory: vi.fn().mockResolvedValue([]),
+    updateSettings: vi.fn().mockResolvedValue({}),
+    logout: vi.fn().mockResolvedValue({}),
   },
   CURRENCIES: {
     USD: { symbol: '$', name: 'US Dollar' },

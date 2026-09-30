@@ -17,17 +17,25 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
 
       - name: Backend syntax & integrity test
+        env:
+          CI: true
+          JWT_SECRET: ci-test-jwt-secret-key-32-chars-long!
+          NODE_ENV: test
         run: |
           cd backend
           npm ci --ignore-scripts || npm install
           npm test
 
       - name: Frontend tests
+        env:
+          CI: true
         run: |
           cd frontend
           npm ci || npm install
@@ -50,7 +58,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Build Frontend
         run: |
