@@ -1266,28 +1266,30 @@ export default function Transactions() {
                 <option value="category-asc">{tr('by_category', 'Category')}</option>
               </select>
 
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={() => setShowAdvancedFilters((v) => !v)}
-                aria-label={tr('advanced_filters', 'Advanced filters')}
-                aria-expanded={showAdvancedFilters}
-                title={tr('advanced_filters', 'Advanced filters')}
-              >
-                <Filter size={16} />
-              </button>
-
-              {hasActiveFilters && (
+              <div className="il-controls-actions">
                 <button
                   type="button"
                   className="icon-btn"
-                  onClick={clearAllFilters}
-                  aria-label={tr('clear_filters', 'Clear filters')}
-                  title={tr('clear_filters', 'Clear filters')}
+                  onClick={() => setShowAdvancedFilters((v) => !v)}
+                  aria-label={tr('advanced_filters', 'Advanced filters')}
+                  aria-expanded={showAdvancedFilters}
+                  title={tr('advanced_filters', 'Advanced filters')}
                 >
-                  <X size={16} />
+                  <Filter size={16} />
                 </button>
-              )}
+
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={clearAllFilters}
+                    aria-label={tr('clear_filters', 'Clear filters')}
+                    title={tr('clear_filters', 'Clear filters')}
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* ── Advanced filters drawer ── */}
