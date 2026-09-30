@@ -687,14 +687,16 @@ export default function BudgetManager() {
               )}
             </button>
           )}
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => { resetFormFields(); setIsCreateModalOpen(true); }}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-          >
-            <Plus size={18} /> {getTranslation('create_budget', 'New Budget')}
-          </button>
+          {displayedBudgets.length > 0 && (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => { resetFormFields(); setIsCreateModalOpen(true); }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <Plus size={18} /> {getTranslation('create_budget', 'New Budget')}
+            </button>
+          )}
         </div>
       </header>
 

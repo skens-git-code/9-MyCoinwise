@@ -20,6 +20,7 @@
 import React, {
   useState, useMemo, useRef, useEffect, useCallback,
 } from 'react';
+import PropTypes from 'prop-types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FixedSizeList } from '../components/FixedSizeList';
 import debounce from 'lodash.debounce';
@@ -340,6 +341,43 @@ function fireConfetti(canvas) {
   };
 }
 
+/* ── Confetti canvas component — mounted strictly during celebration ── */
+function ConfettiCanvas({ onComplete }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current) return undefined;
+    const cancel = fireConfetti(canvasRef.current);
+    const timer = setTimeout(() => {
+      onComplete?.();
+    }, 1200);
+
+    return () => {
+      clearTimeout(timer);
+      cancel?.();
+    };
+  }, [onComplete]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        pointerEvents: 'none',
+        zIndex: 9999,
+        width: '100vw',
+        height: '100dvh',
+      }}
+    />
+  );
+}
+
+ConfettiCanvas.propTypes = {
+  onComplete: PropTypes.func,
+};
+
 /* ============================================================
  * ✨ NEW: Undo toast
  * ============================================================ */
@@ -528,13 +566,11 @@ export default function Goals() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  // ── Confetti canvas + cancel handle refs ──
-  const confettiCanvasRef = useRef(null);
-  const cancelConfettiRef = useRef(null);
+  // ── Confetti state (mounts canvas on celebration, unmounts when done) ──
+  const [showConfetti, setShowConfetti] = useState(false);
 
   /* ---------------- Cleanup ---------------- */
   useEffect(() => () => {
-    cancelConfettiRef.current?.();
     if (undoState?.timeoutId) clearTimeout(undoState.timeoutId);
   }, [undoState]);
 
@@ -1045,9 +1081,8 @@ export default function Goals() {
       setContributeAmount('');
 
       // ── Feedback: confetti / milestone / cap / standard toast ──
-      if (willHit100 && confettiCanvasRef.current) {
-        cancelConfettiRef.current?.();
-        cancelConfettiRef.current = fireConfetti(confettiCanvasRef.current);
+      if (willHit100) {
+        setShowConfetti(true);
         showToast('success', tr('goal_achieved', '🎉 Congratulations! You reached your goal target!'));
       } else if (crossed.length > 0) {
         // ✨ NEW: milestone celebration
@@ -1278,19 +1313,8 @@ export default function Goals() {
 
   return (
     <div className="masonry-layout-page goals-page-wrap">
-      {/* ── Confetti canvas (fixed, DPR-aware) ── */}
-      <canvas
-        ref={confettiCanvasRef}
-        aria-hidden="true"
-        style={{
-          position: 'fixed',
-          inset: 0,
-          pointerEvents: 'none',
-          zIndex: 9999,
-          width: '100vw',
-          height: '100dvh',
-        }}
-      />
+      {/* ── Confetti canvas (mounted only when triggered, unmounts after 1.2s) ── */}
+      {showConfetti && <ConfettiCanvas onComplete={() => setShowConfetti(false)} />}
 
       {/* ===================== Header ===================== */}
       <div className="masonry-header">

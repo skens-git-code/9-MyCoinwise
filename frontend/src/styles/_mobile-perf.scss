@@ -263,5 +263,66 @@
       }
     }
   }
+
+  /* ── GLITCH #8: Goals summary carousel cards clipping fix ── */
+  @media (max-width: 768px) {
+    .goals-page-wrap .carousel-wrapper {
+      overflow-x: visible !important;
+      width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    .goals-page-wrap .carousel-track {
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      gap: 8px !important;
+    }
+
+    .goals-page-wrap .carousel-item {
+      flex: 1 1 0 !important;
+      min-width: 0 !important;
+      width: 100% !important;
+      padding: 10px 6px !important;
+      gap: 6px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      text-align: center !important;
+      box-sizing: border-box !important;
+
+      .ci-icon-box {
+        width: 32px !important;
+        height: 32px !important;
+        font-size: 0.85rem !important;
+        margin: 0 auto !important;
+      }
+
+      .ci-info {
+        min-width: 0 !important;
+        width: 100% !important;
+
+        .ci-val {
+          font-size: clamp(0.75rem, 2.8vw, 1.05rem) !important;
+          font-weight: 700 !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          line-height: 1.2 !important;
+        }
+
+        .ci-lbl {
+          font-size: clamp(0.55rem, 2vw, 0.68rem) !important;
+          letter-spacing: 0.01em !important;
+          line-height: 1.15 !important;
+          white-space: normal !important;
+          word-break: break-word !important;
+        }
+      }
+    }
+  }
 }
+
 
