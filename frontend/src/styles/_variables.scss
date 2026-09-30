@@ -19,11 +19,13 @@
    --info-rgb: 6, 182, 212;
    /* was missing — added */
 
-   /* ► Z-Index System (layered stack)
+   /* ► Z-Index System (layered hierarchy)
      100   sticky headers / floating elements
      200   dropdowns / tooltips within page
-     1000  modals / overlays (currency converter, AI panel)
-     1200  mobile drawer overlay  (.mobile-drawer-overlay)
+     900   navigation / mobile bottom dock
+     1000  modals / standard dialogs / overlays
+     1100  onboarding tour (highest modal, renders via body portal)
+     1200  toast notifications / urgent alerts
      1201  mobile drawer panel    (.mobile-drawer)
      1300  alerts center overlay  (.ac-overlay)
      2000  global tooltips        (always on top)
@@ -32,10 +34,17 @@
    --z-base: 1;
    --z-sticky: 100;
    --z-dropdown: 200;
-   --z-modal: 999999;
-   --z-drawer: 1200;
+   --z-nav: 900;
+   --z-modal: 1000;
+   --z-onboarding: 1100;
+   --z-toast: 1200;
+   --z-drawer: 1201;
    --z-alerts: 1300;
    --z-tooltip: 2000;
+
+   /* ► Mobile Dock Safe Bottom Padding */
+   --bottom-dock-height: 80px;
+   --bottom-safe: calc(var(--bottom-dock-height) + env(safe-area-inset-bottom, 0px) + 16px);
 
    /* ► Typography Scale (Major Second) */
    --text-xs: 0.75rem;

@@ -22,6 +22,7 @@
   .interactive-card,
   .app-header,
   .mobile-bottom-nav,
+  .mobile-bottom-dock,
   .command-palette-backdrop,
   .modal-overlay,
   .tax-modal-backdrop,
@@ -72,6 +73,7 @@
   .interactive-card,
   .bento-dashboard .bento-hero,
   .mobile-bottom-nav,
+  .mobile-bottom-dock,
   .app-header,
   .btn,
   .card,
@@ -191,6 +193,47 @@
 
     .auth-lang-selector {
       align-self: flex-start !important;
+    }
+  }
+
+  /* ── STEP 8: Bottom Navigation & Safe Dock Clearance ── */
+  .mobile-bottom-dock {
+    z-index: var(--z-nav, 900) !important;
+    overflow: hidden !important;
+  }
+
+  .mobile-bottom-dock .dock-icon-wrapper {
+    overflow: hidden !important;
+    position: relative;
+  }
+
+  .mobile-bottom-dock .dock-active-dot {
+    box-shadow: inset 0 0 0 1px rgba(var(--brand-primary-rgb), 0.35) !important;
+  }
+
+  .onboarding-tour-backdrop,
+  .onboarding-tour-card {
+    z-index: var(--z-onboarding, 1100) !important;
+  }
+
+  /* Safe clearance so dock never obscures bottom content */
+  .page-content,
+  .inbox-layout-page,
+  [class*="layout"],
+  .island-page,
+  .subscriptions-page-wrap,
+  .goals-page-wrap,
+  .cashflow-page-wrap,
+  .wealth-page-wrap,
+  .calendar-page-content,
+  .bento-dashboard,
+  .analytics-page-wrap,
+  .budget-page,
+  .account-page,
+  .tax-page,
+  .settings-page {
+    &:not(.modal-box):not(.modal-overlay):not(.shortcuts-modal):not(.shortcuts-backdrop):not(.tax-modal):not(.tax-modal-backdrop):not(.command-palette-backdrop) {
+      padding-bottom: var(--bottom-safe) !important;
     }
   }
 }
