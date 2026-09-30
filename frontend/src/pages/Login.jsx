@@ -490,17 +490,7 @@ export default function Login() {
         style={{ position: 'relative' }}
       >
         {/* ===================== Top Bar: Brand & Language ===================== */}
-        <div
-          className="auth-top-row"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            marginBottom: 20,
-            flexWrap: 'wrap',
-          }}
-        >
+        <div className="auth-header-row auth-top-row">
           <div className="auth-logo" style={{ margin: 0 }}>
             <motion.div
               className="auth-logo-icon"
@@ -579,7 +569,7 @@ export default function Login() {
         </AnimatePresence>
 
         {/* ===================== Top-Level Error (Layout-Stable Container) ===================== */}
-        <div style={{ minHeight: error ? 52 : 0, transition: 'min-height 0.2s ease' }}>
+        <div className="auth-alert-slot">
           <AnimatePresence>
             {error && (
               <motion.div
@@ -784,14 +774,6 @@ export default function Login() {
               </>
             )}
           </motion.button>
-
-          {/* ── 2FA hint (only after credential error) ── */}
-          {errorKind === 'credentials' && error && (
-            <p className="auth-2fa-hint" role="note">
-              <Smartphone size={13} aria-hidden="true" />
-              {tr('two_factor_hint', 'Have 2FA enabled? Enter the code from your authenticator app after your password.')}
-            </p>
-          )}
         </form>
 
         {/* ===================== Footer ===================== */}

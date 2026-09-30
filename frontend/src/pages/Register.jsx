@@ -603,17 +603,7 @@ export default function Register() {
         style={{ position: 'relative' }}
       >
         {/* ===================== Top Bar: Brand & Language ===================== */}
-        <div
-          className="auth-top-row"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            marginBottom: 20,
-            flexWrap: 'wrap',
-          }}
-        >
+        <div className="auth-header-row auth-top-row">
           <div className="auth-logo" style={{ margin: 0 }}>
             <motion.div
               className="auth-logo-icon"
@@ -680,42 +670,44 @@ export default function Register() {
         </ul>
 
         {/* ===================== Top-Level Error ===================== */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              className={`auth-alert auth-alert-${errorKind || 'default'}`}
-              role="alert"
-              aria-live="assertive"
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-            >
-              <AlertTriangle size={16} aria-hidden="true" />
-              <span style={{ flex: 1 }}>{error}</span>
-              {/* ── Rate-limit countdown badge ── */}
-              {rateLimitSeconds > 0 && (
-                <span
-                  className="auth-rate-countdown"
-                  aria-label={`${rateLimitSeconds} ${tr('seconds_remaining', 'seconds remaining')}`}
-                >
-                  {rateLimitSeconds}s
-                </span>
-              )}
-              {/* ── Manual dismiss ── */}
-              <button
-                type="button"
-                onClick={() => { setError(''); setErrorKind(null); }}
-                aria-label={tr('dismiss', 'Dismiss')}
-                style={{
-                  background: 'transparent', border: 'none',
-                  color: 'inherit', cursor: 'pointer', padding: 0,
-                }}
+        <div className="auth-alert-slot">
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                className={`auth-alert auth-alert-${errorKind || 'default'}`}
+                role="alert"
+                aria-live="assertive"
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
               >
-                <X size={14} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                <AlertTriangle size={16} aria-hidden="true" />
+                <span style={{ flex: 1 }}>{error}</span>
+                {/* ── Rate-limit countdown badge ── */}
+                {rateLimitSeconds > 0 && (
+                  <span
+                    className="auth-rate-countdown"
+                    aria-label={`${rateLimitSeconds} ${tr('seconds_remaining', 'seconds remaining')}`}
+                  >
+                    {rateLimitSeconds}s
+                  </span>
+                )}
+                {/* ── Manual dismiss ── */}
+                <button
+                  type="button"
+                  onClick={() => { setError(''); setErrorKind(null); }}
+                  aria-label={tr('dismiss', 'Dismiss')}
+                  style={{
+                    background: 'transparent', border: 'none',
+                    color: 'inherit', cursor: 'pointer', padding: 0,
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         {/* ===================== Form ===================== */}
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
