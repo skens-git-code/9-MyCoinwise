@@ -539,7 +539,7 @@ export default function AppLayout({ children }) {
   const {
     user, theme, toggleTheme, currencyInfo, alerts = [], transactions = [],
     accounts = [], addTransaction, t, lang, setLanguage, logout, fmt, refetch, isBackgroundSyncing,
-    globalError
+    globalError, clearGlobalError
   } = contextData;
 
   const location = useLocation();
@@ -861,10 +861,30 @@ export default function AppLayout({ children }) {
                 <AlertCircle size={16} aria-hidden="true" />
                 <span>{globalError}</span>
               </div>
-              <button type="button" className="sync-error-retry" onClick={() => refetch?.()} disabled={isBackgroundSyncing}>
-                <RefreshCw size={14} aria-hidden="true" />
-                {isBackgroundSyncing ? (t?.('loading') || 'Retrying…') : (t?.('retry') || 'Retry')}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button type="button" className="sync-error-retry" onClick={() => refetch?.()} disabled={isBackgroundSyncing}>
+                  <RefreshCw size={14} aria-hidden="true" />
+                  {isBackgroundSyncing ? (t?.('loading') || 'Retrying…') : (t?.('retry') || 'Retry')}
+                </button>
+                {clearGlobalError && (
+                  <button
+                    type="button"
+                    onClick={clearGlobalError}
+                    aria-label="Dismiss alert"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -1479,7 +1499,11 @@ const Header = React.memo(({
                           key={a.id || `${a.title}-${idx}`}
                           className={`had-item ${a.type || 'info'}`}
                         >
-                          <span>{a.message || a.title}</span>
+                          <span className="had-item-icon">{a.icon || '💡'}</span>
+                          <div className="had-item-body">
+                            {a.title && <div className="had-item-title">{a.title}</div>}
+                            <div className="had-item-msg">{a.message || a.title}</div>
+                          </div>
                         </div>
                       ))
                     ) : (

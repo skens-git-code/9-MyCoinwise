@@ -21,6 +21,9 @@ import Calendar from '../pages/Calendar';
 import SettingsPage from '../pages/SettingsPage';
 import About from '../pages/About';
 import Calculator from '../pages/Calculator';
+import Terms from '../pages/Terms';
+import Privacy from '../pages/Privacy';
+import NotFound from '../pages/NotFound';
 
 vi.mock('../services/api', () => ({
   api: {
@@ -166,6 +169,18 @@ describe('Complete Suite: All 15 Pages Rendering Integrity', () => {
 
   it('15. Renders Calculator page without errors', () => {
     expect(() => renderWithContext(Calculator)).not.toThrow();
+  });
+
+  it('16. Renders Terms page without errors', () => {
+    expect(() => renderWithContext(Terms)).not.toThrow();
+  });
+
+  it('17. Renders Privacy page without errors', () => {
+    expect(() => renderWithContext(Privacy)).not.toThrow();
+  });
+
+  it('18. Renders NotFound 404 page without errors', () => {
+    expect(() => renderWithContext(NotFound)).not.toThrow();
   });
 
   it('Renders all data-driven pages safely with completely empty data', () => {
