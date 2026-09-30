@@ -16,9 +16,11 @@ import { useMotionValue, animate, useReducedMotion } from 'framer-motion';
  * @param {() => void} [onComplete] - Callback invoked when the animation finishes
  * @returns {import('framer-motion').MotionValue<number>} Framer Motion motion value
  */
-export function useCountUpMotion(targetValue, duration = 800, onComplete) {
+export function useCountUpMotion(targetValue, duration = 800, onComplete, options = {}) {
+  const { skipAnimationOnMount = false } = typeof options === 'object' && options !== null ? options : {};
   const motionVal = useMotionValue(targetValue);
   const prevTargetRef = useRef(targetValue);
+  const hasAnimatedRef = useRef(false);
   const prefersReducedMotion = useReducedMotion();
   const onCompleteRef = useRef(onComplete);
 
@@ -36,6 +38,16 @@ export function useCountUpMotion(targetValue, duration = 800, onComplete) {
       onCompleteRef.current?.();
       return undefined;
     }
+
+    // Skip animation on initial mount / first real data arrival if requested
+    if (skipAnimationOnMount && !hasAnimatedRef.current) {
+      hasAnimatedRef.current = true;
+      motionVal.set(targetValue);
+      prevTargetRef.current = targetValue;
+      onCompleteRef.current?.();
+      return undefined;
+    }
+    hasAnimatedRef.current = true;
 
     // Always convert milliseconds to seconds with safe minimum floor (kills ambiguous heuristic)
     const durationSeconds = Math.max(0.01, duration / 1000);
@@ -69,7 +81,7 @@ export function useCountUpMotion(targetValue, duration = 800, onComplete) {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
     };
-  }, [targetValue, duration, prefersReducedMotion, motionVal]);
+  }, [targetValue, duration, prefersReducedMotion, motionVal, skipAnimationOnMount]);
 
   return motionVal;
 }

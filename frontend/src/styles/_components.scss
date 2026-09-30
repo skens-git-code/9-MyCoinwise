@@ -1693,8 +1693,13 @@
       padding: 8px 12px;
       border-radius: 10px;
       font-size: 0.85rem;
-      outline: none;
       cursor: pointer;
+    }
+
+    .il-controls-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
     }
   }
 }

@@ -635,6 +635,13 @@ export default function Dashboard() {
   const [isExporting, setIsExporting] = useState(false);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(!loading);
+
+  useEffect(() => {
+    if (!loading) {
+      setHasLoadedOnce(true);
+    }
+  }, [loading]);
 
   const handleOpenAddForm = useCallback(() => {
     setEditingTx(null);
@@ -1637,12 +1644,17 @@ export default function Dashboard() {
                 }}
               >
                 <span style={{ fontSize: 'inherit', color: 'inherit', fontWeight: 'inherit' }}>
-                  <AnimatedNumber
-                    value={rawBalance}
-                    duration={900}
-                    format={formatAnimatedCurrency}
-                    onComplete={handleBalanceComplete}
-                  />
+                  {loading && !hasLoadedOnce ? (
+                    <span className="balance-placeholder" style={{ opacity: 0.6 }}>--</span>
+                  ) : (
+                    <AnimatedNumber
+                      value={rawBalance}
+                      duration={900}
+                      format={formatAnimatedCurrency}
+                      onComplete={handleBalanceComplete}
+                      skipAnimationOnMount
+                    />
+                  )}
                 </span>
               </h2>
 
@@ -1689,11 +1701,16 @@ export default function Dashboard() {
             icon={TrendingUp}
             label={tr('total_income', 'Total Income')}
             value={
-              <AnimatedNumber
-                value={rawIncome}
-                duration={800}
-                format={formatAnimatedCurrency}
-              />
+              loading && !hasLoadedOnce ? (
+                <span style={{ opacity: 0.6 }}>--</span>
+              ) : (
+                <AnimatedNumber
+                  value={rawIncome}
+                  duration={800}
+                  format={formatAnimatedCurrency}
+                  skipAnimationOnMount
+                />
+              )
             }
             valueText={formatCurrencyText(rawIncome, safeFmt, currencySymbol)}
             colorRgb="34, 197, 94"
@@ -1710,11 +1727,16 @@ export default function Dashboard() {
             icon={TrendingDown}
             label={tr('total_expenses', 'Total Expenses')}
             value={
-              <AnimatedNumber
-                value={rawExpense}
-                duration={800}
-                format={formatAnimatedCurrency}
-              />
+              loading && !hasLoadedOnce ? (
+                <span style={{ opacity: 0.6 }}>--</span>
+              ) : (
+                <AnimatedNumber
+                  value={rawExpense}
+                  duration={800}
+                  format={formatAnimatedCurrency}
+                  skipAnimationOnMount
+                />
+              )
             }
             valueText={formatCurrencyText(rawExpense, safeFmt, currencySymbol)}
             colorRgb="239, 68, 68"
