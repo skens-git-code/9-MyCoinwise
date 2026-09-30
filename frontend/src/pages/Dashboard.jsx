@@ -51,6 +51,7 @@ import {
 
 import { dedupeTransactions } from '../utils/transactionIntegrity';
 import { getAppDate } from '../utils/dateUtils';
+import { isMobileTier } from '../utils/deviceTier';
 
 /* ============================================================
  * Constants
@@ -1575,10 +1576,14 @@ export default function Dashboard() {
 
         {/* ===================== Bento grid ===================== */}
         <motion.div className="bento-grid" variants={STAGGER} initial="hidden" animate="show">
-          {/* ── Ambient decorative orbs ── */}
-          <div className="ambient-orb orb-chart" style={{ top: '15%', right: '5%' }} aria-hidden="true" />
-          <div className="ambient-orb orb-goal" style={{ bottom: '10%', left: '10%' }} aria-hidden="true" />
-          <div className="ambient-orb orb-ai" style={{ bottom: '2%', right: '2%' }} aria-hidden="true" />
+          {/* ── Ambient decorative orbs (Desktop only) ── */}
+          {!isMobileTier() && (
+            <>
+              <div className="ambient-orb orb-chart" style={{ top: '15%', right: '5%' }} aria-hidden="true" />
+              <div className="ambient-orb orb-goal" style={{ bottom: '10%', left: '10%' }} aria-hidden="true" />
+              <div className="ambient-orb orb-ai" style={{ bottom: '2%', right: '2%' }} aria-hidden="true" />
+            </>
+          )}
 
           {/* ===================== Hero — Total Balance ===================== */}
           <motion.div

@@ -217,7 +217,7 @@ const QuantumRuntime = (() => {
     }
 
     init() {
-      AppState.isMobile = window.matchMedia('(max-width: 768px)').matches;
+      AppState.isMobile = window.matchMedia('(max-width: 900px)').matches;
       AppState.prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const themeRoot = this.root.querySelector?.('.app-island-layout') || this.root.documentElement || this.root;
       const storedTheme = themeRoot.dataset?.theme || Storage.get('mcw-theme', 'light');

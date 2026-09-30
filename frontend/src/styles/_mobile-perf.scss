@@ -1,0 +1,93 @@
+/* ================================================================
+   MOBILE PERFORMANCE & COMPOSITE LAYER COLLAPSE
+   Gated strictly to small viewports (<= 900px).
+   Preserves full desktop glassmorphism, depth, and shadows while
+   collapsing composite GPU layer counts from 480+ to <= 20 on mobile.
+   ================================================================ */
+
+@media (max-width: 900px) {
+  /* ── STEP 3: Gate Glassmorphism on Mobile ── */
+  *,
+  *::before,
+  *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .glass,
+  .glass-sm,
+  .bento-tile,
+  .bento-hero,
+  .stat-card,
+  .interactive-card,
+  .app-header,
+  .mobile-bottom-nav,
+  .command-palette-backdrop,
+  .modal-overlay,
+  .tax-modal-backdrop,
+  .bento-dashboard .bento-hero,
+  .nav-container,
+  .portfolio-header .nav-container,
+  .dashboard-quick-stats-strip,
+  .dashboard-container .dashboard-quick-stats-strip,
+  [class*="glass"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--surface-1) !important;
+  }
+
+  /* ── STEP 4: Freeze & Hide Ambient Background Layers, Orbs, and Shards on Mobile ── */
+  body::before,
+  body::after,
+  .orb-3,
+  .ambient-orb,
+  .auth-orb,
+  .d3-ambient,
+  .d3-ambient__grid,
+  .d3-ambient__shard,
+  .particles,
+  .animated-bg,
+  .bento-hero::after,
+  .bento-tile::after,
+  .stat-card::after {
+    animation: none !important;
+    display: none !important;
+    will-change: auto !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  /* ── STEP 5: Simplify Box Shadows on Mobile ── */
+  *,
+  *::before,
+  *::after {
+    box-shadow: none !important;
+  }
+
+  .glass,
+  .glass-sm,
+  .bento-tile,
+  .bento-hero,
+  .stat-card,
+  .interactive-card,
+  .bento-dashboard .bento-hero,
+  .mobile-bottom-nav,
+  .app-header,
+  .btn,
+  .card,
+  .dashboard-quick-stats-strip {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+  }
+
+  /* Preserve essential accessibility focus rings */
+  *:focus-visible {
+    box-shadow: 0 0 0 2px var(--brand-primary) !important;
+  }
+
+  /* ── STEP 6: Kill will-change on Mobile ── */
+  *,
+  *::before,
+  *::after {
+    will-change: auto !important;
+  }
+}

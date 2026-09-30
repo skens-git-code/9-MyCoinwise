@@ -37,6 +37,9 @@ import {
  * be made in one place.
  * ————————————————————————————————————— */
 export function getAppDate() {
+  if (typeof window !== 'undefined' && window.__TEST_DATE__) {
+    return new Date(window.__TEST_DATE__);
+  }
   return new Date();
 }
 

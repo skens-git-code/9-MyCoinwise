@@ -7,6 +7,11 @@ afterEach(() => {
   cleanup();
 });
 
+// Fixed test application clock to match test fixture month (September 2026)
+if (typeof window !== 'undefined') {
+  window.__TEST_DATE__ = '2026-09-30T12:00:00.000Z';
+}
+
 // Polyfill window.matchMedia for jsdom test runner
 if (typeof window !== 'undefined' && !window.matchMedia) {
   Object.defineProperty(window, 'matchMedia', {
