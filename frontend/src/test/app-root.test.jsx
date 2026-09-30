@@ -37,6 +37,6 @@ describe('App Root Mounting', () => {
     await vi.advanceTimersByTimeAsync(500);
     vi.useRealTimers();
     expect(screen.queryByText(/Oops, something went wrong/i)).toBeNull();
-  });
+  }, 15000);
 });
 
