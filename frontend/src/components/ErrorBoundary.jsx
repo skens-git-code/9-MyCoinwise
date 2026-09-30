@@ -31,13 +31,13 @@ class ErrorBoundary extends React.Component {
   }
 
   // ── Flip into the error state when a child throws ──
-  static getDerivedStateFromError(_error) {
-    return { hasError: true };
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
   }
 
   // ── Capture and log error details when a child throws ──
   componentDidCatch(error, errorInfo) {
-    this.setState({ errorInfo });
+    this.setState({ error, errorInfo });
     console.error("ErrorBoundary caught an error:", error, errorInfo);
   }
 
@@ -83,9 +83,30 @@ class ErrorBoundary extends React.Component {
           <h2 style={{ fontSize: '2rem', marginBottom: '16px', fontWeight: 800 }}>Oops, something went wrong.</h2>
 
           {/* ── Fallback explanation ── */}
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '1.1rem' }}>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '1.1rem' }}>
             We've encountered an unexpected error catching that render.
           </p>
+
+          {this.state.error && (
+            <div style={{
+              maxWidth: 640,
+              width: '100%',
+              margin: '0 auto 24px auto',
+              padding: '12px 16px',
+              borderRadius: 10,
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: '#f87171',
+              fontSize: '0.875rem',
+              fontFamily: 'monospace',
+              textAlign: 'left',
+              overflowX: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}>
+              {this.state.error.message || String(this.state.error)}
+            </div>
+          )}
 
           {/* ── Recovery actions ── */}
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>

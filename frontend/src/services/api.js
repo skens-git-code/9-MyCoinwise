@@ -276,10 +276,18 @@ export const api = {
    * ───────────────────────────────────── */
 
   // ── List a user's transactions ──
-  getTransactions: async (userId) => {
-    const res = await axios.get(`${API_URL}/transactions/${userId}`);
-    return res.data;
+  getTransactions: async (userId, params = {}) => {
+    const res = await axios.get(`${API_URL}/transactions/${userId}`, { params });
+    if (Array.isArray(res.data)) return res.data;
+    if (res.data && Array.isArray(res.data.items)) return res.data.items;
+    return [];
   },
+
+  // ── List transactions with cursor metadata for pagination ──
+  getTransactionsPaginated: async (userId, params = {}) => {
+    const res = await axios.get(`${API_URL}/transactions/${userId}`, { params });
+    return res.data;
+  },  
 
   // ── Create a transaction ──
   addTransaction: async (data) => {

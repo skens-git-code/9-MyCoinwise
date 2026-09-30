@@ -1,4 +1,3 @@
-import './wdyr.js';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/main.scss'

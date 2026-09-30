@@ -10,7 +10,6 @@ import { generateAlerts, getSpendingInsights } from './services/aiEngine';
 import i18n, { getT, LANGUAGES } from './services/i18n';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './components/ToastProvider';
-import { MotionConfig, LazyMotion, domAnimation } from 'framer-motion';
 
 import { AppStateContext, AppActionsContext } from './contexts/AppContext';
 import { dedupeTransactions } from './utils/transactionIntegrity';
@@ -34,6 +33,9 @@ const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const About = lazy(() => import('./pages/About'));
 const Calculator = lazy(() => import('./pages/Calculator'));
 const Tax = lazy(() => import('./pages/Tax'));
+const Terms = lazy(() => import('./pages/Terms'));
+const Privacy = lazy(() => import('./pages/Privacy'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 function AppRoutes() {
   const location = useLocation();
@@ -55,7 +57,10 @@ function AppRoutes() {
         <Route path="/about" element={<About />} />
         <Route path="/calculator" element={<Calculator />} />
         <Route path="/tax" element={<Tax />} />
-        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/404" element={<NotFound />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>
     </ErrorBoundary>
@@ -421,11 +426,13 @@ export default function App() {
         api.getAllUsers()
       ]);
       const [txResult, goalsResult, subsResult, eventsResult, budgetsResult, accountsResult, usersResult] = results;
-      const settledArray = (result) => (
-        result?.status === 'fulfilled' && Array.isArray(result.value)
-          ? result.value
-          : null
-      );
+      const settledArray = (result) => {
+        if (result?.status !== 'fulfilled' || result.value === undefined || result.value === null) return null;
+        if (Array.isArray(result.value)) return result.value;
+        if (Array.isArray(result.value.items)) return result.value.items;
+        if (Array.isArray(result.value.data)) return result.value.data;
+        return null;
+      };
       const txData = settledArray(txResult);
       const goalsData = settledArray(goalsResult);
       const subsData = settledArray(subsResult);
@@ -645,6 +652,7 @@ export default function App() {
     revertSession,
     fmt,
     installPWA,
+    clearGlobalError: () => setGlobalError(null),
   }), [
     toggleTheme, setThemeDirect, setLanguage, t,
     login, logout, fetchData, addTransaction,
@@ -652,56 +660,38 @@ export default function App() {
     createUser, switchUser, revertSession, fmt, installPWA
   ]);
 
-  // While the initial token validation is in flight, show a spinner so neither
-  // the login page nor the protected app content flashes before auth is known.
-  if (isAppStarting || isInitialAuthLoad) {
-    return (
-      <ErrorBoundary>
-        <I18nextProvider i18n={i18n}>
-          <AppStateContext.Provider value={stateValue}>
-            <AppActionsContext.Provider value={actionsValue}>
-              <ToastProvider>
-                <LazyMotion features={domAnimation}>
-                  <MotionConfig reducedMotion="user">
-                    <Loader fullScreen mode={token ? "auth" : "inline"} />
-                  </MotionConfig>
-                </LazyMotion>
-              </ToastProvider>
-            </AppActionsContext.Provider>
-          </AppStateContext.Provider>
-        </I18nextProvider>
-      </ErrorBoundary>
-    );
-  }
-
+  // Keep the entire application shell unified to prevent hook ordering mismatch
   return (
     <ErrorBoundary>
       <I18nextProvider i18n={i18n}>
         <AppStateContext.Provider value={stateValue}>
           <AppActionsContext.Provider value={actionsValue}>
             <ToastProvider>
-              <LazyMotion features={domAnimation}>
-                <MotionConfig reducedMotion="user">
-                  <Router>
-                    <Suspense fallback={<Loader />}>
-                      <Routes>
-                        <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-                        <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
-                        <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" />} />
-                        <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" />} />
-                        <Route path="/verify-email" element={<VerifyEmail />} />
-                        <Route path="/*" element={
-                          <ProtectedRoute>
-                            <AppLayout>
-                              <AppRoutes />
-                            </AppLayout>
-                          </ProtectedRoute>
-                        } />
-                      </Routes>
-                    </Suspense>
-                  </Router>
-                </MotionConfig>
-              </LazyMotion>
+              {isAppStarting || isInitialAuthLoad ? (
+                <Loader fullScreen mode={token ? "auth" : "inline"} />
+              ) : (
+                <Router>
+                  <Suspense fallback={<Loader />}>
+                    <Routes>
+                      <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+                      <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+                      <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" />} />
+                      <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" />} />
+                      <Route path="/verify-email" element={<VerifyEmail />} />
+                      <Route path="/terms" element={<Terms />} />
+                      <Route path="/privacy" element={<Privacy />} />
+                      <Route path="/404" element={<NotFound />} />
+                      <Route path="/*" element={
+                        <ProtectedRoute>
+                          <AppLayout>
+                            <AppRoutes />
+                          </AppLayout>
+                        </ProtectedRoute>
+                      } />
+                    </Routes>
+                  </Suspense>
+                </Router>
+              )}
             </ToastProvider>
           </AppActionsContext.Provider>
         </AppStateContext.Provider>
@@ -709,3 +699,4 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
