@@ -17,7 +17,6 @@ function sendToAnalytics(metric) {
   }
 
   if (import.meta.env.DEV) {
-    // eslint-disable-next-line no-console
     console.debug(`[Web Vitals] ${metric.name}:`, Math.round(metric.value), metric.rating);
   }
 }

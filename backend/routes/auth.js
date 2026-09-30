@@ -160,7 +160,7 @@ const createSessionToken = async (user, req, { rememberMe = true, browser, os, d
   const token = jwt.sign(
     { id: user._id, session_version: sessionVersion, jti: tokenId },
     process.env.JWT_SECRET,
-    { expiresIn: rememberMe ? '30d' : '1d', algorithm: 'HS256' }
+    { expiresIn: rememberMe ? '7d' : '1d', algorithm: 'HS256' }
   );
 
   // ── Compose a human-readable device label ──
