@@ -33,17 +33,28 @@
       })();
     </script>
 
-    <!-- Microsoft Clarity: loaded once at the app shell so every SPA route/module is covered. -->
+    <!-- Microsoft Clarity: loaded asynchronously after page load in production -->
     <script type="text/javascript">
-      (function (c, l, a, r, i, t, y) {
-        c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
-        t = l.createElement(r);
-        t.async = 1;
-        t.src = "https://www.clarity.ms/tag/" + i;
-        t.setAttribute("data-mcw-clarity", "true");
-        y = l.getElementsByTagName(r)[0];
-        y.parentNode.insertBefore(t, y);
-      })(window, document, "clarity", "script", "y60svimjg2");
+      if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        window.addEventListener('load', function() {
+          var initClarity = function() {
+            (function (c, l, a, r, i, t, y) {
+              c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+              t = l.createElement(r);
+              t.async = 1;
+              t.src = "https://www.clarity.ms/tag/" + i;
+              t.setAttribute("data-mcw-clarity", "true");
+              y = l.getElementsByTagName(r)[0];
+              y.parentNode.insertBefore(t, y);
+            })(window, document, "clarity", "script", "y60svimjg2");
+          };
+          if ('requestIdleCallback' in window) {
+            requestIdleCallback(initClarity, { timeout: 3000 });
+          } else {
+            setTimeout(initClarity, 2500);
+          }
+        });
+      }
     </script>
 
     <!-- PWA Manifest -->
@@ -57,10 +68,14 @@
     <meta property="og:description" content="AI-powered personal finance tracker with multi-language support, goal tracking, and smart alerts." />
     <meta property="og:type" content="website" />
 
-    <!-- Google Fonts preloaded (Space Grotesk for Body/UI, Orbitron for futuristic headings) -->
+    <!-- Google Fonts: preconnected and loaded non-blockingly for high performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Orbitron:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Orbitron:wght@600;700;800;900&family=Poppins:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" />
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Orbitron:wght@600;700;800;900&family=Poppins:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Orbitron:wght@600;700;800;900&family=Poppins:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>

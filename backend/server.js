@@ -74,6 +74,7 @@ app.set('trust proxy', 1); // Respect X-Forwarded-For headers
 const defaultAllowed = [
   'http://localhost:5173',
   'http://localhost:5174',
+  'http://localhost:4173',
   'http://localhost:3000',
   'https://9-budget-tracker.vercel.app',
   'https://nine-budgettracker.onrender.com',
@@ -162,10 +163,12 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 // ─── Rate Limiters ──────────────────────────────────────────────────────────
 const authLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 10, // 10 attempts per window
+  max: isDev ? 1000 : 10, // 10 attempts in prod, generous in dev/test
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skipSuccessfulRequests: true, // don't count successful logins

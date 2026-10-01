@@ -1,0 +1,363 @@
+{
+  "status": "PASSED",
+  "durationSeconds": 184,
+  "sampleCount": 50,
+  "maxCompositeLayers": 3,
+  "layersTargetMet": true,
+  "avgFPS": 60,
+  "minFPS": 59,
+  "maxMemoryMB": 39,
+  "thermalThrottlingDetected": false,
+  "samples": [
+    {
+      "elapsedSec": 4,
+      "route": "/",
+      "fps": 60,
+      "memoryMB": 15.5,
+      "layerCount": 2
+    },
+    {
+      "elapsedSec": 8,
+      "route": "/transactions",
+      "fps": 60,
+      "memoryMB": 18.1,
+      "layerCount": 2
+    },
+    {
+      "elapsedSec": 12,
+      "route": "/calendar",
+      "fps": 60,
+      "memoryMB": 23.2,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 15,
+      "route": "/wealth",
+      "fps": 60,
+      "memoryMB": 24.6,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 19,
+      "route": "/analytics",
+      "fps": 60,
+      "memoryMB": 21.7,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 22,
+      "route": "/settings",
+      "fps": 60,
+      "memoryMB": 28.6,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 26,
+      "route": "/",
+      "fps": 60,
+      "memoryMB": 33.8,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 30,
+      "route": "/transactions",
+      "fps": 60,
+      "memoryMB": 39,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 33,
+      "route": "/calendar",
+      "fps": 60,
+      "memoryMB": 24.2,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 37,
+      "route": "/wealth",
+      "fps": 60,
+      "memoryMB": 29.3,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 41,
+      "route": "/analytics",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 44,
+      "route": "/settings",
+      "fps": 59,
+      "memoryMB": 31,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 48,
+      "route": "/",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 52,
+      "route": "/transactions",
+      "fps": 60,
+      "memoryMB": 31,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 55,
+      "route": "/calendar",
+      "fps": 60,
+      "memoryMB": 24.2,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 59,
+      "route": "/wealth",
+      "fps": 60,
+      "memoryMB": 31,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 62,
+      "route": "/analytics",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 66,
+      "route": "/settings",
+      "fps": 60,
+      "memoryMB": 32.7,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 70,
+      "route": "/",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 74,
+      "route": "/transactions",
+      "fps": 60,
+      "memoryMB": 31,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 77,
+      "route": "/calendar",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 81,
+      "route": "/wealth",
+      "fps": 60,
+      "memoryMB": 31,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 84,
+      "route": "/analytics",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 88,
+      "route": "/settings",
+      "fps": 60,
+      "memoryMB": 31,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 92,
+      "route": "/",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 95,
+      "route": "/transactions",
+      "fps": 60,
+      "memoryMB": 31.8,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 99,
+      "route": "/calendar",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 103,
+      "route": "/wealth",
+      "fps": 60,
+      "memoryMB": 31,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 106,
+      "route": "/analytics",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 110,
+      "route": "/settings",
+      "fps": 60,
+      "memoryMB": 31,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 114,
+      "route": "/",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 117,
+      "route": "/transactions",
+      "fps": 60,
+      "memoryMB": 31,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 121,
+      "route": "/calendar",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 124,
+      "route": "/wealth",
+      "fps": 60,
+      "memoryMB": 31,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 128,
+      "route": "/analytics",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 132,
+      "route": "/settings",
+      "fps": 60,
+      "memoryMB": 31,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 135,
+      "route": "/",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 139,
+      "route": "/transactions",
+      "fps": 60,
+      "memoryMB": 32.2,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 143,
+      "route": "/calendar",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 146,
+      "route": "/wealth",
+      "fps": 60,
+      "memoryMB": 32.2,
+      "layerCount": 2
+    },
+    {
+      "elapsedSec": 150,
+      "route": "/analytics",
+      "fps": 60,
+      "memoryMB": 24.8,
+      "layerCount": 2
+    },
+    {
+      "elapsedSec": 154,
+      "route": "/settings",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 2
+    },
+    {
+      "elapsedSec": 157,
+      "route": "/",
+      "fps": 60,
+      "memoryMB": 24.4,
+      "layerCount": 2
+    },
+    {
+      "elapsedSec": 161,
+      "route": "/transactions",
+      "fps": 60,
+      "memoryMB": 31.9,
+      "layerCount": 2
+    },
+    {
+      "elapsedSec": 164,
+      "route": "/calendar",
+      "fps": 60,
+      "memoryMB": 24.9,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 168,
+      "route": "/wealth",
+      "fps": 60,
+      "memoryMB": 31.5,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 172,
+      "route": "/analytics",
+      "fps": 60,
+      "memoryMB": 24.8,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 175,
+      "route": "/settings",
+      "fps": 60,
+      "memoryMB": 31.5,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 179,
+      "route": "/",
+      "fps": 60,
+      "memoryMB": 24.6,
+      "layerCount": 3
+    },
+    {
+      "elapsedSec": 183,
+      "route": "/transactions",
+      "fps": 60,
+      "memoryMB": 32,
+      "layerCount": 3
+    }
+  ]
+}

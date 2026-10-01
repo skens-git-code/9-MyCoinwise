@@ -34,12 +34,16 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    sourcemap: false,
+    sourcemap: true,
+    modulePreload: false,
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         manualChunks: (id) => {
           if (id.includes('node_modules')) {
+            if (id.includes('emoji-picker-react')) return 'emoji-picker';
+            if (id.includes('html2canvas') || id.includes('canvg')) return 'canvas-vendor';
+            if (id.includes('@sentry')) return 'sentry';
             if (id.includes('recharts')) return 'recharts';
             if (id.includes('framer-motion')) return 'framer-motion';
             if (id.includes('lucide-react')) return 'icons';

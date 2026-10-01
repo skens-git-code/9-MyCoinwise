@@ -18,6 +18,10 @@ export function initClarity() {
   };
   ensureQueue();
 
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return;
+  }
+
   const existingScript = document.querySelector(`script[${CLARITY_SCRIPT_ATTRIBUTE}]`);
   if (existingScript) {
     existingScript.addEventListener('load', ensureQueue, { once: true });

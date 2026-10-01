@@ -29,6 +29,7 @@ baseline-*.json
 soak-*.json
 soak*.json
 benchmark-*.json
+lighthouse-*.json
 
 # Logs & Runtime telemetry
 *.log
