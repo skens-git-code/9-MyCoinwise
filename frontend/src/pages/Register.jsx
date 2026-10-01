@@ -245,6 +245,32 @@ export default function Register() {
   const [registeredSession, setRegisteredSession] = useState(null);
   const [resendSent, setResendSent] = useState(false);
 
+  /* ---------------- Pre-emptive Server Wake-Up & Idle Prefetch ---------------- */
+  useEffect(() => {
+    // Wake up Render container if it's currently sleeping
+    try {
+      const p = api?.healthCheck?.({ timeout: 20000 });
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {});
+      }
+    } catch { /* best effort */ }
+
+    // Prefetch Dashboard and AppLayout during idle so post-registration is seamless
+    const idleCallback = typeof window !== 'undefined' && window.requestIdleCallback
+      ? window.requestIdleCallback
+      : (cb) => setTimeout(cb, 800);
+    const cancelId = idleCallback(() => {
+      import('./Dashboard').catch(() => {});
+      import('../components/AppLayout').catch(() => {});
+    });
+
+    return () => {
+      if (typeof window !== 'undefined' && window.cancelIdleCallback) {
+        window.cancelIdleCallback(cancelId);
+      }
+    };
+  }, []);
+
   /* ---------------- Redirect Authenticated Users ---------------- */
   // Only redirect if user is already logged in before registration and not viewing success
   useEffect(() => {

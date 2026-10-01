@@ -154,10 +154,11 @@ export const api = {
    * Health & Server Wake-Up
    * ───────────────────────────────────── */
 
-  // ── Ping the backend; returns null on failure (used for cold-start banners) ──
-  healthCheck: async () => {
+  // ── Ping the backend; returns null on failure (used for cold-start banners & pre-warming) ──
+  healthCheck: async (options = {}) => {
     try {
-      const res = await axios.get(`${API_URL}/health`, { timeout: 5000 });
+      const timeout = typeof options?.timeout === 'number' ? options.timeout : 15000;
+      const res = await axios.get(`${API_URL}/health`, { timeout, ...options });
       return res.data;
     } catch {
       return null;

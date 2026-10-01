@@ -195,11 +195,10 @@ export default function App() {
   const [budgets, setBudgets] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [events, setEvents] = useState([]);
-  const [isAppStarting, setIsAppStarting] = useState(true);
-  const [isInitialAuthLoad, setIsInitialAuthLoad] = useState(true);
+  const [token, setToken] = useState(() => getStoredToken());
+  const [isInitialAuthLoad, setIsInitialAuthLoad] = useState(() => Boolean(getStoredToken()));
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
   const [globalError, setGlobalError] = useState(null);
-  const [token, setToken] = useState(() => getStoredToken());
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [previousSession, setPreviousSession] = useState(() => {
     try {
@@ -210,11 +209,25 @@ export default function App() {
     }
   });
 
-  // Keep the branded startup screen visible long enough to feel intentional,
-  // including on fast local loads where auth would otherwise resolve instantly.
+  // ── Pre-emptive backend wake-up & active session keep-alive ──
   useEffect(() => {
-    const startupTimer = window.setTimeout(() => setIsAppStarting(false), 250);
-    return () => window.clearTimeout(startupTimer);
+    // Fire immediate non-blocking health check on mount to warm up Render container
+    try {
+      const p = api?.healthCheck?.({ timeout: 20000 });
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch { /* best effort */ }
+
+    // Keep active sessions warm: Render sleeps after 15 min; ping every 10 min while visible
+    const keepAliveInterval = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        try {
+          const p = api?.healthCheck?.({ timeout: 15000 });
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch { /* best effort */ }
+      }
+    }, 10 * 60 * 1000);
+
+    return () => window.clearInterval(keepAliveInterval);
   }, []);
 
   useEffect(() => {
@@ -679,7 +692,7 @@ export default function App() {
         <AppStateContext.Provider value={stateValue}>
           <AppActionsContext.Provider value={actionsValue}>
             <ToastProvider>
-              {isAppStarting || isInitialAuthLoad ? (
+              {isInitialAuthLoad ? (
                 <Loader fullScreen mode={token ? "auth" : "inline"} />
               ) : (
                 <Router>

@@ -1,6 +1,6 @@
 /* global clients */
 // MyCoinwise – Service Worker (PWA)
-const CACHE_NAME = 'mycoinwise-v3';
+const CACHE_NAME = 'mycoinwise-v4';
 const STATIC_ASSETS = ['/', '/index.html'];
 
 self.addEventListener('install', (e) => {
@@ -34,15 +34,42 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Cache-first for static assets (JS, CSS, images)
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        const clone = res.clone();
-        caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
-        return res;
+  const url = new URL(e.request.url);
+  const isStaticAsset = url.pathname.startsWith('/assets/') ||
+    /\.(woff2?|ttf|otf|png|jpg|jpeg|webp|avif|svg|ico)$/i.test(url.pathname);
+
+  if (isStaticAsset) {
+    // True cache-first for immutable hashed static assets (0ms response from CacheStorage)
+    e.respondWith(
+      caches.match(e.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(e.request).then((res) => {
+          if (res && res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+          }
+          return res;
+        });
       })
-      .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for navigation HTML and other GET requests
+  e.respondWith(
+    caches.match(e.request).then((cached) => {
+      const networkFetch = fetch(e.request)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+          }
+          return res;
+        })
+        .catch(() => cached);
+
+      return cached || networkFetch;
+    })
   );
 });
 

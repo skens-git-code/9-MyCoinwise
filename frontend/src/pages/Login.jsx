@@ -249,15 +249,12 @@ export default function Login() {
   const closeForgotModal = useCallback(() => setShowForgotHelp(false), []);
   useFocusTrap(forgotModalRef, showForgotHelp, closeForgotModal);
 
-  /* ---------------- Pre-emptive Server Wake-Up ---------------- */
+  /* ---------------- Pre-emptive Server Wake-Up & Idle Prefetch ---------------- */
   useEffect(() => {
-    // [FIX] Fire the health-check and track its result so the UI can show a
-    // "server is warming up" banner while Render.com cold-starts the backend.
-    // This prevents users from seeing a confusing first-attempt failure with no
-    // explanation. Health check has its own 15 s timeout (see api.js).
+    // Fire the health-check with 20s timeout so Render cold-start finishes warming up
     setServerWarm(null); // pending
     try {
-      const p = api?.healthCheck?.();
+      const p = api?.healthCheck?.({ timeout: 20000 });
       if (p && typeof p.then === 'function') {
         p.then((result) => {
           setServerWarm(result !== null);
@@ -270,6 +267,21 @@ export default function Login() {
     } catch {
       setServerWarm(true);
     }
+
+    // Prefetch Dashboard and AppLayout during idle so sign-in transition is 0ms instant
+    const idleCallback = typeof window !== 'undefined' && window.requestIdleCallback
+      ? window.requestIdleCallback
+      : (cb) => setTimeout(cb, 800);
+    const cancelId = idleCallback(() => {
+      import('./Dashboard').catch(() => {});
+      import('../components/AppLayout').catch(() => {});
+    });
+
+    return () => {
+      if (typeof window !== 'undefined' && window.cancelIdleCallback) {
+        window.cancelIdleCallback(cancelId);
+      }
+    };
   }, []);
 
   /* ---------------- Autofill Synchronization ---------------- */

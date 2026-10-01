@@ -95,6 +95,8 @@ const preloadRoute = (to) => {
     case '/wealth': import('../pages/Wealth'); break;
     case '/about': import('../pages/About'); break;
     case '/settings': import('../pages/SettingsPage'); break;
+    case '/terms': import('../pages/Terms'); break;
+    case '/privacy': import('../pages/Privacy'); break;
     default: break;
   }
 };
@@ -532,6 +534,49 @@ export default function AppLayout({ children }) {
     return undefined;
   }, []);
 
+  // ── Progressive Background Route & Modal Preloader during Idle ──
+  // Pre-caches remaining route chunks during browser idle periods so that tab
+  // switching and modal launches feel instant with 0ms delay and no skeleton flicker.
+  useEffect(() => {
+    const idleCallback = typeof window !== 'undefined' && window.requestIdleCallback
+      ? window.requestIdleCallback
+      : (cb) => setTimeout(cb, 1000);
+
+    const idleId = idleCallback(() => {
+      const priorityModules = [
+        () => import('../pages/Transactions'),
+        () => import('../pages/Analytics'),
+        () => import('../pages/Budgets'),
+        () => import('../pages/Calendar'),
+        () => import('../pages/Accounts'),
+        () => import('../pages/Goals'),
+        () => import('../pages/Cashflow'),
+        () => import('../pages/Wealth'),
+        () => import('../pages/Subscriptions'),
+        () => import('../pages/Calculator'),
+        () => import('../pages/Tax'),
+        () => import('../pages/SettingsPage'),
+        () => import('../pages/About'),
+        () => import('./TransactionForm'),
+        () => import('./CommandPalette'),
+        () => import('./CurrencyConverter'),
+      ];
+
+      // Stagger background imports across idle ticks (100ms intervals) so main thread stays at 60 FPS
+      priorityModules.forEach((loader, index) => {
+        setTimeout(() => {
+          loader().catch(() => {});
+        }, index * 100);
+      });
+    });
+
+    return () => {
+      if (typeof window !== 'undefined' && window.cancelIdleCallback) {
+        window.cancelIdleCallback(idleId);
+      }
+    };
+  }, []);
+
   // ── App context: user, theme, i18n, data, actions ──
   const stateData = useAppState() || {};
   const actionData = useAppActions() || {};
@@ -547,7 +592,6 @@ export default function AppLayout({ children }) {
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDrawerOpen((open) => (open ? false : open));
   }, [location.pathname]);
 
