@@ -45,7 +45,8 @@ async function testProduction() {
     return window.location.pathname === '/' || window.location.pathname === '/dashboard';
   }, { timeout: 20000 }).catch(() => {});
   
-  await new Promise(r => setTimeout(r, 4000));
+  await page.waitForSelector('.island-main, [role="region"], h1, h2', { timeout: 15000 }).catch(() => {});
+  await new Promise(r => setTimeout(r, 2000));
 
   const currentUrl = page.url();
   console.log(`   Current URL: ${currentUrl}`);
