@@ -10,9 +10,7 @@
 }
 
 .notification-toast {
-  background: var(--glass-2);
-  backdrop-filter: blur(24px) saturate(200%);
-  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  background: var(--toast-bg, rgba(20, 22, 28, 0.96));
   border: 1px solid var(--glass-border);
   border-radius: 16px;
   padding: 14px 20px;

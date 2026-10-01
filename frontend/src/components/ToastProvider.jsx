@@ -23,10 +23,19 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, AlertCircle, Info, X } from 'lucide-react';
+import { CheckCircle, AlertCircle, Info, AlertTriangle, X } from 'lucide-react';
 
 // ── Context object (null until wrapped by ToastProvider) ──
 const ToastContext = createContext(null);
+
+// ── Standard toast auto-dismiss durations (Glitch #13) ──
+// Success: 3s, Info: 4s, Warning: 5s, Error: null (persists until user dismissal)
+const DEFAULT_DURATIONS = {
+  success: 3000,
+  info: 4000,
+  warning: 5000,
+  error: null,
+};
 
 /* —————————————————————————————————————
  * Toast Provider
@@ -37,11 +46,17 @@ export const ToastProvider = ({ children }) => {
 
   /* —————————————————————————————————————
    * Show Toast
-   * Adds a new toast and schedules its auto-dismiss.
+   * Adds a new toast and schedules its auto-dismiss according to its type.
    * Skips duplicates and enforces a 3-toast cap.
    * ————————————————————————————————————— */
-  const showToast = useCallback((type, text, duration = 4000, action = null) => {
+  const showToast = useCallback((type, text, duration, action = null) => {
     const id = Date.now() + Math.random();
+    const effectiveDuration =
+      duration !== undefined
+        ? duration
+        : DEFAULT_DURATIONS[type] !== undefined
+          ? DEFAULT_DURATIONS[type]
+          : 4000;
 
     setToasts(prev => {
       // Prevent parallel protected requests from stacking the same error
@@ -54,11 +69,11 @@ export const ToastProvider = ({ children }) => {
       return newToasts;
     });
 
-    // ── Auto-dismiss when a positive duration is provided ──
-    if (duration > 0) {
+    // ── Auto-dismiss when a positive duration is configured ──
+    if (effectiveDuration && effectiveDuration > 0) {
       setTimeout(() => {
         setToasts(prev => prev.filter(t => t.id !== id));
-      }, duration);
+      }, effectiveDuration);
     }
   }, []);
 
@@ -71,6 +86,7 @@ export const ToastProvider = ({ children }) => {
   const getBorderColor = (type) => {
     if (type === 'success') return 'var(--success, #10b981)';
     if (type === 'error') return 'var(--danger, #ef4444)';
+    if (type === 'warning') return 'var(--warning, #f59e0b)';
     if (type === 'info') return 'var(--info, #3b82f6)';
     return 'var(--glass-border)';
   };
@@ -79,15 +95,15 @@ export const ToastProvider = ({ children }) => {
     <ToastContext.Provider value={{ showToast, hideToast }}>
       {children}
 
-      {/* ── Toast stack: top-right, right-aligned column ── */}
+      {/* ── Toast stack: top-right with notch-aware safe-area padding (Glitch #12) ── */}
       <div
         role="status"
         aria-live="polite"
         aria-atomic="true"
         style={{
           position: 'fixed',
-          top: 24,
-          right: 24,
+          top: 0,
+          right: 0,
           zIndex: 'var(--z-toast, 1200)',
           pointerEvents: 'none',
           display: 'flex',
@@ -95,8 +111,11 @@ export const ToastProvider = ({ children }) => {
           alignItems: 'flex-end',
           gap: 12,
           width: '100%',
-          maxWidth: 400,
-          padding: '0 20px'
+          maxWidth: 420,
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 20px)',
+          paddingRight: 'max(20px, env(safe-area-inset-right, 20px))',
+          paddingBottom: '20px',
+          paddingLeft: '20px',
         }}
       >
         <AnimatePresence>
@@ -117,11 +136,10 @@ export const ToastProvider = ({ children }) => {
                 gap: 12,
                 padding: '12px 16px',
                 borderRadius: 12,
-                background: 'var(--glass-1)',
-                backdropFilter: 'blur(16px)',
-                WebkitBackdropFilter: 'blur(16px)',
+                // Opaque glass to avoid extra GPU composite layers (Glitch #12)
+                background: 'var(--toast-bg, rgba(20, 22, 28, 0.96))',
                 border: `1px solid ${getBorderColor(toast.type)}`,
-                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
                 width: '100%'
               }}
             >
@@ -129,6 +147,7 @@ export const ToastProvider = ({ children }) => {
               <div style={{ flexShrink: 0 }}>
                 {toast.type === 'success' && <CheckCircle size={22} color="var(--success, #10b981)" />}
                 {toast.type === 'error' && <AlertCircle size={22} color="var(--danger, #ef4444)" />}
+                {toast.type === 'warning' && <AlertTriangle size={22} color="var(--warning, #f59e0b)" />}
                 {toast.type === 'info' && <Info size={22} color="var(--info, #3b82f6)" />}
               </div>
 
