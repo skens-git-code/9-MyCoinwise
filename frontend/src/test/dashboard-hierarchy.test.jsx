@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AppContext } from '../contexts/AppContext';
@@ -19,6 +19,15 @@ vi.mock('../services/api', () => ({
 }));
 
 describe('Dashboard Hierarchy & Correctness (Acceptance Criteria SC-1 to SC-6)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-15T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const sampleTransactions = [
     { id: '1', amount: 50000, type: 'income', category: 'Salary', date: '2026-09-01T10:00:00.000Z', is_deleted: false },
     { id: '2', amount: 15000, type: 'expense', category: 'Rent', date: '2026-09-02T10:00:00.000Z', is_deleted: false },
