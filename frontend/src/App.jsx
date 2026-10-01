@@ -37,32 +37,44 @@ const Terms = lazy(() => import('./pages/Terms'));
 const Privacy = lazy(() => import('./pages/Privacy'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
+import {
+  DashboardSkeleton,
+  TransactionsSkeleton,
+  GoalsSkeleton,
+  AccountsSkeleton,
+  BudgetsSkeleton,
+  AnalyticsSkeleton,
+  SubscriptionsSkeleton,
+  CashflowSkeleton,
+  WealthSkeleton,
+  CalendarSkeleton,
+  PageSkeleton,
+} from './components/skeletons';
+
 function AppRoutes() {
   const location = useLocation();
   return (
     <ErrorBoundary resetKeys={[location.pathname]} fullScreen={false}>
-      <Suspense fallback={<Loader />}>
-        <Routes location={location}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/transactions" element={<Transactions />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="/accounts" element={<Accounts />} />
-        <Route path="/budgets" element={<Budgets />} />
-        <Route path="/goals" element={<Goals />} />
-        <Route path="/subscriptions" element={<Subscriptions />} />
-        <Route path="/cashflow" element={<Cashflow />} />
-        <Route path="/wealth" element={<Wealth />} />
-        <Route path="/calendar" element={<Calendar />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/calculator" element={<Calculator />} />
-        <Route path="/tax" element={<Tax />} />
-        <Route path="/terms" element={<Terms />} />
-        <Route path="/privacy" element={<Privacy />} />
-        <Route path="/404" element={<NotFound />} />
-        <Route path="*" element={<NotFound />} />
+      <Routes location={location}>
+        <Route path="/" element={<Suspense fallback={<DashboardSkeleton />}><Dashboard /></Suspense>} />
+        <Route path="/transactions" element={<Suspense fallback={<TransactionsSkeleton />}><Transactions /></Suspense>} />
+        <Route path="/analytics" element={<Suspense fallback={<AnalyticsSkeleton />}><Analytics /></Suspense>} />
+        <Route path="/accounts" element={<Suspense fallback={<AccountsSkeleton />}><Accounts /></Suspense>} />
+        <Route path="/budgets" element={<Suspense fallback={<BudgetsSkeleton />}><Budgets /></Suspense>} />
+        <Route path="/goals" element={<Suspense fallback={<GoalsSkeleton />}><Goals /></Suspense>} />
+        <Route path="/subscriptions" element={<Suspense fallback={<SubscriptionsSkeleton />}><Subscriptions /></Suspense>} />
+        <Route path="/cashflow" element={<Suspense fallback={<CashflowSkeleton />}><Cashflow /></Suspense>} />
+        <Route path="/wealth" element={<Suspense fallback={<WealthSkeleton />}><Wealth /></Suspense>} />
+        <Route path="/calendar" element={<Suspense fallback={<CalendarSkeleton />}><Calendar /></Suspense>} />
+        <Route path="/settings" element={<Suspense fallback={<PageSkeleton title="Settings" />}><SettingsPage /></Suspense>} />
+        <Route path="/about" element={<Suspense fallback={<PageSkeleton title="About" />}><About /></Suspense>} />
+        <Route path="/calculator" element={<Suspense fallback={<PageSkeleton title="Calculator" />}><Calculator /></Suspense>} />
+        <Route path="/tax" element={<Suspense fallback={<PageSkeleton title="Tax" />}><Tax /></Suspense>} />
+        <Route path="/terms" element={<Suspense fallback={<PageSkeleton title="Terms" />}><Terms /></Suspense>} />
+        <Route path="/privacy" element={<Suspense fallback={<PageSkeleton title="Privacy" />}><Privacy /></Suspense>} />
+        <Route path="/404" element={<Suspense fallback={<PageSkeleton title="Not Found" />}><NotFound /></Suspense>} />
+        <Route path="*" element={<Suspense fallback={<PageSkeleton title="Not Found" />}><NotFound /></Suspense>} />
       </Routes>
-    </Suspense>
     </ErrorBoundary>
   );
 }
