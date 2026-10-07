@@ -1145,13 +1145,23 @@ export default function Calendar() {
             <button
               type="button"
               className="cal-day-quick-add"
-              onClick={(clickEvent) =>
-                openAddTransactionFormForDate(dayDateKey, clickEvent)
-              }
+              onClick={(clickEvent) => {
+                // A real <button> nested in a `role="button"` cell bubbles its
+                // click to the parent, so Add would also open the day panel.
+                clickEvent.stopPropagation();
+                openAddTransactionFormForDate(dayDateKey, clickEvent);
+              }}
+              onKeyDown={(event) => {
+                // The cell's Enter/Space handler also fires on a bubbled keydown,
+                // which would open the day panel AND the form. Claim the key here.
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.stopPropagation();
+                }
+              }}
               title={formatText('add_transaction', 'Add transaction for this day')}
-              aria-label={formatText('add_transaction', 'Add transaction')}
+              aria-label={formatText('add_transaction', 'Add transaction for this day')}
             >
-              <Plus size={12} />
+              <Plus size={14} aria-hidden />
             </button>
           </div>
 
@@ -1282,6 +1292,20 @@ export default function Calendar() {
               key={dateKey}
               className="cml-day-card cal-mobile-day-card glass"
               onClick={() => openDayDetailsPanel(dateKey)}
+              /* ACCESSIBILITY: this card is the PRIMARY calendar interaction on a
+                 phone, and on the mobile list layout the desktop grid (whose cells
+                 are already keyboard-operable) is not rendered at all. Without a
+                 role/tabIndex/key handler the whole calendar was unusable by
+                 keyboard and by screen-reader users on touch devices. */
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  openDayDetailsPanel(dateKey);
+                }
+              }}
+              aria-label={`${formatFullDate(dateKey, locale)}, net ${formatCurrency(dayData.net)}, ${dayData.items.length} transaction(s)`}
             >
               <div className="cml-day-header">
                 <span className="cml-date-title">

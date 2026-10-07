@@ -4,6 +4,10 @@
   "description": "MyCoinwise - Smart Personal Finance & Budgeting Tracker",
   "main": "backend/server.js",
   "type": "commonjs",
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "start": "node start.js",
     "dev": "node start.js",

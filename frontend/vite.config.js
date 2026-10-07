@@ -4,15 +4,6 @@ import react from '@vitejs/plugin-react'
 import { visualizer } from 'rollup-plugin-visualizer';
 
 // https://vite.dev/config/
-// ─────────────────────────────────────────────────────────────────────────────
-// [ORIGINAL CONFIG PRESERVED]
-// export default defineConfig({
-//   plugins: [react()],
-//   build: {
-//     chunkSizeWarningLimit: 2000,
-//   },
-// })
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default defineConfig(({ mode }) => ({
   plugins: [

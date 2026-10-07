@@ -326,3 +326,91 @@
 }
 
 
+
+/* ================================================================
+ * TOUCH TARGET SIZE (WCAG 2.2 AA — 2.5.8 Target Size Minimum)
+ * ----------------------------------------------------------------
+ * The app's only size rule (`_components.scss`: `.btn-primary`,
+ * `.btn-secondary`, `.btn-danger`, `.inav-item`, `.dock-item`) covered five
+ * classes. Every other icon control was then shrunk by higher-specificity
+ * `!important` rules elsewhere to 24–38px, with as little as 4px between
+ * adjacent targets — well under the 44x44px minimum and a mis-tap hazard on a
+ * phone. This block is the LAST stylesheet imported (`main.scss:16`), so it
+ * wins the cascade against `_portfolio.scss` and `_depth.scss` without needing
+ * to edit each of those files.
+ *
+ * The visual icon keeps its size; only the hit area grows, via min-width/
+ * min-height plus flex centring. `position` is deliberately NOT changed, so no
+ * target can grow over a neighbour and steal its taps.
+ * ================================================================ */
+@media (hover: none), (pointer: coarse) {
+  .theme-toggle,
+  .collapse-toggle,
+  .icon-btn,
+  .drawer-close-btn,
+  .ac-close-btn,
+  .cmd-clear-btn,
+  .shortcuts-close-btn,
+  .notification-toast button,
+  .modal-close,
+  .il-checkbox-btn,
+  .il-select-all-btn,
+  .cal-day-quick-add,
+  .color-swatch,
+  .nav-avatar-btn,
+  .hpd-action-btn,
+  .had-mark-read {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  /* Adjacent header controls were 4–5px apart; 8px is the minimum spacing at
+     which two 44px targets are reliably distinguishable by a thumb. */
+  .nav-actions {
+    gap: 8px !important;
+  }
+
+  /* Drawer rows were separated by 3px. */
+  .drawer-nav-list {
+    gap: 8px !important;
+  }
+
+  /* The toast dismiss button was 24px with no padding. */
+  .notification-toast button {
+    flex: 0 0 auto;
+  }
+}
+
+/* ================================================================
+ * iOS FOCUS-ZOOM GUARD
+ * ----------------------------------------------------------------
+ * Mobile Safari zooms the viewport whenever a focused field's computed
+ * font-size is below 16px. `_components.scss` has an `input, textarea, select
+ * { font-size: max(16px, 1rem) }` rule, but it is a bare element selector
+ * (specificity 0,0,1), so it loses to class rules and — worse — is completely
+ * overridden by INLINE styles, which no stylesheet rule can beat.
+ *
+ * The app has ten such inline `fontSize` declarations on inputs, including
+ * `fontSize: '0.88rem'` (12.3px) and `'0.9rem'` (12.6px) at a 14px root
+ * (`_plain-ui.scss:22`). Every one of those fields zoomed the page on focus.
+ *
+ * `!important` is required precisely because the competing declaration is
+ * inline. It is scoped to mobile widths so desktop typography is untouched.
+ * ================================================================ */
+@media (max-width: 900px) {
+  input,
+  textarea,
+  select,
+  input[type='number'],
+  input[type='email'],
+  input[type='password'],
+  input[type='search'],
+  input[type='tel'],
+  input[type='text'],
+  input[type='date'] {
+    font-size: max(16px, 1rem) !important;
+  }
+}

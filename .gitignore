@@ -21,6 +21,10 @@ build/
 frontend/dist/
 .vite/
 frontend/node_modules/.vite/
+.cache/
+.turbo/
+.next/
+*.tsbuildinfo
 stats.html
 
 # Benchmark & Performance telemetry
@@ -29,7 +33,8 @@ baseline-*.json
 soak-*.json
 soak*.json
 benchmark-*.json
-lighthouse-*.json
+lighthouse*.json
+*.lhreport.*
 
 # Logs & Runtime telemetry
 *.log
@@ -40,6 +45,7 @@ backend/server.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
 # Test coverage & reports
 coverage/
@@ -50,13 +56,21 @@ coverage/
 */.DS_Store
 **/.DS_Store
 Thumbs.db
+desktop.ini
 *.tmp
 *.bak
 *.swp
 *~
+*.orig
+*.rej
+*.patch
 
 # IDE & Editor caches
 .vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
+
+# Local DB & Test artifacts
+mongodb-data/
+.tmp-*

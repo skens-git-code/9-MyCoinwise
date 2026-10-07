@@ -125,11 +125,15 @@ const authenticateRequest = async (req, res, next) => {
     // ── Attach authenticated user to request ──
     const userIdStr = String(authenticatedUser.id || authenticatedUser._id);
     req.userId = userIdStr;
+    // SECURITY: spread the token claims FIRST so that server-derived values
+    // always win. Previously `...decodedToken` came last, meaning a claim named
+    // `id` or `household_id` would silently shadow the database-derived value —
+    // and `household_id` is exactly what ownership checks depend on.
     req.user = {
+      ...decodedToken,
       id: userIdStr,
       household_id: String(authenticatedUser.household_id || authenticatedUser._id),
       session_id: activeSession?._id ? String(activeSession._id) : null,
-      ...decodedToken,
     };
 
     // ── Continue to next middleware ──

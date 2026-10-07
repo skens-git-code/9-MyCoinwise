@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
+import { MotionConfig } from 'framer-motion';
 import AppLayout from './components/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import Loader from './components/Loader';
@@ -10,6 +11,7 @@ import { generateAlerts, getSpendingInsights } from './services/aiEngine';
 import i18n, { getT, LANGUAGES } from './services/i18n';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './components/ToastProvider';
+import CookieBanner from './components/CookieBanner';
 
 import { AppStateContext, AppActionsContext } from './contexts/AppContext';
 import { dedupeTransactions } from './utils/transactionIntegrity';
@@ -568,7 +570,7 @@ export default function App() {
     return result;
   }, [fetchData]);
 
-  const switchUser = useCallback(async (userId) => {
+  const switchUser = useCallback(async (userId, password) => {
     try {
       setIsBackgroundSyncing(true);
 
@@ -592,7 +594,7 @@ export default function App() {
         setPreviousSession(prevSessionData);
       }
 
-      const response = await api.switchUser(userId);
+      const response = await api.switchUser(userId, password);
       if (response && response.token) {
         // Preserve the original storage type (respects the "remember me" login preference)
         const usedSessionStorage = !!sessionStorage.getItem('mcw-token');
@@ -688,6 +690,15 @@ export default function App() {
   // Keep the entire application shell unified to prevent hook ordering mismatch
   return (
     <ErrorBoundary>
+      {/* App-wide reduced-motion contract.
+          `reducedMotion="user"` makes Framer Motion honour the OS
+          `prefers-reduced-motion` setting for every descendant animation.
+          CSS `!important` overrides cannot reach the inline styles Framer
+          writes, so without this wrapper the CSS-only reduced-motion blocks
+          leave ~180 Framer animations unaffected.
+          AppLayout.jsx previously claimed this wrapper already existed; it did
+          not, which made that file's reduced-motion assumptions false. */}
+      <MotionConfig reducedMotion="user">
       <I18nextProvider i18n={i18n}>
         <AppStateContext.Provider value={stateValue}>
           <AppActionsContext.Provider value={actionsValue}>
@@ -696,6 +707,7 @@ export default function App() {
                 <Loader fullScreen mode={token ? "auth" : "inline"} />
               ) : (
                 <Router>
+                  <CookieBanner />
                   <Suspense fallback={<Loader />}>
                     <Routes>
                       <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
@@ -721,6 +733,7 @@ export default function App() {
           </AppActionsContext.Provider>
         </AppStateContext.Provider>
       </I18nextProvider>
+      </MotionConfig>
     </ErrorBoundary>
   );
 }

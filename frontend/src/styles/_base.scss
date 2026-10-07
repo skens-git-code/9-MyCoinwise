@@ -417,13 +417,6 @@ body::after {
   }
 }
 
-/* Original @keyframes spin (Problematic - lacked hardware acceleration translateZ(0) and transform-box: fill-box, causing SVG wobbling, subpixel jitter, and CPU repaint cycles):
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-*/
 @keyframes spin {
   from {
     transform: rotate(0deg) translateZ(0);

@@ -1163,15 +1163,15 @@ select:focus,
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: clamp(0.50rem, 2vw, 0.62rem);
-    letter-spacing: -0.015em;
+    font-size: 11px !important;
+    letter-spacing: -0.01em;
   }
 }
 
 @media (max-width: 375px) {
   .mobile-bottom-dock .dock-label {
     display: block;
-    font-size: 0.50rem;
+    font-size: 11px !important;
   }
 
   .mobile-bottom-dock .dock-icon-wrapper {
@@ -1521,9 +1521,9 @@ select:focus,
 
   .mobile-bottom-dock .dock-label {
     max-width: 100%;
-    font-size: 0.55rem;
-    line-height: 1;
-    letter-spacing: -0.02em;
+    font-size: 11px !important;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
   }
 
   .mobile-bottom-dock .dock-active-dot {
@@ -1822,25 +1822,25 @@ body {
   }
 
   .mobile-bottom-dock .dock-label {
-    font-size: 0.53rem;
-    line-height: 1;
+    font-size: 11px !important;
+    line-height: 1.1;
     max-width: 100%;
   }
 }
 
 @media (max-width: 375px) {
   .mobile-bottom-dock {
-    height: 60px;
+    height: 62px;
     padding: 2px 4px;
   }
 
   .mobile-bottom-dock .dock-item {
     height: 54px;
-    min-height: 54px;
+    min-height: 48px;
   }
 
   .mobile-bottom-dock .dock-label {
-    font-size: 0.49rem;
+    font-size: 11px !important;
   }
 }
 

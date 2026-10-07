@@ -15,11 +15,18 @@
  *   - Renders nothing when `isOpen` is false.
  *   - The footer reminds the user that Escape or an outside click
  *     dismisses the modal.
+ *
+ * ACCESSIBILITY: this dialog declares `aria-modal="true"`, so it must actually
+ * behave modally. It previously had NO Escape handler, NO focus trap, NO initial
+ * focus and no focus restoration, leaving keyboard and screen-reader users
+ * stranded. `useFocusTrap` now supplies all four (plus scroll lock and
+ * back-gesture handling).
  * ————————————————————————————————————— */
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Keyboard, X, Command } from 'lucide-react';
+import { Keyboard, X } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /* —————————————————————————————————————
  * Shortcut Groups
@@ -52,6 +59,12 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }) {
   // ── Detect macOS to choose ⌘ vs. Ctrl labels ──
   const isMac = typeof navigator !== 'undefined' && navigator.platform?.toUpperCase().indexOf('MAC') >= 0;
 
+  // ── Panel ref for the shared focus trap ──
+  const panelRef = useRef(null);
+
+  // NOTE: the hook must be called unconditionally, before any early return.
+  useFocusTrap({ isOpen, onClose, containerRef: panelRef });
+
   // ── Render nothing when closed ──
   if (!isOpen) return null;
 
@@ -61,6 +74,8 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }) {
       <div className="shortcuts-backdrop" onClick={onClose}>
         {/* ── Modal panel: stops propagation so clicks inside stay inside ── */}
         <motion.div
+          ref={panelRef}
+          tabIndex={-1}
           className="shortcuts-modal glass"
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -69,13 +84,13 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }) {
           onClick={e => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
-          aria-label="Keyboard Shortcuts"
+          aria-labelledby="shortcuts-modal-title"
         >
           {/* ── Header: title and close button ── */}
           <div className="shortcuts-header">
             <div className="shortcuts-title-row">
               <Keyboard size={20} className="shortcuts-icon" />
-              <h3>Keyboard Shortcuts</h3>
+              <h3 id="shortcuts-modal-title">Keyboard Shortcuts</h3>
             </div>
             <button className="shortcuts-close-btn" onClick={onClose} aria-label="Close shortcuts">
               <X size={18} />

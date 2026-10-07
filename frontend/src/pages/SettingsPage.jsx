@@ -32,11 +32,12 @@ import {
   Palette, Database, Plus, Settings, ShieldAlert, Globe, Bell, Bell as BellIcon, Zap, Smartphone,
   FileText, Trash2, Loader, Key, Shield, Eye,
   Lock, LogOut, RefreshCw, AlertTriangle, EyeOff, Search,
-  Monitor, Calendar, Activity, Upload, Clock,
+  Monitor, Calendar, Activity, Upload, Clock, Cookie,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { CURRENCIES, AVATAR_COLORS, api } from '../services/api';
 import { LANGUAGES } from '../services/i18n';
+import { getCookieConsent, setCookieConsent, openCookiePreferences, isDoNotTrack } from '../services/clarity';
 
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
@@ -1610,6 +1611,7 @@ const PreferencesTab = React.memo(({ formState, handleFieldChange, t }) => (
           placeholder="e.g. 5000"
           min="0"
           step="1"
+          inputMode="decimal"
         />
       </div>
     </div>
@@ -1954,7 +1956,116 @@ UsersTab.propTypes = {
 /* ============================================================
  * Data tab
  * ============================================================ */
-const DataTab = React.memo(({ setModals, handleExcelExport, handlePDFExport, excelLoading, pdfLoading, t }) => (
+/* ============================================================
+ * Cookie & Analytics Preferences section
+ * ============================================================ */
+const CookieSettingsSection = React.memo(({ showMessage, t }) => {
+  const [consent, setConsent] = useState(() => getCookieConsent());
+  const [dnt, setDnt] = useState(() => isDoNotTrack());
+
+  useEffect(() => {
+    const handleChange = (e) => {
+      setConsent(e.detail?.status || getCookieConsent());
+    };
+    window.addEventListener('cookie-consent-changed', handleChange);
+    return () => window.removeEventListener('cookie-consent-changed', handleChange);
+  }, []);
+
+  const handleUpdate = (choice) => {
+    setCookieConsent(choice);
+    setConsent(choice);
+    if (choice === 'rejected') {
+      showMessage?.('Analytics disabled and Clarity tracking cookies deleted.', 'info');
+    } else {
+      showMessage?.('Analytics enabled. Thank you for helping improve MyCoinwise!', 'success');
+    }
+  };
+
+  return (
+    <div
+      className="idp-section"
+      style={{
+        background: 'var(--glass-2, rgba(255, 255, 255, 0.04))',
+        padding: 24,
+        borderRadius: 20,
+        border: '1px solid var(--glass-border, rgba(255, 255, 255, 0.08))',
+        marginBottom: 30,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+        <h4 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Cookie size={20} color="var(--brand-secondary, #38bdf8)" aria-hidden="true" />
+          Cookie & Analytics Preferences
+        </h4>
+        <span
+          style={{
+            fontSize: '0.8rem',
+            fontWeight: 700,
+            padding: '4px 10px',
+            borderRadius: 8,
+            background:
+              consent === 'accepted'
+                ? 'rgba(16, 185, 129, 0.15)'
+                : consent === 'rejected'
+                ? 'rgba(239, 68, 68, 0.15)'
+                : 'rgba(255, 255, 255, 0.08)',
+            color:
+              consent === 'accepted'
+                ? 'var(--success, #10b981)'
+                : consent === 'rejected'
+                ? 'var(--danger, #ef4444)'
+                : 'var(--text-secondary, #94a3b8)',
+          }}
+        >
+          {consent === 'accepted' ? 'Opted-In (Active)' : consent === 'rejected' ? 'Opted-Out (Blocked)' : 'Not Decided'}
+        </span>
+      </div>
+
+      <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.9rem', marginBottom: 16, lineHeight: 1.6 }}>
+        MyCoinwise uses optional <strong>Microsoft Clarity</strong> telemetry solely to understand user flows, identify navigation friction, and diagnose interface errors. All ledger amounts, form inputs, and passwords are strictly masked.
+      </p>
+
+      {dnt && (
+        <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.2)', marginBottom: 16, fontSize: '0.85rem', color: 'var(--brand-secondary, #38bdf8)' }}>
+          Do Not Track is enabled in your browser. Microsoft Clarity is automatically disabled regardless of your consent setting.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        {consent !== 'accepted' ? (
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => handleUpdate('accepted')}
+            style={{ padding: '10px 18px', fontSize: '0.875rem' }}
+          >
+            Accept Analytics
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => handleUpdate('rejected')}
+            style={{ padding: '10px 18px', fontSize: '0.875rem', borderColor: 'var(--danger, #ef4444)', color: 'var(--danger, #ef4444)' }}
+          >
+            Revoke Consent & Stop Analytics
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={openCookiePreferences}
+          style={{ padding: '10px 18px', fontSize: '0.875rem' }}
+        >
+          Manage Detailed Preferences
+        </button>
+      </div>
+    </div>
+  );
+});
+CookieSettingsSection.displayName = 'CookieSettingsSection';
+
+const DataTab = React.memo(({ setModals, handleExcelExport, handlePDFExport, excelLoading, pdfLoading, showMessage, t }) => (
   <>
     {/* ── Header ── */}
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
@@ -1999,6 +2110,9 @@ const DataTab = React.memo(({ setModals, handleExcelExport, handlePDFExport, exc
           <span style={{ fontWeight: 800 }}>{pdfLoading ? (t?.('exporting') || 'Generating…') : (t?.('download_pdf') || 'Download PDF')}</span>
         </motion.button>
       </div>
+
+      {/* ── Cookie & Analytics Preferences ── */}
+      <CookieSettingsSection showMessage={showMessage} t={t} />
 
       {/* ── Danger zone: factory reset ── */}
       <div
@@ -2160,6 +2274,11 @@ function SettingsInner({ context }) {
   const [search, setSearch] = useState('');
 
   /* ---------------- Modals ---------------- */
+
+  // ── Password re-entry for switching to ANOTHER household profile ──
+  // The switch endpoint mints a full session token, so the backend requires the
+  // target profile's password. Cleared whenever the modal closes.
+  const [switchPassword, setSwitchPassword] = useState('');
 
   // ── Modal visibility / target state ──
   const [modals, setModals] = useState({
@@ -2488,16 +2607,21 @@ function SettingsInner({ context }) {
         dispatch({ type: 'CLEAR_DIRTY' });
       }
 
-      await switchUser(switchId);
+      const isSelfSwitch = String(switchId) === String(USER_ID);
+      await switchUser(switchId, isSelfSwitch ? undefined : switchPassword);
       const switchTargetName = userToSwitch ? getUserDisplayName(userToSwitch) : 'user';
       showMessage('success', `Switched to ${switchTargetName}`);
+      setSwitchPassword('');
       setModals((prev) => ({ ...prev, switchConfirm: null }));
     } catch (err) {
-      showMessage('error', `Failed to switch user: ${err?.message || 'Unknown error'}`);
+      // Surface the backend's specific reason (password required / incorrect)
+      // instead of a generic failure.
+      const apiMessage = err?.response?.data?.error || err?.message || 'Unknown error';
+      showMessage('error', `Failed to switch user: ${apiMessage}`);
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, switch: null }));
     }
-  }, [modals.switchConfirm, allUsers, switchUser, showMessage, formState, USER_ID, user]);
+  }, [modals.switchConfirm, allUsers, switchUser, showMessage, formState, USER_ID, user, switchPassword]);
 
   /* ============================================================
    * Theme
@@ -2744,6 +2868,7 @@ function SettingsInner({ context }) {
                 placeholder={t?.('search_settings', 'Search settings…')}
                 aria-label={t?.('search_settings', 'Search settings')}
                 style={{ width: '100%', paddingLeft: 32, fontSize: '0.85rem' }}
+                enterKeyHint="search"
               />
             </div>
           </div>
@@ -2955,7 +3080,10 @@ function SettingsInner({ context }) {
       {/* ── Switch user modal ── */}
       <Modal
         isOpen={!!modals.switchConfirm}
-        onClose={() => setModals((prev) => ({ ...prev, switchConfirm: null }))}
+        onClose={() => {
+          setSwitchPassword('');
+          setModals((prev) => ({ ...prev, switchConfirm: null }));
+        }}
         title="Switch User Account"
         confirmText={formState.isDirty ? 'Save & Switch' : 'Switch Now'}
         onConfirm={handleSwitchUser}
@@ -2973,6 +3101,55 @@ function SettingsInner({ context }) {
             )}
           </strong>?
         </p>
+
+        {/* ── Password re-entry ──
+            The switch endpoint issues a full session token for another account,
+            so the backend requires that account's password. Skipped when the
+            target is your own profile (the "Revert" flow). */}
+        {String(
+          typeof modals.switchConfirm === 'object'
+            ? (modals.switchConfirm?.id || modals.switchConfirm?._id)
+            : modals.switchConfirm
+        ) !== String(USER_ID) && (
+          <div style={{ marginTop: 16 }}>
+            <label
+              htmlFor="switch-profile-password"
+              style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}
+            >
+              Password for this profile
+            </label>
+            <input
+              id="switch-profile-password"
+              type="password"
+              value={switchPassword}
+              onChange={(e) => setSwitchPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && switchPassword) handleSwitchUser();
+              }}
+              autoComplete="current-password"
+              enterKeyHint="go"
+              disabled={!!loadingStates.switch}
+              placeholder="Enter the profile's password"
+              aria-describedby="switch-profile-password-help"
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                fontSize: '1rem',
+                borderRadius: 8,
+                border: '1px solid var(--border-color, rgba(148, 163, 184, 0.35))',
+                background: 'var(--surface-2, rgba(15, 23, 42, 0.4))',
+                color: 'var(--text-primary)',
+                boxSizing: 'border-box',
+              }}
+            />
+            <p
+              id="switch-profile-password-help"
+              style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', margin: '6px 0 0' }}
+            >
+              Required to prevent one household member from opening another's account.
+            </p>
+          </div>
+        )}
 
         {/* ── Unsaved-changes notice ── */}
         {formState.isDirty && (

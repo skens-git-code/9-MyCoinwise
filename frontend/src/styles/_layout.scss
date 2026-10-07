@@ -771,7 +771,10 @@
   z-index: calc(var(--z-drawer) + 1);
   display: flex;
   flex-direction: column;
-  padding: 20px 16px;
+  /* Reserve the notch at the top and the home indicator at the bottom; the
+     drawer is full-height (`top: 0` / `bottom: 0`) so its first and last rows
+     otherwise sat under the system UI. */
+  padding: max(20px, var(--top-safe)) 16px max(20px, env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   overflow-x: hidden;
   gap: 12px;
@@ -1080,11 +1083,11 @@
 .mobile-bottom-dock {
   display: none;
   position: fixed;
-  bottom: 16px;
-  left: 12px;
-  right: 12px;
-  height: 72px;
-  border-radius: 24px;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  left: 8px;
+  right: 8px;
+  height: 66px;
+  border-radius: 20px;
   background: var(--glass-2);
   backdrop-filter: blur(32px) saturate(180%);
   -webkit-backdrop-filter: blur(32px) saturate(180%);
@@ -1098,7 +1101,7 @@
   overflow: hidden;
   align-items: center;
   justify-content: space-around;
-  padding: 0 4px;
+  padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
 }
 
 .dock-item {
@@ -1106,10 +1109,12 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   flex: 1;
+  min-width: 44px;
+  min-height: 48px;
   max-width: 72px;
-  height: 68px;
+  height: 100%;
   color: var(--text-muted);
   text-decoration: none;
   position: relative;
@@ -1118,12 +1123,12 @@
   border: none;
   cursor: pointer;
   font-family: var(--font-body);
-  padding: 0;
+  padding: 2px 0;
 
   .dock-icon-wrapper {
     position: relative;
-    width: 40px;
-    height: 36px;
+    width: 36px;
+    height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1138,8 +1143,9 @@
   }
 
   .dock-label {
-    font-size: 0.58rem;
+    font-size: 11px !important;
     font-weight: 600;
+    line-height: 1.1;
     letter-spacing: 0.01em;
     z-index: 2;
     transition: color var(--transition-fast);
@@ -1514,7 +1520,8 @@
   }
 
   .dock-label {
-    font-size: 0.57rem;
+    font-size: 11px !important;
+    line-height: 1.1;
   }
 
   .island-page {
@@ -1528,6 +1535,10 @@
     z-index: 20;
     background: color-mix(in srgb, var(--ambient-base) 88%, transparent);
     backdrop-filter: blur(18px);
+    /* Reserve the notch / status-bar area. Without this the sticky header sat
+       under the iOS clock in standalone mode (`black-translucent` + `cover`).
+       `max()` keeps the designed 14px padding on devices with no inset. */
+    padding-top: max(14px, var(--top-safe));
   }
 }
 
@@ -1553,7 +1564,8 @@
   }
 
   .dock-label {
-    display: none;
+    font-size: 11px !important;
+    line-height: 1.1;
   }
 
   .island-content-wrapper {

@@ -1035,6 +1035,7 @@ export default function Accounts() {
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{ width: '100%', paddingLeft: 32 }}
               aria-label={tr('search_accounts', 'Search accounts')}
+              enterKeyHint="search"
             />
           </div>
 
@@ -1594,6 +1595,7 @@ export default function Accounts() {
                     required={!isEditing}
                     placeholder="0.00"
                     disabled={isEditing}
+                    inputMode="decimal"
                     inputMode="decimal"
                   />
                   {isEditing && (

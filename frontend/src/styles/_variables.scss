@@ -45,6 +45,15 @@
    --bottom-dock-height: 80px;
    --bottom-safe: calc(var(--bottom-dock-height) + env(safe-area-inset-bottom, 0px) + 16px);
 
+   /* ► Safe top inset (notch / Dynamic Island).
+      `viewport-fit=cover` is set in index.html and the status bar style is
+      `black-translucent`, so in a standalone iOS PWA the fixed/sticky top bars
+      render UNDER the status bar unless they reserve this space. Previously
+      only `.auth-page` used `env(safe-area-inset-top)`, so the app's own header
+      and the mobile drawer collided with the clock and Dynamic Island.
+      Falls back to 0 on every non-notched device, so it is a no-op there. */
+   --top-safe: env(safe-area-inset-top, 0px);
+
    /* ► Typography Scale (Major Second) */
    --text-xs: 0.75rem;
    /* 12px */

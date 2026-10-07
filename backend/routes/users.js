@@ -102,6 +102,18 @@ const deleteLimiter = rateLimit({
   message: { error: 'Too many account deletion attempts. Please try again later.' },
 });
 
+// ── Household profile switching ──
+// A switch mints a full session token, so it is a credential operation and gets
+// its own throttle (it was previously unlimited).
+const switchLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  skipSuccessfulRequests: false,
+  message: { error: 'Too many profile switch attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // User creation shares the settings limiter — before this was unlimited.
 const createUserLimiter = settingsLimiter;
 
@@ -852,12 +864,19 @@ router.post(
 
 /* —————————————————————————————————————
  * DELETE /:id
- * Delete a user and all associated data (household-scoped ownership).
+ * Delete a user and all associated data.
+ *
+ * SECURITY: strictly SELF-scoped. This previously used
+ * `checkOwnership('id', { household: true })`, which only compared
+ * `household_id`. Because a household member's `household_id` equals the root
+ * account's `_id`, ANY member could hard-delete the root account (or a sibling)
+ * along with all 15 of their collections. Deleting an account is not a
+ * household-shared operation, so ownership must match the caller exactly.
  * ————————————————————————————————————— */
 router.delete(
   '/:id',
   [param('id').isMongoId().withMessage('Invalid user ID.')],
-  checkOwnership('id', { household: true }),
+  checkOwnership('id'),
   deleteLimiter,
   async (req, res) => {
     // ── Reject validation errors ──
@@ -870,7 +889,7 @@ router.delete(
 
       auditLogger.info('User deleted account', {
         userId: String(req.userId),
-        targetId: req.params.id,
+        targetId: String(req.params.id),
         ip: req.ip,
       });
 
@@ -887,10 +906,22 @@ router.delete(
 /* —————————————————————————————————————
  * POST /:id/switch
  * Issue a new session token for a linked household profile.
+ *
+ * SECURITY: switching to ANOTHER user now requires that user's password, and the
+ * endpoint is rate limited. Previously there was no ownership middleware, no
+ * password, no lockout check and no limiter: because every member's
+ * `household_id` equals the root's `_id`, ANY household member could mint a full
+ * 7-day JWT for the root account (or any sibling) and then read every
+ * self-scoped financial route as that user. Switching back to your own id needs
+ * no password, so the frontend's "Revert" path is unaffected.
  * ————————————————————————————————————— */
 router.post(
   '/:id/switch',
-  [param('id').isMongoId().withMessage('Invalid user ID.')],
+  switchLimiter,
+  [
+    param('id').isMongoId().withMessage('Invalid user ID.'),
+    body('password').optional().isString().isLength({ min: 1, max: 128 }),
+  ],
   async (req, res) => {
     // ── Reject validation errors ──
     const errors = validationResult(req);
@@ -898,6 +929,7 @@ router.post(
 
     try {
       const householdId = req.user.household_id || req.userId;
+      const isSelfSwitch = String(req.params.id) === String(req.userId);
 
       // ── Verify the target belongs to the same household ──
       const target = await User.findOne({
@@ -912,6 +944,34 @@ router.post(
       });
       if (!target) {
         return res.status(403).json({ error: 'You can only switch to a linked household profile.' });
+      }
+
+      // ── Re-authenticate before assuming another user's identity ──
+      if (!isSelfSwitch) {
+        const suppliedPassword = typeof req.body.password === 'string' ? req.body.password : '';
+        if (!suppliedPassword) {
+          return res.status(400).json({
+            error: 'Password is required to switch to another profile.',
+            code: 'PASSWORD_REQUIRED',
+          });
+        }
+
+        const targetWithSecret = await User.findById(target._id).select('+password');
+        const passwordMatches = targetWithSecret?.password
+          ? await targetWithSecret.comparePassword(suppliedPassword)
+          : false;
+
+        if (!passwordMatches) {
+          auditLogger.warn('Failed household profile switch (bad password)', {
+            fromUserId: String(req.userId),
+            toUserId: String(target._id),
+            ip: req.ip,
+          });
+          return res.status(401).json({
+            error: 'Incorrect password for that profile.',
+            code: 'INVALID_PASSWORD',
+          });
+        }
       }
 
       // ── Issue a new token and persist a Session record ──
@@ -1039,19 +1099,17 @@ router.post(
         }
       }
 
-      // Recalculate and synchronize user balance from restored transactions
-      const [agg] = await Transaction.aggregate([
-        { $match: { user_id: userObjectId, is_deleted: { $ne: true } } },
-        {
-          $group: {
-            _id: null,
-            income: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
-            expense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
-          },
-        },
-      ]);
-      const balance = Number(((agg?.income || 0) - (agg?.expense || 0)).toFixed(2));
-      await User.findByIdAndUpdate(userObjectId, { $set: { balance } });
+      // Recalculate the balance with the CANONICAL helper.
+      //
+      // BUG FIX: this used a naive `income - expense` aggregation, while every
+      // other write path (and `GET /api/auth/me`) uses `getTransactionBalance`,
+      // which additionally converts each transaction into the display currency
+      // using the account-currency fallback, dedupes duplicates, and excludes
+      // future-dated rows. After a restore the two disagreed, and the wrong
+      // value was persisted. `syncUserBalance` lives on the transactions router,
+      // so require it lazily to avoid a module-load cycle.
+      const { syncUserBalance } = require('./transactions');
+      await syncUserBalance(userObjectId);
     };
 
     try {

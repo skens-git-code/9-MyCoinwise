@@ -1197,6 +1197,7 @@ export default function Wealth() {
                 style={{ width: '100%', padding: '6px 10px', marginTop: 4, borderRadius: 8 }}
                 placeholder="e.g. 5000"
                 inputMode="decimal"
+                inputMode="decimal"
               />
             </div>
 
@@ -1213,6 +1214,7 @@ export default function Wealth() {
                 onChange={(e) => setExtraPayment(Math.max(0, safeNumber(e.target.value, 0)))}
                 style={{ width: '100%', padding: '6px 10px', marginTop: 4, borderRadius: 8 }}
                 placeholder="e.g. 2000"
+                inputMode="decimal"
                 inputMode="decimal"
               />
             </div>
@@ -1285,24 +1287,6 @@ export default function Wealth() {
           role="search"
           aria-label={tr('search_portfolio', 'Search portfolio')}
         >
-          {/* Original search input with flex: '1 1 200px' without maxWidth, causing stretched input and active filter pill overlap glitch (Image 2):
-          <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 180 }}>
-            <Search
-              size={14}
-              aria-hidden
-              style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
-            />
-            <input
-              ref={searchRef}
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={tr('search_portfolio_placeholder', 'Search name, symbol, note…')}
-              aria-label={tr('search_portfolio', 'Search portfolio')}
-              style={{ width: '100%', paddingLeft: 32, fontSize: '0.85rem' }}
-            />
-          </div>
-          */}
           {/* ── Search input (fixed max width) ── */}
           <div style={{ position: 'relative', flex: '0 1 280px', minWidth: 200, maxWidth: 320 }}>
             <Search
@@ -1337,6 +1321,7 @@ export default function Wealth() {
                 outline: 'none',
                 boxSizing: 'border-box',
               }}
+              enterKeyHint="search"
             />
             {/* ── Clear search ── */}
             {searchInput && (
@@ -1581,8 +1566,9 @@ export default function Wealth() {
               value={formData.base_value}
               onChange={(e) => { setFormData({ ...formData, base_value: e.target.value }); clearError(); }}
               placeholder="0.00"
-              inputMode="decimal"
               aria-required="true"
+              inputMode="decimal"
+              inputMode="decimal"
             />
           </div>
         </div>
@@ -1611,6 +1597,7 @@ export default function Wealth() {
                 onChange={(e) => { setFormData({ ...formData, quantity: e.target.value }); clearError(); }}
                 placeholder="e.g. 10"
                 inputMode="decimal"
+                inputMode="decimal"
               />
             </div>
           </div>
@@ -1629,6 +1616,7 @@ export default function Wealth() {
               value={formData.interest_rate}
               onChange={(e) => { setFormData({ ...formData, interest_rate: e.target.value }); clearError(); }}
               placeholder="e.g. 8.5"
+              inputMode="decimal"
               inputMode="decimal"
             />
           </div>

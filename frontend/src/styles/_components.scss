@@ -466,8 +466,9 @@
   box-shadow: var(--shadow-md);
   display: flex;
   flex-direction: column;
-  position: relative;
   overflow: hidden;
+  max-width: 100%;
+  box-sizing: border-box;
   transition:
     transform var(--transition-spring),
     box-shadow var(--transition-base),
@@ -669,6 +670,11 @@
 
 /* Hero Balance */
 .bento-hero {
+  overflow: hidden !important;
+  position: relative;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+
   .blob-glow {
     position: absolute;
     top: -50%;
@@ -1076,17 +1082,27 @@
 .bt-chart-wrap {
   flex: 1;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
   min-height: 200px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .bt-pie-wrap {
   flex: 1;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
   min-height: 150px;
+  overflow: hidden;
+}
+
+.recharts-responsive-container,
+.recharts-wrapper,
+.recharts-surface {
+  max-width: 100% !important;
 }
 
 /* Chart Summary Line */
@@ -2705,11 +2721,6 @@
 .carousel-wrapper {
   overflow-x: auto;
   padding-bottom: 12px;
-  /* Original negative margin caused horizontal bleed and scrollbar jitter:
-  margin: 0 -20px;
-  padding-left: 20px;
-  padding-right: 20px;
-  */
   margin: 0;
   padding-left: 0;
   padding-right: 0;
@@ -4915,13 +4926,6 @@ textarea:focus-visible {
     background: #E8EDF5;
   }
 
-  /* ── Main canvas ── */
-  .island-main {
-    background: #F3F6FB;
-    border-color: rgba(0, 0, 0, 0.07);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.05);
-  }
-
   /* ── Sidebar ── */
   .island-sidebar {
     background: #FFFFFF !important;
@@ -6003,6 +6007,44 @@ textarea:focus-visible {
 
     &:hover {
       transform: scale(1.15);
+    }
+
+    /* Keyboard parity: the cell reveals this control on `:hover` only, so give
+       it the same treatment on focus for keyboard users. */
+    &:focus-visible {
+      opacity: 1;
+      transform: scale(1);
+      outline: 2px solid var(--brand-primary);
+      outline-offset: 2px;
+    }
+  }
+}
+
+/* ── Touch devices: the quick-add control must be visible and tappable ──
+   `.cal-day-quick-add` is revealed by `.cal-day:hover`. A touch device has no
+   hover, so on a phone the calendar's add-transaction affordance was INVISIBLE
+   — and it had been shrunk to 16px by the ≤480px rule below. This block keeps
+   it visible at a compliant 44×44px touch target. `@media (hover: none)` is
+   used (rather than a width query) so it also applies to a large touch screen,
+   and co-exists with the ≤375/≤480px size overrides via higher specificity. */
+@media (hover: none), (pointer: coarse) {
+  .cal-day {
+    .cal-day-quick-add,
+    .cal-day .cal-day-quick-add {
+      opacity: 1 !important;
+      transform: scale(1) !important;
+      /* WCAG 2.5.8 minimum target size. */
+      width: 44px !important;
+      height: 44px !important;
+      min-width: 44px !important;
+      min-height: 44px !important;
+      border-radius: 10px;
+      /* Sit slightly proud of the top-right cell corner without pushing the
+         date number, which a static 44px box would otherwise overlap. */
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      z-index: 2;
     }
   }
 }
@@ -9327,66 +9369,6 @@ select {
     margin-bottom: 16px;
     align-items: flex-end;
   }
-
-  /* Original .fab-option-row, .fab-option-btn, and .fab-trigger (Problematic - .fab-option-row lacked right offset causing 44px option buttons to sit 6px to the right of the 56px trigger, and .fab-trigger lacked padding/line-height resets causing '+' icon to be off-center):
-  .fab-option-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-
-    .fab-option-label {
-      padding: 6px 12px;
-      border-radius: 10px;
-      background: var(--glass-dropdown-bg);
-      border: 1px solid var(--glass-border);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-      font-size: 0.82rem;
-      font-weight: 600;
-      color: var(--text-primary);
-      white-space: nowrap;
-      pointer-events: none;
-    }
-
-    .fab-option-btn {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      border: none;
-      color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-
-      &:hover {
-        transform: scale(1.12);
-      }
-    }
-  }
-
-  .fab-trigger {
-    position: relative;
-    z-index: 995;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    border: none;
-    background: linear-gradient(135deg, var(--brand-primary), #0ea5e9);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 10px 28px rgba(5, 150, 105, 0.45);
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-
-    &:hover {
-      box-shadow: 0 14px 34px rgba(5, 150, 105, 0.6);
-    }
-  }
-  */
   .fab-option-row {
     display: flex;
     align-items: center;
@@ -9860,7 +9842,13 @@ select {
 
 .csv-preview-table-wrap {
   max-height: 280px;
-  overflow-y: auto;
+  /* `overflow-x: auto` as well as `-y`: the statement review table is 800px wide,
+     and an ancestor chain of `overflow: hidden` meant any column past the
+     viewport edge was simply unreachable on a phone. The mobile card layout
+     below removes the need to scroll at all; this is the desktop/tablet
+     fallback so a slightly-too-narrow container still scrolls instead of clipping. */
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: 10px;
   border: 1px solid var(--glass-border);
 }
@@ -9914,6 +9902,102 @@ select {
     background: var(--input-bg, var(--glass-2));
     color: var(--text-primary);
     padding: 5px 7px;
+  }
+}
+
+/* ── Modal viewport padding must respect the notch and home indicator ──
+   `.modal-box` is capped with `calc(100dvh - 40px)` and centred, so on a
+   notched device the top of a tall modal could sit under the Dynamic Island.
+   Applied via the overlay's padding rather than the box, so centring is
+   unaffected on devices with no inset. */
+.modal-overlay {
+  padding-top: max(20px, var(--top-safe));
+  padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
+}
+
+/* ── Mobile: reflow the statement review table into stacked cards ──
+   The table has six columns (Wallet / Date / Merchant & payment / Category /
+   Amount / Status) and a `min-width: 800px`, so on a 320–430px phone the columns
+   were clipped with no way to reach them. Below 720px each row becomes a card
+   and each cell shows its own header via `data-label` (set in Transactions.jsx),
+   so no horizontal scrolling is required and every field stays readable. */
+@media (max-width: 720px) {
+  .statement-review-table {
+    min-width: 0;
+    width: 100%;
+
+    thead {
+      /* Visually hide the header row; each cell carries its own label.
+         `display: none` would remove it from the accessibility tree, so it is
+         hidden with the clip technique instead. */
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    tbody,
+    tr,
+    td {
+      display: block;
+      width: 100%;
+    }
+
+    tr {
+      margin-bottom: 12px;
+      padding: 12px;
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      background: var(--glass-1);
+    }
+
+    td {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 0;
+      border-bottom: 1px dashed var(--glass-border);
+      text-align: right;
+    }
+
+    td:last-child {
+      border-bottom: 0;
+    }
+
+    /* The label is exposed to screen readers via the (clipped) real <th>.
+       Marking the visual duplicate aria-hidden prevents a double announcement. */
+    td::before {
+      content: attr(data-label);
+      flex: 0 0 auto;
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 0.76rem;
+      text-align: left;
+      text-transform: none;
+    }
+
+    td > * {
+      min-width: 0;
+      text-align: right;
+    }
+
+    select {
+      min-width: 0;
+      max-width: 100%;
+      /* 44px minimum touch target (WCAG 2.5.8 / 2.5.5). */
+      min-height: 44px;
+      font-size: max(16px, 1rem);
+    }
+
+    .statement-choice {
+      min-height: 44px;
+    }
   }
 }
 
@@ -10478,9 +10562,6 @@ select {
   scrollbar-width: none;
   width: 100%;
   max-width: 100%;
-  /* Original nowrap caused categories like Education and Other to be clipped behind scroll on desktop:
-  flex-wrap: nowrap;
-  */
   flex-wrap: wrap;
 
   &::-webkit-scrollbar {
@@ -10951,5 +11032,100 @@ select {
   .bento-tile {
     padding: 16px !important;
     border-radius: 16px !important;
+  }
+}
+
+/* ================================================================
+   COOKIE CONSENT GATE & PREFERENCES
+   ================================================================ */
+.cookie-consent-banner {
+  box-sizing: border-box;
+  box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+
+  .cookie-btn-accept {
+    min-width: 92px;
+    min-height: 44px;
+    padding: 0 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary-grad, linear-gradient(135deg, #00d4ff, #0070f3));
+    color: #ffffff;
+    border: none;
+    box-shadow: 0 4px 14px rgba(0, 112, 243, 0.35);
+    transition: all 0.15s ease;
+
+    &:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand-secondary, #38bdf8);
+      outline-offset: 2px;
+    }
+  }
+
+  .cookie-btn-reject {
+    min-width: 88px;
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--glass-2, rgba(255, 255, 255, 0.06));
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+    color: var(--text-secondary, #94a3b8);
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-primary, #f1f5f9);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand-secondary, #38bdf8);
+      outline-offset: 2px;
+    }
+  }
+
+  .cookie-banner-dismiss {
+    transition: background 0.15s ease, color 0.15s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: var(--text-primary, #f1f5f9) !important;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand-secondary, #38bdf8);
+      outline-offset: 2px;
+    }
+  }
+}
+
+.cookie-preferences-dialog {
+  box-sizing: border-box;
+
+  .cookie-close-btn {
+    transition: background 0.15s ease, color 0.15s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: var(--text-primary, #f1f5f9) !important;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand-secondary, #38bdf8);
+      outline-offset: 2px;
+    }
   }
 }

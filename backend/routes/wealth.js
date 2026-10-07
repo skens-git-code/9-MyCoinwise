@@ -482,6 +482,21 @@ router.put(
         item.current_value_override = normalizeOptionalNumber(current_value_override);
       }
 
+      // ── Sale fields ──
+      // BUG FIX: these three were destructured but never assigned, so PUT could
+      // never record a sale. The tax capital-gains feature reads `sold_at`
+      // (tax.js), so a sale could previously only be set by POST or a direct
+      // DB/backup write.
+      if (sold_at !== undefined) {
+        item.sold_at = sold_at ? new Date(sold_at) : null;
+      }
+      if (sale_price !== undefined) {
+        item.sale_price = normalizeOptionalNumber(sale_price);
+      }
+      if (sale_fees !== undefined) {
+        item.sale_fees = normalizeOptionalNumber(sale_fees);
+      }
+
       // Note: an earlier version never updated `note` on existing items.
       if (note !== undefined) {
         item.note = note ? String(note).trim().slice(0, 1000) : '';

@@ -38,6 +38,7 @@ const auth = require('../middleware/auth');
 const { logger, auditLogger } = require('../utils/logger');
 const emailService = require('../services/emailService');
 const { dedupeTransactions } = require('../utils/transactionIntegrity');
+const { isProduction } = require('../config/env');
 
 // ── Create router ──
 const router = express.Router();
@@ -84,13 +85,28 @@ const convertToCurrency = (amount, fromCurrency, toCurrency) => {
  * target, so it gets a tighter cap.
  * ————————————————————————————————————— */
 
-const isDev = process.env.NODE_ENV !== 'production';
+// Derived from the validated config rather than raw process.env.
+const isDev = !isProduction;
 
 // ── Registration limiter: 10 per IP per hour (relaxed in development) ──
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: isDev ? 1000 : 10,
   message: { error: 'Too many account creations from this IP. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ── Email-sending limiter: 5 per IP per hour (relaxed in development). ──
+// `POST /resend-verification` ALWAYS answers 200 (deliberately, to prevent
+// account enumeration), so the mount-level authLimiter — which has
+// `skipSuccessfulRequests: true` — never counted a single one of these calls.
+// Every request also regenerates the verification token and sends mail, making
+// this an unauthenticated mail-bomb / token-churn vector without its own limit.
+const emailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: isDev ? 1000 : 5,
+  message: { error: 'Too many verification emails requested. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -190,7 +206,9 @@ const getTransactionBalance = async (userId) => {
   const [user, transactions, accounts] = await Promise.all([
     User.findById(userId).select('currency').lean(),
     Transaction.find({ user_id: userId, is_deleted: { $ne: true } })
-      .select('type amount currency account_id')
+      // See the note in routes/transactions.js: `date` must be selected or the
+      // dedupe step treats every row as future-dated and the balance collapses to 0.
+      .select('type amount currency account_id date')
       .lean(),
     Account.find({ user_id: userId }).select('_id currency').lean(),
   ]);
@@ -675,7 +693,7 @@ router.get('/login-logs', auth, async (req, res) => {
  * POST /resend-verification
  * Resend email verification instructions.
  * ————————————————————————————————————— */
-router.post('/resend-verification', async (req, res) => {
+router.post('/resend-verification', emailLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
     if (!email) {

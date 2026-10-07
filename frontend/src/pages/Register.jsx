@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../services/api';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { LANGUAGES } from '../services/i18n';
+import { openCookiePreferences } from '../services/clarity';
 import {
   User, Mail, KeyRound, AlertTriangle, Zap, Eye, EyeOff,
   ArrowRight, Shield, CheckCircle2, Lock, Globe, X,
@@ -823,7 +824,6 @@ export default function Register() {
                 onBlur={handleBlur}
                 required
                 autoComplete="email"
-                inputMode="email"
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
@@ -832,6 +832,8 @@ export default function Register() {
                 disabled={loading}
                 aria-invalid={emailHasError}
                 aria-describedby={emailHasError ? 'email-error' : undefined}
+                inputMode="email"
+                enterKeyHint="next"
               />
             </div>
             {emailHasError && (
@@ -1067,6 +1069,28 @@ export default function Register() {
         <div className="auth-secure-note">
           <Shield size={12} aria-hidden="true" />
           <span>{tr('encryption_badge', '256-bit encrypted · secure sessions')}</span>
+        </div>
+
+        {/* ── Cookie preferences trigger ── */}
+        <div style={{ marginTop: 14, textAlign: 'center' }}>
+          <button
+            type="button"
+            onClick={openCookiePreferences}
+            className="footer-cookie-prefs-btn"
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: '6px 10px',
+              color: 'var(--text-secondary, #94a3b8)',
+              fontSize: '0.8125rem',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              textUnderlineOffset: '3px',
+              transition: 'color 0.15s ease',
+            }}
+          >
+            Cookie preferences
+          </button>
         </div>
       </motion.div>
 

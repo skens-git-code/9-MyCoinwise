@@ -50,9 +50,12 @@ const MAX_DESCRIPTION_LENGTH = 1000;
 const MAX_AMOUNT = 999_999_999.99;
 
 // ── Allowed event types ──
-// Adjust to match the model enum if one exists.
+// IMPORTANT: this MUST stay identical to the `type` enum in models/Event.js.
+// It previously omitted the model's own default ('general'), so a client sending
+// that legal value got a 400, while four values present here but absent from the
+// enum produced a 500 ValidationError.
 const ALLOWED_TYPES = new Set([
-  'income', 'expense', 'bill', 'reminder', 'payment', 'meeting', 'other',
+  'bill', 'income', 'expense', 'reminder', 'payment', 'meeting', 'other', 'general',
 ]);
 
 // ── Hex color pattern (3 or 6 digit) ──
@@ -74,10 +77,6 @@ const parseMoney = (value, { allowZero = true } = {}) => {
   if (amount < floor || amount > MAX_AMOUNT) return null;
   return Number(amount.toFixed(2));
 };
-
-// ── Coerce common truthy values into a boolean ──
-const parseBoolean = (value) =>
-  value === true || value === 'true' || value === 1 || value === '1';
 
 // ── Normalize user-id comparison across ObjectId and string types ──
 const sameId = (a, b) => {

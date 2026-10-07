@@ -42,7 +42,7 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
  * ————————————————————————————————————— */
 
 // ── Directory where screenshots are written ──
-const ARTIFACTS_DIR = '/Users/sarthakmathapati/.gemini/antigravity-ide/brain/525c3019-2b4f-40c0-a89a-785bd8296a23';
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.resolve(__dirname, '../.artifacts');
 
 // ── Chrome binary path (macOS) ──
 const CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';

@@ -1326,6 +1326,7 @@ export default function Cashflow() {
                 placeholder={tr('whatif_placeholder', 'e.g. 5000 (positive to spend, negative to gain)')}
                 style={{ width: '100%', padding: '8px 12px', borderRadius: 8 }}
                 aria-label={tr('whatif_amount', 'What-if amount')}
+                inputMode="numeric"
               />
             </div>
 
@@ -1364,6 +1365,7 @@ export default function Cashflow() {
                     )}
                     style={{ width: '100%', padding: '6px 8px', borderRadius: 8 }}
                     aria-label={tr('scenario_duration', 'Scenario duration in months')}
+                    inputMode="numeric"
                   />
                 </div>
               </div>
@@ -1385,6 +1387,7 @@ export default function Cashflow() {
                 )}
                 style={{ width: '100%', padding: '6px 8px', borderRadius: 8 }}
                 aria-label={tr('scenario_start', 'Scenario start day')}
+                inputMode="numeric"
               />
             </div>
 

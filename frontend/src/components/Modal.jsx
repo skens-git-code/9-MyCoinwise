@@ -28,11 +28,12 @@
  *   - `useId` generates an accessible title id for `aria-labelledby`.
  * ————————————————————————————————————— */
 
-import React, { useEffect, useId } from 'react';
+import React, { useContext, useId, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { useAppActions } from '../contexts/AppContext';
+import { AppActionsContext } from '../contexts/AppContext';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /* —————————————————————————————————————
  * Component
@@ -50,71 +51,34 @@ const Modal = ({
   cancelText,
   processingText,
 }) => {
-  // ── Stable id for aria-labelledby and DOM lookups ──
+  // ── Stable id for aria-labelledby ──
   const modalId = useId();
 
+  // ── Panel ref for the shared focus trap ──
+  const panelRef = useRef(null);
+
   // ── i18n and fallback labels ──
-  const actions = useAppActions();
+  const actions = useContext(AppActionsContext);
   const t = actions?.t;
   const resolvedCancelText = cancelText || t?.('cancel') || 'Cancel';
   const resolvedProcessingText = processingText || t?.('processing') || 'Processing...';
 
   /* —————————————————————————————————————
-   * Focus Management
-   * On open: focus the first focusable element. While open: Escape
-   * closes (unless loading) and Tab cycles within the modal.
+   * Focus management
+   * Delegated to the shared `useFocusTrap` hook so every dialog in the app
+   * behaves identically: focus enters the panel on open, Tab cycles inside it,
+   * Escape closes it, background scroll is locked, the Back gesture closes it
+   * instead of navigating away, and focus returns to the trigger on close.
+   * The previous inline implementation covered only the first three, and it
+   * located the panel with `document.getElementById` (racy under `createPortal`).
    * ————————————————————————————————————— */
-  useEffect(() => {
-    if (!isOpen) return;
-
-    // ── Initial focus on the first focusable element ──
-    const modal = document.getElementById(modalId);
-    if (modal) {
-      const initialFocusable = modal.querySelector(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
-      initialFocusable?.focus();
-    }
-
-    // ── Keyboard handler: Escape + Tab trapping ──
-    const handleKeyDown = (e) => {
-      // Escape closes unless a request is in flight
-      if (e.key === 'Escape' && !isLoading) {
-        onClose();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-
-      // Re-query focusable elements on every Tab press
-      const currentModal = document.getElementById(modalId);
-      if (!currentModal) return;
-
-      const focusableElements = currentModal.querySelectorAll(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
-      if (focusableElements.length === 0) return;
-
-      const firstFocusable = focusableElements[0];
-      const lastFocusable = focusableElements[focusableElements.length - 1];
-
-      // Shift+Tab on the first element wraps to the last
-      if (e.shiftKey) {
-        if (document.activeElement === firstFocusable) {
-          e.preventDefault();
-          lastFocusable?.focus();
-        }
-      // Tab on the last element wraps to the first
-      } else {
-        if (document.activeElement === lastFocusable) {
-          e.preventDefault();
-          firstFocusable?.focus();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, modalId, isLoading, onClose]);
+  useFocusTrap({
+    isOpen,
+    onClose,
+    containerRef: panelRef,
+    // While a request is in flight, Escape must not discard the user's work.
+    closeOnEscape: !isLoading,
+  });
 
   return createPortal(
     <AnimatePresence>
@@ -135,7 +99,12 @@ const Modal = ({
           {/* ── Modal panel: stops propagation so clicks inside stay inside ── */}
           <motion.div
             id={modalId}
+            ref={panelRef}
             className="modal-box glass"
+            /* `tabIndex={-1}` lets the trap focus the panel itself when it has no
+               focusable children (e.g. a pure confirmation), instead of leaving
+               focus behind the dialog. */
+            tabIndex={-1}
             initial={{ y: '100%', opacity: 0, scale: 0.95 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: '100%', opacity: 0, scale: 0.95 }}

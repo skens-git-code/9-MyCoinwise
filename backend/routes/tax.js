@@ -18,9 +18,9 @@
 // ── Load dependencies ──
 const crypto = require('crypto');
 const express = require('express');
+const { config } = require('../config/env');
 const rateLimit = require('express-rate-limit');
 const { body, param, query, validationResult } = require('express-validator');
-const mongoose = require('mongoose');
 const TaxProfile = require('../models/TaxProfile');
 const TaxRuleSet = require('../models/TaxRuleSet');
 const TaxTag = require('../models/TaxTag');
@@ -60,11 +60,15 @@ const deductibleTreatments = new Set([
 const userIdOf = (req) => String(req.user?.id || '');
 
 // ── Feature flag check ──
-// Enabled when FEATURE_TAX_MODULE is truthy, or when unset and not
-// running in production.
-const isEnabled = () =>
-  String(process.env.FEATURE_TAX_MODULE || '').toLowerCase() === 'true'
-  || (process.env.FEATURE_TAX_MODULE == null && process.env.NODE_ENV !== 'production');
+// Uses the VALIDATED boolean from config/env.js, whose default is
+// `NODE_ENV !== 'production'` — i.e. on in development, off in production.
+//
+// The previous hand-rolled check compared `process.env.FEATURE_TAX_MODULE == null`
+// to detect "unset", but envalid had already coerced an empty value to the STRING
+// '' (not null/undefined). So `FEATURE_TAX_MODULE=` in a .env file — the natural
+// way to express "leave it at the default" — was neither 'true' nor null, and the
+// module silently stayed disabled even in development.
+const isEnabled = () => config.FEATURE_TAX_MODULE;
 
 /* ── Rate limiters ────────────────────────────────────────── */
 
@@ -117,13 +121,6 @@ const parseMoney = (value, { required = false, positive = false } = {}) => {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount < (positive ? Number.EPSILON : 0)) return null;
   return Number(amount.toFixed(2));
-};
-
-// ── Format a date as YYYY-MM-DD (empty string on invalid input) ──
-const formatDateKey = (date) => {
-  const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toISOString().slice(0, 10);
 };
 
 // ── Compute fiscal-year start/end bounds for a profile ──
@@ -643,7 +640,13 @@ router.post('/tag', tagLimiter, [
   }
 
   // ── Guard against switching to/from a deductible treatment ──
-  const existing = await TaxTag.findOne({ transaction_id: transaction._id }).lean();
+  // SECURITY: scoped by user_id. `transaction_id` is globally unique on TaxTag,
+  // so an unscoped lookup could read (and the upsert below could mutate) another
+  // user's tag document.
+  const existing = await TaxTag.findOne({
+    transaction_id: transaction._id,
+    user_id: userIdOf(req),
+  }).lean();
   if (
     existing &&
     existing.treatment !== req.body.treatment &&
@@ -657,7 +660,7 @@ router.post('/tag', tagLimiter, [
 
   // ── Upsert the tax tag ──
   const tag = await TaxTag.findOneAndUpdate(
-    { transaction_id: transaction._id },
+    { transaction_id: transaction._id, user_id: userIdOf(req) },
     {
       $set: {
         user_id: userIdOf(req),

@@ -1884,17 +1884,6 @@ if (!i18n.isInitialized) {
     });
 }
 
-/* Original getT helper implementation (Problematic - static property access without standard i18next engine integration):
-export function getT(lang = 'en') {
-  const translations = TRANSLATIONS[lang] || TRANSLATIONS.en;
-  return (key, fallback) => {
-    if (!key) return fallback !== undefined ? fallback : '';
-    if (translations && typeof translations[key] === 'string') return translations[key];
-    if (TRANSLATIONS.en && typeof TRANSLATIONS.en[key] === 'string') return TRANSLATIONS.en[key];
-    return fallback !== undefined ? fallback : undefined;
-  };
-}
-*/
 export function getT(lang = 'en') {
   if (i18n.language !== lang && ['en', 'hi', 'mr', 'bgc', 'kn'].includes(lang)) {
     i18n.changeLanguage(lang);

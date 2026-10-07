@@ -25,7 +25,6 @@
 
 // ── Load dependencies ──
 const express = require('express');
-const mongoose = require('mongoose');
 const { body, param, query, validationResult } = require('express-validator');
 const Subscription = require('../models/Subscription');
 const checkOwnership = require('../middleware/ownership');

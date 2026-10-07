@@ -38,9 +38,16 @@ const eventSchema = new mongoose.Schema({
   },
 
   // ── Event category ──
+  // NOTE: this enum MUST stay identical to ALLOWED_TYPES in routes/events.js.
+  // It previously listed only ['bill','income','reminder','general'] while the
+  // route accepted and wrote 'expense', 'payment', 'meeting' and 'other'. Those
+  // four values therefore failed schema validation, and because the route
+  // handler returns a generic 500 on a ValidationError, creating or editing such
+  // an event ALWAYS failed with an opaque 'Unable to create event.' Meanwhile
+  // 'general' — the model default — was rejected by the route with a 400.
   type: {
     type: String,
-    enum: ['bill', 'income', 'reminder', 'general'],
+    enum: ['bill', 'income', 'expense', 'reminder', 'payment', 'meeting', 'other', 'general'],
     default: 'general'
   },
 

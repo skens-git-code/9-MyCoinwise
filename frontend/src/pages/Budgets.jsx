@@ -1008,6 +1008,7 @@ export default function BudgetManager() {
                   required
                   placeholder="0.00"
                   inputMode="decimal"
+                  inputMode="decimal"
                 />
               </div>
 

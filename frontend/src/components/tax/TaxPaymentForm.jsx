@@ -56,6 +56,7 @@ export default function TaxPaymentForm({ currency, onSubmit, onCancel, isSaving 
             value={form.amount}
             onChange={(e) => set('amount', e.target.value)}
             required
+            inputMode="decimal"
           />
         </label>
 

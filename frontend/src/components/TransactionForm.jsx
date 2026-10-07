@@ -343,10 +343,6 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         resetForm();
       }
     } catch (err) {
-      /* Original error handler discarding backend error details:
-      setError('Failed to save transaction. Please try again.');
-      // Issue: Masked exact backend validation messages with a generic fallback string.
-      */
       // ── Prefer the backend's error message over a generic fallback ──
       const errorMsg =
         err?.response?.data?.error ||
@@ -516,7 +512,6 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                         </span>
                         <input
                           type="text"
-                          inputMode="decimal"
                           value={amount}
                           onChange={handleAmountChange}
                           placeholder="0.00"
@@ -529,6 +524,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                             fontWeight: 700,
                             opacity: isSubmitting ? 0.7 : 1
                           }}
+                          inputMode="decimal"
                         />
                       </div>
                     </div>

@@ -22,6 +22,7 @@ const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const Transaction = require('../models/Transaction');
 const Goal = require('../models/Goal');
+const { logger } = require('../utils/logger');
 
 /* —————————————————————————————————————
  * Rate Limiting
@@ -69,7 +70,7 @@ ${goalData || 'No active goals.'}`;
 
   } catch (err) {
     // ── Fall back to a generic prompt if context loading fails ──
-    console.error('[AI] Error fetching financial context:', err.message);
+    logger.error(`[AI] Error fetching financial context: ${err.message}`);
     return 'You are the built-in financial AI assistant for the MyCoinwise app. Be professional, concise, and helpful.';
   }
 }
@@ -98,7 +99,15 @@ router.post('/chat', aiLimiter, async (req, res) => {
 
   try {
     // ── Identify the authenticated user ──
-    const userId = req.user?.id || req.user?._id;
+    // SECURITY: fail closed. `req.user?.id` yields `undefined` when the auth
+    // middleware has not run, and `Transaction.find({ user_id: undefined })`
+    // matches EVERY user's documents — which would then be sent to Gemini as
+    // cross-tenant context. Never proceed without a verified user id.
+    const userId = req.user?.id || req.user?._id || req.userId;
+    if (!userId) {
+      logger.error(`[AI] Missing authenticated user on ${req.method} ${req.originalUrl}; refusing to build context.`);
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
 
     // ── Build the system prompt from the user's data ──
     const systemPrompt = await getFinancialContext(userId);
@@ -156,7 +165,7 @@ router.post('/chat', aiLimiter, async (req, res) => {
       if (response.status === 429 || /quota|rate limit|too many/i.test(providerError)) {
         return res.status(429).json({ error: 'The AI is busy right now. Please try again shortly.' });
       }
-      console.error('[AI] Gemini REST error:', response.status, providerError);
+      logger.error(`[AI] Gemini REST error: ${response.status} ${JSON.stringify(providerError)}`);
       return res.status(502).json({ error: 'The AI service is temporarily unavailable.' });
     }
 
@@ -172,7 +181,7 @@ router.post('/chat', aiLimiter, async (req, res) => {
     return res.json({ text });
 
   } catch (err) {
-    console.error('[AI] Gemini API error:', err?.message || err);
+    logger.error(`[AI] Gemini API error: ${err?.message || err}`);
 
     // ── Map provider-side rate limits to HTTP 429 ──
     if (err?.message?.includes('429') || err?.message?.includes('quota') || err?.message?.includes('Too Many Requests')) {

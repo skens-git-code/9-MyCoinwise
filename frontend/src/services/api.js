@@ -36,9 +36,6 @@ const resolveApiUrl = () => {
 
 export const API_URL = resolveApiUrl();
 
-/* Original getStoredToken:
-export const getStoredToken = () => localStorage.getItem('mcw-token') || sessionStorage.getItem('mcw-token');
-*/
 /* ─────────────────────────────────────
  * Get Stored Token
  * Priority:
@@ -267,8 +264,11 @@ export const api = {
   },
 
   // ── Issue a session token for a linked household profile ──
-  switchUser: async (id) => {
-    const res = await axios.post(`${API_URL}/users/${id}/switch`);
+  // Switching to ANOTHER profile requires that profile's password: the endpoint
+  // mints a full session token, so it is treated as a credential operation.
+  // Passing no password (or switching to your own id) skips the check server-side.
+  switchUser: async (id, password) => {
+    const res = await axios.post(`${API_URL}/users/${id}/switch`, password ? { password } : {});
     return res.data;
   },
 

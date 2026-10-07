@@ -1,0 +1,18 @@
+# Enforce consistent LF line endings across all platforms to prevent CRLF/LF churn
+* text=auto eol=lf
+
+# Explicit binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+
+# Lockfiles: reduce noisy merge conflicts / diff churn
+package-lock.json -diff

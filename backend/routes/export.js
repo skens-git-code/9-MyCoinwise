@@ -35,7 +35,7 @@
 
 // ── Load dependencies ──
 const express = require('express');
-const mongoose = require('mongoose');
+const { config } = require('../config/env');
 const { param, query: queryValidator, validationResult } = require('express-validator');
 const excel = require('exceljs');
 const rateLimit = require('express-rate-limit');
@@ -84,8 +84,10 @@ const CURRENCIES = {
 };
 
 // ── Hard caps on export sizes ──
-const MAX_EXPORT_ROWS = Number(process.env.MAX_EXPORT_ROWS) || 50_000;
-const MAX_BACKUP_DOCS_PER_COLLECTION = Number(process.env.MAX_BACKUP_DOCS) || 100_000;
+// Bounds come from the validated config so a malformed value fails loudly at
+// boot instead of silently falling back to these constants at request time.
+const MAX_EXPORT_ROWS = config.MAX_EXPORT_ROWS;
+const MAX_BACKUP_DOCS_PER_COLLECTION = config.MAX_BACKUP_DOCS;
 
 /* —————————————————————————————————————
  * Router Middleware

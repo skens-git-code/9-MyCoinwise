@@ -630,64 +630,6 @@ export default function Goals() {
   }, [getPct]);
 
   /** ✨ NEW: sort + filter + completion view + live search. */
-  /* Original filteredGoals without search query filtering:
-  const filteredGoals = useMemo(() => {
-    let list = goals;
-
-    // Category filter
-    if (activeCategoryFilter !== 'all') {
-      list = list.filter((g) => getCategoryKey(g.category) === activeCategoryFilter);
-    }
-
-    // Overdue filter
-    if (showOverdueOnly) {
-      list = list.filter((g) => isOverdue(g));
-    }
-
-    // Completion filter
-    if (!showCompleted) {
-      list = list.filter((g) => getPct(g) < 100);
-    } else {
-      // When showing completed, still show everything unless category restricts
-    }
-
-    // Sort
-    const sorted = [...list];
-    switch (sortBy) {
-      case 'progress_asc':
-        sorted.sort((a, b) => getPct(a) - getPct(b));
-        break;
-      case 'progress_desc':
-        sorted.sort((a, b) => getPct(b) - getPct(a));
-        break;
-      case 'deadline_asc': {
-        const farFuture = Number.MAX_SAFE_INTEGER;
-        sorted.sort((a, b) => {
-          const da = a.deadline ? (parseLocalDate(a.deadline)?.getTime() ?? farFuture) : farFuture;
-          const db = b.deadline ? (parseLocalDate(b.deadline)?.getTime() ?? farFuture) : farFuture;
-          return da - db;
-        });
-        break;
-      }
-      case 'target_desc':
-        sorted.sort((a, b) => safeNumber(b.target, 0) - safeNumber(a.target, 0));
-        break;
-      case 'name_asc':
-        sorted.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-        break;
-      case 'created_desc':
-      default: {
-        const zero = 0;
-        sorted.sort((a, b) => {
-          const da = new Date(a.created_at || a.createdAt || zero).getTime() || 0;
-          const db = new Date(b.created_at || b.createdAt || zero).getTime() || 0;
-          return db - da;
-        });
-      }
-    }
-    return sorted;
-  }, [goals, activeCategoryFilter, showOverdueOnly, showCompleted, sortBy, getPct, isOverdue]);
-  */
   // ── Filter + sort pipeline: search → category → overdue → completion → sort ──
   const filteredGoals = useMemo(() => {
     let list = goals;
@@ -1284,28 +1226,6 @@ export default function Goals() {
   /* ============================================================
    * Render
    * ============================================================ */
-  /* Original render without loading check:
-  return (
-    <div className="masonry-layout-page goals-page-wrap">
-  // Issue: When goals were loading, page immediately flashed 0 goals and empty state.
-  */
-  /* Original single-box loading state causing jarring layout flash and layout shift:
-  if (loading && goals.length === 0) {
-    return (
-      <div className="masonry-layout-page goals-page-wrap">
-        <div className="masonry-header">
-          <div className="mh-titles">
-            <h2>{tr('goals', 'Savings Goals')}</h2>
-          </div>
-        </div>
-        <div className="glass" style={{ padding: '3rem 1rem', textAlign: 'center', borderRadius: 14 }}>
-          <Clock className="spin" size={36} style={{ margin: '0 auto 12px', opacity: 0.6 }} />
-          <p style={{ color: 'var(--text-muted)' }}>{tr('loading', 'Loading goals…')}</p>
-        </div>
-      </div>
-    );
-  }
-  */
   // ── Skeleton while goals are loading and none are cached ──
   if (loading && goals.length === 0) {
     return <GoalsSkeleton tr={tr} />;
@@ -1476,6 +1396,7 @@ export default function Goals() {
               outline: 'none',
               boxSizing: 'border-box',
             }}
+            enterKeyHint="search"
           />
           {/* ── Clear search (only when there is a query) ── */}
           {searchInput && (
@@ -2009,6 +1930,7 @@ export default function Goals() {
             onChange={(e) => setTarget(e.target.value)}
             placeholder="0.00"
             inputMode="decimal"
+            inputMode="decimal"
           />
         </div>
 
@@ -2023,6 +1945,7 @@ export default function Goals() {
             value={saved}
             onChange={(e) => setSaved(e.target.value)}
             placeholder="0"
+            inputMode="decimal"
             inputMode="decimal"
           />
         </div>
@@ -2109,6 +2032,7 @@ export default function Goals() {
             onChange={(e) => setContributeAmount(e.target.value)}
             placeholder="e.g. 25.00 or -10.00"
             autoFocus
+            inputMode="decimal"
             inputMode="decimal"
           />
         </div>

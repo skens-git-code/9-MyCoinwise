@@ -1108,6 +1108,7 @@ export default function Subscriptions() {
             placeholder={tr('search_subscriptions', 'Search subscriptions…')}
             aria-label={tr('search_subscriptions', 'Search subscriptions')}
             style={{ width: '100%', paddingLeft: 32, fontSize: '0.85rem' }}
+            enterKeyHint="search"
           />
         </div>
       </div>
@@ -1351,6 +1352,7 @@ export default function Subscriptions() {
             value={amount}
             onChange={(e) => { setAmount(e.target.value); clearError(); }}
             placeholder="0.00"
+            inputMode="decimal"
             inputMode="decimal"
           />
         </div>

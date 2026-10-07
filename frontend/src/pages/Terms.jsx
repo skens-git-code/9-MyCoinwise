@@ -11,6 +11,7 @@ import {
   HelpCircle,
   Lock,
 } from 'lucide-react';
+import Footer from '../components/Footer';
 
 export default function Terms() {
   const navigate = useNavigate();
@@ -299,6 +300,10 @@ export default function Terms() {
             </p>
           </section>
         </motion.div>
+
+        <div style={{ marginTop: '2.5rem' }}>
+          <Footer />
+        </div>
       </div>
     </div>
   );

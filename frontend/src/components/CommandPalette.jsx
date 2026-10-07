@@ -28,6 +28,7 @@ import {
   ArrowLeftRight, X, Zap, Tag, ReceiptText
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /* —————————————————————————————————————
  * Component
@@ -208,6 +209,13 @@ export default function CommandPalette({ isOpen, onClose }) {
     }
   }, [selectedIndex]);
 
+  // ── Focus trap (must be called before the early return) ──
+  // The palette declares `aria-modal="true"` but had no Tab trap, so focus could
+  // escape into the page behind it. Escape is handled globally elsewhere; the
+  // hook keeps that behaviour and adds trapping, scroll lock and focus restore.
+  const paletteRef = useRef(null);
+  useFocusTrap({ isOpen, onClose, containerRef: paletteRef, initialFocusSelector: 'input' });
+
   // ── Render nothing when closed ──
   if (!isOpen) return null;
 
@@ -216,6 +224,8 @@ export default function CommandPalette({ isOpen, onClose }) {
       {/* ── Backdrop: click outside to close ── */}
       <div className="cmd-palette-backdrop" onClick={onClose}>
         <motion.div
+          ref={paletteRef}
+          tabIndex={-1}
           className="cmd-palette-modal glass"
           initial={{ opacity: 0, scale: 0.95, y: -20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}

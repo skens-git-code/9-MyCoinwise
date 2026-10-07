@@ -24,6 +24,7 @@ import throttle from 'lodash.throttle';
 // [OPTIMIZATION: Removed external 'react-responsive' dependency in favor of native window.matchMedia hook]
 // import { useMediaQuery } from 'react-responsive';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
   LayoutDashboard, ArrowLeftRight, BarChart3, Target, Activity, Briefcase,
   Settings, ChevronRight,
@@ -35,6 +36,7 @@ import { useAppState, useAppActions } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
 import { LANGUAGES } from '../services/i18n';
 import Breadcrumbs from './Breadcrumbs';
+import Footer from './Footer';
 import DOMPurify from 'dompurify';
 import QuantumRuntime from '../services/quantumRuntime';
 
@@ -186,16 +188,6 @@ const formatBalance = (balance, currencySymbol = '$', langOrLocale = 'en-US') =>
   })}`;
 };
 
-/* Original getDeviceType (Problematic - static window.innerWidth check without live matchMedia subscription caused delayed and jerky breakpoint response):
-const getDeviceType = () => {
-  if (typeof window === 'undefined') return 'desktop';
-  const width = window.innerWidth;
-  if (width < BREAKPOINTS.mobile) return 'mobile';
-  if (width < BREAKPOINTS.tablet) return 'tablet';
-  return 'desktop';
-};
-// Migrated to dynamic, hardware-accelerated media queries via `useMediaQuery` from react-responsive.
-*/
 
 // ── Read the stored sync preference (default: enabled) ──
 const getStoredSyncEnabled = () => {
@@ -333,52 +325,6 @@ const useUserDisplay = (user, t) => {
   }, [user, t]);
 };
 
-/* Original useResponsiveSidebar (Problematic - relied on debounced 150ms resize event loop that caused layout jitter, stutter, and lagging breakpoint transitions):
-const useResponsiveSidebar = (initialState = true) => {
-  const [sidebarOpen, setSidebarOpen] = useState(initialState);
-  const [deviceType, setDeviceType] = useState(getDeviceType());
-  const desktopPreferenceRef = React.useRef(initialState);
-
-  useEffect(() => {
-    let timeoutId;
-    let isMounted = true;
-
-    const handleResize = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        if (!isMounted) return;
-        const newDeviceType = getDeviceType();
-        setDeviceType(newDeviceType);
-        if (newDeviceType === 'mobile') {
-          setSidebarOpen(false);
-        } else {
-          setSidebarOpen(desktopPreferenceRef.current);
-        }
-      }, 150);
-    };
-
-    window.addEventListener('resize', handleResize);
-    handleResize();
-    return () => {
-      isMounted = false;
-      if (timeoutId) clearTimeout(timeoutId);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
-
-  const setSidebarOpenWithMemory = useCallback((value) => {
-    setSidebarOpen((prev) => {
-      const next = typeof value === 'function' ? value(prev) : value;
-      if (getDeviceType() !== 'mobile') {
-        desktopPreferenceRef.current = next;
-      }
-      return next;
-    });
-  }, []);
-
-  return { sidebarOpen, setSidebarOpen: setSidebarOpenWithMemory, deviceType };
-};
-*/
 
 // ── Sidebar open state + device type via live media queries ──
 // Remembers the desktop preference so the sidebar returns to the
@@ -666,7 +612,7 @@ export default function AppLayout({ children }) {
       }, 0);
     const net = income - expense;
     const rate = income > 0 ? ((net / income) * 100).toFixed(0) : '0';
-    return { income, expense, net, rate };
+    return { income, expense, net, rate, count: liveTxs.length };
   }, [transactions]);
 
   // ── Sum of initial balances for liquid-type accounts ──
@@ -681,12 +627,15 @@ export default function AppLayout({ children }) {
       }, 0);
   }, [accounts]);
 
-  // ── Effective balance = base + net of live transactions ──
+  // ── Effective balance = base + net of live transactions (matches Dashboard canonical rawBalance) ──
   const totalBalance = useMemo(() => {
     const net = financialSummary?.net ?? 0;
-    const base = Number(user?.startingBalance ?? (startingBalance > 0 ? startingBalance : (user?.balance && user?.balance !== 0 ? user.balance : 0)));
-    return base + net;
-  }, [user, startingBalance, financialSummary?.net]);
+    const base = Number(user?.startingBalance ?? (startingBalance > 0 ? startingBalance : 0));
+    if ((financialSummary?.count ?? 0) > 0 || net !== 0) {
+      return base + net;
+    }
+    return base || Number(user?.balance ?? 0);
+  }, [user, startingBalance, financialSummary?.net, financialSummary?.count]);
 
   // ── Format the balance for display ──
   const formattedBalance = useMemo(() => {
@@ -822,8 +771,8 @@ export default function AppLayout({ children }) {
 
   return (
     <ErrorBoundary>
-      {/* App.jsx already wraps the full tree in <MotionConfig reducedMotion="user">,
-          so we don't nest a second one here. */}
+      {/* App.jsx wraps the full tree in <MotionConfig reducedMotion="user">,
+          so we deliberately do not nest a second one here. */}
       <div className="app-island-layout" data-theme={theme}>
         {/* ── Ambient background layers (Desktop only) ── */}
         <div className="portfolio-bg-layer" aria-hidden="true" />
@@ -935,24 +884,7 @@ export default function AppLayout({ children }) {
           )}
 
           <div className="island-content-wrapper">
-            {/* Original route transition (Problematic - animated scale and vertical displacement simultaneously during route change, triggering layout shifts and animation queue bottlenecks):
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={location.pathname}
-                  className="island-page"
-                  initial={{ opacity: 0, y: 14, scale: 0.99 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{
-                    duration: ANIMATION_DURATIONS.normal,
-                    ease: [0.16, 1, 0.3, 1]
-                  }}
-                >
-                  <Breadcrumbs />
-                  {children}
-                </motion.div>
-              </AnimatePresence>
-              */}
+
             {/* ── Route transition: opacity-only for perf ── */}
             <AnimatePresence mode="wait">
               <motion.div
@@ -975,6 +907,7 @@ export default function AppLayout({ children }) {
                 {children}
               </motion.div>
             </AnimatePresence>
+            <Footer />
           </div>
         </main>
 
@@ -1832,8 +1765,20 @@ const MobileDrawer = React.memo(({
   lang, onLanguageChange, onShowConverter, onShowAlerts, onShowAI,
   urgentAlertsCount, logout, onClose, t
 }) => {
+  // SECURITY/ACCESSIBILITY: the drawer declares `aria-modal="true"` but had no
+  // focus trap, no Escape handler and no focus restoration, so a keyboard or
+  // screen-reader user could tab straight into the page behind it. The trap now
+  // keeps focus inside, closes on Escape, restores focus to the trigger, and
+  // locks background scroll. `isOpen` is hard-coded true because the parent
+  // only mounts this component while the drawer is open, so the hook's lifetime
+  // matches the drawer's exactly.
+  const drawerRef = useRef(null);
+  useFocusTrap({ isOpen: true, onClose, containerRef: drawerRef });
+
   return (
     <motion.aside
+      ref={drawerRef}
+      tabIndex={-1}
       className="mobile-drawer"
       role="dialog"
       aria-label="Navigation menu"

@@ -20,12 +20,24 @@ const dayKey = (value) => {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
 };
 
-// ── Return true when the date is after the end of today ──
-// Invalid dates are treated as future (returns true) so callers can
-// safely filter them out.
+// ── Return true when the date is verifiably after the end of today ──
+//
+// BUG FIX (high severity): this used to return `true` for a MISSING or
+// unparseable date, on the theory that callers could then "safely" drop them.
+// But `dedupeTransactions` filters future rows out — and the balance queries in
+// routes/transactions.js and routes/auth.js selected `type amount currency
+// account_id` WITHOUT `date`. `new Date(undefined)` is an Invalid Date, so every
+// transaction was classified as future, dropped by the dedupe, and the summed
+// balance came out 0. Because `syncUserBalance` PERSISTS that value, it actively
+// overwrote each user's stored balance with 0.
+//
+// The safe default is the opposite: only a date that is genuinely in the future
+// is excluded. A missing date is a projection bug, and silently zeroing a
+// balance is far worse than including a row whose date we failed to load.
 const isFutureTransaction = (value, now = new Date()) => {
+  if (value === null || value === undefined || value === '') return false;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return true;
+  if (Number.isNaN(date.getTime())) return false;
   const endOfToday = new Date(now);
   endOfToday.setHours(23, 59, 59, 999);
   return date.getTime() > endOfToday.getTime();
@@ -69,7 +81,9 @@ const transactionIntegrityKey = (transaction) => {
  * Behavior:
  *   - Rows with `is_deleted: true` are always excluded.
  *   - Future-dated rows are excluded when `excludeFuture` is true
- *     (the default).
+ *     (the default). A row with a missing/invalid date is NOT treated as
+ *     future (see `isFutureTransaction`), so an unprojected `date` can never
+ *     silently empty a balance.
  *   - Duplicates are detected via `transactionIntegrityKey`; the
  *     first occurrence in iteration order wins.
  * ————————————————————————————————————— */

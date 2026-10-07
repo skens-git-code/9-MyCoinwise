@@ -33,6 +33,7 @@ import {
   ChevronDown, Check,
 } from 'lucide-react';
 import { useToast } from '../components/ToastProvider';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { dedupeTransactions } from '../utils/transactionIntegrity';
 
 /* ============================================================
@@ -279,13 +280,11 @@ const CustomTooltip = memo(({ active, payload, label, isDark, fmt }) => {
  * Drill‑Down Modal
  * ============================================================ */
 const DrillDownModal = memo(({ isOpen, onClose, title, transactions, fmt, locale }) => {
-  // Escape to close — depends on stable `onClose` from parent.
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  // Focus management, Escape, scroll lock and focus restoration come from the
+  // shared hook. The previous inline effect handled Escape only, so this dialog
+  // declared `aria-modal="true"` while still letting Tab escape behind it.
+  const dialogRef = useRef(null);
+  useFocusTrap({ isOpen, onClose, containerRef: dialogRef });
 
   if (!isOpen) return null;
 
@@ -296,9 +295,7 @@ const DrillDownModal = memo(({ isOpen, onClose, title, transactions, fmt, locale
     <div
       className="modal-overlay"
       onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title || 'Transaction details'}
+      role="presentation"
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -307,9 +304,17 @@ const DrillDownModal = memo(({ isOpen, onClose, title, transactions, fmt, locale
       <div
         className="modal-content"
         onClick={(e) => e.stopPropagation()}
+        /* The dialog semantics belong on the visual panel, not the backdrop. */
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title || 'Transaction details'}
         style={{
           background: 'var(--bg-color)', maxWidth: 600, width: '90%',
-          maxHeight: '80vh', borderRadius: 16, padding: '1.5rem',
+          /* `dvh` not `vh`: on mobile Safari the address bar collapses during
+             scroll, and `vh` made the panel taller than the visible viewport. */
+          maxHeight: '80dvh', borderRadius: 16, padding: '1.5rem',
           overflow: 'auto', color: 'var(--text-main)',
         }}
       >
@@ -1091,12 +1096,6 @@ export default function Analytics() {
   /* ============================================================
    * Loading / Empty
    * ============================================================ */
-  /* Original empty check without loading state check:
-  if (validTransactions.length === 0) {
-    return (
-      <div className="shared-page analytics-page-wrap">
-  // Issue: When transactions were in-flight, the UI prematurely rendered "No data yet", causing layout shift and flickering.
-  */
   // ── Loading skeleton (only when there is no data yet) ──
   if (loading && validTransactions.length === 0) {
     return (

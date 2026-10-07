@@ -24,6 +24,7 @@ import React, {
 } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
   TrendingUp, TrendingDown, Target,
   Download, Plus, ArrowUpRight, ArrowDownRight,
@@ -453,29 +454,19 @@ EmptyTransactionState.propTypes = { onAddClick: PropTypes.func.isRequired };
 
 // ── Delete confirmation modal with focus management + Escape handling ──
 const ConfirmDeleteModal = ({ tx, onCancel, onConfirm, safeFmt, currencySymbol }) => {
+  // The shared hook supplies initial focus, Escape, Tab trapping, scroll lock,
+  // back-gesture handling and focus restoration. The previous inline effect did
+  // initial focus + Escape + restore but NOT Tab trapping, so this dialog
+  // declared `aria-modal="true"` while focus could still leave it.
   const confirmRef = useRef(null);
-  useEffect(() => {
-    const node = confirmRef.current;
-    if (!node) return undefined;
-    const prev = document.activeElement;
-    const btn = node.querySelector('button');
-    btn?.focus();
-    const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      try { prev?.focus?.(); } catch { /* ignore */ }
-    };
-  }, [onCancel]);
+  useFocusTrap({ isOpen: Boolean(tx), onClose: onCancel, containerRef: confirmRef });
 
   if (!tx) return null;
   return (
     <div
       className="modal-overlay"
       onClick={onCancel}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Delete transaction"
+      role="presentation"
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -483,6 +474,10 @@ const ConfirmDeleteModal = ({ tx, onCancel, onConfirm, safeFmt, currencySymbol }
     >
       <div
         ref={confirmRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Delete transaction"
         className="modal-box glass"
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: 440, width: '90%', borderRadius: 14, padding: '1.25rem', background: 'var(--bg-color)' }}
@@ -1303,10 +1298,6 @@ export default function Dashboard() {
       setShowForm(false);
       showToast('success', 'Transaction added successfully!');
     } catch (err) {
-      /* Original error toast using err?.message:
-      showToast('error', err?.message || 'Failed to add transaction.');
-      // Issue: Masked backend error body with generic HTTP client message.
-      */
       const errorMsg =
         err?.response?.data?.error ||
         err?.response?.data?.errors?.[0]?.msg ||
@@ -1353,10 +1344,6 @@ export default function Dashboard() {
       setEditingTx(null);
       showToast('success', 'Transaction updated successfully!');
     } catch (err) {
-      /* Original error toast using err?.message:
-      showToast('error', err?.message || 'Failed to update transaction.');
-      // Issue: Masked backend error body with generic HTTP client message.
-      */
       const errorMsg =
         err?.response?.data?.error ||
         err?.response?.data?.errors?.[0]?.msg ||

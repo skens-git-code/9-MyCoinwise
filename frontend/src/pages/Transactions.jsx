@@ -67,6 +67,22 @@ const ITEM_VARIANTS = {
 // ── Undo window in milliseconds ──
 const UNDO_TIMEOUT_MS = 6000;
 
+// ── Bank-statement review columns ──
+// Single source of truth for both the <th> header row and each cell's
+// `data-label`. The label is what lets the table reflow into stacked cards on
+// narrow viewports (see the `.statement-review-table` mobile block in
+// _components.scss) — without it the six columns were unreachable on a phone,
+// because the table forced `min-width: 800px` inside an `overflow-y`-only
+// wrapper beneath `overflow: hidden` ancestors.
+const STATEMENT_COLUMNS = [
+  { key: 'wallet', i18nKey: 'import_wallet_col', fallback: 'Wallet' },
+  { key: 'date', i18nKey: 'import_date_col', fallback: 'Date' },
+  { key: 'merchant', i18nKey: 'import_merchant_col', fallback: 'Merchant & payment' },
+  { key: 'category', i18nKey: 'import_category_col', fallback: 'Category' },
+  { key: 'amount', i18nKey: 'import_amount_col', fallback: 'Amount' },
+  { key: 'status', i18nKey: 'import_status_col', fallback: 'Status' },
+];
+
 /* ============================================================
  * Helpers
  * ============================================================ */
@@ -1865,18 +1881,15 @@ export default function Transactions() {
           <table className="csv-preview-table statement-review-table">
             <thead>
               <tr>
-                <th>{tr('import_wallet_col', 'Wallet')}</th>
-                <th>{tr('import_date_col', 'Date')}</th>
-                <th>{tr('import_merchant_col', 'Merchant & payment')}</th>
-                <th>{tr('import_category_col', 'Category')}</th>
-                <th>{tr('import_amount_col', 'Amount')}</th>
-                <th>{tr('import_status_col', 'Status')}</th>
+                {STATEMENT_COLUMNS.map((column) => (
+                  <th key={column.key} scope="col">{tr(column.i18nKey, column.fallback)}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {statementRows.map((row) => (
                 <tr key={row.id} className={row.selected ? '' : 'statement-row-ignored'}>
-                  <td>
+                  <td data-label={tr(STATEMENT_COLUMNS[0].i18nKey, STATEMENT_COLUMNS[0].fallback)}>
                     <button
                       type="button"
                       className={`statement-choice ${row.selected ? 'selected' : ''}`}
@@ -1886,15 +1899,15 @@ export default function Transactions() {
                       {row.selected ? tr('add_to_wallet', 'Add to Wallet') : tr('ignore', 'Ignore')}
                     </button>
                   </td>
-                  <td>{row.date}</td>
-                  <td>
+                  <td data-label={tr(STATEMENT_COLUMNS[1].i18nKey, STATEMENT_COLUMNS[1].fallback)}>{row.date}</td>
+                  <td data-label={tr(STATEMENT_COLUMNS[2].i18nKey, STATEMENT_COLUMNS[2].fallback)}>
                     <strong>{row.merchant || tr('bank_transaction', 'Bank transaction')}</strong>
                     <small>
                       {(row.payment_method || 'bank_transfer').replace('_', ' ')}
                       {row.counterparty_bank ? ` · ${row.counterparty_bank}` : ''}
                     </small>
                   </td>
-                  <td>
+                  <td data-label={tr(STATEMENT_COLUMNS[3].i18nKey, STATEMENT_COLUMNS[3].fallback)}>
                     <select
                       aria-label={`${tr('category_for', 'Category for')} ${row.merchant || ''}`.trim()}
                       value={row.category}
@@ -1903,10 +1916,10 @@ export default function Transactions() {
                       {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </td>
-                  <td style={{ whiteSpace: 'nowrap', color: row.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
+                  <td data-label={tr(STATEMENT_COLUMNS[4].i18nKey, STATEMENT_COLUMNS[4].fallback)} style={{ whiteSpace: 'nowrap', color: row.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
                     {row.type === 'income' ? '+' : '-'}{fmt(row.amount)}
                   </td>
-                  <td>
+                  <td data-label={tr(STATEMENT_COLUMNS[5].i18nKey, STATEMENT_COLUMNS[5].fallback)}>
                     {row.duplicate ? (
                       <span className="statement-status duplicate">{tr('possible_duplicate', 'Possible duplicate')}</span>
                     ) : (

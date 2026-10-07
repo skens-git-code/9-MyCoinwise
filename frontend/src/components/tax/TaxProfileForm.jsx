@@ -127,6 +127,7 @@ export default function TaxProfileForm({ user, initial = null, onSubmit, onCance
             value={form.fiscal_year}
             onChange={(e) => set('fiscal_year', e.target.value)}
             required
+            inputMode="numeric"
           />
           <small className="tax-field-help">
             {isIndia
@@ -173,6 +174,7 @@ export default function TaxProfileForm({ user, initial = null, onSubmit, onCance
             max="20"
             value={form.dependents}
             onChange={(e) => set('dependents', e.target.value)}
+            inputMode="numeric"
           />
         </label>
 
@@ -209,8 +211,8 @@ export default function TaxProfileForm({ user, initial = null, onSubmit, onCance
             onChange={(e) => set('tax_id_last4', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4))}
             maxLength={4}
             pattern="[A-Z0-9]{4}"
-            inputMode="text"
             placeholder={isIndia ? 'ABCD' : '1234'}
+            inputMode="text"
           />
           <small className="tax-field-help">Never enter the full identifier.</small>
         </label>

@@ -79,6 +79,12 @@ const router = express.Router();
 // ── Allowed transaction types ──
 const TRANSACTION_TYPES = new Set(['income', 'expense']);
 
+// ── Enum mirrors of models/Transaction.js ──
+// Kept in sync by hand so an invalid value is rejected with a 400 here instead of
+// surfacing as an opaque 500 from a Mongoose ValidationError at insert time.
+const PAYMENT_METHODS = new Set(['cash', 'card', 'upi', 'bank_transfer', 'wallet', 'cheque', 'other']);
+const RECURRENCE_INTERVALS = new Set(['daily', 'weekly', 'monthly', 'yearly']);
+
 // ── Statement import limits ──
 const IMPORT_LIMIT = 1000;
 const MAX_AMOUNT = 999_999_999.99;
@@ -424,13 +430,27 @@ const validateTransactionPayload = (payload) => {
   if (tags !== undefined) {
     parsed.tags = Array.isArray(tags) ? tags.map((t) => String(t).trim()).filter(Boolean) : [];
   }
-  if (payment_method !== undefined) parsed.payment_method = payment_method;
+  if (payment_method !== undefined) {
+    // Validate against the model enum so a bad value returns 400 rather than an
+    // opaque 500 from a Mongoose ValidationError.
+    if (!PAYMENT_METHODS.has(payment_method)) {
+      parsed.error = `Invalid payment_method. Allowed: ${[...PAYMENT_METHODS].join(', ')}`;
+      return parsed;
+    }
+    parsed.payment_method = payment_method;
+  }
   if (account_id !== undefined) parsed.account_id = account_id || null;
   if (transaction_number !== undefined) {
     parsed.transaction_number = transaction_number ? String(transaction_number).trim() : null;
   }
   if (is_recurring !== undefined) parsed.is_recurring = Boolean(is_recurring);
-  if (recurrence_interval !== undefined) parsed.recurrence_interval = recurrence_interval;
+  if (recurrence_interval !== undefined) {
+    if (recurrence_interval !== null && !RECURRENCE_INTERVALS.has(recurrence_interval)) {
+      parsed.error = `Invalid recurrence_interval. Allowed: ${[...RECURRENCE_INTERVALS].join(', ')}`;
+      return parsed;
+    }
+    parsed.recurrence_interval = recurrence_interval;
+  }
   if (recurrence_ends_at !== undefined) {
     parsed.recurrence_ends_at = recurrence_ends_at ? new Date(recurrence_ends_at) : null;
   }
@@ -456,7 +476,10 @@ const getTransactionBalance = async (userId) => {
   const [user, transactions, accounts] = await Promise.all([
     User.findById(userId).select('currency').lean(),
     Transaction.find({ user_id: userId, is_deleted: { $ne: true } })
-      .select('type amount currency account_id')
+      // `date` MUST be selected: `dedupeTransactions` excludes future-dated rows
+      // and previously received `undefined` dates, which it classified as future —
+      // dropping every row and zeroing the balance.
+      .select('type amount currency account_id date')
       .lean(),
     Account.find({ user_id: userId }).select('_id currency').lean(),
   ]);
@@ -508,20 +531,26 @@ const syncUserBalance = async (userId) => {
 
 // ── Recalculate current_balance for the given accounts ──
 // Runs in parallel; skips invalid ids instead of throwing.
-const syncAccountBalances = async (accountIds = []) => {
+const syncAccountBalances = async (userId, accountIds = []) => {
+  if (!userId) throw new Error('syncAccountBalances requires a userId.');
+
   const uniqueIds = [...new Set(accountIds.filter(Boolean).map(String))].filter(
     (id) => mongoose.isValidObjectId(id)
   );
 
   await Promise.all(
     uniqueIds.map(async (accountId) => {
-      const account = await Account.findById(accountId).select('initial_balance');
+      const account = await Account.findOne({
+        _id: accountId,
+        user_id: userId,
+      }).select('initial_balance');
       if (!account) return;
 
       const [result] = await Transaction.aggregate([
         {
           $match: {
             account_id: new mongoose.Types.ObjectId(accountId),
+            user_id: new mongoose.Types.ObjectId(String(userId)),
             is_deleted: { $ne: true },
           },
         },
@@ -541,7 +570,10 @@ const syncAccountBalances = async (accountIds = []) => {
           (result?.expense || 0)
         ).toFixed(2)
       );
-      await Account.findByIdAndUpdate(accountId, { $set: { current_balance: balance } });
+      await Account.updateOne(
+        { _id: accountId, user_id: userId },
+        { $set: { current_balance: balance } }
+      );
     })
   );
 };
@@ -637,7 +669,7 @@ const processRecurringForUser = async (userId) => {
 
   if (created > 0) {
     await syncUserBalance(userId);
-    await syncAccountBalances([...affectedAccountIds]);
+    await syncAccountBalances(userId, [...affectedAccountIds]);
   }
   return created;
 };
@@ -1052,9 +1084,13 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
       });
     }
 
+    // `{ $ne: true }` (not `false`) for consistency with every other query in the
+    // codebase: documents created before `is_deleted` existed have the field
+    // missing, so `false` silently hid them from listings while balances and
+    // exports still counted them.
     const query = {
       user_id: req.params.userId,
-      is_deleted: false,
+      is_deleted: { $ne: true },
     };
 
     if (cursorObj) {
@@ -1085,7 +1121,7 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
     if (req.query.total === 'true' || req.query.include_total === 'true') {
       responsePayload.total = await Transaction.countDocuments({
         user_id: req.params.userId,
-        is_deleted: false,
+        is_deleted: { $ne: true },
       });
     }
 
@@ -1174,9 +1210,12 @@ router.post('/', async (req, res) => {
     const balance = await adjustUserBalanceIncrementally(req.userId, signedAmount);
     if (transaction.account_id) {
       const accountDelta = transaction.type === 'income' ? transaction.amount : -transaction.amount;
-      await Account.findByIdAndUpdate(transaction.account_id, {
-        $inc: { current_balance: Math.round(accountDelta * 100) / 100 },
-      });
+      // Scoped by user_id: `account_id` is ownership-verified above, but the
+      // filter keeps the write safe even if that check ever regresses.
+      await Account.updateOne(
+        { _id: transaction.account_id, user_id: req.userId },
+        { $inc: { current_balance: Math.round(accountDelta * 100) / 100 } }
+      );
     }
 
     return res.status(201).json({ transaction, balance, message: 'Transaction added' });
@@ -1288,20 +1327,27 @@ router.put('/:id', async (req, res) => {
       const newAccSigned = t.type === 'income' ? t.amount : -t.amount;
       const accDelta = Math.round((newAccSigned - oldAccSigned) * 100) / 100;
       if (accDelta !== 0) {
-        await Account.findByIdAndUpdate(oldAccId, { $inc: { current_balance: accDelta } });
+        await Account.updateOne(
+          { _id: oldAccId, user_id: req.userId },
+          { $inc: { current_balance: accDelta } }
+        );
       }
     } else {
       if (oldAccId) {
         const oldAccSigned = oldType === 'income' ? oldAmount : -oldAmount;
-        await Account.findByIdAndUpdate(oldAccId, {
-          $inc: { current_balance: Math.round(-oldAccSigned * 100) / 100 },
-        });
+        // SECURITY: the PREVIOUS account id comes from the stored document and
+        // was never ownership-checked, so it must be scoped here.
+        await Account.updateOne(
+          { _id: oldAccId, user_id: req.userId },
+          { $inc: { current_balance: Math.round(-oldAccSigned * 100) / 100 } }
+        );
       }
       if (newAccId) {
         const newAccSigned = t.type === 'income' ? t.amount : -t.amount;
-        await Account.findByIdAndUpdate(newAccId, {
-          $inc: { current_balance: Math.round(newAccSigned * 100) / 100 },
-        });
+        await Account.updateOne(
+          { _id: newAccId, user_id: req.userId },
+          { $inc: { current_balance: Math.round(newAccSigned * 100) / 100 } }
+        );
       }
     }
 
@@ -1339,9 +1385,12 @@ router.delete('/:id', async (req, res) => {
     const balance = await adjustUserBalanceIncrementally(req.userId, -oldSigned);
     if (t.account_id) {
       const accDelta = t.type === 'income' ? -t.amount : t.amount;
-      await Account.findByIdAndUpdate(t.account_id, {
-        $inc: { current_balance: Math.round(accDelta * 100) / 100 },
-      });
+      // Scoped by user_id: `t.account_id` is attacker-influenceable via backup
+      // import, so an unscoped write could touch another tenant's account.
+      await Account.updateOne(
+        { _id: t.account_id, user_id: req.userId },
+        { $inc: { current_balance: Math.round(accDelta * 100) / 100 } }
+      );
     }
 
     return res.json({ balance, message: 'Transaction deleted' });
@@ -1385,7 +1434,7 @@ router.post('/bulk-delete', async (req, res) => {
 
     // ── Refresh balances ──
     const balance = await syncUserBalance(req.userId);
-    await syncAccountBalances(affectedAccountIds);
+    await syncAccountBalances(req.userId, affectedAccountIds);
 
     return res.json({
       balance,

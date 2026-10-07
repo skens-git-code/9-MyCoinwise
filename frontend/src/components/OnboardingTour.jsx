@@ -18,9 +18,10 @@
  *   - Step dots below the body indicate progress.
  * ————————————————————————————————————— */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
   Sparkles, Search, PlusCircle, TrendingUp,
   X, ArrowRight
@@ -62,6 +63,10 @@ const STEPS = [
  * Component
  * ————————————————————————————————————— */
 export default function OnboardingTour({ isOpen, onClose }) {
+  // ── Panel ref for the shared focus trap (declared before any early return) ──
+  const cardRef = useRef(null);
+
+  useFocusTrap({ isOpen, onClose: () => handleSkipRef.current?.(), containerRef: cardRef });
   // ── Currently displayed step index ──
   const [currentStep, setCurrentStep] = useState(0);
 
@@ -87,16 +92,27 @@ export default function OnboardingTour({ isOpen, onClose }) {
     onClose();
   };
 
+  // Escape must go through the same "skip" path so completion is recorded the
+  // same way; a ref keeps the focus-trap callback above stable.
+  const handleSkipRef = useRef(handleSkip);
+  handleSkipRef.current = handleSkip;
+
   const modalContent = (
     <AnimatePresence>
       {isOpen && (
-        /* ── Backdrop: click to skip, fixed to body with highest modal z-index ── */
+        /* ── Backdrop ──
+           Clicking the backdrop no longer skips the tour. `handleSkip` writes
+           `mcw-onboarding-completed` permanently, so a single stray tap (a
+           mis-tap on a phone, or an outside click while reaching for Next)
+           silently disabled onboarding forever. There are two explicit controls
+           — the X button and the "Skip Tour" button — so the destructive action
+           now requires an intentional tap. */
         <motion.div
           className="shortcuts-backdrop onboarding-tour-backdrop"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={handleSkip}
+          aria-hidden="true"
           style={{
             zIndex: 'var(--z-onboarding, 1100)',
             position: 'fixed',
@@ -105,11 +121,16 @@ export default function OnboardingTour({ isOpen, onClose }) {
         >
           {/* ── Tour card ── */}
           <motion.div
+            ref={cardRef}
+            tabIndex={-1}
             className="shortcuts-modal glass onboarding-tour-card"
             initial={{ opacity: 0, scale: 0.92, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 20 }}
             onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="onboarding-tour-title"
             style={{
               maxWidth: 'min(480px, calc(100vw - 32px))',
               maxHeight: 'min(580px, calc(100dvh - 32px))',
@@ -137,7 +158,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
                 style={{
                   position: 'absolute', top: 12, right: 12, background: 'none', border: 'none',
                   color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'inline-flex',
-                  alignItems: 'center', justifyContent: 'center', minWidth: '32px', minHeight: '32px'
+                  alignItems: 'center', justifyContent: 'center', minWidth: '44px', minHeight: '44px'
                 }}
                 aria-label="Skip tour"
               >
@@ -154,7 +175,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
               </div>
 
               {/* ── Step title ── */}
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+              <h3 id="onboarding-tour-title" style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
                 {step.title}
               </h3>
             </div>

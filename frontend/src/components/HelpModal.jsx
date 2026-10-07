@@ -17,8 +17,9 @@
  *   - Backdrop click closes the modal; the modal stops propagation.
  * ————————————————————————————————————— */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
   HelpCircle, Search, X, BookOpen, ShieldCheck, Zap,
   CreditCard, Target, TrendingUp, Key, ChevronRight, MessageSquare
@@ -98,6 +99,18 @@ export default function HelpModal({ isOpen, onClose }) {
   }, [searchTerm]);
 
   // ── Render nothing when closed ──
+  // ── Panel ref for the shared focus trap ──
+  // Must be declared before the early return so hook order stays stable.
+  const panelRef = useRef(null);
+
+  useFocusTrap({
+    isOpen,
+    onClose,
+    containerRef: panelRef,
+    // Preserve the previous behaviour of landing on the search box.
+    initialFocusSelector: 'input',
+  });
+
   if (!isOpen) return null;
 
   return (
@@ -112,21 +125,27 @@ export default function HelpModal({ isOpen, onClose }) {
       >
         {/* ── Modal panel: stops propagation so clicks inside stay inside ── */}
         <motion.div
+          ref={panelRef}
+          tabIndex={-1}
           className="shortcuts-modal glass help-modal-box"
           initial={{ opacity: 0, scale: 0.94, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 16 }}
           onClick={e => e.stopPropagation()}
           style={{ maxWidth: '640px' }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="help-modal-title"
         >
           {/* ── Header: title and close button ── */}
           <div className="shortcuts-header">
             <div className="shortcuts-title-row">
               <HelpCircle size={22} className="shortcuts-icon text-brand" />
-              <h3>Help Center & FAQ Knowledge Base</h3>
+              <h3 id="help-modal-title">Help Center & FAQ Knowledge Base</h3>
             </div>
-            <button className="shortcuts-close-btn" onClick={onClose}>
-              <X size={18} />
+            {/* Icon-only control: needs an accessible name. */}
+            <button type="button" className="shortcuts-close-btn" onClick={onClose} aria-label="Close help">
+              <X size={18} aria-hidden />
             </button>
           </div>
 
@@ -134,17 +153,29 @@ export default function HelpModal({ isOpen, onClose }) {
           <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--glass-border)', background: 'var(--glass-2)' }}>
             <div className="il-search" style={{ width: '100%' }}>
               <Search size={16} />
+              {/* `autoFocus` removed: the focus trap now controls initial focus,
+                  and the inline `outline: 'none'` was destroying the global
+                  :focus-visible ring (an inline style outranks any stylesheet,
+                  so no CSS rule could restore it). */}
               <input
+                type="search"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 placeholder="Search knowledge base articles..."
-                autoFocus
-                style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '0.88rem' }}
+                aria-label="Search knowledge base articles"
+                enterKeyHint="search"
+                inputMode="search"
+                style={{ width: '100%', background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: '0.88rem' }}
               />
               {/* ── Clear button (only shown when there is a query) ── */}
               {searchTerm && (
-                <button onClick={() => setSearchTerm('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                  <X size={14} />
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  aria-label="Clear search"
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                >
+                  <X size={14} aria-hidden />
                 </button>
               )}
             </div>

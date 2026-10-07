@@ -10,7 +10,9 @@ import {
   Trash2,
   Lock,
   Mail,
+  Cookie,
 } from 'lucide-react';
+import Footer from '../components/Footer';
 
 export default function Privacy() {
   const navigate = useNavigate();
@@ -300,7 +302,38 @@ export default function Privacy() {
               </a>.
             </p>
           </section>
+
+          {/* Section 6 */}
+          <section>
+            <h2
+              style={{
+                fontSize: '1.25rem',
+                fontWeight: 700,
+                color: 'var(--text-primary, #f1f5f9)',
+                marginBottom: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <Cookie size={18} color="#38bdf8" />
+              6. Analytics & Microsoft Clarity (Opt-in Only)
+            </h2>
+            <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.9375rem', marginBottom: '0.75rem' }}>
+              We use <strong>Microsoft Clarity</strong> to analyze application usability, diagnose navigation friction, and identify runtime exceptions. Clarity collects anonymous interaction metrics such as click heatmaps and session recordings.
+            </p>
+            <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.9375rem', marginBottom: '0.75rem' }}>
+              <strong>Strict Masking & Zero PII:</strong> Microsoft Clarity operates with strict masking enabled by default. Passwords, bank account credentials, exact transaction balances, and personalized text are masked before leaving your device. We do not sell or monetize this data.
+            </p>
+            <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.9375rem' }}>
+              <strong>How to Opt Out:</strong> Clarity will never execute or set cookies without your explicit consent. You can grant, deny, or revoke consent at any time via the <strong>Cookie preferences</strong> link in the site footer or under <strong>Settings &gt; Data &amp; Security</strong>. If you revoke consent, Clarity is immediately halted and all tracking cookies (<code style={{ color: '#38bdf8' }}>_clck</code>, <code style={{ color: '#38bdf8' }}>_clsk</code>) are deleted. If your browser broadcasts a <strong>Do Not Track (DNT)</strong> header, Clarity is blocked automatically.
+            </p>
+          </section>
         </motion.div>
+
+        <div style={{ marginTop: '2.5rem' }}>
+          <Footer />
+        </div>
       </div>
     </div>
   );

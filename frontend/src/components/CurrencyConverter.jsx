@@ -499,13 +499,13 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
                   <input
                     id="amount-input"
                     type="text"
-                    inputMode="decimal"
                     value={amount}
                     onChange={handleAmountChange}
                     placeholder="Enter amount..."
                     style={{ fontSize: '1.2rem', fontWeight: 700 }}
                     autoFocus
                     aria-label="Amount to convert"
+                    inputMode="decimal"
                   />
                 </div>
 
