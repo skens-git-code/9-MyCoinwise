@@ -168,6 +168,7 @@ ${colors.cyan}${colors.bright}==================================================
     cwd: FRONTEND_DIR,
     env: { ...process.env, VITE_API_URL: process.env.VITE_API_URL || `http://localhost:${BACKEND_PORT}/api` },
     stdio: ['inherit', 'pipe', 'pipe'],
+    shell: true,
   });
 
   let browserOpened = false;

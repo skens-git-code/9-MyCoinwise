@@ -8,7 +8,7 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const compression = require('compression');
-const { v4: uuidv4 } = require('uuid'); // Install with: npm install uuid
+const { randomUUID: uuidv4 } = require('crypto');
 const { logger } = require('./utils/logger');
 const { mongoose, connectToMongo } = require('./db');
 
