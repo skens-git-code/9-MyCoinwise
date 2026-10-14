@@ -23,7 +23,8 @@
  *   STARTUP_TIMEOUT  ms to wait for readiness (default 60000)
  */
 
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const net = require('net');
@@ -110,6 +111,69 @@ function viteEntry() {
   return path.join(FRONTEND_DIR, 'node_modules', 'vite', 'bin', 'vite.js');
 }
 
+/**
+ * Check that installable dependencies are present before spawning children.
+ *
+ * A missing `frontend/node_modules/vite` previously surfaced as a cryptic
+ * `Cannot find module .../vite/bin/vite.js` crash AFTER the launcher printed
+ * "Starting...". Fail fast here with the exact fix instead.
+ *
+ * @returns {string[]} Names of workspaces with missing dependencies.
+ */
+function checkDependencies() {
+  const missing = [];
+  if (!fs.existsSync(path.join(BACKEND_DIR, 'node_modules'))) missing.push('backend');
+  if (!fs.existsSync(viteEntry())) missing.push('frontend');
+  return missing;
+}
+
+/**
+ * Bootstrap `backend/.env` from `.env.example` on a fresh clone.
+ *
+ * The example file is the only env file shipped (real `.env` files are
+ * gitignored), so without this step the backend always died in envalid with
+ * "Missing environment variables: JWT_SECRET, MONGO_URI". Required keys are
+ * overridden with safe LOCAL-DEV values and a freshly generated JWT secret;
+ * everything else is copied verbatim. Never touches an existing file.
+ *
+ * @returns {boolean} True when a new file was created.
+ */
+function ensureBackendEnv() {
+  const envPath = path.join(BACKEND_DIR, '.env');
+  if (fs.existsSync(envPath)) return false;
+
+  let content = '';
+  try {
+    content = fs.readFileSync(path.join(BACKEND_DIR, '.env.example'), 'utf8');
+  } catch {
+    content = '';
+  }
+
+  const secret = require('crypto').randomBytes(32).toString('base64');
+  const overrides = {
+    NODE_ENV: 'development',
+    JWT_SECRET: secret,
+    MONGO_URI: 'mongodb://127.0.0.1:27017/MyCoinwise',
+    CLIENT_URL: 'http://localhost:5173',
+    FRONTEND_URL: 'http://localhost:5173',
+  };
+
+  const seen = new Set();
+  const out = content.split('\n').map((line) => {
+    const m = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=/);
+    if (m && Object.prototype.hasOwnProperty.call(overrides, m[1])) {
+      seen.add(m[1]);
+      return `${m[1]}=${overrides[m[1]]}`;
+    }
+    return line;
+  });
+  for (const [key, value] of Object.entries(overrides)) {
+    if (!seen.has(key)) out.push(`${key}=${value}`);
+  }
+
+  fs.writeFileSync(envPath, out.join('\n'), { mode: 0o600 });
+  return true;
+}
 /**
  * Probe an HTTP endpoint once.
  *
@@ -336,6 +400,25 @@ ${colors.cyan}${colors.bright}==================================================
      ${colors.dim}PORT=6001 FRONTEND_PORT=6173 node start.js${colors.reset}
 `);
     process.exit(1);
+  }
+
+  // 0b. Dependency pre-flight: fail fast with the exact fix instead of
+  // crashing a child later with "Cannot find module .../vite/bin/vite.js".
+  const missingDeps = checkDependencies();
+  if (missingDeps.length > 0) {
+    console.log(`${colors.red}${colors.bright}✗ Cannot start: dependencies missing in: ${missingDeps.join(', ')}${colors.reset}`);
+    console.log(`
+    Install them once, then re-run:
+      ${colors.dim}npm run install:all${colors.reset}
+`);
+    process.exit(1);
+  }
+
+  // 0c. Env pre-flight: a fresh clone ships no backend/.env (it is gitignored),
+  // which previously killed the backend in envalid every time. Bootstrap safe
+  // local-dev defaults once; never touches an existing file.
+  if (ensureBackendEnv()) {
+    log('LAUNCHER', colors.green, 'No backend/.env found — created one with local-dev defaults (see backend/.env.example for options).');
   }
 
   // 1. Backend

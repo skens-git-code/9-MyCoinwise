@@ -111,7 +111,7 @@ export const ToastProvider = ({ children }) => {
           alignItems: 'flex-end',
           gap: 12,
           width: '100%',
-          maxWidth: 420,
+          maxWidth: 'min(420px, calc(100vw - 32px))',
           paddingTop: 'calc(env(safe-area-inset-top, 0px) + 20px)',
           paddingRight: 'max(20px, env(safe-area-inset-right, 20px))',
           paddingBottom: '20px',

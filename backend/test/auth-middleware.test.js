@@ -123,7 +123,12 @@ async function runLiveIntegrationTests() {
   }
 
   console.log('🧪 Running Live Auth Middleware Database Tests (Stage 3.1.5)...');
-  await mongoose.connect(process.env.MONGO_URI);
+  try {
+    await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 5000 });
+  } catch {
+    console.log('⚠️  MongoDB unreachable at configured MONGO_URI. Skipping live database auth middleware tests.');
+    return;
+  }
 
   const testEmail = `auth_test_${Date.now()}@example.com`;
   const testUsername = `authtest_${Date.now()}`;

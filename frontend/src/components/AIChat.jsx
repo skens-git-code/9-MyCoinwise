@@ -22,21 +22,34 @@ import { api } from '../services/api';
  * Component
  * ————————————————————————————————————— */
 const AIChat = () => {
+  const [messageId, setMessageId] = useState(1);
   // ── Message list, seeded with the assistant's greeting ──
   const [messages, setMessages] = useState([
-    { role: 'ai', text: 'Hello! I am your MyCoinwise assistant. How can I help you understand your finances today?' }
+    { id: 0, role: 'ai', text: 'Hello! I am your MyCoinwise assistant. How can I help you understand your finances today?' }
   ]);
 
   // ── Current input value and in-flight loading flag ──
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const abortRef = useRef(null);
+  const listRef = useRef(null);
 
   // ── Ref to the sentinel element at the end of the message list ──
   const endOfMessagesRef = useRef(null);
 
   // ── Scroll to the newest message whenever messages change ──
+  // Respects reduced-motion and never yanks the user away from history:
+  // only auto-scroll when already near the bottom.
   useEffect(() => {
-    endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
+    try {
+      const list = listRef.current;
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+      if (list) {
+        const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 160;
+        if (!nearBottom) return;
+      }
+      endOfMessagesRef.current?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+    } catch { /* best effort */ }
   }, [messages]);
 
   /* —————————————————————————————————————
@@ -49,9 +62,11 @@ const AIChat = () => {
     e?.preventDefault();
 
     // ── Guard: empty input or a request already in flight ──
-    if (!input.trim() || isLoading) return;
+    const trimmed = input.trim().slice(0, 2000);
+    if (!trimmed || isLoading) return;
 
-    const userMessage = { role: 'user', text: input.trim() };
+    const userMessage = { id: messageId, role: 'user', text: trimmed };
+    setMessageId((v) => v + 1);
 
     // Snapshot history before appending the new user message, so the
     // API receives the conversation up to (but not including) this turn.
@@ -61,12 +76,16 @@ const AIChat = () => {
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       // ── Send to the backend and append the reply ──
       const res = await api.chatWithAI(userMessage.text, chatHistory);
-      setMessages((prev) => [...prev, { role: 'ai', text: res.text }]);
+      setMessages((prev) => [...prev, { id: messageId + 1, role: 'ai', text: res.text }]);
+      setMessageId((v) => v + 1);
     } catch (error) {
+      if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return;
       console.error('Chat Error:', error);
 
       // ── Extract status and server message from the error ──
@@ -90,20 +109,24 @@ const AIChat = () => {
       }
 
       // ── Append the error/warning bubble ──
-      setMessages((prev) => [...prev, { role: 'ai', text: errMsg, isError: !isRateLimit, isWarning: isRateLimit }]);
+      setMessages((prev) => [...prev, { id: messageId + 1, role: 'ai', text: errMsg, isError: !isRateLimit, isWarning: isRateLimit }]);
+      setMessageId((v) => v + 1);
     } finally {
       // ── Always clear the loading state ──
+      if (abortRef.current === controller) abortRef.current = null;
       setIsLoading(false);
     }
-  }, [input, isLoading, messages]);
+  }, [input, isLoading, messages, messageId]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   return (
     <div className="ai-chat-container">
       {/* ── Message list ── */}
-      <div className="ai-chat-messages">
-        {messages.map((msg, idx) => (
+      <div className="ai-chat-messages" ref={listRef}>
+        {messages.map((msg) => (
           <div
-            key={idx}
+            key={msg.id ?? `${msg.role}-${msg.text?.slice(0, 24)}`}
             className={`chat-bubble ${msg.role === 'user' ? 'user-msg' : 'ai-msg'} ${msg.isError ? 'error-msg' : ''} ${msg.isWarning ? 'warning-msg' : ''}`}
           >
             {/* ── Bubble icon (user vs. AI) ── */}
@@ -139,10 +162,14 @@ const AIChat = () => {
 
       {/* ── Input row: text field and send button ── */}
       <form className="ai-chat-input-area" onSubmit={handleSend}>
+        <label htmlFor="ai-chat-input" className="sr-only">Ask a financial question</label>
         <input
+          id="ai-chat-input"
           type="text"
           placeholder="Ask a financial question..."
+          aria-label="Ask a financial question"
           value={input}
+          maxLength={2000}
           onChange={(e) => setInput(e.target.value)}
           disabled={isLoading}
         />

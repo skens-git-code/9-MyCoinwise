@@ -4669,10 +4669,30 @@ textarea:focus-visible {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   margin-bottom: var(--space-4);
+  border-left: 3px solid currentColor;
 
   svg {
     flex-shrink: 0;
   }
+}
+
+/* Alert modifiers by kind */
+.auth-alert-network {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #b45309;
+}
+
+.auth-alert-rate {
+  background: rgba(59, 130, 246, 0.10);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #1d4ed8;
+}
+
+.auth-alert-unknown {
+  background: rgba(var(--danger-rgb), 0.1);
+  border-color: rgba(var(--danger-rgb), 0.25);
+  color: var(--danger);
 }
 
 /* Form */

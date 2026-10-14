@@ -8,7 +8,7 @@
  * - Project ID loaded via VITE_CLARITY_PROJECT_ID. Missing/empty logs a single warning and does not throw.
  * - Guards against double-injection.
  * - Respects Do Not Track: if DNT is active ("1"), Clarity never loads regardless of consent.
- * - Gated on production (import.meta.env.PROD), does not run in development by default.
+ * - Does NOT auto-load on page init — Clarity only loads after the user explicitly accepts via the Cookie Banner.
  * - Zero PII sent; strict masking enforced.
  */
 
@@ -46,7 +46,7 @@ export function getCookieConsent() {
       return val;
     }
     return null;
-  } catch (_) {
+  } catch {
     return null;
   }
 }
@@ -102,7 +102,7 @@ export function stopClarity() {
       window.clarity('consent', false);
       window.clarity('stop');
     }
-  } catch (_) {
+  } catch {
     // Ignore internal errors when stopping
   }
 
@@ -125,13 +125,15 @@ export function stopClarity() {
 }
 
 /**
- * Initialize Microsoft Clarity dynamically after consent is verified.
+ * EXPLICITLY initialize Microsoft Clarity after user consent is verified.
+ * This should ONLY be called from the UI after the user clicks "Accept".
+ * Do NOT call on app startup — this would trigger Brave Shields/tracker blockers.
  * 
  * @param {Object} [options]
  * @param {boolean} [options.forceDev] - Allow loading in dev environment for testing
  * @returns {boolean} Whether Clarity was successfully scheduled/initialized
  */
-export function initClarity(options = {}) {
+export function loadClarityAfterConsent(options = {}) {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return false;
   }
@@ -139,11 +141,13 @@ export function initClarity(options = {}) {
   // 1. Consent Gate: Must be explicitly "accepted"
   const consent = getCookieConsent();
   if (consent !== 'accepted') {
+    console.info('[Clarity] Skipping load: consent not yet accepted.');
     return false;
   }
 
   // 2. Do Not Track Gate: Never load if DNT is active
   if (isDoNotTrack()) {
+    console.info('[Clarity] Skipping load: Do Not Track is enabled.');
     return false;
   }
 
@@ -151,6 +155,7 @@ export function initClarity(options = {}) {
   const isProd = import.meta.env.PROD;
   const allowDev = Boolean(options.forceDev || window.__FORCE_CLARITY__);
   if (!isProd && !allowDev) {
+    console.info('[Clarity] Skipping load: Clarity does not run in development by default.');
     return false;
   }
 
@@ -189,10 +194,11 @@ export function initClarity(options = {}) {
   // 7. Confirm consent to Clarity API and ensure default strict masking
   try {
     window.clarity('consent', true);
-  } catch (_) {
+  } catch {
     // Non-blocking
   }
 
+  console.info('[Clarity] Loaded after explicit user consent.');
   return true;
 }
 
@@ -213,7 +219,7 @@ export function setCookieConsent(status) {
     } else {
       localStorage.removeItem(COOKIE_CONSENT_KEY);
     }
-  } catch (_) {
+  } catch {
     // Restricted storage environment (e.g. private Safari quota)
   }
 
@@ -224,12 +230,12 @@ export function setCookieConsent(status) {
         detail: { status },
       })
     );
-  } catch (_) {
+  } catch {
     // Ignore in older environments
   }
 
   if (status === 'accepted') {
-    initClarity();
+    loadClarityAfterConsent();
   } else if (status === 'rejected') {
     stopClarity();
   }
@@ -242,7 +248,7 @@ export function openCookiePreferences() {
   if (typeof window === 'undefined') return;
   try {
     window.dispatchEvent(new CustomEvent('open-cookie-preferences'));
-  } catch (_) {
+  } catch {
     // Ignore
   }
 }

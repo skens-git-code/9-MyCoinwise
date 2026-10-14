@@ -263,6 +263,14 @@ app.use(
   express.json({ limit: BULK_BODY_LIMIT })
 );
 
+// Public utility routers: no auth on purpose (rates are public data; error
+// reports are needed most when auth itself is broken). apiLimiter still
+// applies. These are also the tracker-safe first-party surface: browsers
+// with Shields/ad-blockers talk only to our own API host, never directly
+// to third-party analytics, error-ingest, or rate-provider hosts.
+app.use('/api/currency', apiLimiter, require('./routes/currency'));
+app.use('/api/telemetry', apiLimiter, require('./routes/telemetry'));
+
 // Protected routers: apiLimiter (cheap, IP-level) → auth (JWT + session) → writeLimiter (mutations).
 app.use('/api/users', apiLimiter, auth, writeLimiter, require('./routes/users'));
 app.use('/api/transactions', apiLimiter, auth, writeLimiter, require('./routes/transactions'));

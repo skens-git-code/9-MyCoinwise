@@ -343,6 +343,10 @@ export default function Register() {
       usernameAbortRef.current = controller;
       try {
         const result = await api.checkUsername(username, { signal: controller.signal });
+        if (result?.error || result?.available === null || result?.available === undefined) {
+          setUsernameStatus('error');
+          return;
+        }
         const available = result?.available !== false;
         setUsernameStatus(available ? 'available' : 'taken');
       } catch (err) {
@@ -1166,7 +1170,7 @@ export default function Register() {
                       await api.resendVerification(registeredEmail);
                       setResendSent(true);
                     } catch {
-                      setResendSent(true);
+                      setResendSent(false);
                     }
                   }}
                   style={{ width: '100%', fontSize: '0.85rem' }}

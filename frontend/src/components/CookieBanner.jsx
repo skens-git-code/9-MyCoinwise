@@ -14,15 +14,26 @@ import {
  * focus management, portal rendering, accessibility, and animations.
  */
 export function CookiePreferencesModal({ isOpen, onClose }) {
-  const [currentConsent, setCurrentConsent] = useState(() => getCookieConsent());
-  const [dntActive, setDntActive] = useState(() => isDoNotTrack());
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Cookie & Privacy Preferences"
+    >
+      {/* Mounted only while open: consent/DNT are read fresh on every open
+          via lazy initializers, with no effect-driven setState. */}
+      {isOpen && <CookiePreferencesBody onClose={onClose} />}
+    </Modal>
+  );
+}
 
-  useEffect(() => {
-    if (isOpen) {
-      setCurrentConsent(getCookieConsent());
-      setDntActive(isDoNotTrack());
-    }
-  }, [isOpen]);
+/**
+ * Preferences body, remounted on every open so its state always reflects
+ * the latest stored consent without syncing effects.
+ */
+function CookiePreferencesBody({ onClose }) {
+  const [currentConsent, setCurrentConsent] = useState(() => getCookieConsent());
+  const [dntActive] = useState(() => isDoNotTrack());
 
   const handleSelect = (choice) => {
     setCookieConsent(choice);
@@ -31,11 +42,6 @@ export function CookiePreferencesModal({ isOpen, onClose }) {
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Cookie & Privacy Preferences"
-    >
       <div className="cookie-preferences-content" style={{ color: 'var(--text-primary, #f1f5f9)' }}>
         {/* DNT Notice */}
         {dntActive && (
@@ -168,7 +174,6 @@ export function CookiePreferencesModal({ isOpen, onClose }) {
           </button>
         </div>
       </div>
-    </Modal>
   );
 }
 
@@ -255,7 +260,7 @@ export default function CookieBanner() {
               zIndex: 9999,
               right: '16px',
               left: '16px',
-              maxWidth: '460px',
+              maxWidth: 'min(460px, calc(100vw - 32px))',
               marginLeft: 'auto',
               bottom: hasMobileDock
                 ? 'calc(88px + env(safe-area-inset-bottom, 0px))'

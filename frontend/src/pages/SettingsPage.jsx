@@ -1959,9 +1959,9 @@ UsersTab.propTypes = {
 /* ============================================================
  * Cookie & Analytics Preferences section
  * ============================================================ */
-const CookieSettingsSection = React.memo(({ showMessage, t }) => {
+const CookieSettingsSection = React.memo(({ showMessage }) => {
   const [consent, setConsent] = useState(() => getCookieConsent());
-  const [dnt, setDnt] = useState(() => isDoNotTrack());
+  const [dnt] = useState(() => isDoNotTrack());
 
   useEffect(() => {
     const handleChange = (e) => {
@@ -2112,7 +2112,7 @@ const DataTab = React.memo(({ setModals, handleExcelExport, handlePDFExport, exc
       </div>
 
       {/* ── Cookie & Analytics Preferences ── */}
-      <CookieSettingsSection showMessage={showMessage} t={t} />
+      <CookieSettingsSection showMessage={showMessage} />
 
       {/* ── Danger zone: factory reset ── */}
       <div

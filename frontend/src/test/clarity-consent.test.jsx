@@ -1,15 +1,14 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import {
   COOKIE_CONSENT_KEY,
   CLARITY_SCRIPT_ID,
   getCookieConsent,
   setCookieConsent,
   isDoNotTrack,
-  initClarity,
+  loadClarityAfterConsent,
   stopClarity,
-  clearClarityCookies,
 } from '../services/clarity';
 import CookieBanner from '../components/CookieBanner';
 
@@ -38,7 +37,7 @@ describe('Microsoft Clarity Cookie Consent Gate & Loader', () => {
     expect(getCookieConsent()).toBeNull();
     expect(localStorage.getItem(COOKIE_CONSENT_KEY)).toBeNull();
     // Attempting to init Clarity without consent must return false
-    const loaded = initClarity({ forceDev: true });
+    const loaded = loadClarityAfterConsent({ forceDev: true });
     expect(loaded).toBe(false);
     expect(document.getElementById(CLARITY_SCRIPT_ID)).toBeNull();
   });
@@ -48,7 +47,7 @@ describe('Microsoft Clarity Cookie Consent Gate & Loader', () => {
     expect(getCookieConsent()).toBe('rejected');
     expect(localStorage.getItem(COOKIE_CONSENT_KEY)).toBe('rejected');
 
-    const loaded = initClarity({ forceDev: true });
+    const loaded = loadClarityAfterConsent({ forceDev: true });
     expect(loaded).toBe(false);
     expect(document.getElementById(CLARITY_SCRIPT_ID)).toBeNull();
   });
@@ -64,7 +63,7 @@ describe('Microsoft Clarity Cookie Consent Gate & Loader', () => {
     });
     expect(isDoNotTrack()).toBe(true);
 
-    const loaded = initClarity({ forceDev: true });
+    const loaded = loadClarityAfterConsent({ forceDev: true });
     expect(loaded).toBe(false);
     expect(document.getElementById(CLARITY_SCRIPT_ID)).toBeNull();
 

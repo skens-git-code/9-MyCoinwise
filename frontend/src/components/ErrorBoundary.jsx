@@ -37,9 +37,21 @@ class ErrorBoundary extends React.Component {
 
   // ── Capture and log error details when a child throws ──
   componentDidCatch(error, errorInfo) {
-    this.setState({ error, errorInfo });
+    this.setState({ error, errorInfo, requestId: this.getRequestId() });
     console.error("ErrorBoundary caught an error:", error, errorInfo);
   }
+
+  getRequestId = () => {
+    try {
+      return (
+        document?.querySelector('meta[name="request-id"]')?.getAttribute('content') ||
+        window?.__LAST_REQUEST_ID__ ||
+        null
+      );
+    } catch {
+      return null;
+    }
+  };
 
   // ── Auto-reset when any resetKeys entry changes ──
   componentDidUpdate(prevProps) {
@@ -89,7 +101,7 @@ class ErrorBoundary extends React.Component {
 
           {this.state.error && (
             <div style={{
-              maxWidth: 640,
+              maxWidth: 'min(640px, calc(100vw - 32px))',
               width: '100%',
               margin: '0 auto 24px auto',
               padding: '12px 16px',
@@ -103,15 +115,20 @@ class ErrorBoundary extends React.Component {
               overflowX: 'auto',
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
-            }}>
-              {this.state.error.message || String(this.state.error)}
+            }}
+              role="status"
+            >
+              {import.meta.env.PROD
+                ? `Something went wrong while rendering this view.${this.state.requestId ? ` Reference: ${this.state.requestId}` : ' Please try again or reload.'}`
+                : (this.state.error.message || String(this.state.error))}
             </div>
           )}
 
           {/* ── Recovery actions ── */}
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
-            <button 
+            <button
               type="button"
+              autoFocus
               onClick={this.handleReset}
               style={{ 
                 padding: '12px 24px', 

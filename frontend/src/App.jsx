@@ -181,7 +181,8 @@ export function formatCurrency(amount, currency = 'USD', localeOrLang = 'en-US')
   const isNeg = val < 0;
   const defaultLocale = currency === 'INR' ? 'en-IN' : 'en-US';
   const resolvedLocale = currency === 'INR' ? 'en-IN' : (LOCALE_MAP[localeOrLang] || localeOrLang || defaultLocale);
-  const numStr = Math.abs(val).toLocaleString(resolvedLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fractionDigits = Number.isInteger(info.fractionDigits) ? info.fractionDigits : 2;
+  const numStr = Math.abs(val).toLocaleString(resolvedLocale, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
   return `${isNeg ? '-' : ''}${info.symbol}${numStr}`;
 }
 
@@ -392,6 +393,10 @@ export default function App() {
   useEffect(() => {
     userRef.current = user;
   }, [user]);
+  const tRef = useRef(t);
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
 
   const lastAuthRedirectRef = useRef(0);
 
@@ -509,13 +514,13 @@ export default function App() {
       if (err.response?.status === 401) {
         logout();
       } else {
-        setGlobalError(t?.('sync_error') || "Failed to synchronize live data. Retrying in background...");
+        setGlobalError(tRef.current?.('sync_error') || "Failed to synchronize live data. Retrying in background...");
       }
     } finally {
       setIsInitialAuthLoad(false);
       setIsBackgroundSyncing(false);
     }
-  }, [token, logout, t]);
+  }, [token, logout]);
 
   useEffect(() => { fetchData(); }, [token]);
 
@@ -710,10 +715,10 @@ export default function App() {
                   <CookieBanner />
                   <Suspense fallback={<Loader />}>
                     <Routes>
-                      <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-                      <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
-                      <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" />} />
-                      <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" />} />
+                      <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
+                      <Route path="/register" element={!user ? <Register /> : <Navigate to="/" replace />} />
+                      <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" replace />} />
+                      <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" replace />} />
                       <Route path="/verify-email" element={<VerifyEmail />} />
                       <Route path="/terms" element={<Terms />} />
                       <Route path="/privacy" element={<Privacy />} />

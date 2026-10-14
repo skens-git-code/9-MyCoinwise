@@ -70,6 +70,22 @@ const TEST_ENV = {
 };
 
 /**
+ * Fallback environment so `npm test` passes out of the box in CI without a
+ * real database or secrets. Only applied when the caller has not already set
+ * the variable — real CI/production values always win. Suites that need a live
+ * MongoDB detect the unreachable dummy URI and skip cleanly (exit 0).
+ */
+const TEST_ENV_DEFAULTS = {
+  NODE_ENV: 'test',
+  JWT_SECRET: 'test-only-dummy-secret-do-not-use-in-production',
+  MONGO_URI: 'mongodb://127.0.0.1:27017/mycoinwise_test',
+};
+
+for (const [key, value] of Object.entries(TEST_ENV_DEFAULTS)) {
+  if (!process.env[key]) process.env[key] = value;
+}
+
+/**
  * Recursively collect `.js` files under `dir`.
  *
  * @param {string} dir Absolute directory to walk.

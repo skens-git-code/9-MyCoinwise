@@ -1,0 +1,115 @@
+// Project-ready responsive + consistency patch.
+// Loaded last so these rules win without `!important` arms races.
+@use 'variables' as *;
+
+// 1. Toasts / cookie banner never overflow tiny viewports.
+.toast-stack,
+[class*='toast'] {
+  max-width: min(420px, calc(100vw - 32px));
+}
+
+.cookie-banner-card {
+  max-width: min(460px, calc(100vw - 32px));
+}
+
+// 2. Converter popular-pairs grid collapses gracefully.
+.currency-converter-popular-grid,
+.converter-popular-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+
+  @media (max-width: 420px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+// 3. Form controls keep a usable minimum without forcing page scroll.
+select,
+input[type='text'],
+input[type='email'],
+input[type='password'],
+input[type='number'],
+input[type='date'] {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.account-select,
+.filter-select {
+  min-width: min(220px, 100%);
+}
+
+// 4. Period / filter bars wrap instead of overflowing on 320-380px screens.
+.period-bar,
+.filters-bar,
+.toolbar-row,
+.analytics-period-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+// 5. Wide statement/import tables scroll inside their card, never the page.
+.table-scroll,
+.statement-review-wrapper,
+.import-preview-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+// 6. Long budget names truncate with an accessible tooltip target.
+.budget-name,
+.goal-name,
+.tx-merchant {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+// 7. Screen-reader-only helper used by labelled chat + icon controls.
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+// 8. Media never causes cumulative layout shift on marketing pages.
+img {
+  &[loading='lazy'] {
+    height: auto;
+  }
+}
+
+// 9. Charts + modals respect small heights.
+.recharts-responsive-container,
+.chart-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 480px) {
+  .modal-panel,
+  .dialog-panel {
+    width: min(480px, calc(100vw - 24px));
+    margin-inline: auto;
+  }
+}
+
+// 10. Reduced-motion users get zero shimmer/animation from skeletons.
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  [class*='skeleton'],
+  [class*='shimmer'] {
+    animation: none;
+  }
+}

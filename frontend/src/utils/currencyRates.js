@@ -1,3 +1,5 @@
+import { API_URL } from '../services/api';
+
 const FALLBACK_RATES_TO_INR = Object.freeze({
   INR: 1,
   USD: 83.5,
@@ -39,26 +41,39 @@ export const readCachedRatesToInr = () => {
 };
 
 export const fetchRatesToInr = async (signal) => {
-  const response = await fetch('https://api.exchangerate-api.com/v4/latest/INR', { signal });
-  if (!response.ok) throw new Error(`Exchange-rate request failed: ${response.status}`);
-
-  const payload = await response.json();
-  const rates = Object.entries(payload?.rates || {}).reduce((result, [code, rate]) => {
-    const numericRate = Number(rate);
-    if (Number.isFinite(numericRate) && numericRate > 0) {
-      result[normalizeCurrency(code)] = 1 / numericRate;
+  // Tracker-safe order: our own first-party API first (never flagged by
+  // Brave Shields / ad-blockers), direct third-party provider as fallback.
+  const candidates = [
+    `${API_URL}/currency/rates?base=INR`,
+    'https://api.exchangerate-api.com/v4/latest/INR',
+  ];
+  let lastError = null;
+  for (const url of candidates) {
+    try {
+      const response = await fetch(url, { signal });
+      if (!response.ok) throw new Error(`Exchange-rate request failed: ${response.status}`);
+      const payload = await response.json();
+      const rates = parseRatesPayload(payload);
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ rates, timestamp: Date.now() }));
+      } catch {
+        // Cached rates are an optimization only.
+      }
+      return rates;
+    } catch (err) {
+      if (err?.name === 'AbortError' || signal?.aborted) throw err;
+      lastError = err;
     }
-    return result;
-  }, { INR: 1 });
-
-  if (Object.keys(rates).length <= 1) throw new Error('Exchange-rate response was empty.');
-
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ rates, timestamp: Date.now() }));
-  } catch {
-    // Cached rates are an optimization only.
   }
-  return rates;
+  throw lastError || new Error('Exchange-rate request failed.');
+};
+
+const parseRatesPayload = (payload) => {
+  // Parse the rates payload from the API response
+  if (!payload || !payload.rates) {
+    throw new Error('Invalid rates payload');
+  }
+  return payload.rates;
 };
 
 export const convertCurrency = (amount, fromCurrency, toCurrency, ratesToInr = FALLBACK_RATES_TO_INR) => {

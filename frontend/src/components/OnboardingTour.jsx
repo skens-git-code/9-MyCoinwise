@@ -18,7 +18,7 @@
  *   - Step dots below the body indicate progress.
  * ————————————————————————————————————— */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -65,10 +65,23 @@ const STEPS = [
 export default function OnboardingTour({ isOpen, onClose }) {
   // ── Panel ref for the shared focus trap (declared before any early return) ──
   const cardRef = useRef(null);
+  const handleSkipRef = useRef(null);
 
   useFocusTrap({ isOpen, onClose: () => handleSkipRef.current?.(), containerRef: cardRef });
   // ── Currently displayed step index ──
   const [currentStep, setCurrentStep] = useState(0);
+
+  // ── Skip the tour from any step and mark completion ──
+  const handleSkip = () => {
+    localStorage.setItem('mcw-onboarding-completed', 'true');
+    onClose();
+  };
+
+  // Escape must go through the same "skip" path so completion is recorded the
+  // same way; a ref keeps the focus-trap callback above stable.
+  useEffect(() => {
+    handleSkipRef.current = handleSkip;
+  });
 
   // ── SSR guard ──
   if (typeof document === 'undefined') return null;
@@ -85,17 +98,6 @@ export default function OnboardingTour({ isOpen, onClose }) {
       setCurrentStep(prev => prev + 1);
     }
   };
-
-  // ── Skip the tour from any step and mark completion ──
-  const handleSkip = () => {
-    localStorage.setItem('mcw-onboarding-completed', 'true');
-    onClose();
-  };
-
-  // Escape must go through the same "skip" path so completion is recorded the
-  // same way; a ref keeps the focus-trap callback above stable.
-  const handleSkipRef = useRef(handleSkip);
-  handleSkipRef.current = handleSkip;
 
   const modalContent = (
     <AnimatePresence>
