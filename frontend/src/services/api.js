@@ -111,9 +111,36 @@ apiClient.interceptors.response.use(
         }));
       }
     }
+    // Attach a user-friendly message so callers can render it directly
+    // instead of a generic "server failed".
+    error.userMessage = toUserErrorMessage(error);
     return Promise.reject(error);
   }
 );
+
+/* ─────────────────────────────────────
+ * Friendly error messages
+ * Maps HTTP/network failures to actionable text (429 retry, 413 too
+ * large, timeout/cold-start, validation detail passthrough).
+ * ───────────────────────────────────── */
+export const toUserErrorMessage = (err) => {
+  const status = err?.response?.status;
+  const serverMsg =
+    err?.response?.data?.error ||
+    err?.response?.data?.errors?.[0]?.msg ||
+    err?.response?.data?.message;
+  if (serverMsg && typeof serverMsg === 'string') {
+    if (status === 429) return `${serverMsg} Please wait a moment and try again.`;
+    return serverMsg;
+  }
+  if (status === 413) return 'That file is too large to save. Try a smaller import (under 10 MB).';
+  if (status === 429) return 'Too many requests. Please wait a moment and try again.';
+  if (err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message || '')) {
+    return 'The server is taking too long (it may be waking up). Please try again in a few seconds.';
+  }
+  if (!err?.response) return 'Could not reach the server. Check your connection and try again.';
+  return 'Something went wrong while saving. Please try again.';
+};
 
 /* ─────────────────────────────────────
  * Currency Map

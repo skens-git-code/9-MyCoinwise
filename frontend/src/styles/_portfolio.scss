@@ -21,8 +21,8 @@
   --c-surface: rgba(14, 15, 18, 0.90);
   --c-surface-solid: #0e1013;
   --c-surface-hover: rgba(24, 25, 30, 0.95);
-  --c-border: rgba(255, 255, 255, 0.14);
-  --c-border-hover: rgba(0, 212, 255, 0.50);
+  --c-border: rgba(255, 255, 255, 0.09);
+  --c-border-hover: rgba(0, 212, 255, 0.35);
 
   /* ── Accent & Gradient Tokens ── */
   --clr-primary: #00d4ff;
@@ -42,18 +42,18 @@
   --glass-border: var(--c-border);
   --glass-border-hover: var(--c-border-hover);
   --glass-shadow: 0 16px 48px rgba(0, 0, 0, 0.90);
-  --card-shadow: 0 16px 44px -8px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --card-shadow: 0 12px 36px -6px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 
   /* ── Navbar Specific Tokens ── */
   --nav-container-bg: rgba(10, 11, 14, 0.94);
   --nav-container-backdrop: blur(28px) saturate(190%);
-  --nav-container-border: rgba(0, 212, 255, 0.42);
-  --nav-container-ring: rgba(0, 212, 255, 0.22);
-  --nav-container-shadow: 0 14px 40px -10px rgba(0, 0, 0, 0.95), 0 0 24px rgba(0, 212, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.22);
-  --nav-container-hover-border: rgba(0, 212, 255, 0.75);
-  --nav-container-hover-ring: rgba(0, 212, 255, 0.40);
-  --nav-container-hover-shadow: 0 18px 48px -8px rgba(0, 0, 0, 0.98), 0 0 32px rgba(0, 212, 255, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.30);
-  --nav-container-scrolled-border: rgba(0, 212, 255, 0.60);
+  --nav-container-border: rgba(255, 255, 255, 0.10);
+  --nav-container-ring: rgba(0, 212, 255, 0.08);
+  --nav-container-shadow: 0 14px 40px -10px rgba(0, 0, 0, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --nav-container-hover-border: rgba(0, 212, 255, 0.40);
+  --nav-container-hover-ring: rgba(0, 212, 255, 0.20);
+  --nav-container-hover-shadow: 0 18px 48px -8px rgba(0, 0, 0, 0.98), 0 0 24px rgba(0, 212, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  --nav-container-scrolled-border: rgba(255, 255, 255, 0.15);
 
   --nav-link-color: #94a3b8;
   --nav-link-hover-color: #f1f5f9;
@@ -101,8 +101,8 @@
   --c-surface: rgba(255, 255, 255, 0.95);
   --c-surface-solid: #ffffff;
   --c-surface-hover: #ffffff;
-  --c-border: rgba(0, 136, 204, 0.22);
-  --c-border-hover: rgba(0, 136, 204, 0.50);
+  --c-border: rgba(15, 23, 42, 0.08);
+  --c-border-hover: rgba(0, 136, 204, 0.35);
 
   /* ── Accent & Gradient Tokens ── */
   --clr-primary: #0088cc;
@@ -121,19 +121,19 @@
   --glass-bg: rgba(255, 255, 255, 0.92);
   --glass-border: var(--c-border);
   --glass-border-hover: var(--c-border-hover);
-  --glass-shadow: 0 14px 40px rgba(0, 0, 0, 0.06);
-  --card-shadow: 0 16px 44px -8px rgba(0, 0, 0, 0.08), 0 0 20px rgba(0, 136, 204, 0.06);
+  --glass-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+  --card-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.03);
 
   /* ── Navbar Specific Tokens ── */
   --nav-container-bg: rgba(255, 255, 255, 0.94);
   --nav-container-backdrop: blur(28px) saturate(190%);
-  --nav-container-border: rgba(0, 136, 204, 0.45);
-  --nav-container-ring: rgba(0, 136, 204, 0.18);
-  --nav-container-shadow: 0 12px 34px -6px rgba(15, 23, 42, 0.10), 0 2px 10px rgba(0, 136, 204, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.95);
-  --nav-container-hover-border: rgba(0, 136, 204, 0.70);
-  --nav-container-hover-ring: rgba(0, 136, 204, 0.32);
-  --nav-container-hover-shadow: 0 16px 44px -8px rgba(15, 23, 42, 0.14), 0 0 28px rgba(0, 136, 204, 0.24), inset 0 1px 0 rgba(255, 255, 255, 1);
-  --nav-container-scrolled-border: rgba(0, 136, 204, 0.60);
+  --nav-container-border: rgba(15, 23, 42, 0.08);
+  --nav-container-ring: rgba(0, 136, 204, 0.05);
+  --nav-container-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --nav-container-hover-border: rgba(0, 136, 204, 0.35);
+  --nav-container-hover-ring: rgba(0, 136, 204, 0.15);
+  --nav-container-hover-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.10), inset 0 1px 0 rgba(255, 255, 255, 1);
+  --nav-container-scrolled-border: rgba(15, 23, 42, 0.12);
 
   --nav-link-color: #475569;
   --nav-link-hover-color: #0f172a;
@@ -365,12 +365,12 @@ h1, h2, h3, h4, h5, h6 {
 [data-theme="amoled"] .nav-container,
 [data-theme="dark"] .nav-container {
   background: rgba(10, 11, 14, 0.94) !important;
-  border: 1.5px solid rgba(0, 212, 255, 0.42) !important;
-  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.22), 0 14px 40px -10px rgba(0, 0, 0, 0.95), 0 0 24px rgba(0, 212, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
+  border: 1px solid var(--nav-container-border) !important;
+  box-shadow: 0 0 0 1px var(--nav-container-ring), 0 14px 40px -10px rgba(0, 0, 0, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
 
   &:hover {
-    border-color: rgba(0, 212, 255, 0.75) !important;
-    box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.40), 0 18px 48px -8px rgba(0, 0, 0, 0.98), 0 0 32px rgba(0, 212, 255, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.30) !important;
+    border-color: var(--nav-container-hover-border) !important;
+    box-shadow: 0 0 0 1px var(--nav-container-hover-ring), 0 18px 48px -8px rgba(0, 0, 0, 0.98), 0 0 24px rgba(0, 212, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
   }
 
   &.is-scrolled {
@@ -595,25 +595,35 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-/* Cloud sync dot indicator */
+/* Cloud sync indicator */
 .connection-toggle {
-  width: 30px;
-  height: 30px;
-  min-width: 30px;
-  min-height: 30px;
-  border-radius: 50%;
+  position: relative;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--btn-theme-bg);
   border: var(--btn-theme-border);
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
-  transition: opacity 0.2s ease, border-color 0.2s ease;
+  transition: opacity 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 
   &:hover {
-    opacity: 0.85;
+    opacity: 0.95;
     border-color: var(--btn-theme-hover-border);
+    color: var(--text-primary);
+  }
+
+  svg {
+    width: 17px;
+    height: 17px;
+    stroke: currentColor;
+    opacity: 0.9;
   }
 
   /* [ADDED] Focus ring */
@@ -623,8 +633,11 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .connection-toggle-dot {
-    width: 8px;
-    height: 8px;
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     transition: background 0.3s ease, box-shadow 0.3s ease;
   }
@@ -1409,7 +1422,7 @@ body,
   backdrop-filter: var(--blur) !important;
   -webkit-backdrop-filter: var(--blur) !important;
   border: 1px solid var(--c-border) !important;
-  border-radius: 20px !important;
+  border-radius: 16px !important;
   box-shadow: var(--card-shadow) !important;
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
               box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
@@ -1437,9 +1450,9 @@ body,
 .stat-item-inner {
   background: var(--panel-sunken-bg) !important;
   border: var(--panel-sunken-border) !important;
-  border-radius: 18px !important;
+  border-radius: 12px !important;
   padding: 16px 20px;
-} /* ← ★ THE ONLY CRITICAL BUG FIX: this closing brace was missing in the original */
+}
 
 /* Modern Empty State Layouts (Perfect Center Alignment & Spacing) */
 .accounts-empty,
@@ -1674,7 +1687,7 @@ body,
 .bento-networth {
   grid-column: span 4 !important;
   grid-row: span 1 !important;
-  min-height: 235px !important;
+  min-height: 260px !important;
   padding: 20px !important;
   display: flex !important;
   flex-direction: column !important;
@@ -1684,7 +1697,7 @@ body,
 .bento-goal {
   grid-column: span 4 !important;
   grid-row: span 1 !important;
-  min-height: 235px !important;
+  min-height: 260px !important;
   padding: 20px !important;
   display: flex !important;
   flex-direction: column !important;
@@ -1694,7 +1707,7 @@ body,
 .bento-pie {
   grid-column: span 4 !important;
   grid-row: span 1 !important;
-  min-height: 235px !important;
+  min-height: 260px !important;
   padding: 20px !important;
   display: flex !important;
   flex-direction: column !important;
@@ -2119,10 +2132,6 @@ body,
   .nav-link-secondary {
     display: none !important;
   }
-  .connection-toggle,
-  .nav-btn-sync {
-    display: none !important;
-  }
 
   .inbox-split-pane {
     grid-template-columns: 1fr !important;
@@ -2216,8 +2225,6 @@ body,
       vertical-align: middle !important;
     }
 
-    .connection-toggle,
-    .nav-btn-sync,
     .nav-btn-converter,
     .nav-btn-ai,
     button[title="Currency Converter"],
@@ -2253,7 +2260,7 @@ body,
 
   /* Content Wrapper — Balanced Spacing & Clearance Above Bottom Dock */
   .island-content-wrapper {
-    padding: 6px 12px 104px !important;
+    padding: 0 !important;
     width: 100% !important;
   }
 
@@ -2650,7 +2657,7 @@ body,
   }
 
   .island-content-wrapper {
-    padding: 4px 8px calc(108px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 0 !important;
   }
 
   .bento-hero,
@@ -2663,8 +2670,8 @@ body,
   .bento-pie,
   .bento-card,
   .stat-card {
-    padding: 16px 14px !important;
-    border-radius: 18px !important;
+    padding: 14px 14px !important;
+    border-radius: 14px !important;
     overflow: hidden !important;
     max-width: 100% !important;
     box-sizing: border-box !important;

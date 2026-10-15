@@ -317,16 +317,16 @@ export default function Privacy() {
               }}
             >
               <Cookie size={18} color="#38bdf8" />
-              6. Analytics & Microsoft Clarity (Opt-in Only)
+              6. Performance & Usage Analytics (Opt-in Only)
             </h2>
             <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.9375rem', marginBottom: '0.75rem' }}>
-              We use <strong>Microsoft Clarity</strong> to analyze application usability, diagnose navigation friction, and identify runtime exceptions. Clarity collects anonymous interaction metrics such as click heatmaps and session recordings.
+              We use optional, privacy-preserving analytics to analyze application usability, diagnose navigation friction, and identify runtime exceptions. Analytics collects anonymous interaction metrics such as click events and interface flow telemetry.
             </p>
             <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.9375rem', marginBottom: '0.75rem' }}>
-              <strong>Strict Masking & Zero PII:</strong> Microsoft Clarity operates with strict masking enabled by default. Passwords, bank account credentials, exact transaction balances, and personalized text are masked before leaving your device. We do not sell or monetize this data.
+              <strong>Strict Masking & Zero PII:</strong> All telemetry operates with strict client-side masking enabled. Passwords, bank account credentials, exact transaction balances, and personalized text are never collected or transmitted. We never sell or monetize your data.
             </p>
             <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.9375rem' }}>
-              <strong>How to Opt Out:</strong> Clarity will never execute or set cookies without your explicit consent. You can grant, deny, or revoke consent at any time via the <strong>Cookie preferences</strong> link in the site footer or under <strong>Settings &gt; Data &amp; Security</strong>. If you revoke consent, Clarity is immediately halted and all tracking cookies (<code style={{ color: '#38bdf8' }}>_clck</code>, <code style={{ color: '#38bdf8' }}>_clsk</code>) are deleted. If your browser broadcasts a <strong>Do Not Track (DNT)</strong> header, Clarity is blocked automatically.
+              <strong>How to Opt Out:</strong> Analytics will never execute or set cookies without your explicit consent. You can grant, deny, or revoke consent at any time via the <strong>Cookie preferences</strong> link in the site footer or under <strong>Settings &gt; Data &amp; Security</strong>. If you revoke consent, telemetry is immediately halted and purged. If your browser broadcasts a <strong>Do Not Track (DNT)</strong> header, analytics is blocked automatically.
             </p>
           </section>
         </motion.div>

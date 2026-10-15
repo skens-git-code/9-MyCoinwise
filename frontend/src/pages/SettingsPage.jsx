@@ -2022,12 +2022,12 @@ const CookieSettingsSection = React.memo(({ showMessage }) => {
       </div>
 
       <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.9rem', marginBottom: 16, lineHeight: 1.6 }}>
-        MyCoinwise uses optional <strong>Microsoft Clarity</strong> telemetry solely to understand user flows, identify navigation friction, and diagnose interface errors. All ledger amounts, form inputs, and passwords are strictly masked.
+        MyCoinwise uses optional privacy-preserving telemetry solely to understand user flows, identify navigation friction, and diagnose interface errors. All ledger amounts, form inputs, and passwords are strictly masked.
       </p>
 
       {dnt && (
         <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.2)', marginBottom: 16, fontSize: '0.85rem', color: 'var(--brand-secondary, #38bdf8)' }}>
-          Do Not Track is enabled in your browser. Microsoft Clarity is automatically disabled regardless of your consent setting.
+          Do Not Track is enabled in your browser. Telemetry analytics is automatically disabled regardless of your consent setting.
         </div>
       )}
 

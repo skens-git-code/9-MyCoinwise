@@ -622,10 +622,19 @@ a:focus:not(:focus-visible),
 .heading-accent {
   border-left: 2px solid var(--brand-primary);
   padding-left: 10px;
-  background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  display: inline-block;
+  max-width: 100%;
+  color: var(--text-primary);
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .heading-accent {
+    background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
 }
 
 /* Gradient text */

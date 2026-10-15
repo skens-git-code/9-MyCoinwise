@@ -119,7 +119,7 @@ router.get(
 
     try {
       // ── Build the filter from optional query params ──
-      const filter = { user_id: req.params.userId };
+      const filter = { user_id: req.params.userId, is_archived: { $ne: true } };
       if (req.query.category) filter.category = req.query.category;
       if (req.query.priority) filter.priority = req.query.priority;
       if (req.query.achieved !== undefined) filter.is_completed = req.query.achieved;
@@ -152,7 +152,7 @@ router.get(
 
     try {
       // ── Load the goal, scoped to the authenticated user ──
-      const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user.id });
+      const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user?.id || req.user?._id });
       if (!goal) return res.status(404).json({ error: 'Goal not found.' });
       return res.json(goal);
     } catch (error) {
@@ -173,9 +173,9 @@ router.post(
     body('name').isString().trim().notEmpty().withMessage('Goal name is required.'),
     body('target').isFloat({ min: 0.01 }).withMessage('Target must be a positive number.'),
     body('saved').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
-    body('color').optional().isString().trim().matches(/^#[0-9a-f]{6}$/i).withMessage('Invalid hex color.'),
-    body('icon').optional().isString().trim().isLength({ max: 40 }),
-    body('deadline').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
+    body('color').optional().isString().trim().matches(/^#[0-9a-f]{3,6}$/i).withMessage('Invalid hex color.'),
+    body('icon').optional().isString().trim().isLength({ max: 50 }),
+    body('deadline').optional({ nullable: true, checkFalsy: true }),
     body('priority').optional().isIn(PRIORITIES),
     body('category').optional().isString().trim().notEmpty(),
     body('notes').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 1000 }),
@@ -228,13 +228,13 @@ router.post(
 
     // ── Assemble the goal payload ──
     const goalData = {
-      user_id: req.user.id,
+      user_id: req.user?.id || req.user?._id || req.userId,
       name: String(name).trim(),
       target: targetNum,
       saved: savedNum,
       color: color || '#3b82f6',
       icon: icon || '🎯',
-      deadline: deadline || null,
+      deadline: deadline ? new Date(deadline) : null,
       priority: priority || 'medium',
       category: normalizeCategory(category),
       notes: notes ? String(notes).trim().slice(0, 1000) : '',
@@ -275,9 +275,9 @@ router.put(
     body('name').optional().isString().trim().notEmpty(),
     body('target').optional().isFloat({ min: 0.01 }).toFloat(),
     body('saved').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
-    body('color').optional().isString().trim().matches(/^#[0-9a-f]{6}$/i),
-    body('icon').optional().isString().trim().isLength({ max: 40 }),
-    body('deadline').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
+    body('color').optional().isString().trim().matches(/^#[0-9a-f]{3,6}$/i),
+    body('icon').optional().isString().trim().isLength({ max: 50 }),
+    body('deadline').optional({ nullable: true, checkFalsy: true }),
     body('priority').optional().isIn(PRIORITIES),
     body('category').optional().isString().trim().notEmpty(),
     body('notes').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 1000 }),
@@ -292,7 +292,7 @@ router.put(
 
     try {
       // ── Load the goal, scoped to the authenticated user ──
-      const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user.id });
+      const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user?.id || req.user?._id });
       if (!goal) return res.status(404).json({ error: 'Goal not found.' });
 
       const {
@@ -387,6 +387,14 @@ router.put(
         } else {
           goal.completed_at = null;
         }
+      } else if (saved !== undefined || target !== undefined) {
+        if (goal.saved >= goal.target) {
+          goal.is_completed = true;
+          goal.completed_at = goal.completed_at || new Date();
+        } else {
+          goal.is_completed = false;
+          goal.completed_at = null;
+        }
       }
 
       // ── Guard: saved cannot exceed target after all updates ──
@@ -429,7 +437,7 @@ router.delete(
 
     try {
       // ── Find and delete in a single atomic operation ──
-      const goal = await Goal.findOneAndDelete({ _id: req.params.id, user_id: req.user.id });
+      const goal = await Goal.findOneAndDelete({ _id: req.params.id, user_id: req.user?.id || req.user?._id });
       if (!goal) return res.status(404).json({ error: 'Goal not found.' });
       return res.json({ message: 'Goal deleted' });
     } catch (error) {

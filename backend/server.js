@@ -139,10 +139,19 @@ app.use((req, res, next) => {
 });
 
 // ─── 7. Body parsers ────────────────────────────────────────────────────────
-// Kept small globally; the two bulk routes (JSON backup restore and bank
-// statement import) re-parse with a larger limit further down.
+// The bulk routes need a larger limit, but Express runs middleware in order:
+// a small global `express.json()` would already reject a large backup with
+// 413 before the larger parser further down ever runs. So the limit is
+// chosen per-request path here instead of mounting a second parser later.
 const DEFAULT_BODY_LIMIT = '100kb';
-app.use(express.json({ limit: DEFAULT_BODY_LIMIT }));
+const BULK_BODY_LIMIT = '10mb';
+const isBulkJsonRoute = (req) =>
+  req.path === '/api/transactions/statement/import' ||
+  /^\/api\/users\/[^/]+\/import$/.test(req.path);
+app.use((req, res, next) => {
+  const limit = isBulkJsonRoute(req) ? BULK_BODY_LIMIT : DEFAULT_BODY_LIMIT;
+  return express.json({ limit })(req, res, next);
+});
 // `extended: false` — no nested/array form bodies are used anywhere.
 app.use(express.urlencoded({ extended: false, limit: DEFAULT_BODY_LIMIT }));
 
@@ -252,16 +261,9 @@ const taxLimiter = makeLimiter({
 const authRoutes = require('./routes/auth');
 app.use('/api/auth', authLimiter, authRoutes);
 
-// Bulk routes raise the body limit only for the paths that genuinely need it.
-// Mounted before the generic routers so the larger parser wins for these paths.
-const BULK_BODY_LIMIT = '10mb';
-app.use(
-  [
-    '/api/users/:userId/import',
-    '/api/transactions/statement/import',
-  ],
-  express.json({ limit: BULK_BODY_LIMIT })
-);
+// (Bulk body-limit note: the per-path limit is already applied in §7 above,
+// so no second parser is mounted here. A second express.json() would never
+// run because the first one already rejects oversized payloads with 413.)
 
 // Public utility routers: no auth on purpose (rates are public data; error
 // reports are needed most when auth itself is broken). apiLimiter still

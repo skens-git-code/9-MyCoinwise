@@ -30,7 +30,19 @@ const authenticateRequest = async (req, res, next) => {
     }
 
     // ── Verify token signature and expiration with explicit algorithm whitelist ──
-    const decodedToken = jwt.verify(bearerToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    // Prefer the validated config value; fall back to process.env for tests that
+    // stub the environment without loading config/env.js.
+    const jwtSecret = (() => {
+      try {
+        return require('../config/env').config.JWT_SECRET || process.env.JWT_SECRET;
+      } catch {
+        return process.env.JWT_SECRET;
+      }
+    })();
+    if (!jwtSecret) {
+      return res.status(500).json({ error: 'Server authentication is misconfigured.' });
+    }
+    const decodedToken = jwt.verify(bearerToken, jwtSecret, { algorithms: ['HS256'] });
 
     // ── Load user and session in a single DB round-trip via $lookup ──
     const userId = decodedToken.id || decodedToken._id;

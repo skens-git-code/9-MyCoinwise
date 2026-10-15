@@ -24,10 +24,24 @@
     box-sizing: border-box;
   }
 
+  /* Recharts v3 renders its chart, legend, and tooltips inside/around a
+     zero-size measuring div (see getInnerDivStyle). The guard above would
+     resolve max-width:100% against 0px and collapse every chart, its legend
+     text, and tooltips to zero width on mobile. These internals manage their
+     own sizing (fixed px from the measured container), so exempt them. */
+  .recharts-wrapper,
+  .recharts-surface,
+  .recharts-legend-wrapper,
+  .recharts-tooltip-wrapper {
+    max-width: none;
+  }
+
   /* ─── STANDARDIZED PAGE PADDING ─── */
   .island-page {
-    padding: 12px 14px !important;
-    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 10px 12px 14px !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .page-content,
@@ -45,9 +59,8 @@
   .account-page,
   .tax-page,
   .settings-page {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 0 !important;
+    margin: 0 !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
   }
@@ -219,59 +232,12 @@
     box-sizing: border-box !important;
   }
 
-  /* ─── BENTO GRID — SINGLE COLUMN ON MOBILE ─── */
-  /* _portfolio.scss sets 12-column grid with !important at base level.
-     We must override EVERY conflicting property. */
-  .bento-grid {
-    display: grid !important;
-    grid-template-columns: 1fr !important;
-    gap: 12px !important;
-    width: 100% !important;
-    align-items: stretch !important;
-    grid-auto-rows: auto !important;
-  }
-
-  .bento-hero,
-  .bento-income,
-  .bento-expense,
-  .bento-recent,
-  .bento-chart,
-  .bento-networth,
-  .bento-ai,
-  .bento-pie,
-  .bento-goal {
-    grid-column: span 1 !important;
-    grid-row: auto !important;
-    min-height: 0 !important;
-    padding: 16px !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: flex-start !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-  }
-
-  .bento-hero {
-    min-height: 140px !important;
-    padding: 18px !important;
-    justify-content: space-between !important;
-  }
-
-  .bento-hero .bh-mid h2 {
-    font-size: clamp(1.8rem, 8vw, 2.4rem) !important;
-    letter-spacing: -1px !important;
-  }
-
-  .bento-tile {
-    padding: 16px !important;
-    border-radius: 18px !important;
-  }
-
+  /* ─── BENTO GRID & ACTIONS — MODERN 2-COLUMN RESPONSIVE LAYOUT ─── */
   .bento-header {
     flex-direction: column !important;
     align-items: stretch !important;
     gap: 8px !important;
-    margin-bottom: 16px !important;
+    margin-bottom: 12px !important;
   }
 
   .bento-actions {
@@ -280,33 +246,377 @@
     gap: 8px !important;
     align-items: center !important;
     width: 100% !important;
+    margin-bottom: 4px !important;
 
-    .bbtn-pri,
-    .bbtn-sec {
-      flex: 1 !important;
+    .bbtn-icon {
+      width: 40px !important;
+      height: 40px !important;
+      min-width: 40px !important;
+      min-height: 40px !important;
+      border-radius: 10px !important;
+      padding: 0 !important;
+      display: inline-flex !important;
+      align-items: center !important;
       justify-content: center !important;
-      padding: 10px 14px !important;
-      font-size: 0.85rem !important;
-      min-height: 44px !important;
+      flex-shrink: 0 !important;
+      background: var(--surface-1) !important;
+      border: 1px solid var(--c-border) !important;
+      color: var(--text-secondary) !important;
+      box-shadow: none !important;
+      transform: none !important;
     }
 
     .export-group {
-      display: flex !important;
+      display: inline-flex !important;
       align-items: center !important;
+      margin: 0 !important;
+      padding: 0 !important;
       flex-shrink: 0 !important;
+
+      .bbtn-export {
+        width: 40px !important;
+        height: 40px !important;
+        min-width: 40px !important;
+        min-height: 40px !important;
+        border-radius: 10px !important;
+        padding: 0 !important;
+        gap: 0 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+
+      .bbtn-export-label {
+        display: none !important;
+      }
+    }
+
+    .bbtn-pri,
+    .bbtn-sec {
+      flex: 1 1 auto !important;
+      height: 40px !important;
+      min-height: 40px !important;
+      padding: 0 14px !important;
+      border-radius: 10px !important;
+      font-size: 0.86rem !important;
+      font-weight: 600 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 6px !important;
+      white-space: nowrap !important;
     }
   }
 
-  .bbtn-icon {
-    min-width: 44px !important;
-    min-height: 44px !important;
-    width: 44px !important;
-    height: 44px !important;
+  /* ─── QUICK STATS STRIP — HORIZONTAL SCROLL SNAP WITHOUT TEXT CLIPPING ─── */
+  .dashboard-quick-stats-strip {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scroll-snap-type: x mandatory !important;
+    gap: 8px !important;
+    padding: 8px 10px !important;
+    margin-bottom: 10px !important;
+    scrollbar-width: none !important;
     border-radius: 12px !important;
     background: var(--surface-1) !important;
-    border: 1px solid var(--glass-border) !important;
+    border: 1px solid var(--c-border) !important;
+    width: 100% !important;
+
+    &::-webkit-scrollbar {
+      display: none !important;
+    }
+
+    .dqs-pill {
+      flex: 0 0 auto !important;
+      max-width: none !important;
+      white-space: nowrap !important;
+      scroll-snap-align: start !important;
+      font-size: 0.78rem !important;
+      padding: 6px 10px !important;
+      border-radius: 8px !important;
+      gap: 6px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+
+      .dqs-label {
+        color: var(--text-muted) !important;
+        font-weight: 500 !important;
+      }
+
+      .dqs-val {
+        font-weight: 700 !important;
+        color: var(--text-primary) !important;
+      }
+
+      .dqs-badge {
+        font-size: 0.7rem !important;
+        padding: 2px 6px !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+      }
+    }
+  }
+
+  /* ─── BENTO FILTERS — COMPACT 2-COLUMN GRID ─── */
+  .bento-filters {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+    width: 100% !important;
+
+    .filter-select {
+      width: 100% !important;
+      min-width: 0 !important;
+      height: 40px !important;
+      min-height: 40px !important;
+      padding: 6px 12px !important;
+      font-size: 0.85rem !important;
+      border-radius: 10px !important;
+      background: var(--surface-1) !important;
+      border: 1px solid var(--c-border) !important;
+      color: var(--text-primary) !important;
+      box-shadow: none !important;
+    }
+
+    .filter-clear {
+      grid-column: 1 / -1 !important;
+      height: 34px !important;
+      min-height: 34px !important;
+      border-radius: 8px !important;
+      font-size: 0.8rem !important;
+      padding: 0 12px !important;
+    }
+  }
+
+  /* ─── BENTO GRID — ELEGANT 2-COLUMN STRUCTURE ─── */
+  .bento-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    width: 100% !important;
+    align-items: stretch !important;
+    grid-auto-rows: auto !important;
+  }
+
+  .bento-hero,
+  .bento-recent,
+  .bento-chart,
+  .bento-networth,
+  .bento-ai,
+  .bento-pie,
+  .bento-goal {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+    min-height: 0 !important;
+    padding: 14px 16px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    border-radius: 14px !important;
+    border: 1px solid var(--c-border) !important;
+    background: var(--surface-1) !important;
+  }
+
+  .bento-income,
+  .bento-expense {
+    grid-row: auto !important;
+    min-height: 0 !important;
+    padding: 12px 14px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    border-radius: 14px !important;
+    border: 1px solid var(--c-border) !important;
+    background: var(--surface-1) !important;
+  }
+
+  .bento-income {
+    grid-column: 1 / 2 !important;
+  }
+
+  .bento-expense {
+    grid-column: 2 / 3 !important;
+  }
+
+  .bento-hero {
+    min-height: auto !important;
+    padding: 16px 18px !important;
+    border-radius: 14px !important;
+
+    .bh-top {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      margin-bottom: 8px !important;
+      width: 100% !important;
+    }
+
+    .bh-label {
+      font-size: 0.85rem !important;
+      font-weight: 600 !important;
+      color: var(--text-secondary) !important;
+    }
+
+    .bh-balance-num {
+      font-size: clamp(1.8rem, 6.8vw, 2.35rem) !important;
+      font-weight: 800 !important;
+      letter-spacing: -0.02em !important;
+      line-height: 1.15 !important;
+    }
+
+    .bh-bottom {
+      margin-top: 6px !important;
+      font-size: 0.78rem !important;
+      color: var(--text-muted) !important;
+    }
+  }
+
+  .bento-income,
+  .bento-expense {
+    .stat-header {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      margin-bottom: 6px !important;
+    }
+
+    .stat-label {
+      font-size: 0.76rem !important;
+      font-weight: 600 !important;
+      color: var(--text-secondary) !important;
+    }
+
+    .stat-icon {
+      width: 28px !important;
+      height: 28px !important;
+      min-width: 28px !important;
+      min-height: 28px !important;
+      border-radius: 8px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+
+      svg {
+        width: 15px !important;
+        height: 15px !important;
+      }
+    }
+
+    .stat-value {
+      font-size: clamp(1.1rem, 4.6vw, 1.4rem) !important;
+      font-weight: 700 !important;
+      line-height: 1.2 !important;
+      letter-spacing: -0.01em !important;
+    }
+
+    .stat-bottom-row {
+      margin-top: 4px !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      font-size: 0.72rem !important;
+    }
+
+    .stat-subtitle {
+      font-size: 0.72rem !important;
+      color: var(--text-muted) !important;
+    }
+  }
+
+  .bento-recent {
+    .bt-header {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      margin-bottom: 10px !important;
+
+      h3 {
+        font-size: 0.95rem !important;
+        font-weight: 700 !important;
+      }
+    }
+
+    .bt-date-group {
+      font-size: 0.72rem !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.04em !important;
+      color: var(--text-muted) !important;
+      margin: 8px 0 6px 0 !important;
+    }
+
+    .bt-item {
+      padding: 10px 12px !important;
+      border-radius: 10px !important;
+      gap: 10px !important;
+      margin-bottom: 6px !important;
+      background: var(--surface-2, rgba(255, 255, 255, 0.04)) !important;
+      border: 1px solid var(--c-border) !important;
+    }
+
+    .bt-icn {
+      width: 32px !important;
+      height: 32px !important;
+      min-width: 32px !important;
+      min-height: 32px !important;
+      border-radius: 8px !important;
+
+      svg {
+        width: 15px !important;
+        height: 15px !important;
+      }
+    }
+
+    .bt-cat {
+      font-size: 0.88rem !important;
+      font-weight: 600 !important;
+    }
+
+    .bt-date,
+    .bt-note {
+      font-size: 0.75rem !important;
+    }
+
+    .bt-amt {
+      font-size: 0.92rem !important;
+      font-weight: 700 !important;
+    }
+
+    .bt-action-btn {
+      width: 28px !important;
+      height: 28px !important;
+      min-width: 28px !important;
+      min-height: 28px !important;
+      border-radius: 6px !important;
+
+      svg {
+        width: 13px !important;
+        height: 13px !important;
+      }
+    }
+  }
+
+  .bento-chart {
+    min-height: 280px !important;
+  }
+
+  .bbtn-icon {
+    min-width: 40px !important;
+    min-height: 40px !important;
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 10px !important;
+    background: var(--surface-1) !important;
+    border: 1px solid var(--c-border) !important;
     color: var(--text-secondary) !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+    box-shadow: none !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -314,31 +624,31 @@
   }
 
   .icon-btn {
-    min-width: 44px !important;
-    min-height: 44px !important;
-    width: 44px !important;
-    height: 44px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    width: 40px !important;
+    height: 40px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    border-radius: 12px !important;
-    background: var(--glass-1) !important;
-    border: 1px solid var(--glass-border) !important;
+    border-radius: 10px !important;
+    background: var(--surface-1) !important;
+    border: 1px solid var(--c-border) !important;
     color: var(--text-secondary) !important;
     cursor: pointer !important;
     padding: 0 !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+    box-shadow: none !important;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
     box-sizing: border-box !important;
   }
 
   /* ─── COMPACT HEADER ACTION BUTTONS ─── */
   .collapse-toggle,
-  .footer-cookie-prefs-btn,
-  .theme-toggle:not(.ibtn):not(.nav-btn-converter):not(.nav-btn-ai):not(.nav-btn-sync),
-  .nav-btn-search,
+  .theme-toggle:not(.ibtn):not(.nav-btn-converter):not(.nav-btn-ai),
   .nav-btn-theme,
-  .nav-btn-alerts {
+  .nav-btn-alerts,
+  .nav-btn-sync,
+  .connection-toggle {
     min-width: 36px !important;
     min-height: 36px !important;
     width: 36px !important;
@@ -351,26 +661,45 @@
     padding: 0 !important;
   }
 
-  /* ─── REDUNDANT HEADER ACTIONS — HIDE ON MOBILE (ACCESSIBLE VIA DRAWER) ─── */
-  .nav-btn-sync,
-  .connection-toggle,
+  /* ─── UPPER MOBILE CLOUD-SYNC TOGGLE ─── */
+  .connection-toggle.nav-btn-sync,
+  .connection-toggle {
+    position: relative !important;
+    background: var(--btn-theme-bg, rgba(255, 255, 255, 0.06)) !important;
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12)) !important;
+    color: var(--text-secondary, #94a3b8) !important;
+    cursor: pointer !important;
+
+    svg {
+      width: 17px !important;
+      height: 17px !important;
+      stroke: currentColor !important;
+      opacity: 0.9 !important;
+    }
+
+    .connection-toggle-dot {
+      position: absolute !important;
+      top: 5px !important;
+      right: 5px !important;
+      width: 6px !important;
+      height: 6px !important;
+      border-radius: 50% !important;
+    }
+  }
+
+  /* ─── REDUNDANT / REMOVED HEADER ACTIONS — HIDE ON MOBILE ─── */
+  .nav-btn-search,
+  button[title*="Search"],
+  button[aria-label*="Search"],
   .nav-btn-converter,
   .nav-btn-ai,
   .theme-toggle.nav-btn-converter,
   .theme-toggle.nav-btn-ai,
-  .theme-toggle.nav-btn-sync,
   button[title*="Currency Converter"],
   button[title*="AI Financial Assistant"],
   button[aria-label*="Currency Converter"],
   button[aria-label*="AI Financial Assistant"] {
     display: none !important;
-  }
-
-  @media (max-width: 420px) {
-    .nav-btn-search,
-    button[title*="Search"] {
-      display: none !important;
-    }
   }
 
   .mobile-header-title {
@@ -1443,9 +1772,48 @@
   }
 
   /* ─── FOOTER ─── */
+  .site-footer,
   .app-footer {
-    padding: 16px 12px calc(80px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 14px 12px calc(72px + env(safe-area-inset-bottom, 8px)) !important;
     text-align: center !important;
+    margin-top: 14px !important;
+
+    .footer-inner {
+      flex-direction: column !important;
+      align-items: center !important;
+      text-align: center !important;
+      gap: 10px !important;
+    }
+
+    .footer-brand {
+      flex-direction: column !important;
+      gap: 3px !important;
+      align-items: center !important;
+    }
+
+    .site-footer-links,
+    .footer-nav {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 14px !important;
+      flex-wrap: wrap !important;
+    }
+
+    .footer-separator,
+    .footer-dot {
+      display: none !important;
+    }
+
+    .footer-nav-link,
+    .footer-link {
+      font-size: 0.8125rem !important;
+      line-height: 1.4 !important;
+    }
+
+    .footer-status {
+      margin-top: 2px !important;
+    }
   }
 
   /* ─── BREADCRUMBS ─── */
@@ -1466,8 +1834,7 @@
 @media (max-width: 480px) {
 
   .island-page {
-    padding: 10px 10px !important;
-    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 8px 8px 12px !important;
   }
 
   .page-content,
@@ -1485,16 +1852,17 @@
   .account-page,
   .tax-page,
   .settings-page {
-    padding-left: 10px !important;
-    padding-right: 10px !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
   .bento-tile {
-    padding: 14px !important;
+    padding: 12px 14px !important;
+    border-radius: 14px !important;
   }
 
   .bento-hero .bh-mid h2 {
-    font-size: clamp(1.6rem, 7vw, 2rem) !important;
+    font-size: clamp(1.5rem, 6.5vw, 1.95rem) !important;
   }
 
   .mobile-bottom-dock {
@@ -1525,8 +1893,7 @@
 @media (max-width: 375px) {
 
   .island-page {
-    padding: 8px 8px !important;
-    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 6px 6px 10px !important;
   }
 
   .page-content,
@@ -1544,16 +1911,17 @@
   .account-page,
   .tax-page,
   .settings-page {
-    padding-left: 8px !important;
-    padding-right: 8px !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
   .bento-grid {
-    gap: 10px !important;
+    gap: 8px !important;
   }
 
   .bento-tile {
-    padding: 12px !important;
+    padding: 10px 12px !important;
+    border-radius: 12px !important;
   }
 
   .bento-hero {

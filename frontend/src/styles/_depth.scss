@@ -494,9 +494,9 @@
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.18));
 }
 
-/* Pie gets a floating shadow under it */
-.bt-pie-wrap {
-  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.18));
+/* Pie gets a subtle floating shadow under slices */
+.bt-pie-wrap .recharts-pie-sector path {
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.14));
 }
 
 /* Calendar cells become physical tiles */
@@ -768,8 +768,9 @@ body,
 }
 
 .bt-pie-wrap {
-  height: 155px !important;
+  height: 215px !important;
   width: 100% !important;
+  min-height: 180px !important;
 }
 
 /* Compact layout tokens (Section 5) */
@@ -929,15 +930,26 @@ body,
 
 /* ── Universal Card Consistency Tokens ───────────────────────────── */
 $card-padding-uniform: 20px;
-$card-radius-uniform: 14px;
+$card-radius-uniform: 16px;
 
 .stat-card,
 .bento-tile,
 .calendar-card,
 .tax-card,
 .tax-panel,
-.tax-tab-panel {
-  padding: $card-padding-uniform !important;
+.tax-tab-panel,
+.account-card,
+.budget-card,
+.goal-card,
+.analytics-card,
+.wealth-card,
+.about-card,
+.chart-card,
+.inbox-list-pane,
+.tx-ticket-card,
+.sub-card,
+.cashflow-card {
+  padding: $card-padding-uniform;
   border-radius: $card-radius-uniform !important;
 }
 
@@ -1022,12 +1034,23 @@ $card-radius-uniform: 14px;
   letter-spacing: -0.03em !important;
 }
 
-/* ── Standardized Circular Metric Icons ──────────────────────────── */
-.bh-icon-wrap,
+/* ── Standardized Metric Icons matching redesigned dashboard ─────── */
+.bh-icon-wrap {
+  width: 32px !important;
+  height: 32px !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  color: var(--text-secondary) !important;
+}
+
 .stat-header .stat-icon {
-  width: 36px !important;
-  height: 36px !important;
-  border-radius: 50% !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 10px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;

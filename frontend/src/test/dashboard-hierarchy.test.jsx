@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AppContext } from '../contexts/AppContext';
 import { ToastProvider } from '../components/ToastProvider';
@@ -116,17 +116,24 @@ describe('Dashboard Hierarchy & Correctness (Acceptance Criteria SC-1 to SC-6)',
     expect(strip.textContent).toContain('Daily Avg Spend:');
   });
 
-  it('SC-5: hides flat line chart and renders steady notice when Net Worth data is flat or low density', () => {
-    // 1 transaction -> 1 day data point -> flat/low density (< 3 points)
+  it('SC-5: renders steady notice only when there are fewer than 2 Net Worth points; otherwise always charts', () => {
+    // 0 transactions -> no points -> steady notice, no chart.
+    renderDashboard({ transactions: [] });
+    let netWorthCard = document.querySelector('.bento-networth');
+    expect(netWorthCard).toBeTruthy();
+    expect(netWorthCard.querySelector('.recharts-responsive-container')).toBeNull();
+    expect(netWorthCard.textContent).toContain('Net worth has remained steady this period.');
+
+    // 1 transaction -> window expands to a 7-day span, so the chart renders
+    // a visible trajectory instead of collapsing to one un-drawable point.
+    cleanup();
     renderDashboard({
       transactions: [{ id: '1', amount: 1000, type: 'income', category: 'Salary', date: '2026-09-01T10:00:00.000Z' }],
       accounts: [{ id: 'acc-1', initial_balance: 5000, is_active: true }],
     });
-
-    const netWorthCard = document.querySelector('.bento-networth');
+    netWorthCard = document.querySelector('.bento-networth');
     expect(netWorthCard).toBeTruthy();
-    expect(netWorthCard.querySelector('.recharts-responsive-container')).toBeNull();
-    expect(netWorthCard.textContent).toContain('Net worth has remained steady this period.');
+    expect(netWorthCard.querySelector('.recharts-responsive-container')).toBeTruthy();
   });
 
   it('SC-6: accurately computes Savings Goal surplus and displays 100%+ and surplus amount', () => {

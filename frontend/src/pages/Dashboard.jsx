@@ -30,7 +30,7 @@ import {
   Download, Plus, ArrowUpRight, ArrowDownRight,
   Wallet, Sparkles, Zap, Settings, Minus,
   Rocket, LineChart, Tag, RefreshCw, Share2,
-  Edit3, Trash2, ChevronDown, AlertTriangle, X,
+  Edit3, Trash2, ChevronDown, AlertTriangle, X, PieChart as PieIcon,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -251,8 +251,10 @@ const calculateFinancialMetrics = (transactions) => {
   let inc = 0;
   let exp = 0;
   for (const t of transactions) {
-    if (t?.type === 'income') inc += t.displayAmount || 0;
-    else if (t?.type === 'expense') exp += t.displayAmount || 0;
+    const type = String(t?.type || '').trim().toLowerCase();
+    const amt = Number(t?.displayAmount ?? t?.amount) || 0;
+    if (type === 'income') inc += amt;
+    else if (type === 'expense') exp += amt;
   }
   const net = inc - exp;
   const rate = inc > 0 ? (net / inc) * 100 : 0;
@@ -360,29 +362,49 @@ const StatCard = React.memo(({
       role="region"
       aria-label={valueText ? `${label}: ${valueText}` : label}
     >
-      {/* ── Header: label + icon badge ── */}
-      <div className="stat-header">
-        <span className="stat-label">{label}</span>
+      {/* ── Header: label + icon squircle badge ── */}
+      <div className="stat-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 10 }}>
+        <span className="stat-label" style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>{label}</span>
         {Icon && (
           <div
             className="stat-icon"
-            style={{ background: `rgba(${colorRgb}, 0.15)`, color: `rgb(${colorRgb})` }}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+              background: `rgba(${colorRgb}, 0.12)`,
+              color: accentColor || `rgb(${colorRgb})`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
             aria-hidden="true"
           >
-            <Icon size={18} />
+            <Icon size={18} strokeWidth={2.4} />
           </div>
         )}
       </div>
 
       {/* ── Value ── */}
-      <div className="stat-value" style={{ color: accentColor || 'var(--text-primary)' }}>
+      <div
+        className="stat-value"
+        style={{
+          color: accentColor || 'var(--text-primary)',
+          fontSize: 'clamp(1.75rem, 3.8vw, 2.3rem)',
+          fontWeight: 800,
+          margin: '8px 0 6px',
+          letterSpacing: '-0.02em',
+          lineHeight: 1.1,
+        }}
+      >
         {value}
       </div>
 
-      {/* ── Bottom row: subtitle + trend indicator ── */}
-      <div className="stat-bottom-row">
+      {/* ── Bottom row: centered subtitle + optional trend indicator ── */}
+      <div className="stat-bottom-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', marginTop: 4 }}>
         {subtitle && (
-          <span className="stat-subtitle" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          <span className="stat-subtitle" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', textAlign: 'center', fontWeight: 500 }}>
             {subtitle}
           </span>
         )}
@@ -390,6 +412,7 @@ const StatCard = React.memo(({
           <div
             className={`stat-trend ${trend} sentiment-${sentimentClass}`}
             aria-label={`Trend: ${trendVal}`}
+            style={{ marginLeft: 6 }}
           >
             {trend === 'up' && <ArrowUpRight size={13} aria-hidden="true" />}
             {trend === 'down' && <ArrowDownRight size={13} aria-hidden="true" />}
@@ -538,6 +561,7 @@ export default function Dashboard() {
     transactions: rawTransactions = [],
     accounts = [],
     subscriptions = [],
+    goals = [],
     theme = 'light',
     USER_ID = null,
     lang = 'en',
@@ -630,13 +654,11 @@ export default function Dashboard() {
   const [isExporting, setIsExporting] = useState(false);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(!loading);
-
-  useEffect(() => {
-    if (!loading) {
-      setHasLoadedOnce(true);
-    }
-  }, [loading]);
+  const hasLoadedOnceRef = useRef(!loading);
+  if (!loading) {
+    hasLoadedOnceRef.current = true;
+  }
+  const hasLoadedOnce = hasLoadedOnceRef.current;
 
   const handleOpenAddForm = useCallback(() => {
     setEditingTx(null);
@@ -645,10 +667,16 @@ export default function Dashboard() {
   }, []);
 
   /* ---------------- Reload filters when USER_ID changes ---------------- */
-  useEffect(() => {
+  const prevDateKeyRef = useRef(dateFilterKey);
+  if (prevDateKeyRef.current !== dateFilterKey) {
+    prevDateKeyRef.current = dateFilterKey;
     setDateFilter(safeGetItem(dateFilterKey, 'all'));
+  }
+  const prevCatKeyRef = useRef(categoryFilterKey);
+  if (prevCatKeyRef.current !== categoryFilterKey) {
+    prevCatKeyRef.current = categoryFilterKey;
     setCategoryFilter(safeGetItem(categoryFilterKey, 'all'));
-  }, [dateFilterKey, categoryFilterKey]);
+  }
 
   /* ---------------- Persist filters ---------------- */
   useEffect(() => { safeSetItem(dateFilterKey, dateFilter); }, [dateFilterKey, dateFilter]);
@@ -661,7 +689,8 @@ export default function Dashboard() {
   // 1. Parse all transactions
   //    Filter: not deleted, past or today, valid date and amount,
   //    FX-converted to display currency. Future-dated rows are
-  //    excluded so projections aren't skewed.
+  //    excluded so projections aren't skewed. Type is normalized
+  //    case-insensitively so backend variants (INCOME/Expense) still chart.
   const allParsed = useMemo(() => {
     if (!Array.isArray(rawTransactions)) return [];
     const deduped = dedupeTransactions(rawTransactions, { excludeFuture: false });
@@ -671,6 +700,8 @@ export default function Dashboard() {
     for (const tx of deduped) {
       if (!tx || typeof tx !== 'object') continue;
       if (tx.is_deleted === true || tx.is_deleted === 'true') continue;
+      const txType = String(tx.type || '').trim().toLowerCase();
+      if (txType !== 'income' && txType !== 'expense') continue;
       const parsedDate = safeParseDate(tx.date);
       if (!parsedDate) continue;
       if (parsedDate > endOfToday) continue;
@@ -689,6 +720,7 @@ export default function Dashboard() {
       if (displayAmount === null) continue;
       out.push({
         ...tx,
+        type: txType,
         category: canonicalCategoryName(tx.category),
         parsedDate,
         parsedAmount: rawAmt,
@@ -754,11 +786,17 @@ export default function Dashboard() {
   );
 
   // 5. Starting balance from liquid-type accounts (FX-converted)
+  // Missing/unknown account types are treated as liquid so the net-worth
+  // chart still seeds correctly instead of flat-lining at net savings.
   const startingBalance = useMemo(() => {
     if (!Array.isArray(accounts) || accounts.length === 0) return 0;
     const liquidTypes = new Set(['bank', 'wallet', 'cash', 'credit_card', 'other']);
     return accounts
-      .filter((a) => a && a.is_active !== false && liquidTypes.has(String(a.type || '').toLowerCase()))
+      .filter((a) => {
+        if (!a || a.is_active === false) return false;
+        const t = String(a.type || '').trim().toLowerCase();
+        return t === '' || liquidTypes.has(t);
+      })
       .reduce((sum, a) => {
         const bal = Number(a.initial_balance);
         if (!Number.isFinite(bal)) return sum;
@@ -786,11 +824,39 @@ export default function Dashboard() {
     }, 0);
   }, [allParsed]);
 
+  // Primary active goal fallback from user goals collection
+  const primaryGoal = useMemo(() => {
+    if (!Array.isArray(goals) || goals.length === 0) return null;
+    return (
+      goals.find(
+        (g) => !g.is_completed && !g.is_archived && toNumber(g.saved, 0) < toNumber(g.target, 0)
+      ) || goals[0]
+    );
+  }, [goals]);
+
+  const activeGoalTarget = useMemo(() => {
+    if (monthlyGoal > 0) return monthlyGoal;
+    if (primaryGoal) return toNumber(primaryGoal.target, 0);
+    return 0;
+  }, [monthlyGoal, primaryGoal]);
+
+  const activeGoalSaved = useMemo(() => {
+    if (monthlyGoal > 0) return Math.max(0, monthlyNetSavings);
+    if (primaryGoal) return toNumber(primaryGoal.saved, 0);
+    return 0;
+  }, [monthlyGoal, monthlyNetSavings, primaryGoal]);
+
+  const hasSavingsGoal = activeGoalTarget > 0;
+
   // ── Spendable balance: liquid opening balances + all-time net ──
   const spendableBalance = useMemo(() => {
     const liquidTypes = new Set(['bank', 'wallet', 'cash', 'credit_card', 'other']);
     const liquidOpeningBalance = (Array.isArray(accounts) ? accounts : [])
-      .filter((account) => account?.is_active !== false && liquidTypes.has(String(account?.type || '').toLowerCase()))
+      .filter((account) => {
+        if (!account || account?.is_active === false) return false;
+        const t = String(account?.type || '').trim().toLowerCase();
+        return t === '' || liquidTypes.has(t);
+      })
       .reduce((sum, account) => {
         const opening = Number(account?.initial_balance);
         if (!Number.isFinite(opening)) return sum;
@@ -830,24 +896,25 @@ export default function Dashboard() {
   const [balanceDone, setBalanceDone] = useState(false);
   const handleBalanceComplete = useCallback(() => setBalanceDone(true), []);
   const goalProgress = useMemo(() => {
-    if (monthlyGoal <= 0) return 0;
-    return Math.max(0, Math.min((monthlyNetSavings / monthlyGoal) * 100, 100));
-  }, [monthlyNetSavings, monthlyGoal]);
+    if (activeGoalTarget <= 0) return 0;
+    return Math.max(0, Math.min((activeGoalSaved / activeGoalTarget) * 100, 100));
+  }, [activeGoalSaved, activeGoalTarget]);
 
   // 9. Daily average spend over the last 30 days
   const dailyAverageSpend = useMemo(() => {
-    if (parsedTransactions.length === 0) return 0;
+    if (!Array.isArray(allParsed) || allParsed.length === 0) return 0;
     const cutoff = getAppDate();
     cutoff.setHours(0, 0, 0, 0);
     cutoff.setDate(cutoff.getDate() - 30);
     let total = 0;
-    for (const t of parsedTransactions) {
-      if (t.type !== 'expense') continue;
+    for (const t of allParsed) {
+      const type = String(t?.type || '').trim().toLowerCase();
+      if (type !== 'expense') continue;
       if (t.parsedDate < cutoff) continue;
-      total += t.displayAmount;
+      total += Number(t.displayAmount ?? t.amount) || 0;
     }
     return total / 30;
-  }, [parsedTransactions]);
+  }, [allParsed]);
 
   // 10. Month-over-month (with upper bound = now)
   const momMetrics = useMemo(() => {
@@ -863,13 +930,14 @@ export default function Dashboard() {
     for (const t of allParsed) {
       const d = t.parsedDate;
       const dMs = d.getTime();
-      const amt = t.displayAmount;
+      const amt = Number(t.displayAmount ?? t.amount) || 0;
+      const type = String(t.type || '').trim().toLowerCase();
       const inCurrent = d >= currentStart && dMs <= nowMs;
       const inPrev = d >= prevStart && d <= prevEnd;
-      if (t.type === 'income') {
+      if (type === 'income') {
         if (inCurrent) curIncome += amt;
         else if (inPrev) prevIncome += amt;
-      } else if (t.type === 'expense') {
+      } else if (type === 'expense') {
         if (inCurrent) curExpense += amt;
         else if (inPrev) prevExpense += amt;
       }
@@ -901,12 +969,13 @@ export default function Dashboard() {
     for (const t of sortedAscAll) {
       const key = toLocalDateKey(t.parsedDate);
       if (!key) continue;
-      const delta = t.type === 'income' ? t.displayAmount : -t.displayAmount;
+      const type = String(t?.type || '').trim().toLowerCase();
+      const amt = Number(t?.displayAmount ?? t?.amount) || 0;
+      const delta = type === 'income' ? amt : type === 'expense' ? -amt : 0;
       buckets.set(key, (buckets.get(key) || 0) + delta);
     }
     const sorted = Array.from(buckets.entries()).sort((a, b) => a[0].localeCompare(b[0]));
     if (sorted.length < 5) return null;
-    // Start from startingBalance so the sparkline reflects true account trajectory.
     let running = startingBalance;
     const series = sorted.slice(-14).map(([, delta]) => {
       running += delta;
@@ -924,7 +993,6 @@ export default function Dashboard() {
       return { x, y };
     });
 
-    // ── Build a smooth cubic path from the coords ──
     let d = `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
     for (let i = 0; i < coords.length - 1; i++) {
       const p0 = coords[i];
@@ -948,10 +1016,12 @@ export default function Dashboard() {
         });
       }
       const entry = map.get(key);
-      if (t.type === 'income') entry.income += t.displayAmount;
-      else entry.expense += t.displayAmount;
+      const type = String(t?.type || '').trim().toLowerCase();
+      const amt = Number(t?.displayAmount ?? t?.amount) || 0;
+      if (type === 'income') entry.income += amt;
+      else if (type === 'expense') entry.expense += amt;
       const category = canonicalCategoryName(t.category);
-      entry.categories.set(category, (entry.categories.get(category) || 0) + t.displayAmount);
+      entry.categories.set(category, (entry.categories.get(category) || 0) + amt);
     }
 
     // ── Determine the full day range based on the active date filter ──
@@ -1034,20 +1104,34 @@ export default function Dashboard() {
   }, [chartData]);
 
   // 13. Net worth over time (continuous daily running total)
+  // The window always extends to today with a minimum 7-day span so that
+  // even a single day of activity renders a visible trajectory instead of
+  // collapsing to one point (which recharts cannot draw as an area).
   const netWorthData = useMemo(() => {
     if (sortedAscAll.length === 0) return [];
     const deltaMap = new Map();
     for (const t of sortedAscAll) {
       const key = toLocalDateKey(t.parsedDate);
       if (!key) continue;
-      const delta = t.type === 'income' ? t.displayAmount : -t.displayAmount;
+      const type = String(t?.type || '').trim().toLowerCase();
+      const amt = Number(t?.displayAmount ?? t?.amount) || 0;
+      const delta = type === 'income' ? amt : type === 'expense' ? -amt : 0;
       deltaMap.set(key, (deltaMap.get(key) || 0) + delta);
     }
 
     const firstTxDate = sortedAscAll[0].parsedDate;
     const lastTxDate = sortedAscAll[sortedAscAll.length - 1].parsedDate;
-    const start = new Date(firstTxDate.getFullYear(), firstTxDate.getMonth(), firstTxDate.getDate());
-    const end = new Date(lastTxDate.getFullYear(), lastTxDate.getMonth(), lastTxDate.getDate());
+    const now = getAppDate();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let start = new Date(firstTxDate.getFullYear(), firstTxDate.getMonth(), firstTxDate.getDate());
+    let end = new Date(lastTxDate.getFullYear(), lastTxDate.getMonth(), lastTxDate.getDate());
+    if (end < today) end = today;
+    const MIN_SPAN_DAYS = 7;
+    const spanDays = Math.round((end - start) / 86400000);
+    if (spanDays < MIN_SPAN_DAYS) {
+      start = new Date(end);
+      start.setDate(start.getDate() - (MIN_SPAN_DAYS - 1));
+    }
 
     const allDays = [];
     const curr = new Date(start);
@@ -1058,14 +1142,15 @@ export default function Dashboard() {
 
     const daysToUse = allDays.length > 30 ? allDays.slice(-30) : allDays;
 
-    // ── Seed the running total with deltas from before the window ──
+    // ── Seed the running total with starting balance + pre-window deltas ──
     let running = startingBalance;
-    if (allDays.length > 30) {
-      const firstUsedDate = daysToUse[0];
-      for (const t of sortedAscAll) {
-        if (t.parsedDate < firstUsedDate) {
-          running += (t.type === 'income' ? t.displayAmount : -t.displayAmount);
-        }
+    const firstUsedDate = daysToUse[0];
+    for (const t of sortedAscAll) {
+      const day = new Date(t.parsedDate.getFullYear(), t.parsedDate.getMonth(), t.parsedDate.getDate());
+      if (day < firstUsedDate) {
+        const type = String(t?.type || '').trim().toLowerCase();
+        const amt = Number(t?.displayAmount ?? t?.amount) || 0;
+        running += (type === 'income' ? amt : type === 'expense' ? -amt : 0);
       }
     }
 
@@ -1089,14 +1174,14 @@ export default function Dashboard() {
     }));
   }, [sortedAscAll, locale, startingBalance]);
 
-  // ── Net worth flatness check (for the "steady" empty state) ──
+  // ── Net worth flatness check ──
+  // Only hide the chart when there are fewer than 2 points. A constant
+  // balance still renders (Y-axis is padded by calculateUniformTicks), so
+  // users with a single day of activity see a chart instead of "steady".
   const isNetWorthFlat = useMemo(() => {
     try {
       if (netWorthData.length < 2) return true;
-      const balances = netWorthData.map((d) => d.balance);
-      const min = Math.min(...balances);
-      const max = Math.max(...balances);
-      return min === max;
+      return false;
     } catch {
       return false;
     }
@@ -1116,32 +1201,48 @@ export default function Dashboard() {
     const map = new Map();
     let totalExp = 0;
     for (const t of parsedTransactions) {
-      if (t.type !== 'expense') continue;
+      const type = String(t?.type || '').trim().toLowerCase();
+      if (type !== 'expense') continue;
+      const amt = Math.abs(Number(t?.displayAmount ?? t?.amount) || 0);
+      if (amt <= 0) continue;
       const cat = canonicalCategoryName(t.category);
-      map.set(cat, (map.get(cat) || 0) + t.displayAmount);
-      totalExp += t.displayAmount;
+      map.set(cat, (map.get(cat) || 0) + amt);
+      totalExp += amt;
     }
     if (map.size === 0 || totalExp === 0) return null;
     const [name, amount] = Array.from(map.entries()).sort((a, b) => b[1] - a[1])[0];
     return { name, amount, pct: ((amount / totalExp) * 100).toFixed(0) };
   }, [parsedTransactions]);
 
-  // 15. Pie data (top 6 categories)
+  // 15. Pie data (top 5 categories + 'Other' for the selected period, ensuring 100% mathematical integrity)
   const pieData = useMemo(() => {
     const catMap = new Map();
     for (const t of parsedTransactions) {
-      if (t.type !== 'expense') continue;
+      const type = String(t?.type || '').trim().toLowerCase();
+      if (type !== 'expense') continue;
+      const amt = Math.abs(Number(t?.displayAmount ?? t?.amount) || 0);
+      if (amt <= 0) continue;
       const category = canonicalCategoryName(t.category);
-      catMap.set(category, (catMap.get(category) || 0) + t.displayAmount);
+      catMap.set(category, (catMap.get(category) || 0) + amt);
     }
-    return Array.from(catMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }));
+    const entries = Array.from(catMap.entries())
+      .filter(([_, val]) => val > 0)
+      .sort((a, b) => b[1] - a[1]);
+
+    if (entries.length <= 6) {
+      return entries.map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }));
+    }
+
+    const top5 = entries.slice(0, 5).map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }));
+    const remainder = entries.slice(5).reduce((sum, [_, val]) => sum + val, 0);
+    if (remainder > 0) {
+      top5.push({ name: 'Other', value: Number(remainder.toFixed(2)) });
+    }
+    return top5;
   }, [parsedTransactions]);
 
   const pieTotal = useMemo(
-    () => pieData.reduce((sum, entry) => sum + entry.value, 0),
+    () => Number(pieData.reduce((sum, entry) => sum + entry.value, 0).toFixed(2)),
     [pieData]
   );
 
@@ -1151,7 +1252,7 @@ export default function Dashboard() {
     const groups = [];
     let lastLabel = '';
     for (const tx of list) {
-      const label = getDateLabel(tx.date, locale);
+      const label = getDateLabel(tx.date || tx.parsedDate, locale);
       if (label !== lastLabel && label !== '—') {
         groups.push({ type: 'header', label, key: `h-${label}-${groups.length}` });
         lastLabel = label;
@@ -1177,7 +1278,6 @@ export default function Dashboard() {
   }, [t]);
 
   /* ---------------- Theme Colors ---------------- */
-  const balanceColor = rawBalance >= 0 ? 'var(--balance-accent)' : 'var(--danger)';
   const balanceHex = rawBalance >= 0 ? '#10b981' : '#ef4444';
 
   // ── Chart tooltip style (dark / light aware) ──
@@ -1186,7 +1286,7 @@ export default function Dashboard() {
     border: `1px solid ${isDark ? 'rgba(5,150,105,0.3)' : 'rgba(5,150,105,0.2)'}`,
     borderRadius: 12,
     color: isDark ? '#f8fafc' : '#0f172a',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+    boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.4)' : '0 8px 24px rgba(15,23,42,0.12)',
     backdropFilter: 'blur(12px)',
   }), [isDark]);
 
@@ -1194,6 +1294,12 @@ export default function Dashboard() {
   const gInId = useStableId('gIn');
   const gExId = useStableId('gEx');
   const gNWId = useStableId('gNW');
+
+  // ── Explicit chart heights: recharts ResponsiveContainer with height="100%"
+  // needs a definite parent height, otherwise it computes 0 inside auto-height
+  // flex parents (especially on mobile where min-height is removed). ──
+  const SPENDING_CHART_HEIGHT = 260;
+  const NETWORTH_CHART_HEIGHT = 180;
 
   /* ============================================================
    * Event Handlers
@@ -1299,12 +1405,12 @@ export default function Dashboard() {
       showToast('success', 'Transaction added successfully!');
     } catch (err) {
       const errorMsg =
+        err?.userMessage ||
         err?.response?.data?.error ||
         err?.response?.data?.errors?.[0]?.msg ||
         err?.message ||
         'Failed to add transaction.';
       showToast('error', errorMsg);
-      throw err;
     } finally {
       setIsLoadingAction(false);
     }
@@ -1345,6 +1451,7 @@ export default function Dashboard() {
       showToast('success', 'Transaction updated successfully!');
     } catch (err) {
       const errorMsg =
+        err?.userMessage ||
         err?.response?.data?.error ||
         err?.response?.data?.errors?.[0]?.msg ||
         err?.message ||
@@ -1378,7 +1485,7 @@ export default function Dashboard() {
       showToast('success', 'Transaction deleted.');
       setPendingDelete(null);
     } catch (err) {
-      showToast('error', err?.message || 'Failed to delete transaction.');
+      showToast('error', err?.userMessage || err?.message || 'Failed to delete transaction.');
     } finally {
       setIsLoadingAction(false);
     }
@@ -1412,7 +1519,9 @@ export default function Dashboard() {
   // ── Early exit: show the loading skeleton until we have a user ──
   if ((loading && !user) || !user) return <DashboardSkeleton />;
 
-  const expenseGreaterThanIncome = rawExpense > rawIncome;
+  const periodIncome = financialMetrics.income;
+  const periodExpense = financialMetrics.expense;
+  const periodExpenseGreaterThanIncome = periodExpense > periodIncome;
 
   return (
     <ErrorBoundary>
@@ -1527,7 +1636,6 @@ export default function Dashboard() {
           className="bento-filters"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          style={{ display: 'flex', gap: 12, justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: 16 }}
           role="search"
           aria-label="Filter transactions"
         >
@@ -1583,11 +1691,6 @@ export default function Dashboard() {
           <motion.div
             variants={CARD_VARIANTS}
             className={`bento-tile bento-hero stat-card glass ${balanceDone ? 'numberGlow' : ''}`}
-            style={{
-              borderColor: rawBalance >= 0
-                ? 'rgba(var(--balance-accent-rgb), 0.34)'
-                : 'rgba(var(--danger-rgb), 0.3)',
-            }}
             role="region"
             aria-label={`Total balance: ${formatCurrencyText(rawBalance, safeFmt, currencySymbol)}`}
             aria-live="polite"
@@ -1596,35 +1699,36 @@ export default function Dashboard() {
               className="blob-glow"
               style={{
                 background: rawBalance >= 0
-                  ? 'rgba(var(--balance-accent-rgb), 0.15)'
-                  : 'rgba(var(--danger-rgb), 0.15)',
+                  ? 'rgba(16, 185, 129, 0.12)'
+                  : 'rgba(239, 68, 68, 0.12)',
               }}
             />
-            <div className="bh-top">
-              <span className="bh-label">{tr('total_balance', 'Total Balance')}</span>
+            <div className="bh-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 8 }}>
+              <span className="bh-label" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {tr('total_balance', 'Total Balance')}
+              </span>
               <div
                 className="bh-icon-wrap"
                 style={{
-                  background: rawBalance >= 0
-                    ? 'rgba(var(--balance-accent-rgb), 0.12)'
-                    : 'rgba(var(--danger-rgb), 0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--text-secondary)',
+                  background: 'transparent',
                 }}
+                aria-hidden="true"
               >
-                <Wallet size={18} className="bh-icon" style={{ color: balanceColor }} />
+                <Wallet size={20} strokeWidth={1.8} />
               </div>
             </div>
-            <div className="bh-mid">
-              {/* [FIX] balanceColor used var(--balance-accent) which is only defined in
-                  _grassy.scss — undefined in default/light theme = transparent, making the
-                  number invisible. Replaced with resolved hex values. Font-size uses !important
-                  via the bh-balance-num class defined in _depth.scss to beat all theme overrides. */}
+            <div className="bh-mid" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <h2
                 className="bh-balance-num"
                 style={{
-                  fontSize: 'clamp(2.5rem, 5.5vw, 3.4rem)',
-                  fontWeight: 900,
+                  fontSize: 'clamp(2.4rem, 5.5vw, 3.4rem)',
+                  fontWeight: 800,
                   color: rawBalance >= 0 ? '#10b981' : '#ef4444',
-                  margin: '6px 0',
+                  margin: '4px 0 8px',
                   fontVariantNumeric: 'tabular-nums',
                   letterSpacing: '-0.03em',
                   lineHeight: 1.05,
@@ -1647,13 +1751,13 @@ export default function Dashboard() {
 
               {/* ── Sparkline (net trajectory) ── */}
               {sparklineSvgPath && (
-                <div className="bh-sparkline-wrap" title="Net trajectory">
-                  <svg className="bh-sparkline-svg" viewBox="0 0 240 48" aria-hidden="true">
+                <div className="bh-sparkline-wrap" title="Net trajectory" style={{ height: 26, margin: '2px 0 4px', opacity: 0.85 }}>
+                  <svg className="bh-sparkline-svg" viewBox="0 0 240 48" aria-hidden="true" style={{ width: '100%', height: '100%' }}>
                     <path
                       d={sparklineSvgPath}
                       fill="none"
                       stroke={balanceHex}
-                      strokeWidth="2.5"
+                      strokeWidth="2.2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
@@ -1668,8 +1772,8 @@ export default function Dashboard() {
                   width: '100%', flexWrap: 'wrap', gap: 8,
                 }}
               >
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                  {tr('net_position', 'Net position')}
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                  {tr('net_position', 'Net Position')}
                 </span>
                 {momMetrics.balance.val !== 'New' && dateFilter !== 'all' && (
                   <div className={`bh-trend ${momMetrics.balance.dir}`} style={{ background: 'var(--glass-2)' }}>
@@ -1685,7 +1789,7 @@ export default function Dashboard() {
 
           {/* ===================== Income card ===================== */}
           <StatCard
-            icon={TrendingUp}
+            icon={ArrowUpRight}
             label={tr('total_income', 'Total Income')}
             value={
               loading && !hasLoadedOnce ? (
@@ -1700,8 +1804,8 @@ export default function Dashboard() {
               )
             }
             valueText={formatCurrencyText(rawIncome, safeFmt, currencySymbol)}
-            colorRgb="34, 197, 94"
-            accentColor="var(--success)"
+            colorRgb="16, 185, 129"
+            accentColor="#10b981"
             subtitle={tr('all_time', 'All time')}
             trend={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.dir}
             trendVal={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.val}
@@ -1711,7 +1815,7 @@ export default function Dashboard() {
           {/* ===================== Expense card ===================== */}
           {/* Expense card — truthful trend direction; sentiment in CSS */}
           <StatCard
-            icon={TrendingDown}
+            icon={ArrowDownRight}
             label={tr('total_expenses', 'Total Expenses')}
             value={
               loading && !hasLoadedOnce ? (
@@ -1727,7 +1831,7 @@ export default function Dashboard() {
             }
             valueText={formatCurrencyText(rawExpense, safeFmt, currencySymbol)}
             colorRgb="239, 68, 68"
-            accentColor="var(--danger)"
+            accentColor="#ef4444"
             subtitle={tr('all_time', 'All time')}
             trend={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.dir}
             trendVal={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.val}
@@ -1847,9 +1951,9 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="bt-chart-wrap">
+            <div className="bt-chart-wrap" style={{ height: SPENDING_CHART_HEIGHT, minHeight: 220 }}>
               {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
+                <ResponsiveContainer width="100%" height={SPENDING_CHART_HEIGHT} minWidth={1} minHeight={200}>
                   <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
                     <defs>
                       {/* ── Income area gradient ── */}
@@ -1896,7 +2000,10 @@ export default function Dashboard() {
                         const detail = payload?.[0]?.payload?.detail;
                         return detail ? `${label} · ${detail}` : label;
                       }}
-                      formatter={(val) => formatCurrencyText(val, safeFmt, currencySymbol)}
+                      formatter={(val, name) => [
+                        formatCurrencyText(val, safeFmt, currencySymbol),
+                        name === 'income' ? tr('income_label', 'Income') : tr('expense_label', 'Expenses'),
+                      ]}
                     />
                     <Legend
                       wrapperStyle={{ paddingTop: 12, fontSize: '0.78rem', fontWeight: 700 }}
@@ -1910,7 +2017,9 @@ export default function Dashboard() {
                     {/* ── Income series ── */}
                     <Area
                       isAnimationActive={!prefersReducedMotion && !loading}
-                      animationBegin={800}
+                      animationBegin={100}
+                      animationDuration={900}
+                      animationEasing="ease-out"
                       type="monotone"
                       dataKey="income"
                       stroke="#10b981"
@@ -1924,7 +2033,9 @@ export default function Dashboard() {
                     {/* ── Expense series ── */}
                     <Area
                       isAnimationActive={!prefersReducedMotion && !loading}
-                      animationBegin={800}
+                      animationBegin={100}
+                      animationDuration={900}
+                      animationEasing="ease-out"
                       type="monotone"
                       dataKey="expense"
                       stroke="#ef4444"
@@ -1951,9 +2062,11 @@ export default function Dashboard() {
             {/* ── Insight summary under the chart ── */}
             {chartData.length > 0 && (
               <div className="bt-chart-summary" role="note">
-                {expenseGreaterThanIncome
-                  ? `⚠️ You spent ${expenseOfIncome.toFixed(0)}% of your income this period`
-                  : rawIncome > 0
+                {periodExpenseGreaterThanIncome
+                  ? periodIncome > 0
+                    ? `⚠️ You spent ${expenseOfIncome.toFixed(0)}% of your income this period`
+                    : `⚠️ You had ${formatCurrencyText(periodExpense, safeFmt, currencySymbol)} in expenses with no income this period`
+                  : periodIncome > 0
                     ? `✅ You saved ${savingsRate.toFixed(1)}% of your income this period`
                     : 'Add income transactions to see your savings rate'}
               </div>
@@ -1979,8 +2092,8 @@ export default function Dashboard() {
               </div>
             ) : (
               /* ── Net worth chart ── */
-              <div className="bt-chart-wrap" style={{ height: 120 }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
+              <div className="bt-chart-wrap" style={{ height: NETWORTH_CHART_HEIGHT, minHeight: 160 }}>
+                <ResponsiveContainer width="100%" height={NETWORTH_CHART_HEIGHT} minWidth={1} minHeight={160}>
                   <AreaChart data={netWorthData} margin={{ top: 5, right: 8, left: -5, bottom: 0 }}>
                     <defs>
                       <linearGradient id={gNWId} x1="0" y1="0" x2="0" y2="1">
@@ -2013,6 +2126,9 @@ export default function Dashboard() {
                     />
                     <Area
                       isAnimationActive={!prefersReducedMotion && !loading}
+                      animationBegin={100}
+                      animationDuration={900}
+                      animationEasing="ease-out"
                       type="monotone"
                       dataKey="balance"
                       stroke={balanceHex}
@@ -2030,19 +2146,19 @@ export default function Dashboard() {
           {/* ===================== Savings goal ===================== */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-goal glass">
             <div className="bt-header">
-              <h3 className="heading-accent">{tr('savings_goal', 'Savings Goal')}</h3>
+              <h3 className="heading-accent">{primaryGoal?.name || tr('savings_goal', 'Savings Goal')}</h3>
               <Target size={16} className="bt-icon-muted" aria-hidden="true" />
             </div>
 
-            {monthlyGoal > 0 ? (
+            {hasSavingsGoal ? (
               <>
                 {/* ── Goal HUD: percentage + overflow badge + fraction ── */}
                 <div className="bg-hud">
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                     <span className="bg-pct">
-                      {`${monthlyNetSavings > 0 ? Math.floor((monthlyNetSavings / monthlyGoal) * 100) : 0}%`}
+                      {`${activeGoalTarget > 0 ? Math.floor((activeGoalSaved / activeGoalTarget) * 100) : 0}%`}
                     </span>
-                    {monthlyNetSavings > monthlyGoal && (
+                    {activeGoalSaved > activeGoalTarget && (
                       <span
                         className="bg-overflow-badge"
                         style={{
@@ -2055,12 +2171,12 @@ export default function Dashboard() {
                           border: '1px solid rgba(16, 185, 129, 0.35)',
                         }}
                       >
-                        +{Math.floor((monthlyNetSavings / monthlyGoal) * 100) - 100}% surplus
+                        +{Math.floor((activeGoalSaved / activeGoalTarget) * 100) - 100}% surplus
                       </span>
                     )}
                   </div>
                   <span className="bg-frac">
-                    {formatCurrencyNode(Math.max(0, monthlyNetSavings), safeFmt, currencySymbol)} / {formatCurrencyNode(monthlyGoal, safeFmt, currencySymbol)}
+                    {formatCurrencyNode(Math.max(0, activeGoalSaved), safeFmt, currencySymbol)} / {formatCurrencyNode(activeGoalTarget, safeFmt, currencySymbol)}
                   </span>
                 </div>
 
@@ -2079,7 +2195,7 @@ export default function Dashboard() {
                   </motion.div>
 
                   {/* ── Overflow glow when the goal is exceeded ── */}
-                  {monthlyNetSavings > monthlyGoal && (
+                  {activeGoalSaved > activeGoalTarget && (
                     <div
                       className="bg-overflow-glow"
                       style={{
@@ -2098,22 +2214,22 @@ export default function Dashboard() {
                 {/* ── Goal nudge + top-up button ── */}
                 <div className="bg-goal-actions-row">
                   <p className="bg-nudge">
-                    {monthlyNetSavings > monthlyGoal
-                      ? `Goal met · +${formatCurrencyText(monthlyNetSavings - monthlyGoal, safeFmt, currencySymbol)} surplus`
+                    {activeGoalSaved > activeGoalTarget
+                      ? `Goal met · +${formatCurrencyText(activeGoalSaved - activeGoalTarget, safeFmt, currencySymbol)} surplus`
                       : goalProgress >= 100
-                        ? '🎉 Monthly target achieved!'
+                        ? '🎉 Target achieved!'
                         : goalProgress < 15
                           ? 'Every bit counts. Keep going!'
                           : `${(100 - goalProgress).toFixed(0)}% to reach target`}
                   </p>
-                  <button
-                    type="button"
+                  <NavLink
+                    to="/goals"
                     className="bg-topup-btn"
-                    onClick={handleOpenAddForm}
-                    title="Contribute towards goal"
+                    style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    title="Manage savings goals"
                   >
                     <Plus size={12} /> Top Up
-                  </button>
+                  </NavLink>
                 </div>
 
                 {/* ── Safe-to-spend footer ── */}
@@ -2122,19 +2238,19 @@ export default function Dashboard() {
                 </p>
               </>
             ) : (
-              /* ── Empty state: no monthly goal set ── */
+              /* ── Empty state: no savings goal set ── */
               <div className="bento-empty">
                 <span className="bento-empty-icon" aria-hidden="true">
                   <Target size={42} strokeWidth={1.5} opacity={0.5} />
                 </span>
                 <p className="bento-empty-title">{tr('set_savings_goal', 'Set a savings goal')}</p>
-                <p className="bento-empty-sub">{tr('track_progress_target', 'Track your progress toward a monthly target.')}</p>
+                <p className="bento-empty-sub">{tr('track_progress_target', 'Track your progress toward a savings target.')}</p>
                 <NavLink
-                  to="/settings"
+                  to="/goals"
                   className="bento-empty-cta pulse-encouragement"
                   style={{ textDecoration: 'none' }}
                 >
-                  <Settings size={13} /> {tr('set_goal_cta', 'Set Goal →')}
+                  <Target size={13} /> {tr('set_goal_cta', 'Set Goal →')}
                 </NavLink>
               </div>
             )}
@@ -2143,43 +2259,66 @@ export default function Dashboard() {
           {/* ===================== Pie chart (category breakdown) ===================== */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-pie glass">
             <div className="bt-header">
-              <h3 className="heading-accent">{tr('breakdown', 'Breakdown')}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <h3 className="heading-accent">{tr('breakdown', 'Breakdown')}</h3>
+                {pieTotal > 0 && (
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      color: '#ef4444',
+                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                    }}
+                  >
+                    {formatCurrencyText(pieTotal, safeFmt, currencySymbol)}
+                  </span>
+                )}
+              </div>
+              <PieIcon size={16} className="bt-icon-muted" aria-hidden="true" />
             </div>
-            <div className="bt-pie-wrap">
+            <div className="bt-pie-wrap" style={{ height: 215, minHeight: 180 }}>
               {pieData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
-                  <PieChart>
+                <ResponsiveContainer width="100%" height={215} minWidth={1} minHeight={180}>
+                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                     <Pie
                       isAnimationActive={!prefersReducedMotion && !loading}
-                      animationBegin={800}
+                      animationBegin={100}
+                      animationDuration={900}
+                      animationEasing="ease-out"
                       data={pieData}
                       cx="50%"
                       cy="44%"
                       innerRadius="46%"
-                      outerRadius="72%"
-                      paddingAngle={4}
+                      outerRadius="70%"
+                      paddingAngle={3}
                       dataKey="value"
                       nameKey="name"
-                      stroke="none"
+                      stroke="var(--surface-card, #ffffff)"
+                      strokeWidth={1.5}
                     >
                       {pieData.map((entry, i) => (
                         <Cell
-                          key={`cell-${entry.name.replace(/\s+/g, '-')}-${i}`}
+                          key={`cell-${String(entry.name || i).replace(/\s+/g, '-')}-${i}`}
                           fill={PIE_COLORS[i % PIE_COLORS.length]}
                         />
                       ))}
                     </Pie>
                     <Tooltip
                       contentStyle={tooltipStyle}
-                      formatter={(val) => {
+                      formatter={(val, name) => {
                         const amount = Number(val) || 0;
                         const pct = pieTotal > 0 ? ((amount / pieTotal) * 100).toFixed(1) : '0.0';
-                        return [`${formatCurrencyText(amount, safeFmt, currencySymbol)} · ${pct}%`, 'Spend'];
+                        return [`${formatCurrencyText(amount, safeFmt, currencySymbol)} (${pct}%)`, name];
                       }}
                     />
                     <Legend
                       verticalAlign="bottom"
-                      height={32}
+                      height={36}
+                      iconType="circle"
+                      iconSize={8}
                       wrapperStyle={{ fontSize: '0.74rem', fontWeight: 600, paddingTop: 4 }}
                       formatter={(value) => {
                         const item = pieData.find((p) => p.name === value);

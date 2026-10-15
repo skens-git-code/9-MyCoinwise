@@ -95,6 +95,7 @@ const MAX_BACKUP_DOCS_PER_COLLECTION = config.MAX_BACKUP_DOCS;
 
 // ── Rate limiter: caps export requests per IP ──
 const exportLimiter = rateLimit({
+  identifier: 'export-router',
   windowMs: 15 * 60 * 1000,
   max: 30,
   standardHeaders: 'draft-8',

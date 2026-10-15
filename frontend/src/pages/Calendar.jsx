@@ -398,6 +398,28 @@ export default function Calendar() {
     [contextFmt, locale]
   );
 
+  /* Compact day-cell amount: full "+$456,222.00" never fits a ~100px grid
+     cell, so large nets abbreviate ("+$456.2k", "-$1.2M"). The exact value
+     stays available via the cell's title tooltip and aria-label. */
+  const formatCompactCurrency = useCallback(
+    (amountValue) => {
+      const numeric = Number(amountValue);
+      const safeAmount = Number.isFinite(numeric) ? numeric : 0;
+      const abs = Math.abs(safeAmount);
+      if (abs < 10_000) {
+        const full = formatCurrency(safeAmount);
+        return safeAmount > 0 && !/^[+]/.test(full) ? `+${full}` : full;
+      }
+      // Derive the display symbol from the full formatter (₹, $, €, …).
+      const symbol = formatCurrency(0).replace(/[\d.,\s\u00a0+-]/g, '') || '$';
+      const sign = safeAmount > 0 ? '+' : safeAmount < 0 ? '-' : '';
+      const short = (v, suffix) => `${sign}${symbol}${v >= 100 ? Math.round(v) : v.toFixed(1)}${suffix}`;
+      if (abs >= 1_000_000) return short(abs / 1_000_000, 'M');
+      return short(abs / 1000, 'k');
+    },
+    [formatCurrency]
+  );
+
   const [currentDate, setCurrentDate] = useState(() => getAppDate());
   const [viewMode, setViewMode] = useState('monthly');
   const [selectedDate, setSelectedDate] = useState(null);
@@ -1198,9 +1220,9 @@ export default function Calendar() {
               </div>
               <div
                 className={`cal-cell-net-val ${dayData.net > 0 ? 'pos' : dayData.net < 0 ? 'neg' : 'zero'}`}
+                title={dayData.net > 0 ? `+${formatCurrency(dayData.net)}` : formatCurrency(dayData.net)}
               >
-                {dayData.net > 0 ? '+' : ''}
-                {formatCurrency(dayData.net)}
+                {formatCompactCurrency(dayData.net)}
               </div>
             </div>
           )}

@@ -76,7 +76,7 @@ const goalSchema = new mongoose.Schema({
   icon: { 
     type: String, 
     default: '🎯', 
-    maxlength: 10 
+    maxlength: 50 
   },
 
   /* —————————————————————————————————————

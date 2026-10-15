@@ -101,7 +101,8 @@ const isValidDate = (value) => {
 const validateTransaction = (t) => {
   if (!t || typeof t !== 'object') return false;
   if (!isValidDate(t.date)) return false;
-  if (!t.type || (t.type !== 'income' && t.type !== 'expense')) return false;
+  const txType = String(t.type || '').trim().toLowerCase();
+  if (txType !== 'income' && txType !== 'expense') return false;
   const amt = Number(t.amount);
   if (t.amount === undefined || t.amount === null) return false;
   if (!Number.isFinite(amt) || amt < 0) return false;
@@ -492,6 +493,7 @@ export default function Analytics() {
       .filter(validateTransaction)
       .map((transaction) => ({
         ...transaction,
+        type: String(transaction.type || '').trim().toLowerCase(),
         category: canonicalCategoryName(transaction.category),
       })),
     [transactions]
@@ -563,9 +565,10 @@ export default function Analytics() {
     const sumTxs = (list) => {
       let inc = 0, exp = 0;
       for (const t of list) {
-        const amt = safeParseAmount(t.amount);
-        if (t.type === 'income') inc += amt;
-        else if (t.type === 'expense') exp += amt;
+        const amt = safeParseAmount(t.displayAmount ?? t.amount);
+        const type = String(t.type || '').trim().toLowerCase();
+        if (type === 'income') inc += amt;
+        else if (type === 'expense') exp += amt;
       }
       return { income: inc, expense: exp, net: inc - exp, count: list.length };
     };
@@ -608,9 +611,10 @@ export default function Analytics() {
         monthMap.set(key, { name: key, income: 0, expense: 0 });
       }
       const entry = monthMap.get(key);
-      const amt = safeParseAmount(t.amount);
-      if (t.type === 'income') entry.income += amt;
-      else entry.expense += amt;
+      const amt = safeParseAmount(t.displayAmount ?? t.amount);
+      const type = String(t.type || '').trim().toLowerCase();
+      if (type === 'income') entry.income += amt;
+      else if (type === 'expense') entry.expense += amt;
     });
 
     return Array.from(monthMap.values())
@@ -631,10 +635,10 @@ export default function Analytics() {
     // ── Rank categories by total expense ──
     const catTotals = new Map();
     validTransactions
-      .filter((t) => t.type === 'expense')
+      .filter((t) => String(t.type || '').trim().toLowerCase() === 'expense')
       .forEach((t) => {
         const c = t.category || 'Other';
-        catTotals.set(c, (catTotals.get(c) || 0) + safeParseAmount(t.amount));
+        catTotals.set(c, (catTotals.get(c) || 0) + safeParseAmount(t.displayAmount ?? t.amount));
       });
 
     const sortedCats = Array.from(catTotals.entries())
@@ -652,7 +656,7 @@ export default function Analytics() {
     // Determine full month range
     const monthKeys = new Set();
     validTransactions.forEach((t) => {
-      if (t.type !== 'expense') return;
+      if (String(t.type || '').trim().toLowerCase() !== 'expense') return;
       const key = toMonthKey(t.date);
       if (key) monthKeys.add(key);
     });
@@ -722,12 +726,13 @@ export default function Analytics() {
 
     validTransactions.forEach((t) => {
       const d = new Date(t.date).getDay();
-      const amt = safeParseAmount(t.amount);
-      if (t.type === 'expense') {
+      const amt = safeParseAmount(t.displayAmount ?? t.amount);
+      const type = String(t.type || '').trim().toLowerCase();
+      if (type === 'expense') {
         days[d].expense += amt;
         if (d === 0 || d === 6) weekendExp += amt;
         else weekdayExp += amt;
-      } else {
+      } else if (type === 'income') {
         days[d].income += amt;
       }
       days[d].count += 1;
@@ -803,6 +808,17 @@ export default function Analytics() {
         const cat = t.category || 'Other';
         map.set(cat, (map.get(cat) || 0) + safeParseAmount(t.amount));
       });
+
+    // Fallback to all valid transactions if current window has no expenses
+    if (map.size === 0) {
+      validTransactions
+        .filter((t) => t.type === 'expense')
+        .forEach((t) => {
+          const cat = t.category || 'Other';
+          map.set(cat, (map.get(cat) || 0) + safeParseAmount(t.amount));
+        });
+    }
+
     const total = Array.from(map.values()).reduce((a, c) => a + c, 0);
     return Array.from(map.entries())
       .map(([name, value]) => ({
@@ -1505,7 +1521,7 @@ export default function Analytics() {
                 <BarChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 25 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                   <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
-                  <YAxis domain={[0, (dataMax) => Math.ceil(dataMax * 1.15)]} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                  <YAxis domain={[(dataMin) => Math.min(0, Math.floor(dataMin * 1.15)), (dataMax) => Math.max(10, Math.ceil(dataMax * 1.15))]} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
                   <Legend wrapperStyle={{ paddingTop: 8 }} />
                   <Bar isAnimationActive={!prefersReducedMotion && !loading} dataKey="income" fill={isDark ? '#34d399' : '#10b981'} radius={[4, 4, 0, 0]} name="Inflow" onClick={handleBarClick} cursor="pointer" />
@@ -1516,7 +1532,7 @@ export default function Analytics() {
                 <LineChart data={monthlyData} margin={{ top: 10, right: 20, left: 0, bottom: 25 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                   <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
-                  <YAxis domain={[0, (dataMax) => Math.ceil(dataMax * 1.15)]} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                  <YAxis domain={[(dataMin) => Math.min(0, Math.floor(dataMin * 1.15)), (dataMax) => Math.max(10, Math.ceil(dataMax * 1.15))]} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <Tooltip content={<CustomTooltip isDark={isDark} fmt={fmt} />} />
                   <Legend wrapperStyle={{ paddingTop: 8 }} />
                   <Line isAnimationActive={!prefersReducedMotion && !loading} type="monotone" dataKey="income" stroke={isDark ? '#34d399' : '#10b981'} strokeWidth={2.5} dot={{ r: 4 }} name="Inflow" />

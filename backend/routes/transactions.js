@@ -452,7 +452,15 @@ const validateTransactionPayload = (payload) => {
     parsed.recurrence_interval = recurrence_interval;
   }
   if (recurrence_ends_at !== undefined) {
-    parsed.recurrence_ends_at = recurrence_ends_at ? new Date(recurrence_ends_at) : null;
+    if (recurrence_ends_at === null || recurrence_ends_at === '') {
+      parsed.recurrence_ends_at = null;
+    } else {
+      const endsAt = new Date(recurrence_ends_at);
+      if (Number.isNaN(endsAt.getTime())) {
+        return { error: 'Recurrence end date must be valid.' };
+      }
+      parsed.recurrence_ends_at = endsAt;
+    }
   }
   if (is_split !== undefined) parsed.is_split = Boolean(is_split);
   if (split_details !== undefined && Array.isArray(split_details)) {
@@ -494,7 +502,8 @@ const getTransactionBalance = async (userId) => {
       displayCurrency
     );
     const amount = convertToCurrency(transaction.amount, sourceCurrency, displayCurrency);
-    return sum + (transaction.type === 'income' ? amount : -amount);
+    const type = String(transaction.type || '').trim().toLowerCase();
+    return sum + (type === 'income' ? amount : type === 'expense' ? -amount : 0);
   }, 0);
   return Number(balance.toFixed(2));
 };
@@ -506,7 +515,8 @@ const getTransactionSignedAmountForUser = async (userId, transaction) => {
   const displayCurrency = normalizeCurrency(user?.currency);
   const sourceCurrency = normalizeCurrency(transaction.currency, displayCurrency);
   const convertedAmount = convertToCurrency(transaction.amount, sourceCurrency, displayCurrency);
-  return transaction.type === 'income' ? convertedAmount : -convertedAmount;
+  const type = String(transaction.type || '').trim().toLowerCase();
+  return type === 'income' ? convertedAmount : type === 'expense' ? -convertedAmount : 0;
 };
 
 // ── Incremental balance update for a user (O(1)) ──
@@ -536,6 +546,7 @@ const syncUserBalance = async (userId) => {
 // Runs in parallel; skips invalid ids instead of throwing.
 const syncAccountBalances = async (userId, accountIds = []) => {
   if (!userId) throw new Error('syncAccountBalances requires a userId.');
+  if (!mongoose.isValidObjectId(userId)) return;
 
   const uniqueIds = [...new Set(accountIds.filter(Boolean).map(String))].filter(
     (id) => mongoose.isValidObjectId(id)
@@ -560,8 +571,8 @@ const syncAccountBalances = async (userId, accountIds = []) => {
         {
           $group: {
             _id: '$account_id',
-            income: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
-            expense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
+            income: { $sum: { $cond: [{ $eq: [{ $toLower: '$type' }, 'income'] }, '$amount', 0] } },
+            expense: { $sum: { $cond: [{ $eq: [{ $toLower: '$type' }, 'expense'] }, '$amount', 0] } },
           },
         },
       ]);
@@ -1224,6 +1235,13 @@ router.post('/', async (req, res) => {
     return res.status(201).json({ transaction, balance, message: 'Transaction added' });
   } catch (error) {
     logger.error('[Transactions] create error:', error);
+    if (error?.name === 'ValidationError') {
+      const details = Object.values(error.errors || {}).map((e) => e.message).filter(Boolean);
+      return res.status(400).json({ error: details[0] || 'Invalid transaction data.', details });
+    }
+    if (error?.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid transaction data format.' });
+    }
     return res.status(500).json({ error: 'Unable to create transaction.' });
   }
 });
@@ -1357,6 +1375,13 @@ router.put('/:id', async (req, res) => {
     return res.json({ transaction: t, balance, message: 'Transaction updated' });
   } catch (error) {
     logger.error('[Transactions] update error:', error);
+    if (error?.name === 'ValidationError') {
+      const details = Object.values(error.errors || {}).map((e) => e.message).filter(Boolean);
+      return res.status(400).json({ error: details[0] || 'Invalid transaction data.', details });
+    }
+    if (error?.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid transaction data format.' });
+    }
     return res.status(500).json({ error: 'Unable to update transaction.' });
   }
 });

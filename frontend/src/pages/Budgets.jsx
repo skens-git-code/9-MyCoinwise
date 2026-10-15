@@ -279,13 +279,13 @@ export default function BudgetManager() {
     
     const processedExpenses = [];
     for (const tx of transactions) {
-      if (!tx || tx.type !== 'expense') continue;
+      if (!tx || String(tx.type || '').trim().toLowerCase() !== 'expense') continue;
       if (tx.is_deleted === true) continue;
       
       const timestamp = getStartOfDayTimestamp(tx.date);
       if (timestamp == null) continue;
       
-      const amount = Number(tx.amount);
+      const amount = Number(tx.displayAmount ?? tx.amount);
       processedExpenses.push({
         timestamp,
         amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
@@ -1007,7 +1007,6 @@ export default function BudgetManager() {
                   onChange={(e) => { setFormLimit(e.target.value); clearFormError(); }}
                   required
                   placeholder="0.00"
-                  inputMode="decimal"
                   inputMode="decimal"
                 />
               </div>

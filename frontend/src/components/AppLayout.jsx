@@ -31,7 +31,7 @@ import {
   Bell, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon,
   Menu, X, Zap, Search, Keyboard, User, Users, Sun, Moon, Check,
   HelpCircle, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon, ReceiptText,
-  Home as HomeIcon
+  Home as HomeIcon, Cloud
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
@@ -1385,18 +1385,8 @@ const Header = React.memo(({
             aria-label={`Cloud sync: ${syncCopy}`}
             title={`Cloud sync: ${syncCopy}`}
           >
+            <Cloud size={16} strokeWidth={1.8} />
             <span className="connection-toggle-dot" aria-hidden="true" />
-          </button>
-
-          {/* ── Search / command palette ── */}
-          <button
-            type="button"
-            className="theme-toggle nav-btn-search"
-            onClick={onOpenCmdPalette}
-            title="Search (Cmd+K)"
-            aria-label="Search"
-          >
-            <Search size={18} strokeWidth={1.75} />
           </button>
 
           {/* ── Currency converter ── */}

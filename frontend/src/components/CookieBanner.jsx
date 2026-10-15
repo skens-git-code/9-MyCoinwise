@@ -32,17 +32,15 @@ export function CookiePreferencesModal({ isOpen, onClose }) {
  * the latest stored consent without syncing effects.
  */
 function CookiePreferencesBody({ onClose }) {
-  const [currentConsent, setCurrentConsent] = useState(() => getCookieConsent());
   const [dntActive] = useState(() => isDoNotTrack());
 
   const handleSelect = (choice) => {
     setCookieConsent(choice);
-    setCurrentConsent(choice);
     onClose();
   };
 
   return (
-      <div className="cookie-preferences-content" style={{ color: 'var(--text-primary, #f1f5f9)' }}>
+      <div className="cookie-preferences-content" style={{ color: 'var(--text-primary, #0f172a)' }}>
         {/* DNT Notice */}
         {dntActive && (
           <div
@@ -57,7 +55,7 @@ function CookiePreferencesBody({ onClose }) {
               lineHeight: 1.5,
             }}
           >
-            <strong>Do Not Track is enabled</strong> in your browser. Microsoft Clarity analytics will never be loaded, regardless of your consent selection below.
+            <strong>Do Not Track is enabled</strong> in your browser. All optional analytics and usability telemetry are automatically disabled.
           </div>
         )}
 
@@ -68,8 +66,8 @@ function CookiePreferencesBody({ onClose }) {
             style={{
               padding: '16px',
               borderRadius: '14px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid var(--glass-border, rgba(255, 255, 255, 0.06))',
+              background: 'var(--surface-2, #f1f5f9)',
+              border: '1px solid var(--glass-border, rgba(0, 0, 0, 0.08))',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -92,40 +90,8 @@ function CookiePreferencesBody({ onClose }) {
                 Always Active
               </span>
             </div>
-            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary, #94a3b8)', lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary, #475569)', lineHeight: 1.5 }}>
               Required for security, user authentication sessions, localized language settings, and interface theme persistence.
-            </p>
-          </div>
-
-          {/* Microsoft Clarity Analytics */}
-          <div
-            style={{
-              padding: '16px',
-              borderRadius: '14px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid var(--glass-border, rgba(255, 255, 255, 0.06))',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Cookie size={18} color="var(--brand-secondary, #38bdf8)" />
-                <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>Analytics & Usability (Microsoft Clarity)</span>
-              </div>
-              <span
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  background: currentConsent === 'accepted' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                  color: currentConsent === 'accepted' ? 'var(--success, #10b981)' : 'var(--danger, #ef4444)',
-                }}
-              >
-                {currentConsent === 'accepted' ? 'Active' : 'Blocked'}
-              </span>
-            </div>
-            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary, #94a3b8)', lineHeight: 1.5 }}>
-              Collects anonymous session metrics, aggregated clicks, and interface heatmaps to detect bugs and optimize user flows. All personal financial records, passwords, and user details are strictly masked. Zero personal data is sold.
             </p>
           </div>
         </div>
@@ -265,14 +231,14 @@ export default function CookieBanner() {
               bottom: hasMobileDock
                 ? 'calc(88px + env(safe-area-inset-bottom, 0px))'
                 : 'calc(16px + env(safe-area-inset-bottom, 0px))',
-              background: 'var(--card-bg, rgba(16, 22, 38, 0.94))',
+              background: 'var(--surface-1, #ffffff)',
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
-              border: '1px solid var(--glass-border, rgba(255, 255, 255, 0.12))',
+              border: '1px solid var(--glass-border, rgba(0, 0, 0, 0.08))',
               borderRadius: '16px',
               padding: '16px 18px',
-              color: 'var(--text-primary, #f1f5f9)',
-              boxShadow: '0 20px 45px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+              color: 'var(--text-primary, #0f172a)',
+              boxShadow: 'var(--shadow-xl, 0 20px 40px rgba(0, 0, 0, 0.12))',
             }}
           >
             {/* Top row: Icon + Title + Dismiss Button */}
@@ -296,7 +262,7 @@ export default function CookieBanner() {
                   justifyContent: 'center',
                   background: 'transparent',
                   border: 'none',
-                  color: 'var(--text-secondary, #94a3b8)',
+                  color: 'var(--text-secondary, #475569)',
                   cursor: 'pointer',
                   borderRadius: '8px',
                   marginRight: '-8px',
@@ -311,12 +277,12 @@ export default function CookieBanner() {
             <p
               style={{
                 fontSize: '0.84rem',
-                color: 'var(--text-secondary, #94a3b8)',
+                color: 'var(--text-secondary, #475569)',
                 lineHeight: 1.5,
                 margin: '0 0 14px',
               }}
             >
-              We use privacy-friendly Microsoft Clarity analytics to understand app performance and eliminate glitches. Your financial data and passwords are strictly masked.
+              We use cookies to maintain your active session, preserve settings, and ensure bank-grade security. Financial records are always encrypted.
             </p>
 
             {/* Actions Row */}

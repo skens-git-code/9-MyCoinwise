@@ -174,6 +174,79 @@ function ensureBackendEnv() {
   fs.writeFileSync(envPath, out.join('\n'), { mode: 0o600 });
   return true;
 }
+
+/**
+ * Attempt to ensure local MongoDB is running if configured to use localhost/127.0.0.1.
+ */
+async function ensureMongoReady() {
+  const envPath = path.join(BACKEND_DIR, '.env');
+  let mongoUri = process.env.MONGO_URI || '';
+  if (!mongoUri && fs.existsSync(envPath)) {
+    try {
+      const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+      for (const l of lines) {
+        const m = l.match(/^\s*MONGO_URI\s*=\s*(.+)$/);
+        if (m) {
+          mongoUri = m[1].trim();
+          break;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // If remote or not mongodb:// URI, let backend handle it
+  const isLocal = mongoUri.includes('127.0.0.1') || mongoUri.includes('localhost');
+  if (!isLocal) return;
+
+  const portMatch = mongoUri.match(/:(\d+)/);
+  const mongoPort = portMatch ? Number(portMatch[1]) : 27017;
+
+  if (await probeTcp(mongoPort)) {
+    return; // Already running
+  }
+
+  log('LAUNCHER', colors.yellow, `Local MongoDB on port ${mongoPort} is not running. Attempting to start...`);
+
+  if (process.platform === 'darwin') {
+    const homeDir = process.env.HOME || '';
+    const plistPaths = [
+      path.join(homeDir, 'Library/LaunchAgents/homebrew.mxcl.mongodb-community.plist'),
+      path.join(homeDir, 'Library/LaunchAgents/homebrew.mxcl.mongodb-community@7.0.plist'),
+      '/opt/homebrew/opt/mongodb-community/macos_mongodb.plist',
+      '/usr/local/opt/mongodb-community/homebrew.mxcl.mongodb-community.plist',
+    ];
+
+    for (const plist of plistPaths) {
+      if (fs.existsSync(plist)) {
+        try {
+          execSync(`launchctl load "${plist}"`, { stdio: 'ignore' });
+          break;
+        } catch {
+          // ignore error and try next
+        }
+      }
+    }
+  } else if (process.platform === 'linux') {
+    try {
+      execSync('sudo systemctl start mongod || systemctl start mongod || service mongodb start', { stdio: 'ignore' });
+    } catch {
+      // ignore
+    }
+  }
+
+  // Wait briefly to see if it came up
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    if (await probeTcp(mongoPort)) {
+      log('LAUNCHER', colors.green, `MongoDB is now running on port ${mongoPort}.`);
+      return;
+    }
+  }
+
+  log('LAUNCHER', colors.yellow, `Could not automatically start MongoDB on port ${mongoPort}. If backend fails, please start it manually.`);
+}
 /**
  * Probe an HTTP endpoint once.
  *
@@ -420,6 +493,9 @@ ${colors.cyan}${colors.bright}==================================================
   if (ensureBackendEnv()) {
     log('LAUNCHER', colors.green, 'No backend/.env found — created one with local-dev defaults (see backend/.env.example for options).');
   }
+
+  // 0d. MongoDB pre-flight: ensure local MongoDB service is running if needed.
+  await ensureMongoReady();
 
   // 1. Backend
   log('BACKEND', colors.yellow, `Starting Express server on port ${BACKEND_PORT}...`);

@@ -37,7 +37,7 @@ input[type='date'] {
 
 .account-select,
 .filter-select {
-  min-width: min(220px, 100%);
+  min-width: 0;
 }
 
 // 4. Period / filter bars wrap instead of overflowing on 320-380px screens.

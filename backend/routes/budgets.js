@@ -145,7 +145,7 @@ const computeRollover = async (budget, presuppliedExpenses = null) => {
   if (!expenses) {
     expenses = await Transaction.find({
       user_id: budget.user_id,
-      type: 'expense',
+      type: { $regex: /^expense$/i },
       is_deleted: { $ne: true },
       date: { $gte: budget.period_start, $lte: budget.period_end },
     })
@@ -231,7 +231,7 @@ const loadProgressData = async (userId, budgets) => {
 
   return Transaction.find({
     user_id: userId,
-    type: 'expense',
+    type: { $regex: /^expense$/i },
     is_deleted: { $ne: true },
     date: { $gte: new Date(minStart), $lte: new Date(maxEnd) },
   })
@@ -296,10 +296,14 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
     );
 
     // ── Persist only budgets whose rollover value actually changed ──
+    // Legacy docs can fail model validation on save; a single bad budget
+    // must not turn the whole list endpoint into a 500.
     await Promise.all(
       rolloverStates
         .filter(({ budget, original }) => Number(budget.rollover_amount || 0) !== original)
-        .map(({ budget }) => budget.save())
+        .map(({ budget }) => budget.save().catch((saveErr) => {
+          logger.warn(`Skipping budget rollover persist for ${budget._id}: ${saveErr.message}`);
+        }))
     );
 
     // ── Enrich each budget with progress data ──

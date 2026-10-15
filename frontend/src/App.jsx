@@ -540,29 +540,32 @@ export default function App() {
 
   const addTransaction = useCallback(async (tx) => {
     const result = await api.addTransaction({ ...tx, user_id: userRef.current?.id || userRef.current?._id });
-    if (result.transaction) setTransactions(prev => [result.transaction, ...prev]);
-    applyBalance(result.balance);
+    if (result?.transaction) setTransactions(prev => [result.transaction, ...prev]);
+    else await fetchData().catch(() => {});
+    applyBalance(result?.balance);
     syncAccountsSilently();
     return result;
-  }, [applyBalance, syncAccountsSilently]);
+  }, [applyBalance, syncAccountsSilently, fetchData]);
 
   const deleteTransaction = useCallback(async (id) => {
     const result = await api.deleteTransaction(id);
     setTransactions(prev => prev.filter(tx => tx.id !== id && tx._id !== id));
-    applyBalance(result.balance);
+    applyBalance(result?.balance);
     syncAccountsSilently();
     return result;
   }, [applyBalance, syncAccountsSilently]);
 
   const editTransaction = useCallback(async (id, data) => {
     const result = await api.editTransaction(id, data);
-    if (result.transaction) {
+    if (result?.transaction) {
       setTransactions(prev => prev.map(tx => (tx.id === id || tx._id === id) ? result.transaction : tx));
+    } else {
+      await fetchData().catch(() => {});
     }
-    applyBalance(result.balance);
+    applyBalance(result?.balance);
     syncAccountsSilently();
     return result;
-  }, [applyBalance, syncAccountsSilently]);
+  }, [applyBalance, syncAccountsSilently, fetchData]);
 
   const resetAccount = useCallback(async () => {
     await api.resetAccount(userRef.current?.id || userRef.current?._id);

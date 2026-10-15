@@ -109,7 +109,7 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    // ── Read validated metrics ──
+    // ── Read validated metrics (defensive: validators guarantee numbers) ──
     const {
       averageDailyIncome,
       medianDailyExpense,
@@ -118,6 +118,12 @@ router.post(
       whatIfAmount,
       dangerDay,
     } = req.body;
+    const safeIncome = Number(averageDailyIncome);
+    const safeExpense = Number(medianDailyExpense);
+    const safeSubs = Number(subscriptionsCost);
+    if (!Number.isFinite(safeIncome) || !Number.isFinite(safeExpense) || !Number.isFinite(safeSubs)) {
+      return res.status(400).json({ error: 'Cashflow metrics must be valid numbers.' });
+    }
 
     // ── Format optional values for the prompt ──
     const whatIfDisplay = whatIfAmount !== undefined && whatIfAmount !== null
@@ -132,9 +138,9 @@ Analyze the user's 90-day cashflow trajectory.
 Keep the response under 3 sentences. Be punchy, professional, and directly address their cashflow risk. Do NOT use markdown.
 
 Metrics:
-- Avg Daily Income: ~${averageDailyIncome.toFixed(2)}/day
-- Median Daily Variable Spend: ~${medianDailyExpense.toFixed(2)}/day (Excluding fixed subscriptions & one-off events)
-- Active Subscriptions: ${subscriptionsCount} costing ~${subscriptionsCost.toFixed(2)}/month
+- Avg Daily Income: ~${safeIncome.toFixed(2)}/day
+- Median Daily Variable Spend: ~${safeExpense.toFixed(2)}/day (Excluding fixed subscriptions & one-off events)
+- Active Subscriptions: ${subscriptionsCount} costing ~${safeSubs.toFixed(2)}/month
 - Danger Zone Hit: ${dangerDisplay}
 - Hypothetical Scenario Tested: ${whatIfDisplay}
 

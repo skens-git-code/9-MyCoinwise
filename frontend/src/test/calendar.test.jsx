@@ -198,6 +198,31 @@ describe('Calendar Hub Financial Rhythm Overhaul', () => {
     expect(recurringBadges.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('abbreviates large day-cell nets so amounts fit inside grid cells', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ToastProvider>
+          <AppContext.Provider value={mockContext}>
+            <Calendar />
+          </AppContext.Provider>
+        </ToastProvider>
+      </MemoryRouter>
+    );
+
+    const texts = [...container.querySelectorAll('.cal-cell-net-val')].map(
+      (el) => el.textContent
+    );
+    // Day 1 net +45000 and Day 5 net -15000 compact; Day 12 (-3200) stays full.
+    expect(texts).toContain('+₹45.0k');
+    expect(texts).toContain('-₹15.0k');
+    expect(texts.some((t) => t.includes('3,200'))).toBe(true);
+    // Exact values remain available via tooltip for accessibility.
+    const dayOne = [...container.querySelectorAll('.cal-day')].find((el) =>
+      el.getAttribute('aria-label')?.startsWith('1 ')
+    );
+    expect(dayOne?.getAttribute('title')).toContain('45,000');
+  });
+
   it('renders weekly summary strip and reconciles weekly net totals with monthly net position', () => {
     const { container } = render(
       <MemoryRouter>
