@@ -463,12 +463,21 @@
   box-shadow: none !important;
 }
 
-.mobile-bottom-dock {
-  box-shadow:
-    0 -1px 0 rgba(255, 255, 255, 0.08) inset,
-    0 -8px 30px rgba(0, 0, 0, 0.22),
-    0 -20px 60px rgba(0, 0, 0, 0.18) !important;
-  transform: translateZ(0);
+@media (max-width: 1024px) {
+  .mobile-bottom-dock {
+    box-shadow:
+      0 -1px 0 rgba(255, 255, 255, 0.08) inset,
+      0 -8px 30px rgba(0, 0, 0, 0.22),
+      0 -20px 60px rgba(0, 0, 0, 0.18) !important;
+    transform: translateZ(0);
+  }
+}
+
+@media (min-width: 1025px) {
+  .mobile-bottom-dock {
+    display: none !important;
+    box-shadow: none !important;
+  }
 }
 
 /* ── 8. Charts & Progress — Volumetric ──────────────────────── */
@@ -636,15 +645,17 @@ body,
 
 /* ── Centered Compact Island Layout (matches reference images) ── */
 .island-content-wrapper {
-  max-width: 1240px !important;
-  margin: 0 auto !important;
   width: 100% !important;
-  padding: 12px 20px 0 !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
   box-sizing: border-box !important;
-
-  @media (max-width: 1024px) {
-    padding: 10px 14px 0 !important;
-  }
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
 
 .island-page,
@@ -655,6 +666,13 @@ body,
   max-width: 1240px !important;
   width: 100% !important;
   margin: 0 auto !important;
+  padding: 16px 20px 24px !important;
+  box-sizing: border-box !important;
+  flex: 1 0 auto !important;
+
+  @media (max-width: 1024px) {
+    padding: 10px 14px 20px !important;
+  }
 }
 
 /* ── Compact Dashboard Rhythm (All 3 Rows Visible) ─────────────── */
