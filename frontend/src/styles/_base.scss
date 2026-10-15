@@ -296,6 +296,14 @@ body::after {
   box-shadow: 0 0 0 4px rgba(var(--brand-primary-rgb), 0.15);
 }
 
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+.ibtn:focus:not(:focus-visible),
+.mobile-hamburger-btn:focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 /* ================================================================
    KEYFRAME ANIMATIONS
    ================================================================ */

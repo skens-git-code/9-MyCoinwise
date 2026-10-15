@@ -1,22 +1,70 @@
-// Custom components added for MyCoinwise updates
+/* ================================================================
+   MYCOINWISE — CUSTOM COMPONENTS & ENHANCEMENTS
+   Modern loading spinners, accessible toggles, and range inputs.
+   Theme-aligned with the AMOLED dark and emerald/teal brand tokens.
+   ================================================================ */
 
-// Dotted ring/spinning dot loader
-.spinner-dots {
+@use 'mixins' as *;
+
+// ── Smooth Modern Spinner (Replaces jarring dotted ring) ─────────
+.spinner-dots,
+.modern-spinner {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px dotted currentColor;
+  border: 2px solid rgba(var(--brand-primary-rgb), 0.22);
+  border-top-color: var(--brand-primary);
+  border-right-color: var(--brand-accent);
   border-radius: 50%;
-  animation: spinner-dots-spin 1.5s linear infinite;
-  opacity: 0.8;
+  animation: spinner-smooth-spin 0.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+  transform: translateZ(0);
+  vertical-align: middle;
+  flex-shrink: 0;
+
+  &.spinner-light {
+    border-color: rgba(255, 255, 255, 0.25);
+    border-top-color: #ffffff;
+    border-right-color: rgba(255, 255, 255, 0.8);
+  }
+
+  &.spinner-lg {
+    width: 24px;
+    height: 24px;
+    border-width: 2.5px;
+  }
+
+  &.spinner-sm {
+    width: 14px;
+    height: 14px;
+    border-width: 1.75px;
+  }
+
+  @include reduced-motion {
+    animation: none;
+    border-top-color: var(--brand-primary);
+    opacity: 0.8;
+  }
 }
 
-@keyframes spinner-dots-spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+// In buttons or containers where currentColor should drive the loader
+button .spinner-dots,
+.btn .spinner-dots {
+  border-color: rgba(255, 255, 255, 0.25);
+  border-top-color: currentColor;
+  border-right-color: rgba(255, 255, 255, 0.75);
 }
 
-// Toggle switch replacing checkboxes (Touch-target >= 44x44px compliant)
+@keyframes spinner-smooth-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+// ── Toggle Switch (Touch-target >= 44x44px compliant) ─────────────
 .toggle-switch {
   position: relative;
   display: inline-flex;
@@ -42,41 +90,43 @@
     width: 44px;
     height: 24px;
     background-color: var(--border-color, #4b5563);
-    transition: background-color 0.25s ease;
+    transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
     border-radius: 24px;
     display: inline-block;
-  }
 
-  .slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 3px;
-    top: 3px;
-    background-color: #ffffff;
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    &:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      top: 3px;
+      background-color: #ffffff;
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    }
   }
 
   input:checked + .slider {
-    background-color: var(--primary-color, var(--brand-primary, #10b981));
-  }
+    background-color: var(--brand-primary, #10b981);
+    box-shadow: 0 0 12px rgba(var(--brand-primary-rgb), 0.35);
 
-  input:checked + .slider:before {
-    transform: translateX(20px);
+    &:before {
+      transform: translateX(20px);
+    }
   }
 
   input:focus-visible + .slider {
     outline: 2px solid var(--brand-primary, #10b981);
-    outline-offset: 2px;
+    outline-offset: 3px;
   }
 }
 
-// Sliders and range inputs (Touch-target >= 44px compliant)
+// ── Sliders & Range Inputs (Touch-target compliant) ───────────────
 input[type="range"] {
   min-height: 44px;
   cursor: pointer;
   touch-action: manipulation;
+  accent-color: var(--brand-primary, #10b981);
 }

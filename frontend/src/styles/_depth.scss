@@ -442,8 +442,7 @@
 }
 
 /* ── 7. Navigation & Dock — Floating Capsules ───────────────── */
-.inav-item,
-.dock-item {
+.inav-item {
   transform-style: preserve-3d;
   transition: transform 0.22s var(--d3-ease), background 0.22s ease !important;
 
@@ -457,6 +456,11 @@
       0 8px 18px rgba(var(--brand-primary-rgb), 0.35),
       0 2px 0 0 rgba(var(--brand-primary-rgb), 0.6) inset !important;
   }
+}
+
+.dock-item {
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .mobile-bottom-dock {

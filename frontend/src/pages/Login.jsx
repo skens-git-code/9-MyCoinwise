@@ -26,7 +26,7 @@ import { openCookiePreferences } from '../services/clarity';
 import {
   KeyRound, Mail, AlertTriangle, Zap, Eye, EyeOff,
   ArrowRight, Shield, Globe, Lock, Smartphone, X,
-  Info, CheckCircle2, RefreshCw,
+  Info, CheckCircle2, RefreshCw, Check,
 } from 'lucide-react';
 
 /* ============================================================
@@ -667,7 +667,8 @@ export default function Login() {
             </div>
             {emailHasError && (
               <div id="email-error" className="form-error" role="alert">
-                {fieldErrors.email}
+                <AlertTriangle size={12} aria-hidden="true" />
+                <span>{fieldErrors.email}</span>
               </div>
             )}
           </div>
@@ -724,7 +725,8 @@ export default function Login() {
             </div>
             {passwordHasError && (
               <div id="password-error" className="form-error" role="alert">
-                {fieldErrors.password}
+                <AlertTriangle size={12} aria-hidden="true" />
+                <span>{fieldErrors.password}</span>
               </div>
             )}
             {/* ── Caps Lock hint (hidden when a password error is visible) ── */}
@@ -747,20 +749,24 @@ export default function Login() {
 
           {/* ── Remember me + Forgot ── */}
           <div className="auth-extra-row">
-            <label className="checkbox-label" title={tr('remember_me_tooltip', 'Stay signed in on this device for up to 30 days')}>
+            <label className="checkbox-label" htmlFor="login-rememberMe" title={tr('remember_me_tooltip', 'Stay signed in on this device for up to 30 days')}>
               <input
                 type="checkbox"
+                id="login-rememberMe"
                 name="rememberMe"
                 checked={rememberMe}
                 onChange={handleChange}
                 disabled={loading || rateLimitSeconds > 0}
+                className="auth-checkbox-input"
               />
-              <span>{tr('trust_this_device', 'Trust this device')}</span>
+              <span className={`custom-checkbox ${rememberMe ? 'checked' : ''}`} aria-hidden="true">
+                {rememberMe && <Check size={12} strokeWidth={3} className="custom-check-icon" />}
+              </span>
+              <span className="checkbox-text">{tr('trust_this_device', 'Trust this device')}</span>
             </label>
             <Link
               to="/forgot-password"
               className="auth-forgot-link"
-              style={{ fontSize: '0.82rem', color: 'var(--brand-primary)', fontWeight: 600, textDecoration: 'none' }}
             >
               {tr('forgot_password', 'Forgot password?')}
             </Link>

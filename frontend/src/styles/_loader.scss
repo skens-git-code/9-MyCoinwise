@@ -1,0 +1,301 @@
+/* ================================================================
+   MYCOINWISE — MODERN LOADER & SPINNER SUITE
+   Ultra-smooth, theme-integrated loading components for:
+   - Button inline spinners
+   - Inline suspense/card fallbacks
+   - Fullscreen workspace / auth loading screens
+   - Shimmer skeletons
+   ================================================================ */
+
+@use 'mixins' as *;
+
+// ── 1. Button Spinner Variant ──────────────────────────────────
+.loader--button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+
+  .loader-spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-top-color: #ffffff;
+    border-right-color: rgba(255, 255, 255, 0.85);
+    animation: loaderSpin 0.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    will-change: transform;
+    transform: translateZ(0);
+    display: inline-block;
+  }
+
+  @include reduced-motion {
+    .loader-spinner {
+      animation: none;
+      opacity: 0.85;
+    }
+  }
+}
+
+// ── 2. Inline Card Variant (Suspense / Widget Loading) ─────────
+.loader--inline {
+  position: relative;
+  min-height: 180px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  box-sizing: border-box;
+  color: var(--text-primary);
+
+  .loader-badge {
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    color: #ffffff;
+    background: var(--brand-gradient);
+    box-shadow: 0 8px 24px rgba(var(--brand-primary-rgb), 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    will-change: transform;
+    animation: loaderPulse 2.4s ease-in-out infinite;
+  }
+
+  .loader-status-text {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-family: var(--font-body);
+    letter-spacing: 0.01em;
+  }
+
+  .loader-track {
+    height: 4px;
+    width: 140px;
+    overflow: hidden;
+    border-radius: 99px;
+    background: rgba(148, 163, 184, 0.16);
+    position: relative;
+
+    .loader-fill {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 45%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--brand-primary), var(--brand-accent), var(--brand-secondary));
+      box-shadow: 0 0 12px rgba(var(--brand-primary-rgb), 0.55);
+      animation: loaderTrackFlow 1.6s ease-in-out infinite;
+      will-change: transform;
+    }
+  }
+
+  @include reduced-motion {
+    .loader-badge {
+      animation: none;
+    }
+    .loader-track .loader-fill {
+      animation: none;
+      width: 50%;
+      left: 25%;
+    }
+  }
+}
+
+// ── 3. Fullscreen / Auth Loader Variant ─────────────────────────
+.loader--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-tooltip, 2000);
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+  color: var(--text-primary);
+  background: var(--surface-0);
+
+  // Subtle ambient radial glow behind the center lockup
+  &::before {
+    content: '';
+    position: absolute;
+    width: min(600px, 90vw);
+    height: min(600px, 90vw);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--brand-primary-rgb), 0.14) 0%, transparent 68%);
+    filter: blur(80px);
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    width: min(480px, 80vw);
+    height: min(480px, 80vw);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--brand-secondary-rgb), 0.10) 0%, transparent 68%);
+    filter: blur(70px);
+    top: 55%;
+    left: 55%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .loader-modal {
+    position: relative;
+    width: min(100%, 360px);
+    text-align: center;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  // Floating branded icon badge with checkmark
+  .loader-brand-badge {
+    position: relative;
+    margin-bottom: 24px;
+    display: inline-flex;
+
+    .loader-brand-icon {
+      width: 72px;
+      height: 72px;
+      display: grid;
+      place-items: center;
+      border-radius: 22px;
+      color: #ffffff;
+      background: var(--brand-gradient);
+      box-shadow: 0 16px 36px rgba(var(--brand-primary-rgb), 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      animation: loaderPulse 2.6s ease-in-out infinite;
+      will-change: transform;
+    }
+
+    .loader-check-badge {
+      position: absolute;
+      right: -6px;
+      bottom: -6px;
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #ffffff;
+      background: var(--brand-primary);
+      box-shadow: 0 0 0 3px var(--surface-0), 0 4px 10px rgba(var(--brand-primary-rgb), 0.4);
+    }
+  }
+
+  // Brand wordmark
+  .loader-brand-title {
+    font-family: var(--font-head);
+    font-size: clamp(1.4rem, 4vw, 1.75rem);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: var(--text-primary);
+    margin: 0;
+
+    span {
+      color: var(--brand-primary);
+    }
+  }
+
+  // Status message
+  .loader-status-msg {
+    margin: 8px 0 24px 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    font-family: var(--font-body);
+  }
+
+  // Flowing progress bar
+  .loader-progress-track {
+    height: 5px;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 99px;
+    background: rgba(148, 163, 184, 0.16);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+    position: relative;
+
+    .loader-progress-fill {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 45%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--brand-primary), var(--brand-accent), var(--brand-secondary));
+      box-shadow: 0 0 14px rgba(var(--brand-primary-rgb), 0.65);
+      animation: loaderTrackFlow 1.5s ease-in-out infinite;
+      will-change: transform;
+    }
+  }
+
+  // Hint row
+  .loader-hint-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 18px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+
+    svg {
+      color: var(--brand-primary);
+    }
+  }
+
+  @include reduced-motion {
+    .loader-brand-icon,
+    .loader-progress-fill {
+      animation: none;
+    }
+    .loader-progress-fill {
+      width: 50%;
+      left: 25%;
+    }
+  }
+}
+
+// ── Keyframe Animations ─────────────────────────────────────────
+@keyframes loaderSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loaderPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes loaderTrackFlow {
+  0% {
+    left: -45%;
+  }
+  100% {
+    left: 100%;
+  }
+}

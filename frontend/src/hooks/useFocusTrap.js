@@ -110,19 +110,6 @@ export function useFocusTrap({
 
     document.addEventListener('keydown', handleKeyDown, true);
 
-    // ── Back gesture closes the dialog instead of navigating away ──
-    let pushedHistoryEntry = false;
-    try {
-      window.history.pushState({ __dshModal: true }, '');
-      pushedHistoryEntry = true;
-    } catch { /* history may be unavailable in tests */ }
-
-    const handlePopState = () => {
-      pushedHistoryEntry = false;
-      onCloseRef.current?.();
-    };
-    window.addEventListener('popstate', handlePopState);
-
     // ── Background scroll lock (compensate for the scrollbar to avoid a jump) ──
     let previousOverflow = '';
     let previousPaddingRight = '';
@@ -138,13 +125,6 @@ export function useFocusTrap({
     return () => {
       clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleKeyDown, true);
-      window.removeEventListener('popstate', handlePopState);
-
-      // If we pushed a history entry and the dialog is closing some other way,
-      // consume it so the user does not have to press Back twice.
-      if (pushedHistoryEntry) {
-        try { window.history.back(); } catch { /* ignore */ }
-      }
 
       if (lockScroll && typeof document !== 'undefined') {
         document.body.style.overflow = previousOverflow;

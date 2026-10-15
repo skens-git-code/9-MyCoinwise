@@ -1,0 +1,244 @@
+/* ================================================================
+   MYCOINWISE — SCSS MIXINS & DESIGN SYSTEM UTILITIES
+   Modular, high-performance mixins for responsive design,
+   glassmorphism, typography, forms, layouts, and micro-interactions.
+   Preserves the AMOLED dark + Emerald/Violet design tokens.
+   ================================================================ */
+
+// ── 1. Breakpoints & Media Queries ────────────────────────────
+$breakpoint-xs: 380px;
+$breakpoint-sm: 480px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+$breakpoint-xl: 1280px;
+$breakpoint-2xl: 1560px;
+
+@mixin mobile {
+  @media (max-width: ($breakpoint-md - 1px)) {
+    @content;
+  }
+}
+
+@mixin mobile-small {
+  @media (max-width: ($breakpoint-sm - 1px)) {
+    @content;
+  }
+}
+
+@mixin mobile-tiny {
+  @media (max-width: $breakpoint-xs) {
+    @content;
+  }
+}
+
+@mixin tablet {
+  @media (min-width: $breakpoint-md) and (max-width: ($breakpoint-lg - 1px)) {
+    @content;
+  }
+}
+
+@mixin desktop {
+  @media (min-width: $breakpoint-lg) {
+    @content;
+  }
+}
+
+@mixin desktop-xl {
+  @media (min-width: $breakpoint-xl) {
+    @content;
+  }
+}
+
+@mixin touch-device {
+  @media (hover: none) and (pointer: coarse) {
+    @content;
+  }
+}
+
+@mixin reduced-motion {
+  @media (prefers-reduced-motion: reduce) {
+    @content;
+  }
+}
+
+// ── 2. Flex & Grid Layout Helpers ─────────────────────────────
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@mixin flex-start {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+@mixin flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+@mixin grid-auto-fit($min-size: 280px, $gap: 16px) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(#{$min-size}, 100%), 1fr));
+  gap: $gap;
+}
+
+// ── 3. Typography & Truncation ────────────────────────────────
+@mixin text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+@mixin tabular-numbers {
+  font-variant-numeric: tabular-nums;
+  -webkit-font-feature-settings: "tnum";
+  font-feature-settings: "tnum";
+}
+
+@mixin heading-gradient($gradient: var(--brand-gradient)) {
+  background: $gradient;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+// ── 4. Card & Surface System ──────────────────────────────────
+@mixin card-surface($bg: var(--surface-1), $border: var(--glass-border), $radius: var(--border-radius-lg)) {
+  background: $bg;
+  border: 1px solid $border;
+  border-radius: $radius;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  box-sizing: border-box;
+}
+
+@mixin glass-surface($bg: var(--glass-2), $border: var(--glass-border), $radius: var(--border-radius-lg)) {
+  background: $bg;
+  border: 1px solid $border;
+  border-radius: $radius;
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  position: relative;
+  box-sizing: border-box;
+
+  @media (min-width: $breakpoint-md) {
+    backdrop-filter: blur(12px) saturate(130%);
+    -webkit-backdrop-filter: blur(12px) saturate(130%);
+  }
+}
+
+@mixin card-padding {
+  padding: 22px 24px;
+
+  @include tablet {
+    padding: 18px 20px;
+  }
+
+  @include mobile {
+    padding: 14px 16px;
+  }
+}
+
+@mixin card-padding-compact {
+  padding: 16px 18px;
+
+  @include mobile {
+    padding: 12px 14px;
+  }
+}
+
+// ── 5. Form & Input Mixins ────────────────────────────────────
+@mixin input-focus-ring($glow-color: rgba(var(--brand-primary-rgb), 0.2)) {
+  outline: none;
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px $glow-color, 0 0 16px rgba(var(--brand-primary-rgb), 0.12);
+}
+
+@mixin modern-input {
+  width: 100%;
+  padding: 0.82rem 1rem;
+  border-radius: 12px;
+  background: var(--glass-1);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  font-family: var(--font-body);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+  box-sizing: border-box;
+
+  &::placeholder {
+    color: var(--text-muted);
+    opacity: 0.8;
+  }
+
+  &:hover:not(:disabled):not(:focus) {
+    border-color: var(--glass-border-hover);
+    background: var(--glass-2);
+  }
+
+  &:focus {
+    @include input-focus-ring;
+    background: var(--glass-2);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+}
+
+// ── 6. Micro-Interactions & Hover Lift ─────────────────────────
+@mixin hover-lift($y: -2px, $shadow: var(--shadow-md)) {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      transform: translateY($y);
+      box-shadow: $shadow;
+      border-color: var(--glass-border-hover);
+    }
+  }
+
+  &:active {
+    transform: translateY(0) scale(0.99);
+  }
+
+  @include reduced-motion {
+    transition: none;
+
+    &:hover,
+    &:active {
+      transform: none;
+    }
+  }
+}
+
+@mixin smooth-spin($duration: 0.8s) {
+  animation: spin $duration linear infinite;
+  will-change: transform;
+  transform: translateZ(0);
+
+  @include reduced-motion {
+    animation: none;
+  }
+}
+
+// ── 7. Touch Target Guarantee (>= 44px) ───────────────────────
+@mixin touch-target($min-size: 44px) {
+  min-height: $min-size;
+  min-width: $min-size;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  touch-action: manipulation;
+}

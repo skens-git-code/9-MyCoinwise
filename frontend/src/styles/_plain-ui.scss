@@ -27,11 +27,11 @@ body {
 }
 
 /* Hide all decorative backgrounds (gradients, particles, auth orbs) */
+/* Hide old decorative backgrounds (gradients, particles) */
 .animated-bg,
 .gradient-bg,
 .gradients-container,
-.particles,
-.auth-bg {
+.particles {
   display: none !important;
 }
 
@@ -42,16 +42,9 @@ body {
 .app-island-layout,
 .island-sidebar,
 .island-main,
-.island-header,
-.auth-card {
-  background: var(--surface-1) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-
-.auth-card {
-  max-width: clamp(340px, 92vw, 410px);
+.island-header {
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
 }
 
 /* ── Layout compaction ────────────────────────────────────────── */
@@ -219,10 +212,7 @@ a,
 [data-theme="light"] .island-sidebar .inav-item.active .inav-label,
 [data-theme="light"] .island-sidebar .inav-item.active .inav-icon,
 [data-theme="light"] .mobile-drawer .drawer-nav-item.active,
-[data-theme="light"] .mobile-drawer .drawer-nav-item.active .drawer-nav-label,
-[data-theme="light"] .mobile-bottom-dock .dock-item.active,
-[data-theme="light"] .mobile-bottom-dock .dock-item.active .dock-label,
-[data-theme="light"] .mobile-bottom-dock .dock-item.active .dock-icon {
+[data-theme="light"] .mobile-drawer .drawer-nav-item.active .drawer-nav-label {
   color: #111827 !important;
 }
 
@@ -794,52 +784,9 @@ a,
     flex-wrap: wrap;
     justify-content: flex-end;
   }
-
-  .auth-card {
-    max-width: clamp(340px, 92vw, 410px);
-    padding: 22px 18px;
-  }
-
-  .auth-extra-row {
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: nowrap;
-  }
 }
 
-@media (max-width: 380px) {
-  .auth-card {
-    padding: 26px 18px;
-  }
 
-  .auth-extra-row {
-    gap: 8px;
-  }
-
-  .auth-forgot-link,
-  .checkbox-label {
-    font-size: 0.76rem;
-  }
-}
-
-/* Keep the complete auth card reachable on short and narrow viewports. */
-.auth-page {
-  min-height: 100dvh;
-  height: auto;
-  overflow-x: hidden;
-  overflow-y: auto;
-  align-items: flex-start;
-  padding: clamp(16px, 4vh, 48px) 16px;
-}
-
-.auth-card {
-  flex: 0 1 auto;
-  margin: auto 0;
-  min-width: 0;
-}
-
-.auth-footer,
-.auth-alt-btn { flex-shrink: 0; }
 
 .profile-emoji-trigger {
   min-width: 140px;
@@ -885,14 +832,7 @@ a,
   color: #fff;
 }
 
-@media (max-height: 720px) {
-  .auth-page { padding-block: 16px; }
-  .auth-card { padding-block: 24px; }
-  .auth-logo { margin-bottom: 1rem; }
-  .auth-header { margin-bottom: 1rem; }
-  .auth-form { gap: 0.75rem; margin-bottom: 0.75rem; }
-  .auth-secure-note { margin-top: 0.75rem; }
-}
+
 
 /* ── Mobile transaction form ────────────────────────────────── */
 .transaction-modal {
@@ -1378,9 +1318,4 @@ a,
   }
 }
 
-@media (max-width: 480px) {
-  .auth-page { padding-inline: 10px; }
-  .auth-card { width: 100%; padding-inline: 18px; }
-  .auth-extra-row { gap: 10px; }
-  .auth-forgot-link { margin-left: auto; }
-}
+

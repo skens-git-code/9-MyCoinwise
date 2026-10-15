@@ -30,7 +30,8 @@ import {
   Settings, ChevronRight,
   Bell, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon,
   Menu, X, Zap, Search, Keyboard, User, Users, Sun, Moon, Check,
-  HelpCircle, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon, ReceiptText
+  HelpCircle, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon, ReceiptText,
+  Home as HomeIcon
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
@@ -74,7 +75,7 @@ const NAV_ITEMS = [
 // Mobile dock keeps the high-frequency calendar discoverable; long-term goals
 // remain available in More alongside the rest of the workspace.
 const MOBILE_NAV_ITEMS = [
-  { to: '/', icon: LayoutDashboard, labelKey: 'dashboard', mobileLabel: 'Home' },
+  { to: '/', icon: HomeIcon, labelKey: 'dashboard', mobileLabel: 'Home' },
   { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions', mobileLabel: 'Txns' },
   { to: '/calendar', icon: CalendarIcon, labelKey: 'calendar', mobileLabel: 'Calendar' },
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics', mobileLabel: 'Analytics' },
@@ -817,6 +818,7 @@ export default function AppLayout({ children }) {
           <Header
             sidebarOpen={sidebarOpen}
             onToggleSidebar={handleSidebarToggle}
+            onOpenDrawer={handleOpenDrawer}
             pageTitle={pageTitle}
             userInfo={userInfo}
             activeDropdown={activeDropdown}
@@ -1225,7 +1227,7 @@ const BrandLogo = ({ size = 20, className = 'brand-logo-svg' }) => (
 // ── Header: brand, nav links, actions (search, converter, AI, theme,
 //    alerts, profile) ──
 const Header = React.memo(({
-  sidebarOpen, onToggleSidebar,
+  sidebarOpen, onToggleSidebar, onOpenDrawer,
   pageTitle, userInfo,
   activeDropdown, onDropdownToggle, onCloseDropdowns,
   onShowConverter, onShowAlerts, onShowAI, urgentAlertsCount,
@@ -1337,6 +1339,15 @@ const Header = React.memo(({
       <div className={`nav-container ${isScrolled ? 'is-scrolled' : ''}`}>
         {/* ── Brand + mobile title ── */}
         <div className="nav-brand-group">
+          <button
+            type="button"
+            className="mobile-hamburger-btn ibtn"
+            onClick={onOpenDrawer || onToggleSidebar}
+            aria-label={t?.('open_menu') || 'Open navigation menu'}
+            title={t?.('menu') || 'Menu'}
+          >
+            <Menu size={18} strokeWidth={2} />
+          </button>
           <NavLink to="/" className="port" aria-label="Coinwise Home">
             <BrandLogo size={22} className="brand-logo-svg" />
           </NavLink>
@@ -1725,14 +1736,26 @@ const MobileBottomNav = React.memo(({ t, onOpenDrawer }) => {
             {({ isActive }) => (
               <>
                 <motion.div className="dock-icon-wrapper" whileTap={{ scale: 0.88 }}>
-                  <item.icon size={20} className={`dock-icon nav-icon-${item.labelKey}`} />
                   {isActive && (
                     <motion.div
                       className="dock-active-dot"
                       layoutId="dockActive"
                       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        zIndex: 1,
+                        pointerEvents: 'none',
+                      }}
                     />
                   )}
+                  <item.icon
+                    size={20}
+                    className={`dock-icon nav-icon-${item.labelKey}`}
+                    style={{ position: 'relative', zIndex: 10 }}
+                  />
                 </motion.div>
                 <span className="dock-label">
                   <span className="dock-label-full">{t?.(item.labelKey) || item.labelKey}</span>
@@ -1787,6 +1810,15 @@ const MobileDrawer = React.memo(({
       animate={{ x: 0 }}
       exit={{ x: '-100%' }}
       transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+      drag="x"
+      dragDirectionLock
+      dragConstraints={{ left: -340, right: 0 }}
+      dragElastic={{ left: 0.2, right: 0 }}
+      onDragEnd={(_e, info) => {
+        if (info.offset.x < -60 || info.velocity.x < -300) {
+          onClose();
+        }
+      }}
     >
       {/* ── Drawer header ── */}
       <div className="mobile-drawer-header">
