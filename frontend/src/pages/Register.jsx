@@ -272,6 +272,16 @@ export default function Register() {
     };
   }, []);
 
+  /* ---------------- Dynamic Viewport & Virtual Keyboard Scrolling ---------------- */
+  useEffect(() => {
+    document.documentElement.classList.add('auth-viewport-scrollable');
+    document.body.classList.add('auth-viewport-scrollable');
+    return () => {
+      document.documentElement.classList.remove('auth-viewport-scrollable');
+      document.body.classList.remove('auth-viewport-scrollable');
+    };
+  }, []);
+
   /* ---------------- Redirect Authenticated Users ---------------- */
   // Only redirect if user is already logged in before registration and not viewing success
   useEffect(() => {

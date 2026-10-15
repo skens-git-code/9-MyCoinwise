@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, ArrowLeft, CheckCircle2, AlertTriangle, Zap, Send } from 'lucide-react';
@@ -9,6 +9,16 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+
+  /* ---------------- Dynamic Viewport & Virtual Keyboard Scrolling ---------------- */
+  useEffect(() => {
+    document.documentElement.classList.add('auth-viewport-scrollable');
+    document.body.classList.add('auth-viewport-scrollable');
+    return () => {
+      document.documentElement.classList.remove('auth-viewport-scrollable');
+      document.body.classList.remove('auth-viewport-scrollable');
+    };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -198,6 +198,16 @@ export default function Login() {
   // can take a moment (Render.com free tier sleeps between requests).
   const [serverWarm, setServerWarm] = useState(null);
 
+  /* ---------------- Dynamic Viewport & Virtual Keyboard Scrolling ---------------- */
+  useEffect(() => {
+    document.documentElement.classList.add('auth-viewport-scrollable');
+    document.body.classList.add('auth-viewport-scrollable');
+    return () => {
+      document.documentElement.classList.remove('auth-viewport-scrollable');
+      document.body.classList.remove('auth-viewport-scrollable');
+    };
+  }, []);
+
   /* ---------------- Redirect if already logged in ---------------- */
   useEffect(() => {
     if (user) {

@@ -16,6 +16,9 @@ const { logger } = require('./utils/logger');
 // so the backend boots correctly regardless of the directory it is started from.
 const { config } = require('./config/env');
 
+// Explicit strictQuery setting for Mongoose 8.x / MongoDB 8.2 driver compatibility
+mongoose.set('strictQuery', true);
+
 /** @param {number} ms Milliseconds to sleep. @returns {Promise<void>} */
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -40,6 +43,8 @@ const connectToMongo = async ({ retries = 4 } = {}) => {
         heartbeatFrequencyMS: 10000,
         maxPoolSize: 10,
         minPoolSize: 1,
+        retryWrites: true,
+        w: 'majority',
       });
       logger.info('✅ Successfully connected to MongoDB.');
       return;

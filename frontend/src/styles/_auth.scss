@@ -7,18 +7,46 @@
 
 @use 'mixins' as *;
 
+// ── Auth Viewport & Scrolling (Mobile Virtual Keyboard Support) ──
+// Unconstrain root document elements when on auth screens so that mobile
+// virtual keyboards can shrink the dynamic viewport without cutting off scroll.
+html:has(.auth-page),
+body:has(.auth-page),
+html.auth-viewport-scrollable,
+body.auth-viewport-scrollable {
+  height: auto !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#root:has(.auth-page),
+body.auth-viewport-scrollable #root {
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow-y: visible !important;
+}
+
 // ── Outer Page Container (Responsive Centering) ─────────────────
 .auth-page {
   min-height: 100vh;
   min-height: 100dvh;
+  height: auto;
   width: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   box-sizing: border-box;
-  padding: clamp(16px, 4vw, 48px) 16px;
-  padding-top: max(clamp(16px, 4vw, 48px), env(safe-area-inset-top, 0px));
-  padding-bottom: max(clamp(16px, 4vw, 48px), env(safe-area-inset-bottom, 0px));
+  padding: clamp(16px, 3.5vw, 40px) 16px;
+  padding-top: max(clamp(16px, 3vw, 28px), env(safe-area-inset-top, 0px));
+  padding-bottom: max(clamp(20px, 4vw, 36px), env(safe-area-inset-bottom, 0px));
   background: var(--surface-0);
   position: relative;
   overflow-y: auto;
@@ -103,7 +131,9 @@
 .auth-card {
   width: 100%;
   max-width: 440px;
-  margin: auto;
+  margin: auto 0;
+  flex-shrink: 0;
+  min-height: min-content;
   padding: clamp(24px, 5vw, 36px) clamp(18px, 4.5vw, 32px);
   border-radius: clamp(18px, 4vw, 24px);
   background: var(--surface-1);
@@ -701,12 +731,16 @@
 // ── Mobile Responsive Fine-Tuning ───────────────────────────────
 @media (max-width: 480px) {
   .auth-page {
-    padding: 14px 12px calc(20px + env(safe-area-inset-bottom, 0px));
+    padding: 12px 12px calc(24px + env(safe-area-inset-bottom, 0px));
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-y: auto;
   }
 
   .auth-card {
-    padding: 22px 16px;
+    padding: 20px 16px 24px;
     border-radius: 18px;
+    margin: auto 0;
   }
 
   .form-group .input-wrapper input {
@@ -719,12 +753,16 @@
 
 @media (max-height: 720px) {
   .auth-page {
-    align-items: flex-start;
-    padding-top: 14px;
-    padding-bottom: 24px;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: max(12px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-y: auto;
   }
 
   .auth-card {
-    margin: 8px auto;
+    margin: 8px 0;
   }
 }

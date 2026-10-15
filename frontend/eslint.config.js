@@ -29,6 +29,11 @@ export default defineConfig([
       },
     },
     rules: {
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/purity': 'warn',
+      'react-hooks/immutability': 'warn',
+      'react-hooks/preserve-manual-memoization': 'warn',
+      'react-hooks/refs': 'warn',
       'no-unused-vars': [
         'error',
         {

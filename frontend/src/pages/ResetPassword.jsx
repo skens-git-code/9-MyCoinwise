@@ -29,6 +29,16 @@ export default function ResetPassword() {
   const strengthColor = { weak: '#ef4444', fair: '#f59e0b', strong: '#10b981' };
   const strengthWidth = { weak: '33%', fair: '66%', strong: '100%' };
 
+  /* ---------------- Dynamic Viewport & Virtual Keyboard Scrolling ---------------- */
+  useEffect(() => {
+    document.documentElement.classList.add('auth-viewport-scrollable');
+    document.body.classList.add('auth-viewport-scrollable');
+    return () => {
+      document.documentElement.classList.remove('auth-viewport-scrollable');
+      document.body.classList.remove('auth-viewport-scrollable');
+    };
+  }, []);
+
   useEffect(() => {
     if (!token || token.length < 32) {
       setError('This reset link is invalid or incomplete. Please request a new one.');
