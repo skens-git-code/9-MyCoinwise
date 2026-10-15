@@ -818,7 +818,6 @@ export default function AppLayout({ children }) {
           <Header
             sidebarOpen={sidebarOpen}
             onToggleSidebar={handleSidebarToggle}
-            onOpenDrawer={handleOpenDrawer}
             pageTitle={pageTitle}
             userInfo={userInfo}
             activeDropdown={activeDropdown}
@@ -1227,7 +1226,7 @@ const BrandLogo = ({ size = 20, className = 'brand-logo-svg' }) => (
 // ── Header: brand, nav links, actions (search, converter, AI, theme,
 //    alerts, profile) ──
 const Header = React.memo(({
-  sidebarOpen, onToggleSidebar, onOpenDrawer,
+  sidebarOpen, onToggleSidebar,
   pageTitle, userInfo,
   activeDropdown, onDropdownToggle, onCloseDropdowns,
   onShowConverter, onShowAlerts, onShowAI, urgentAlertsCount,
@@ -1339,15 +1338,6 @@ const Header = React.memo(({
       <div className={`nav-container ${isScrolled ? 'is-scrolled' : ''}`}>
         {/* ── Brand + mobile title ── */}
         <div className="nav-brand-group">
-          <button
-            type="button"
-            className="mobile-hamburger-btn ibtn"
-            onClick={onOpenDrawer || onToggleSidebar}
-            aria-label={t?.('open_menu') || 'Open navigation menu'}
-            title={t?.('menu') || 'Menu'}
-          >
-            <Menu size={18} strokeWidth={2} />
-          </button>
           <NavLink to="/" className="port" aria-label="Coinwise Home">
             <BrandLogo size={22} className="brand-logo-svg" />
           </NavLink>

@@ -171,6 +171,8 @@
   }
 
   .mobile-hamburger-btn {
+    display: none !important;
+
     &:focus,
     &:focus:not(:focus-visible),
     &:active {
