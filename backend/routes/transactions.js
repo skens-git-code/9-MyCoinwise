@@ -469,48 +469,33 @@ const validateTransactionPayload = (payload) => {
  * Balance Sync
  * ————————————————————————————————————— */
 
-// ── Aggregate the user's net transaction balance ──
-// Grouped aggregation (O(#currencies), not O(#transactions)): the previous
-// implementation loaded every transaction document into memory on each
-// mutation, which froze accounts with thousands of rows.
-// Returns 0 for invalid user IDs.
 const getTransactionBalance = async (userId) => {
   if (!mongoose.isValidObjectId(userId)) return 0;
-  const [user, accountCurrencies, grouped] = await Promise.all([
+  const [user, transactions, accounts] = await Promise.all([
     User.findById(userId).select('currency').lean(),
+    Transaction.find({
+      $or: [
+        { user_id: new mongoose.Types.ObjectId(String(userId)) },
+        { user_id: String(userId) },
+      ],
+      is_deleted: { $ne: true },
+    })
+      .select('type amount currency account_id date import_fingerprint recurrence_instance_key category merchant note')
+      .lean(),
     Account.find({ user_id: userId }).select('_id currency').lean(),
-    Transaction.aggregate([
-      {
-        $match: {
-          $or: [
-            { user_id: new mongoose.Types.ObjectId(String(userId)) },
-            { user_id: String(userId) },
-          ],
-          is_deleted: { $ne: true },
-        },
-      },
-      {
-        $group: {
-          _id: { type: '$type', currency: '$currency', account_id: '$account_id' },
-          total: { $sum: '$amount' },
-        },
-      },
-    ]),
   ]);
   const displayCurrency = normalizeCurrency(user?.currency);
-  const accountCurrencyById = new Map(
-    (accountCurrencies || []).map((account) => [String(account._id), normalizeCurrency(account.currency, displayCurrency)])
+  const accountCurrencies = new Map(
+    (accounts || []).map((account) => [String(account._id), normalizeCurrency(account.currency, displayCurrency)])
   );
-  let balance = 0;
-  for (const bucket of grouped || []) {
-    const key = bucket?._id || {};
+  const balance = dedupeTransactions(transactions).reduce((sum, transaction) => {
     const sourceCurrency = normalizeCurrency(
-      key.currency || accountCurrencyById.get(String(key.account_id || '')),
+      transaction.currency || accountCurrencies.get(String(transaction.account_id || '')),
       displayCurrency
     );
-    const amount = convertToCurrency(bucket.total, sourceCurrency, displayCurrency);
-    balance += key.type === 'income' ? amount : -amount;
-  }
+    const amount = convertToCurrency(transaction.amount, sourceCurrency, displayCurrency);
+    return sum + (transaction.type === 'income' ? amount : -amount);
+  }, 0);
   return Number(balance.toFixed(2));
 };
 

@@ -57,7 +57,7 @@ const TransactionForm = lazy(() => import('./TransactionForm'));
 
 // ── Desktop sidebar navigation items ──
 const NAV_ITEMS = [
-  { to: '/', icon: LayoutDashboard, labelKey: 'dashboard' },
+  { to: '/', icon: HomeIcon, labelKey: 'dashboard' },
   { to: '/transactions', icon: ArrowLeftRight, labelKey: 'transactions' },
   { to: '/calendar', icon: CalendarIcon, labelKey: 'calendar' },
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics' },
@@ -1864,7 +1864,7 @@ const MobileDrawer = React.memo(({
             {({ isActive }) => (
               <>
                 <div className="drawer-nav-icon-box">
-                  <item.icon size={16} className={`drawer-nav-icon nav-icon-${item.labelKey}`} />
+                  <item.icon size={18} style={{ width: 18, height: 18 }} className={`drawer-nav-icon nav-icon-${item.labelKey}`} />
                 </div>
                 <span className="drawer-nav-label">{t?.(item.labelKey) || item.labelKey}</span>
                 {isActive && <div className="drawer-nav-active-indicator" />}

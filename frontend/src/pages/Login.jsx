@@ -25,7 +25,7 @@ import { LANGUAGES } from '../services/i18n';
 import { openCookiePreferences } from '../services/clarity';
 import {
   KeyRound, Mail, AlertTriangle, Zap, Eye, EyeOff,
-  ArrowRight, Shield, Globe, Lock, Smartphone, X,
+  ArrowRight, Globe, Lock, X,
   Info, CheckCircle2, RefreshCw, Check,
 } from 'lucide-react';
 
@@ -555,12 +555,6 @@ export default function Login() {
           <p>{tr('sign_in_to_continue', 'Sign in to your account to continue')}</p>
         </div>
 
-        {/* ── Quick benefits / trust highlights ── */}
-        <ul className="auth-benefits" aria-label={tr('login_benefits', 'Why you will love MyCoinwise')}>
-          <li><Shield size={14} aria-hidden="true" /> {tr('benefit_secure', 'Bank-grade security with 256-bit encryption')}</li>
-          <li><Zap size={14} aria-hidden="true" /> {tr('benefit_fast', 'Real-time insights into your spending')}</li>
-          <li><Smartphone size={14} aria-hidden="true" /> {tr('benefit_sync', 'Synced seamlessly across your devices')}</li>
-        </ul>
 
         {/* ===================== Server Connectivity Notice ===================== */}
         {/* Subtle notice ONLY shown if the backend health check failed or timed out.
@@ -820,11 +814,6 @@ export default function Login() {
           </Link>
         </div>
 
-        {/* ── Trust badge ── */}
-        <div className="auth-secure-note">
-          <Shield size={12} aria-hidden="true" />
-          <span>{tr('encryption_badge', '256-bit encrypted · JWT session tokens')}</span>
-        </div>
 
         {/* ── Cookie preferences trigger ── */}
         <div style={{ marginTop: 14, textAlign: 'center' }}>

@@ -331,6 +331,8 @@
     .input-icon {
       position: absolute;
       left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
       color: var(--text-muted);
       pointer-events: none;
       z-index: 2;
@@ -338,9 +340,11 @@
     }
 
     input {
-      width: 100%;
-      height: 48px;
-      padding: 0 42px 0 44px;
+      width: 100% !important;
+      height: 48px !important;
+      padding: 0 44px 0 44px !important;
+      padding-left: 44px !important;
+      padding-right: 44px !important;
       border-radius: 12px;
       background: var(--glass-1);
       border: 1px solid var(--glass-border);
@@ -406,7 +410,7 @@
 
   &:focus-within .input-wrapper .input-icon {
     color: var(--brand-primary);
-    transform: scale(1.08);
+    transform: translateY(-50%) scale(1.08);
   }
 
   &.has-error {
@@ -706,8 +710,10 @@
   }
 
   .form-group .input-wrapper input {
-    height: 46px;
-    font-size: max(16px, 0.92rem); // Prevent iOS auto-zoom
+    height: 46px !important;
+    padding-left: 44px !important;
+    padding-right: 44px !important;
+    font-size: max(16px, 0.92rem) !important; // Prevent iOS auto-zoom
   }
 }
 

@@ -28,7 +28,7 @@ import { LANGUAGES } from '../services/i18n';
 import { openCookiePreferences } from '../services/clarity';
 import {
   User, Mail, KeyRound, AlertTriangle, Zap, Eye, EyeOff,
-  ArrowRight, Shield, CheckCircle2, Lock, Globe, X,
+  ArrowRight, CheckCircle2, Lock, Globe, X,
   Loader2, RefreshCw, Smartphone, MailCheck,
 } from 'lucide-react';
 
@@ -686,19 +686,6 @@ export default function Register() {
           <p>{tr('create_account_subtitle', 'Start your journey to smarter budgeting')}</p>
         </div>
 
-        {/* ===================== Benefit Bullets ===================== */}
-        <ul className="auth-benefits">
-          {[
-            tr('encryption_badge', 'Secure JWT authentication'),
-            tr('track_plan_grow', 'Track income & expenses'),
-            tr('ai_insights', 'Smart AI spending alerts'),
-          ].map((b) => (
-            <li key={b}>
-              <CheckCircle2 size={14} aria-hidden="true" />
-              {b}
-            </li>
-          ))}
-        </ul>
 
         {/* ===================== Top-Level Error ===================== */}
         <div className="auth-alert-slot">
@@ -1069,11 +1056,6 @@ export default function Register() {
           </Link>
         </div>
 
-        {/* ── Trust badge ── */}
-        <div className="auth-secure-note">
-          <Shield size={12} aria-hidden="true" />
-          <span>{tr('encryption_badge', '256-bit encrypted · secure sessions')}</span>
-        </div>
 
         {/* ── Cookie preferences trigger ── */}
         <div style={{ marginTop: 14, textAlign: 'center' }}>

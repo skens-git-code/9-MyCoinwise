@@ -988,8 +988,8 @@
   border: 1px solid transparent;
 
   .drawer-nav-icon-box {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -997,7 +997,18 @@
     background: var(--glass-1);
     color: inherit;
     flex-shrink: 0;
+    overflow: hidden;
     transition: all var(--transition-fast);
+  }
+
+  .drawer-nav-icon,
+  .drawer-nav-icon-box svg {
+    width: 18px !important;
+    height: 18px !important;
+    max-width: 18px !important;
+    max-height: 18px !important;
+    display: block !important;
+    flex-shrink: 0 !important;
   }
 
   .drawer-nav-label {
