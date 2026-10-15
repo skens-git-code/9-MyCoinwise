@@ -1366,7 +1366,7 @@ body,
   max-width: 100%;
   min-width: 0 !important;
   margin: 0 auto;
-  padding: 12px var(--content-padding-x, 32px) 64px;
+  padding: 12px var(--content-padding-x, 32px) 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;

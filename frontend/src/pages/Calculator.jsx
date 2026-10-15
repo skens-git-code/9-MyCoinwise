@@ -777,7 +777,7 @@ export default function ScientificCalculator() {
    * ————————————————————————————————————————————
    */
   return (
-    <div className="island-page calculator-page">
+    <div className="calculator-page">
       <header className="island-header glass-sm calculator-page-header">
         <div className="ih-left">
           <div className="ih-titles">

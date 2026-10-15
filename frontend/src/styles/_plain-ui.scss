@@ -280,7 +280,7 @@ a,
   }
 
   .island-page {
-    padding: 16px 14px 84px;
+    padding: 12px 14px 0;
   }
 }
 
@@ -719,7 +719,7 @@ a,
   .inbox-layout-page {
     width: 100%;
     min-width: 0;
-    padding-bottom: 24px;
+    padding-bottom: 0;
   }
 
   .inbox-split-pane,
@@ -731,7 +731,7 @@ a,
   }
 
   .inbox-detail-pane {
-    padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0;
   }
 
   .idp-empty {
@@ -956,7 +956,7 @@ a,
 /* Keep the fixed quick-action control out of the calculator's final row and
    leave enough scroll room above the mobile navigation dock. */
 .calculator-page {
-  padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 0;
 }
 
 .fab-container-calculator {
@@ -1164,8 +1164,9 @@ a,
   }
 
   .inbox-list-pane {
-    height: min(58dvh, 500px) !important;
-    min-height: 360px;
+    height: auto !important;
+    max-height: 480px !important;
+    min-height: 0 !important;
     margin-bottom: 0 !important;
   }
 

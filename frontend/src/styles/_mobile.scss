@@ -38,7 +38,7 @@
 
   /* ─── STANDARDIZED PAGE PADDING ─── */
   .island-page {
-    padding: 10px 12px 14px !important;
+    padding: 10px 12px 0 !important;
     max-width: 100% !important;
     width: 100% !important;
     box-sizing: border-box !important;
@@ -1126,11 +1126,16 @@
   /* ─── INBOX SPLIT PANE — STACK ON MOBILE ─── */
   /* _portfolio.scss sets display:grid !important with 2-column grid.
      We must override BOTH display AND grid-template-columns. */
+  .inbox-layout-page {
+    min-height: 0 !important;
+    gap: 12px !important;
+  }
+
   .inbox-split-pane {
     display: flex !important;
     flex-direction: column !important;
     grid-template-columns: none !important;
-    gap: 14px !important;
+    gap: 12px !important;
     height: auto !important;
     width: 100% !important;
   }
@@ -1138,7 +1143,9 @@
   .inbox-list-pane {
     flex: none !important;
     width: 100% !important;
-    height: 400px !important;
+    height: auto !important;
+    max-height: 520px !important;
+    min-height: 0 !important;
     margin-bottom: 0 !important;
     padding: 12px !important;
     border-radius: 16px !important;
@@ -1154,6 +1161,59 @@
     padding: 14px !important;
     border-radius: 16px !important;
     box-sizing: border-box !important;
+  }
+
+  .inbox-layout-page:not(.settings-page) .il-scrollable,
+  .tx-page .il-scrollable {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    width: 100% !important;
+    gap: 8px !important;
+    height: auto !important;
+    max-height: 440px !important;
+    padding: 2px !important;
+  }
+
+  .il-item {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    padding: 12px 10px !important;
+    gap: 10px !important;
+    box-sizing: border-box !important;
+  }
+
+  .idp-empty .idp-quick-stats {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .idp-empty .iqs-box {
+    padding: 10px 4px !important;
+    text-align: center !important;
+    min-width: 0 !important;
+
+    label {
+      font-size: 0.68rem !important;
+      font-weight: 700 !important;
+    }
+
+    span {
+      font-size: clamp(0.72rem, 2.6vw, 0.95rem) !important;
+      font-weight: 800 !important;
+      font-variant-numeric: tabular-nums !important;
+      letter-spacing: -0.02em !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: clip !important;
+    }
   }
 
   /* ─── MODALS — FULL WIDTH ON MOBILE ─── */
@@ -1312,8 +1372,7 @@
     display: none !important;
   }
 
-  .settings-page .inbox-list-pane .il-scrollable,
-  .il-scrollable {
+  .settings-page .inbox-list-pane .il-scrollable {
     display: flex !important;
     flex-direction: row !important;
     overflow-x: auto !important;
@@ -1535,7 +1594,7 @@
   }
 
   .tax-page {
-    padding: 12px 12px 96px !important;
+    padding: 12px 12px 0 !important;
   }
 
   .tax-tab-panel {
@@ -1834,7 +1893,7 @@
 @media (max-width: 480px) {
 
   .island-page {
-    padding: 8px 8px 12px !important;
+    padding: 8px 8px 0 !important;
   }
 
   .page-content,
@@ -1893,7 +1952,7 @@
 @media (max-width: 375px) {
 
   .island-page {
-    padding: 6px 6px 10px !important;
+    padding: 6px 6px 0 !important;
   }
 
   .page-content,

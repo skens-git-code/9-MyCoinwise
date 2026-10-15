@@ -1596,7 +1596,7 @@
   }
 
   .island-content-wrapper {
-    padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0;
   }
 
   .island-sidebar {
@@ -1621,14 +1621,14 @@
 
   .island-page {
     padding: clamp(14px, 4vw, 22px);
-    padding-bottom: var(--bottom-safe);
+    padding-bottom: 0;
   }
 
   .page-content,
   .inbox-layout-page,
   [class*="layout"] {
     &:not(.modal-box):not(.modal-overlay):not(.shortcuts-modal):not(.shortcuts-backdrop):not(.tax-modal) {
-      padding-bottom: var(--bottom-safe);
+      padding-bottom: 0;
     }
   }
 
@@ -1711,7 +1711,7 @@
   }
 
   .island-content-wrapper {
-    padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0;
   }
 
   .mobile-bottom-dock {
@@ -1741,8 +1741,7 @@
   }
 
   .island-page {
-    padding: 12px;
-    padding-bottom: var(--bottom-safe);
+    padding: 12px 12px 0;
   }
 
   .island-header {
@@ -1785,7 +1784,7 @@
   }
 
   .island-content-wrapper {
-    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0;
   }
 
   .island-header {
@@ -1793,7 +1792,6 @@
   }
 
   .island-page {
-    padding: 10px;
-    padding-bottom: var(--bottom-safe);
+    padding: 10px 10px 4px;
   }
 }

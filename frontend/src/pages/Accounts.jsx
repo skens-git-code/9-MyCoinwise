@@ -181,7 +181,7 @@ StatCard.displayName = 'StatCard';
 
 // ── Skeleton shown while accounts are still loading ──
 const AccountsSkeleton = () => (
-  <div className="account-page" style={{ padding: 'var(--spacing-lg, 24px)', maxWidth: 'var(--content-max-width, 1240px)', margin: '0 auto' }} role="status" aria-label="Loading accounts">
+  <div className="account-page" style={{ maxWidth: 'var(--content-max-width, 1240px)', margin: '0 auto', width: '100%' }} role="status" aria-label="Loading accounts">
     <div className="shimmer" style={{ width: 220, height: 32, borderRadius: 10, marginBottom: 10 }} />
     <div className="shimmer" style={{ width: 360, maxWidth: '80%', height: 16, borderRadius: 8, marginBottom: 28 }} />
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
@@ -840,7 +840,7 @@ export default function Accounts() {
   return (
     <div
       className="account-page"
-      style={{ padding: 'var(--spacing-lg, 24px)', maxWidth: 'var(--content-max-width, 1240px)', margin: '0 auto' }}
+      style={{ maxWidth: 'var(--content-max-width, 1240px)', margin: '0 auto', width: '100%' }}
     >
 
       {/* ===================== Header ===================== */}
@@ -1595,7 +1595,6 @@ export default function Accounts() {
                     required={!isEditing}
                     placeholder="0.00"
                     disabled={isEditing}
-                    inputMode="decimal"
                     inputMode="decimal"
                   />
                   {isEditing && (

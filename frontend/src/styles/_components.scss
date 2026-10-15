@@ -54,7 +54,7 @@
 .tax-document-list { display: grid; gap: .5rem; }.tax-document-row { gap: .75rem; padding: .75rem; border: 1px solid var(--glass-border); border-radius: 10px; }.tax-document-row > div { display: grid; gap: .2rem; flex: 1; min-width: 0; }.tax-document-row a { color: var(--primary, #059669); }.tax-form { display: grid; gap: 1rem; }.tax-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }.tax-form label { display: grid; gap: .35rem; color: var(--text-secondary); font-size: .82rem; }.tax-form input, .tax-form select, .tax-form textarea { width: 100%; padding: .65rem .7rem; border: 1px solid var(--glass-border); border-radius: 8px; background: var(--surface-1, transparent); color: var(--text-primary); font: inherit; }.tax-form-actions { justify-content: flex-end; gap: .6rem; }.tax-regime-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }.tax-regime-compare div { display: grid; gap: .25rem; padding: .8rem; border-radius: 10px; background: color-mix(in srgb, var(--primary, #059669) 8%, transparent); }.tax-regime-compare span, .tax-regime-compare small { color: var(--text-muted); }.tax-regime-compare strong { font-size: 1.2rem; }.tax-skeleton { height: 120px; margin-bottom: 1rem; border-radius: 16px; background: linear-gradient(90deg, color-mix(in srgb, var(--surface-1) 80%, transparent), color-mix(in srgb, var(--surface-1) 95%, white), color-mix(in srgb, var(--surface-1) 80%, transparent)); background-size: 200% 100%; animation: tax-shimmer 1.4s linear infinite; }.tax-skeleton.wide { height: 400px; }@keyframes tax-shimmer { to { background-position: -200% 0; } }
 .tax-modal-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 1rem; background: rgba(2, 6, 23, .58); }.tax-modal { width: min(720px, 100%); max-height: min(90vh, 800px); overflow-y: auto; padding: 1.2rem; }.tax-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }.tax-modal-header h2 { margin: 0; }.tax-report-preview { max-height: 520px; overflow: auto; padding: 1rem; border-radius: 10px; background: rgba(2, 6, 23, .35); font-size: .75rem; white-space: pre-wrap; }.spin { animation: tax-spin 1s linear infinite; }@keyframes tax-spin { to { transform: rotate(360deg); } }
 @media (max-width: 900px) { .tax-content-grid { grid-template-columns: 1fr; }.tax-estimate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.tax-profile-strip { align-items: flex-start; flex-direction: column; }.tax-strip-stats { width: 100%; justify-content: space-between; padding-right: 0; } }
-@media (max-width: 600px) { .tax-page { padding: 1rem .75rem 6rem; }.tax-header { align-items: flex-start; flex-direction: column; }.tax-header-actions { justify-content: flex-start; width: 100%; }.tax-header-actions select { max-width: 100%; }.tax-estimate-grid { grid-template-columns: 1fr 1fr; }.tax-number-card { padding: .75rem; }.tax-number-card strong { font-size: 1rem; }.tax-strip-stats { gap: .6rem; flex-wrap: wrap; }.tax-form-grid { grid-template-columns: 1fr; }.tax-inline-form { display: grid; grid-template-columns: 1fr; }.tax-inline-form select, .tax-inline-form input, .tax-inline-form button { width: 100%; }.tax-document-form { display: grid; }.tax-tab-panel { padding: .8rem; }.tax-data-table { min-width: 620px; } }
+@media (max-width: 600px) { .tax-page { padding: 1rem .75rem 0; }.tax-header { align-items: flex-start; flex-direction: column; }.tax-header-actions { justify-content: flex-start; width: 100%; }.tax-header-actions select { max-width: 100%; }.tax-estimate-grid { grid-template-columns: 1fr 1fr; }.tax-number-card { padding: .75rem; }.tax-number-card strong { font-size: 1rem; }.tax-strip-stats { gap: .6rem; flex-wrap: wrap; }.tax-form-grid { grid-template-columns: 1fr; }.tax-inline-form { display: grid; grid-template-columns: 1fr; }.tax-inline-form select, .tax-inline-form input, .tax-inline-form button { width: 100%; }.tax-document-form { display: grid; }.tax-tab-panel { padding: .8rem; }.tax-data-table { min-width: 620px; } }
 .tax-start-card, .tax-start-panel { display: grid; gap: .5rem; place-items: center; min-height: 150px; }.tax-start-card h3, .tax-start-panel h3 { margin: 0; color: var(--text-primary); }.tax-start-card p, .tax-start-panel p { max-width: 48ch; margin: 0; }.tax-field-help { color: var(--text-muted); font-size: .72rem; font-weight: 400; }.tax-compare-cta { font-weight: 700; }.tax-regime-compare .selected { outline: 2px solid color-mix(in srgb, var(--primary, #059669) 60%, transparent); }.tax-tds-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }.tax-tds-summary div { display: grid; gap: .2rem; padding: .8rem; border: 1px solid var(--glass-border, rgba(148,163,184,.2)); border-radius: 10px; }.tax-tds-summary span, .tax-tds-summary strong { display: block; }.tax-tds-summary span { color: var(--text-muted); font-size: .78rem; }.tax-schedule-list { display: grid; gap: .5rem; margin: 1rem 0; }.tax-schedule-row { display: flex; justify-content: space-between; gap: .75rem; padding: .7rem .8rem; border: 1px solid var(--glass-border, rgba(148,163,184,.18)); border-radius: 10px; background: color-mix(in srgb, var(--surface-1, #111827) 78%, transparent); }.tax-schedule-row.next { border-color: color-mix(in srgb, var(--primary, #059669) 65%, transparent); background: color-mix(in srgb, var(--primary, #059669) 10%, transparent); }.tax-schedule-row.paid { border-color: color-mix(in srgb, var(--success, #10b981) 55%, transparent); }.tax-schedule-row div { display: grid; gap: .18rem; }.tax-schedule-row span, .tax-schedule-row small { color: var(--text-muted); font-size: .72rem; }.tax-schedule-row strong { font-size: .9rem; }.tax-schedule-row b { color: var(--primary, #059669); text-align: right; }.tax-deadline.neutral { background: color-mix(in srgb, var(--text-muted, #94a3b8) 10%, transparent); }.tax-deadline.neutral strong { font-size: 1.05rem; }
 @media (max-width: 600px) { .tax-tds-summary { grid-template-columns: 1fr; }.tax-schedule-row { padding: .65rem; } }
 
@@ -1435,7 +1435,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 0 4px;
-  margin-bottom: var(--space-6);
+  margin-bottom: 8px;
   flex-wrap: wrap;
   gap: var(--space-4);
 }
@@ -1704,7 +1704,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  min-height: calc(100dvh - 140px);
+  min-height: 0;
   animation: fadeUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
@@ -6886,7 +6886,7 @@ textarea:focus-visible {
 @media (max-width: 640px) {
   .calendar-page-content {
     padding-inline: clamp(10px, 3.5vw, 20px) !important;
-    padding-bottom: calc(115px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: 0 !important;
     max-width: 100%;
     overflow-x: hidden;
   }

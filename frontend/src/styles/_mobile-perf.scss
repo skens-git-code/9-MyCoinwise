@@ -113,7 +113,7 @@
     z-index: var(--z-onboarding, 1100) !important;
   }
 
-  /* Safe clearance so dock never obscures bottom content */
+  /* Safe clearance is handled on .site-footer. Keep page containers clean with no dead gaps. */
   .page-content,
   .inbox-layout-page,
   [class*="layout"],
@@ -130,7 +130,7 @@
   .tax-page,
   .settings-page {
     &:not(.modal-box):not(.modal-overlay):not(.shortcuts-modal):not(.shortcuts-backdrop):not(.tax-modal):not(.tax-modal-backdrop):not(.command-palette-backdrop) {
-      padding-bottom: var(--bottom-safe) !important;
+      padding-bottom: 0 !important;
     }
   }
 

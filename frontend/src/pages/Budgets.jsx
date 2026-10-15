@@ -633,7 +633,7 @@ export default function BudgetManager() {
    */
   if (isLoadingData && budgets.length === 0) {
     return (
-      <div className="budget-page" style={{ padding: 'var(--spacing-lg)', maxWidth: 1200, margin: '0 auto' }}>
+      <div className="budget-page" style={{ maxWidth: 1200, margin: '0 auto', width: '100%' }}>
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <Loader2 size={40} className="spin" style={{ margin: '0 auto 1rem', opacity: 0.6 }} />
           <p style={{ color: 'var(--text-muted)' }}>{getTranslation('loading', 'Loading budgets…')}</p>
@@ -648,7 +648,7 @@ export default function BudgetManager() {
    * ————————————————————————————————————————————
    */
   return (
-    <div className="budget-page" style={{ padding: 'var(--spacing-lg)', maxWidth: 1200, margin: '0 auto' }}>
+    <div className="budget-page" style={{ maxWidth: 1200, margin: '0 auto', width: '100%' }}>
 
       {/* 
        * ————————————————————————————————————————————

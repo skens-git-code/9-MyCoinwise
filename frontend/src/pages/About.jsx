@@ -359,7 +359,7 @@ export default function About({ stats = DEFAULT_STATS }) {
   ];
 
   return (
-    <div className="island-page">
+    <div className="about-page" style={{ width: '100%' }}>
       {/* ==================== Header ==================== */}
       <motion.div
         className="island-header glass-sm"
@@ -375,10 +375,7 @@ export default function About({ stats = DEFAULT_STATS }) {
         </div>
       </motion.div>
 
-      <div
-        className="island-content-wrapper scroll-hide"
-        style={{ padding: 'clamp(14px, 4vw, 24px)' }}
-      >
+      <div className="about-content" style={{ width: '100%' }}>
         <motion.div
           className="about-container"
           style={{
