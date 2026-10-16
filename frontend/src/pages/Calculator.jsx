@@ -862,7 +862,7 @@ export default function ScientificCalculator() {
    * ————————————————————————————————————————————
    */
   return (
-    <div className="calculator-page" style={{ maxWidth: 1120, margin: '0 auto', padding: 'clamp(1rem, 2.5vw, 2rem)' }}>
+    <div className="calculator-page">
       {/* ===================== Island Header ===================== */}
       <header className="island-header glass-sm calculator-page-header" style={{ marginBottom: '1.25rem' }}>
         <div className="ih-left">

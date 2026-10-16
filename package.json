@@ -1,6 +1,6 @@
 {
   "name": "9-mycoinwise",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "description": "MyCoinwise - Smart Personal Finance & Budgeting Tracker",
   "main": "backend/server.js",
   "type": "commonjs",

@@ -57,8 +57,16 @@
   .budget-page,
   .account-page,
   .tax-page,
-  .settings-page {
+  .settings-page,
+  .reports-page-wrap {
     padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .calculator-page {
+    padding: 0 0 calc(130px + env(safe-area-inset-bottom, 24px)) 0 !important;
     margin: 0 !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
@@ -256,6 +264,15 @@
     overflow-x: hidden !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+    -webkit-overflow-scrolling: touch;
+
+    &::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
   }
 
   /* ─── BENTO GRID & ACTIONS — MODERN 2-COLUMN RESPONSIVE LAYOUT ─── */

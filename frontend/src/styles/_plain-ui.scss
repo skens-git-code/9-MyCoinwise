@@ -1803,13 +1803,11 @@ a,
 }
 
 .calculator-page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: clamp(1rem, 2.5vw, 2rem);
   overflow-x: hidden;
-}
-
-/* Keep the fixed quick-action control out of the calculator's final row and
-   leave enough scroll room above the mobile navigation dock. */
-.calculator-page {
-  padding-bottom: 0;
+  box-sizing: border-box;
 }
 
 .fab-container-calculator {
@@ -2519,6 +2517,10 @@ a,
  * ============================================================ */
 
 .reports-page-wrap {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: clamp(1rem, 2.5vw, 2rem);
+  box-sizing: border-box;
   min-height: 100vh;
 }
 

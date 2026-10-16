@@ -491,7 +491,7 @@ export default function Reports() {
     <>
       <style>{PRINT_CSS}</style>
 
-      <div className="reports-page-wrap" style={{ maxWidth: 1400, margin: '0 auto', padding: 'clamp(1rem, 2.5vw, 2rem)' }}>
+      <div className="reports-page-wrap">
 
         {/* ============ Header (hidden on print) ============ */}
         <header className="island-header glass-sm no-print" style={{ marginBottom: '1.25rem' }}>
@@ -558,7 +558,7 @@ export default function Reports() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', flex: '1 1 auto', minWidth: 0 }}>
               <span style={labelStyle}>{tr('period', 'Period')}:</span>
               <div className="tx-presets-strip" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {PERIOD_PRESETS.map((p) => (
@@ -572,8 +572,8 @@ export default function Reports() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Landmark size={15} style={{ color: 'var(--text-muted)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '100%', minWidth: 0, flexShrink: 1 }}>
+              <Landmark size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
               <select
                 value={selectedAccountId}
                 onChange={(e) => setSelectedAccountId(e.target.value)}
@@ -612,8 +612,8 @@ export default function Reports() {
         </div>
 
         {/* ============ Viewport toolbar (hidden on print) ============ */}
-        <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', padding: '0 4px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', padding: '0 4px', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
               {tr('preview_mode', 'Live A4 Document Preview')}
             </span>
@@ -908,6 +908,7 @@ const selectStyle = {
   fontSize: '0.82rem', padding: '6px 12px', borderRadius: '8px',
   background: 'var(--surface-1)', color: 'var(--text-primary)',
   border: '1px solid var(--glass-border)',
+  maxWidth: '100%', minWidth: 0, boxSizing: 'border-box',
 };
 const dateInputStyle = { padding: '4px 10px', fontSize: '0.8rem', borderRadius: 6 };
 const badgeStyle = {

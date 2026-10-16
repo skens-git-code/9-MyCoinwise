@@ -373,20 +373,29 @@ router.post('/', async (req, res) => {
   const active = is_active === undefined ? true : parseBoolean(is_active);
 
   try {
-    // ── Reject overlapping active budgets ──
+    // ── Reject overlapping active budgets with the same category or name ──
     if (active) {
+      const trimmedCategory = category ? String(category).trim().slice(0, 80) : null;
+      const scopeFilter = trimmedCategory
+        ? { category: trimmedCategory }
+        : { $or: [{ category: null }, { category: { $exists: false } }, { category: '' }] };
+
       const overlap = await Budget.findOne({
         user_id: req.userId,
         is_active: true,
+        $or: [
+          scopeFilter,
+          { name: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+        ],
         period_start: { $lte: periodEnd },
         period_end: { $gte: periodStart },
       })
-        .select('_id')
+        .select('_id name category')
         .lean();
 
       if (overlap) {
         return res.status(409).json({
-          error: 'An active budget already exists for this period.',
+          error: `An active budget "${overlap.name}" already covers this ${trimmedCategory ? `category (${trimmedCategory})` : 'period'}.`,
         });
       }
     }

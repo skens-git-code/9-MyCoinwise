@@ -632,7 +632,13 @@ export default function Budgets() {
       setIsCreateModalOpen(false);
       resetFormFields();
     } catch (error) {
-      showToast('error', error?.response?.data?.error || 'Failed to save budget.');
+      const msg =
+        error?.response?.data?.error ||
+        error?.response?.data?.errors?.[0]?.msg ||
+        error?.message ||
+        'Failed to save budget.';
+      setFormErrorMessage(msg);
+      showToast('error', msg);
     } finally {
       setIsSubmittingForm(false);
     }
