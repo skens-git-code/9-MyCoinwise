@@ -400,20 +400,23 @@ const BackupRestore = ({ userId, showMessage }) => {
   // ── Local state: export/restore in-flight + auto-backup toggle ──
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
-  const [autoBackup, setAutoBackup] = useState(false);
+  const [autoBackup, setAutoBackup] = useState(() => {
+    try {
+      const saved = localStorage.getItem('auto-backup-enabled');
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
   const [confirmRestoreFile, setConfirmRestoreFile] = useState(null);
   const [restorePreview, setRestorePreview] = useState(null);
   const fileInputRef = useRef(null);
   const autoBackupIntervalRef = useRef(null);
   const isMountedRef = useRef(true);
 
-  // ── Load auto-backup preference; cleanup interval on unmount ──
+  // ── Cleanup interval on unmount ──
   useEffect(() => {
     isMountedRef.current = true;
-    try {
-      const saved = localStorage.getItem('auto-backup-enabled');
-      if (saved) setAutoBackup(JSON.parse(saved));
-    } catch { /* ignore */ }
     return () => {
       isMountedRef.current = false;
       if (autoBackupIntervalRef.current) {
@@ -588,23 +591,41 @@ const BackupRestore = ({ userId, showMessage }) => {
         />
       </div>
 
-      {/* ── Auto-backup toggle ── */}
-      <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-        <div className="toggle-switch">
+      {/* ── Auto-backup data toggle ── */}
+      <div
+        className={`settings-toggle-card ${autoBackup ? 'is-active' : ''}`}
+        onClick={toggleAutoBackup}
+        role="switch"
+        aria-checked={autoBackup}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            toggleAutoBackup();
+          }
+        }}
+        style={{ cursor: 'pointer', marginTop: 14 }}
+      >
+        <div className="settings-toggle-info">
+          <div className="settings-toggle-title">
+            <RefreshCw size={16} aria-hidden="true" />
+            <span>Enable Automatic Weekly Backups</span>
+          </div>
+          <p className="settings-toggle-desc">
+            Automatically export and download your complete financial backup archive every 7 days.
+          </p>
+        </div>
+        <div className="toggle-switch" style={{ pointerEvents: 'none' }}>
           <input
             type="checkbox"
             checked={autoBackup}
-            onChange={toggleAutoBackup}
-            role="switch"
-            aria-checked={autoBackup}
-            aria-label="Enable automatic weekly backups"
+            readOnly
+            tabIndex={-1}
+            aria-hidden="true"
           />
           <span className="slider" />
         </div>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <RefreshCw size={14} aria-hidden /> Enable Automatic Weekly Backups
-        </span>
-      </label>
+      </div>
 
       <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 12 }}>
         📦 Backup archives contain all transactions, goals, subscriptions, and preferences.
@@ -1379,7 +1400,7 @@ const EmailChangeSection = ({ user, showMessage, logout, requestReAuth, t }) => 
 /* ============================================================
  * Profile tab
  * ============================================================ */
-const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMessage, logout, requestReAuth }) => {
+const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMessage, logout, requestReAuth, handleSave, saving }) => {
   // ── File input + emoji tray visibility ──
   const fileInputRef = useRef(null);
   const [showEmojiTray, setShowEmojiTray] = useState(false);
@@ -1621,6 +1642,25 @@ const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMess
           requestReAuth={requestReAuth}
           t={t}
         />
+
+        {/* ── Direct Save Info Button ── */}
+        <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={saving}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', borderRadius: 12, minHeight: 42 }}
+          >
+            {saving ? <div className="spinner-dots" /> : <Save size={16} aria-hidden="true" />}
+            <span>{saving ? 'Saving Info…' : (t?.('save_info') || 'Save Info')}</span>
+          </button>
+          {formState.isDirty && (
+            <span style={{ fontSize: '0.82rem', color: 'var(--brand-secondary)' }}>
+              ● Unsaved changes
+            </span>
+          )}
+        </div>
       </div>
     </>
   );
@@ -2305,6 +2345,7 @@ function SettingsInner({ context }) {
     theme,
     setThemeDirect,
     refetch,
+    updateUser,
     USER_ID,
     resetAccount,
     createUser,
@@ -2523,7 +2564,7 @@ function SettingsInner({ context }) {
     };
 
     try {
-      await api.updateSettings(USER_ID, {
+      const res = await api.updateSettings(USER_ID, {
         username: sanitizedName,
         last_name: '',
         profession: sanitizeInput(formState.profession),
@@ -2534,6 +2575,23 @@ function SettingsInner({ context }) {
         notification_prefs: formState.notificationPrefs,
         advanced_prefs: formState.advancedPrefs,
       });
+
+      const updatedUserObj = res?.user || {
+        ...user,
+        username: sanitizedName,
+        last_name: '',
+        profession: sanitizeInput(formState.profession),
+        monthly_goal: isGoalValid ? goalValue : (user?.monthly_goal || 0),
+        currency: formState.currency,
+        profile_avatar: formState.avatar,
+        profile_color: formState.avatarColor,
+        notification_prefs: formState.notificationPrefs,
+        advanced_prefs: formState.advancedPrefs,
+      };
+
+      if (updateUser) {
+        updateUser(updatedUserObj);
+      }
 
       setUndoSnapshot(previousState);
       dispatch({ type: 'CLEAR_DIRTY' });
@@ -2547,7 +2605,7 @@ function SettingsInner({ context }) {
         setLoadingStates((prev) => ({ ...prev, save: false }));
       }
     }
-  }, [formState, USER_ID, refetch, showMessage, user, loadingStates.save]);
+  }, [formState, USER_ID, refetch, updateUser, showMessage, user, loadingStates.save]);
 
   // ── Restore the last undo snapshot ──
   const handleUndo = useCallback(async () => {
@@ -2807,6 +2865,8 @@ function SettingsInner({ context }) {
     showMessage,
     logout,
     requestReAuth,
+    handleSave,
+    saving: loadingStates.save,
   }), [
     formState,
     handleFieldChange,
@@ -2819,6 +2879,8 @@ function SettingsInner({ context }) {
     showMessage,
     logout,
     requestReAuth,
+    handleSave,
+    loadingStates.save,
   ]);
 
   /* ============================================================

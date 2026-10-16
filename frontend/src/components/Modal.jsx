@@ -80,17 +80,33 @@ const Modal = ({
     closeOnEscape: !isLoading,
   });
 
+  // ── Track pointer down origin to prevent false backdrop dismissals on touch drag/scroll ──
+  const overlayPointerDownRef = useRef(false);
+  const handleOverlayPointerDown = (e) => {
+    overlayPointerDownRef.current = e.target === e.currentTarget;
+  };
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget && overlayPointerDownRef.current && !isLoading) {
+      onClose();
+    }
+    overlayPointerDownRef.current = false;
+  };
+
+  const isConfirmDialog = Boolean(confirmText && onConfirm);
+
   return createPortal(
     <AnimatePresence>
       {isOpen && (
         // ── Backdrop: click closes unless loading ──
         <motion.div
-          className="modal-overlay"
+          className={`modal-overlay ${isConfirmDialog ? 'modal-overlay-centered' : ''}`}
           style={{ zIndex: 'var(--z-modal, 999999)' }}
           role="dialog"
           aria-modal="true"
           aria-labelledby={`${modalId}-title`}
-          onClick={() => !isLoading && onClose()}
+          onMouseDown={handleOverlayPointerDown}
+          onTouchStart={handleOverlayPointerDown}
+          onClick={handleOverlayClick}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -100,15 +116,15 @@ const Modal = ({
           <motion.div
             id={modalId}
             ref={panelRef}
-            className="modal-box glass"
+            className={`modal-box glass ${isConfirmDialog ? 'modal-confirm' : ''}`}
             /* `tabIndex={-1}` lets the trap focus the panel itself when it has no
                focusable children (e.g. a pure confirmation), instead of leaving
                focus behind the dialog. */
             tabIndex={-1}
-            initial={{ y: '100%', opacity: 0, scale: 0.95 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: '100%', opacity: 0, scale: 0.95 }}
-            transition={{ type: 'spring', damping: 20, stiffness: 200 }}
+            initial={isConfirmDialog ? { scale: 0.9, opacity: 0 } : { y: '100%', opacity: 0, scale: 0.95 }}
+            animate={isConfirmDialog ? { scale: 1, opacity: 1 } : { y: 0, opacity: 1, scale: 1 }}
+            exit={isConfirmDialog ? { scale: 0.9, opacity: 0 } : { y: '100%', opacity: 0, scale: 0.95 }}
+            transition={{ type: 'spring', damping: 22, stiffness: 260 }}
             onClick={(e) => e.stopPropagation()}
             style={danger ? { borderColor: 'rgba(239,68,68,0.4)', boxShadow: '0 8px 32px rgba(239,68,68,0.2)' } : {}}
           >

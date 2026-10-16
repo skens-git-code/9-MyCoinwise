@@ -6,7 +6,7 @@ import { MotionConfig } from 'framer-motion';
 import AppLayout from './components/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import Loader from './components/Loader';
-import { api, CURRENCIES, getStoredToken } from './services/api';
+import { api, CURRENCIES, getStoredToken, getStoredUser } from './services/api';
 import { generateAlerts, getSpendingInsights } from './services/aiEngine';
 import i18n, { getT, LANGUAGES } from './services/i18n';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -191,7 +191,8 @@ export default function App() {
   const [theme, setTheme] = useState(() => normalizeTheme(localStorage.getItem('mcw-theme')));
   const [lang, setLang] = useState(() => localStorage.getItem('mcw-lang') || 'en');
   const t = useMemo(() => getT(lang), [lang]);
-  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(() => getStoredToken());
+  const [user, setUser] = useState(() => getStoredUser());
   const [allUsers, setAllUsers] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [goals, setGoals] = useState([]);
@@ -199,8 +200,11 @@ export default function App() {
   const [budgets, setBudgets] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [events, setEvents] = useState([]);
-  const [token, setToken] = useState(() => getStoredToken());
-  const [isInitialAuthLoad, setIsInitialAuthLoad] = useState(() => Boolean(getStoredToken()));
+  const [isInitialAuthLoad, setIsInitialAuthLoad] = useState(() => {
+    const hasToken = Boolean(getStoredToken());
+    const hasUser = Boolean(getStoredUser());
+    return hasToken && !hasUser;
+  });
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
   const [globalError, setGlobalError] = useState(null);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -391,22 +395,47 @@ export default function App() {
     };
   }, [user]);
 
+  const userRef = useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const updateUser = useCallback((updatedUserData) => {
+    if (!updatedUserData) return;
+    setUser((prev) => {
+      const merged = prev ? { ...prev, ...updatedUserData } : updatedUserData;
+      try {
+        if (sessionStorage.getItem('mcw-token')) {
+          sessionStorage.setItem('mcw-user', JSON.stringify(merged));
+        } else {
+          localStorage.setItem('mcw-user', JSON.stringify(merged));
+        }
+      } catch { /* ignore */ }
+      return merged;
+    });
+  }, []);
+
   const login = useCallback(async (newToken, userData, rememberMe = true) => {
     localStorage.removeItem('mcw-token');
     sessionStorage.removeItem('mcw-token');
-    (rememberMe ? localStorage : sessionStorage).setItem('mcw-token', newToken);
-    setToken(newToken);
+    localStorage.removeItem('mcw-user');
+    sessionStorage.removeItem('mcw-user');
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem('mcw-token', newToken);
     if (userData) {
-      userRef.current = userData;
+      storage.setItem('mcw-user', JSON.stringify(userData));
       setUser(userData);
       setIsInitialAuthLoad(false);
     }
+    setToken(newToken);
   }, []);
 
   const logout = useCallback(() => {
     api.logout().catch(() => { });
     localStorage.removeItem('mcw-token');
     sessionStorage.removeItem('mcw-token');
+    localStorage.removeItem('mcw-user');
+    sessionStorage.removeItem('mcw-user');
     sessionStorage.removeItem('mcw-previous-session');
     setPreviousSession(null);
     setToken(null);
@@ -419,11 +448,6 @@ export default function App() {
     setSubscriptions([]);
     setEvents([]);
   }, []);
-
-  const userRef = useRef(user);
-  useEffect(() => {
-    userRef.current = user;
-  }, [user]);
   const tRef = useRef(t);
   useEffect(() => {
     tRef.current = t;
@@ -441,6 +465,8 @@ export default function App() {
 
       localStorage.removeItem('mcw-token');
       sessionStorage.removeItem('mcw-token');
+      localStorage.removeItem('mcw-user');
+      sessionStorage.removeItem('mcw-user');
       setToken(null);
       setUser(null);
 
@@ -516,7 +542,13 @@ export default function App() {
       const backendTheme = normalizeTheme(me?.theme);
       const resolvedTheme = (localTheme && ['light', 'amoled'].includes(localTheme)) ? localTheme : backendTheme;
 
-      setUser({ ...me, theme: resolvedTheme });
+      const resolvedUser = { ...me, theme: resolvedTheme };
+      setUser(resolvedUser);
+      try {
+        const isSession = Boolean(sessionStorage.getItem('mcw-token'));
+        (isSession ? sessionStorage : localStorage).setItem('mcw-user', JSON.stringify(resolvedUser));
+      } catch { /* ignore */ }
+
       // Keep the last known good collection when one endpoint fails. Treating
       // a transient database/network failure as [] was erasing real data and
       // made the UI look like a successful empty state.
@@ -545,7 +577,12 @@ export default function App() {
       if (err.response?.status === 401) {
         logout();
       } else {
-        setGlobalError(tRef.current?.('sync_error') || "Failed to synchronize live data. Retrying in background...");
+        // If we have a cached user, avoid popping up a blocking error on cold-start
+        if (!userRef.current) {
+          setGlobalError(tRef.current?.('sync_error') || "Failed to synchronize live data. Retrying in background...");
+        } else {
+          console.warn('Background sync failed to refresh data:', err?.message || err);
+        }
       }
     } finally {
       setIsInitialAuthLoad(false);
@@ -706,6 +743,7 @@ export default function App() {
     t,
     login,
     logout,
+    updateUser,
     fetchTransactions: fetchData,
     refetch: fetchData,
     addTransaction,

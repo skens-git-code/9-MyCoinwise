@@ -28,6 +28,7 @@ vi.mock('../services/api', () => ({
   AVATARS: ['user1', 'user2', 'user3', 'user4', 'user5'],
   AVATAR_COLORS: ['#059669', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#f97316', '#64748b'],
   getStoredToken: vi.fn(() => 'mock-token'),
+  getStoredUser: vi.fn(() => ({ _id: 'u1', username: 'Test User', email: 'test@example.com' })),
 }));
 
 describe('App Root Mounting', () => {

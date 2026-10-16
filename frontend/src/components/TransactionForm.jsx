@@ -165,6 +165,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const modalRef = useRef(null);
+  const overlayPointerDownRef = useRef(false);
 
   /* —————————————————————————————————————
    * Sync Form With initialData Without Cascading Rerenders
@@ -234,6 +235,17 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     }
   }, [amount, note, isEditMode, onClose]);
 
+  const handleOverlayPointerDown = useCallback((e) => {
+    overlayPointerDownRef.current = e.target === e.currentTarget;
+  }, []);
+
+  const handleOverlayClick = useCallback((e) => {
+    if (e.target === e.currentTarget && overlayPointerDownRef.current) {
+      handleCancel();
+    }
+    overlayPointerDownRef.current = false;
+  }, [handleCancel]);
+
   /* —————————————————————————————————————
    * Focus Management & Trap
    * ————————————————————————————————————— */
@@ -249,13 +261,22 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
    * ————————————————————————————————————— */
   const handleAmountChange = useCallback((e) => {
     let val = e.target.value;
+    // Normalize comma to decimal point (e.g. mobile keyboards or European/Indian format)
+    val = val.replace(/,/g, '.');
+    // Keep only numbers and decimal points
     val = val.replace(/[^0-9.]/g, '');
+    // Ensure at most one decimal point
     const parts = val.split('.');
     if (parts.length > 2) {
       val = parts[0] + '.' + parts.slice(1).join('');
     }
-    if (parts.length === 2 && parts[1].length > 2) {
+    // Limit to 2 decimal places
+    if (parts.length >= 2 && parts[1].length > 2) {
       val = parts[0] + '.' + parts[1].slice(0, 2);
+    }
+    // Prevent multiple leading zeroes (e.g. "0500" -> "500", but keep "0" or "0.")
+    if (val.length > 1 && val.startsWith('0') && val[1] !== '.') {
+      val = val.replace(/^0+/, '') || '0';
     }
     setAmount(val);
   }, []);
@@ -465,7 +486,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={handleCancel}
+              onMouseDown={handleOverlayPointerDown}
+              onTouchStart={handleOverlayPointerDown}
+              onClick={handleOverlayClick}
             >
               <motion.div
                 ref={modalRef}

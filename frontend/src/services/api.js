@@ -64,6 +64,15 @@ export const getStoredToken = () => {
   return localStorage.getItem('mcw-token') || sessionStorage.getItem('mcw-token');
 };
 
+export const getStoredUser = () => {
+  try {
+    const raw = localStorage.getItem('mcw-user') || sessionStorage.getItem('mcw-user');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
 // ── Dedicated instance (never mutates the shared axios defaults) ──
 const apiClient = axios.create({ timeout: 30000 });
 

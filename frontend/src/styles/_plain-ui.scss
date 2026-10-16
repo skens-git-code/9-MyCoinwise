@@ -1027,11 +1027,16 @@ a,
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
   padding: 2px 4px 20px 2px;
   display: flex;
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+
+  > * {
+    flex-shrink: 0 !important;
+  }
 }
 
 /* ── Segmented Type Toggle ── */
@@ -1098,6 +1103,8 @@ a,
   flex-direction: column;
   gap: 10px;
   padding: 16px 18px;
+  min-height: 96px;
+  flex-shrink: 0 !important;
   border-radius: 18px;
   border: 1px solid var(--glass-border);
   background: var(--surface-1);
@@ -1167,9 +1174,11 @@ a,
       letter-spacing: -0.03em !important;
       line-height: 1.05 !important;
       color: var(--text-primary) !important;
+      -webkit-text-fill-color: var(--text-primary) !important;
       font-family: var(--font-head) !important;
       box-shadow: none !important;
       min-width: 0;
+      width: 100%;
 
       &:focus {
         outline: none !important;
@@ -1696,6 +1705,8 @@ a,
 
   .tx-hero-amount {
     padding: 12px 14px;
+    min-height: 84px !important;
+    flex-shrink: 0 !important;
 
     .tx-amount-display .tx-amount-input {
       font-size: clamp(1.8rem, 6vw, 2.3rem) !important;

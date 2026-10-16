@@ -1233,6 +1233,21 @@
     align-items: flex-end !important;
   }
 
+  .modal-overlay.modal-overlay-centered,
+  .modal-overlay:has(.modal-confirm) {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 16px !important;
+  }
+
+  .modal-box.modal-confirm {
+    border-radius: 20px !important;
+    margin: auto !important;
+    max-width: 440px !important;
+    width: 100% !important;
+    max-height: 85dvh !important;
+  }
+
   .modal-panel,
   .dialog-panel,
   .tax-modal {
