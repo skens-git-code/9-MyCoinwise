@@ -2391,6 +2391,7 @@ const CreateProfileModalInner = ({ onClose, onConfirm, isLoading, defaultCurrenc
     }
     setError('');
     onConfirm({
+      username: cleanName,
       name: cleanName,
       email: cleanEmail,
       password: password || undefined,

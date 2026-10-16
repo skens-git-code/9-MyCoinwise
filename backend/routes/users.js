@@ -515,6 +515,12 @@ router.get(
 router.post(
   '/',
   createUserLimiter,
+  (req, res, next) => {
+    if (req.body && !req.body.username && req.body.name) {
+      req.body.username = String(req.body.name).trim();
+    }
+    next();
+  },
   [
     body('username').notEmpty().trim().isLength({ min: 2, max: 80 }).withMessage('Name must be 2–80 characters.'),
     body('last_name').optional().isString().trim().isLength({ max: 80 }),
