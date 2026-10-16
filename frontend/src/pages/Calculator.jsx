@@ -5,9 +5,10 @@ import { motion } from 'framer-motion';
 import {
   Calculator as CalculatorIcon, Check, Clock3, Copy, Delete,
   ChevronDown, History, Keyboard, Sparkles, Trash2, X,
+  Landmark, Percent, TrendingUp, Users, ArrowRight,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
-import { api } from '../services/api';
+import { api, CURRENCIES } from '../services/api';
 
 /* 
  * ————————————————————————————————————————————
@@ -362,10 +363,32 @@ const KEY_LAYOUTS = {
  * ————————————————————————————————————————————
  */
 export default function ScientificCalculator() {
-  const { USER_ID } = useAppState();
+  const { USER_ID, currency = 'USD' } = useAppState();
   const { t: translate } = useAppActions();
+  const currSymbol = CURRENCIES?.[currency]?.symbol || currency || '$';
 
-  // Core State
+  // Mode and view state
+  const [calculatorMode, setCalculatorMode] = useState('standard'); // 'standard' | 'finance'
+  const [financeTool, setFinanceTool] = useState('emi'); // 'emi' | 'tip' | 'compound'
+  const [showMobileHistory, setShowMobileHistory] = useState(false);
+
+  // Financial Tools: Loan EMI state
+  const [loanPrincipal, setLoanPrincipal] = useState('500000');
+  const [loanRate, setLoanRate] = useState('8.5');
+  const [loanMonths, setLoanMonths] = useState('36');
+
+  // Financial Tools: Tip & Bill Split state
+  const [billAmount, setBillAmount] = useState('120');
+  const [tipPercent, setTipPercent] = useState('15');
+  const [splitCount, setSplitCount] = useState('2');
+
+  // Financial Tools: Compound Interest state
+  const [initialDeposit, setInitialDeposit] = useState('10000');
+  const [monthlyAddition, setMonthlyAddition] = useState('500');
+  const [annualReturnRate, setAnnualReturnRate] = useState('10');
+  const [investmentYears, setInvestmentYears] = useState('5');
+
+  // Core Calculator State
   const [currentExpression, setCurrentExpression] = useState('');
   const [displayResult, setDisplayResult] = useState('0');
   const [lastAnswer, setLastAnswer] = useState(0);
@@ -392,6 +415,68 @@ export default function ScientificCalculator() {
   ));
 
   const copyTimeoutRef = useRef(null);
+
+  // Financial Calculators Reactive Memos
+  const emiCalculations = useMemo(() => {
+    const P = parseFloat(loanPrincipal) || 0;
+    const r = (parseFloat(loanRate) || 0) / (12 * 100);
+    const n = parseInt(loanMonths, 10) || 1;
+    if (P <= 0 || n <= 0) return { emi: 0, totalInterest: 0, totalPayable: 0 };
+    if (r === 0) {
+      const emi = P / n;
+      return { emi, totalInterest: 0, totalPayable: P };
+    }
+    const emi = (P * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    const totalPayable = emi * n;
+    const totalInterest = totalPayable - P;
+    return {
+      emi: Number.isFinite(emi) ? emi : 0,
+      totalInterest: Number.isFinite(totalInterest) ? totalInterest : 0,
+      totalPayable: Number.isFinite(totalPayable) ? totalPayable : 0,
+    };
+  }, [loanPrincipal, loanRate, loanMonths]);
+
+  const tipCalculations = useMemo(() => {
+    const bill = parseFloat(billAmount) || 0;
+    const tipPct = parseFloat(tipPercent) || 0;
+    const people = parseInt(splitCount, 10) || 1;
+    const tipAmount = bill * (tipPct / 100);
+    const totalWithTip = bill + tipAmount;
+    const perPerson = people > 0 ? totalWithTip / people : totalWithTip;
+    return {
+      tipAmount,
+      totalWithTip,
+      perPerson,
+    };
+  }, [billAmount, tipPercent, splitCount]);
+
+  const compoundCalculations = useMemo(() => {
+    const P = parseFloat(initialDeposit) || 0;
+    const PMT = parseFloat(monthlyAddition) || 0;
+    const r = (parseFloat(annualReturnRate) || 0) / 100 / 12;
+    const n = (parseInt(investmentYears, 10) || 1) * 12;
+    let balance = P;
+    let totalDeposited = P;
+    for (let i = 0; i < n; i += 1) {
+      balance = balance * (1 + r) + PMT;
+      totalDeposited += PMT;
+    }
+    const interestGained = balance - totalDeposited;
+    return {
+      totalDeposited,
+      interestGained: Math.max(0, interestGained),
+      futureValue: balance,
+    };
+  }, [initialDeposit, monthlyAddition, annualReturnRate, investmentYears]);
+
+  const handleTransferToCalculator = useCallback((val) => {
+    const formatted = typeof val === 'number' ? val.toFixed(2) : String(val);
+    setCurrentExpression(formatted);
+    setDisplayResult(formatted);
+    setLastAnswer(parseFloat(formatted) || 0);
+    setCalculatorMode('standard');
+    setErrorMessage('');
+  }, []);
 
   /* 
    * ————————————————————————————————————————————
@@ -777,129 +862,467 @@ export default function ScientificCalculator() {
    * ————————————————————————————————————————————
    */
   return (
-    <div className="calculator-page">
-      <header className="island-header glass-sm calculator-page-header">
+    <div className="calculator-page" style={{ maxWidth: 1120, margin: '0 auto', padding: 'clamp(1rem, 2.5vw, 2rem)' }}>
+      {/* ===================== Island Header ===================== */}
+      <header className="island-header glass-sm calculator-page-header" style={{ marginBottom: '1.25rem' }}>
         <div className="ih-left">
           <div className="ih-titles">
-            <h1>{translate?.('calculator_title') || 'Scientific Calculator'}</h1>
-            <p>{translate?.('calculator_subtitle') || 'Fast, precise calculations for everyday decisions.'}</p>
+            <h1 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <CalculatorIcon className="text-brand" size={24} aria-hidden />
+              {translate?.('calculator_title') || 'Calculator'}
+            </h1>
+            <p>{translate?.('calculator_subtitle') || 'Fast, precise calculations & financial decision tools.'}</p>
           </div>
         </div>
-        <div className="calculator-header-badge">
-          <Sparkles size={15} /> {translate?.('precision_tools') || 'Precision tools'}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {/* Segmented Mode Selector */}
+          <div className="calc-mode-segmented" role="tablist" aria-label="Calculator Mode">
+            <button
+              type="button"
+              className={`calc-mode-btn ${calculatorMode === 'standard' ? 'active' : ''}`}
+              onClick={() => setCalculatorMode('standard')}
+              role="tab"
+              aria-selected={calculatorMode === 'standard'}
+            >
+              <Sparkles size={14} /> <span>Scientific</span>
+            </button>
+            <button
+              type="button"
+              className={`calc-mode-btn ${calculatorMode === 'finance' ? 'active' : ''}`}
+              onClick={() => setCalculatorMode('finance')}
+              role="tab"
+              aria-selected={calculatorMode === 'finance'}
+            >
+              <Landmark size={14} /> <span>Financial Tools</span>
+            </button>
+          </div>
+
+          {/* Toggle History Button for Quick Access */}
+          <button
+            type="button"
+            className={`btn-secondary ${showMobileHistory ? 'active' : ''}`}
+            onClick={() => setShowMobileHistory((v) => !v)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', padding: '7px 12px' }}
+            title="Toggle calculation history"
+          >
+            <History size={14} />
+            <span>History</span>
+            {historyList.length > 0 && (
+              <span className="ih-badge" style={{ marginLeft: 2 }}>{historyList.length}</span>
+            )}
+          </button>
         </div>
       </header>
 
+      {/* ===================== Main Calculator Body ===================== */}
       <div className="calculator-shell">
-        <section className="calculator-main glass" aria-label="Scientific calculator">
-          <div className="calculator-display">
-            <div className="calculator-display-top">
-              <span>{angleMode} {translate?.('mode') || 'mode'}</span>
-              <span><Keyboard size={13} /> {translate?.('keyboard_ready') || 'Keyboard ready'}</span>
-            </div>
-            <div className="calculator-expression" aria-label="Current expression">
-              {currentExpression || '0'}
-            </div>
-            <div className="calculator-result-row">
-              <strong aria-live="polite" aria-atomic="true">{displayResult}</strong>
-              <button
-                type="button"
-                className="calculator-copy"
-                onClick={copyResultToClipboard}
-                aria-label="Copy result"
-                title="Copy result"
+        <section className="calculator-main glass" aria-label="Calculator Workspace">
+          {calculatorMode === 'standard' ? (
+            <>
+              {/* OLED High-Contrast Display */}
+              <div
+                className="calculator-display"
+                style={{
+                  background: 'linear-gradient(160deg, #070c18 0%, #0d1527 100%)',
+                  border: '1px solid rgba(14, 165, 233, 0.28)',
+                  boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+                }}
               >
-                {isCopied ? <Check size={16} /> : <Copy size={16} />}
-              </button>
-            </div>
-            {livePreview && livePreview !== displayResult && (
-              <div className="calculator-preview">= {livePreview}</div>
-            )}
-            {errorMessage && <p className="calculator-error" role="alert">{errorMessage}</p>}
-          </div>
-
-          <div className="calculator-toolbar">
-            <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('clear')} aria-label="Memory clear">MC</button>
-            <button type="button" className="calculator-tool" onClick={() => appendToExpression(String(memoryValue))} aria-label="Memory recall">MR</button>
-            <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('add')} aria-label="Memory add">M+</button>
-            <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('subtract')} aria-label="Memory subtract">M−</button>
-            <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('store')} aria-label="Memory store">MS</button>
-            <span className="calculator-memory-status">M {formatDisplayResult(memoryValue)}</span>
-            <button
-              type="button"
-              className="calculator-angle"
-              onClick={() => setAngleMode((m) => (m === 'DEG' ? 'RAD' : 'DEG'))}
-            >
-              {angleMode}
-            </button>
-          </div>
-
-          <div className="calculator-keypad">
-            <button
-              type="button"
-              className="calculator-functions-toggle"
-              aria-expanded={showScientificPanel}
-              aria-controls="scientific-panel"
-              onClick={() => setShowScientificPanel((v) => !v)}
-            >
-              <span><Sparkles size={14} /> Scientific functions</span>
-              <ChevronDown size={16} />
-            </button>
-            <div
-              id="scientific-panel"
-              className={`calculator-scientific-panel ${showScientificPanel ? 'is-open' : ''}`}
-            >
-              <div className="calculator-scientific-grid">
-                {KEY_LAYOUTS.scientific.map(([value, label]) => (
+                <div className="calculator-display-top">
+                  <span
+                    style={{
+                      background: 'rgba(14, 165, 233, 0.15)',
+                      color: 'var(--brand-primary)',
+                      padding: '2px 8px',
+                      borderRadius: 6,
+                      fontWeight: 700,
+                      fontSize: '0.72rem',
+                    }}
+                  >
+                    {angleMode} mode
+                  </span>
+                  <span><Keyboard size={13} /> {translate?.('keyboard_ready') || 'Keyboard ready'}</span>
+                </div>
+                <div className="calculator-expression" aria-label="Current expression">
+                  {currentExpression || '0'}
+                </div>
+                <div className="calculator-result-row">
+                  <strong aria-live="polite" aria-atomic="true">{displayResult}</strong>
                   <button
                     type="button"
-                    key={label}
-                    className="calculator-key scientific"
-                    onClick={() => appendToExpression(value)}
-                    aria-label={label}
+                    className="calculator-copy"
+                    onClick={copyResultToClipboard}
+                    aria-label="Copy result"
+                    title="Copy result"
                   >
-                    {label}
+                    {isCopied ? <Check size={16} /> : <Copy size={16} />}
                   </button>
-                ))}
+                </div>
+                {livePreview && livePreview !== displayResult && (
+                  <div className="calculator-preview">= {livePreview}</div>
+                )}
+                {errorMessage && <p className="calculator-error" role="alert">{errorMessage}</p>}
               </div>
-            </div>
 
-            <div className="calculator-basic-panel">
-              <div className="calculator-basic-grid">
-                {KEY_LAYOUTS.basic.map(([value, label, action]) => {
-                  let clickHandler = () => appendToExpression(value);
-                  if (action === 'clearEntry') clickHandler = clearEntry;
-                  else if (action === 'clear') clickHandler = clearAll;
-                  else if (action === 'backspace') clickHandler = () => setCurrentExpression((c) => c.slice(0, -1));
-                  else if (action === 'calculate') clickHandler = performCalculation;
-
-                  let className = 'calculator-key';
-                  if (['/', '*', '-', '+', '^'].includes(value)) className += ' operator';
-                  else if (['CE', 'C', 'Delete'].includes(value)) className += ' utility';
-                  else if (value === '=') className += ' equals';
-
-                  return (
-                    <button
-                      type="button"
-                      key={`${value}-${label}`}
-                      className={className}
-                      onClick={clickHandler}
-                      aria-label={label}
-                    >
-                      {value === 'Delete' ? <Delete size={18} /> : label}
-                    </button>
-                  );
-                })}
+              {/* Memory & Angle Toolbar */}
+              <div className="calculator-toolbar">
+                <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('clear')} aria-label="Memory clear">MC</button>
+                <button type="button" className="calculator-tool" onClick={() => appendToExpression(String(memoryValue))} aria-label="Memory recall">MR</button>
+                <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('add')} aria-label="Memory add">M+</button>
+                <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('subtract')} aria-label="Memory subtract">M−</button>
+                <button type="button" className="calculator-tool" onClick={() => handleMemoryOperation('store')} aria-label="Memory store">MS</button>
+                <span className="calculator-memory-status">M {formatDisplayResult(memoryValue)}</span>
+                <button
+                  type="button"
+                  className="calculator-angle"
+                  onClick={() => setAngleMode((m) => (m === 'DEG' ? 'RAD' : 'DEG'))}
+                >
+                  {angleMode}
+                </button>
               </div>
-            </div>
-          </div>
 
-          <p className="calculator-hint">
-            <Clock3 size={14} /> {translate?.('calculator_hint') || 'Use parentheses for clarity, and press Enter to calculate.'}
-          </p>
+              {/* Tactile Keypad */}
+              <div className="calculator-keypad">
+                <button
+                  type="button"
+                  className="calculator-functions-toggle"
+                  aria-expanded={showScientificPanel}
+                  aria-controls="scientific-panel"
+                  onClick={() => setShowScientificPanel((v) => !v)}
+                >
+                  <span><Sparkles size={14} /> Scientific functions</span>
+                  <ChevronDown size={16} />
+                </button>
+                <div
+                  id="scientific-panel"
+                  className={`calculator-scientific-panel ${showScientificPanel ? 'is-open' : ''}`}
+                >
+                  <div className="calculator-scientific-grid">
+                    {KEY_LAYOUTS.scientific.map(([value, label]) => (
+                      <button
+                        type="button"
+                        key={label}
+                        className="calculator-key scientific"
+                        onClick={() => appendToExpression(value)}
+                        aria-label={label}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="calculator-basic-panel">
+                  <div className="calculator-basic-grid">
+                    {KEY_LAYOUTS.basic.map(([value, label, action]) => {
+                      let clickHandler = () => appendToExpression(value);
+                      if (action === 'clearEntry') clickHandler = clearEntry;
+                      else if (action === 'clear') clickHandler = clearAll;
+                      else if (action === 'backspace') clickHandler = () => setCurrentExpression((c) => c.slice(0, -1));
+                      else if (action === 'calculate') clickHandler = performCalculation;
+
+                      let className = 'calculator-key';
+                      if (['/', '*', '-', '+', '^'].includes(value)) className += ' operator';
+                      else if (['CE', 'C', 'Delete'].includes(value)) className += ' utility';
+                      else if (value === '=') className += ' equals';
+
+                      return (
+                        <button
+                          type="button"
+                          key={`${value}-${label}`}
+                          className={className}
+                          onClick={clickHandler}
+                          aria-label={label}
+                        >
+                          {value === 'Delete' ? <Delete size={18} /> : label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <p className="calculator-hint">
+                <Clock3 size={14} /> {translate?.('calculator_hint') || 'Use parentheses for clarity, and press Enter to calculate.'}
+              </p>
+            </>
+          ) : (
+            /* ===================== Financial Calculators ===================== */
+            <div className="calc-fin-container">
+              {/* Financial Sub-tabs */}
+              <div className="calc-fin-subtabs">
+                <button
+                  type="button"
+                  className={`calc-fin-tab-btn ${financeTool === 'emi' ? 'active' : ''}`}
+                  onClick={() => setFinanceTool('emi')}
+                >
+                  <Landmark size={15} /> <span>Loan & EMI Calculator</span>
+                </button>
+                <button
+                  type="button"
+                  className={`calc-fin-tab-btn ${financeTool === 'tip' ? 'active' : ''}`}
+                  onClick={() => setFinanceTool('tip')}
+                >
+                  <Percent size={15} /> <span>Tip & Bill Splitter</span>
+                </button>
+                <button
+                  type="button"
+                  className={`calc-fin-tab-btn ${financeTool === 'compound' ? 'active' : ''}`}
+                  onClick={() => setFinanceTool('compound')}
+                >
+                  <TrendingUp size={15} /> <span>Compound Interest & SIP</span>
+                </button>
+              </div>
+
+              {/* Sub-tool 1: Loan EMI */}
+              {financeTool === 'emi' && (
+                <div className="calc-fin-card glass">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Loan EMI & Payment Breakdown
+                    </h3>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Auto-calculated</span>
+                  </div>
+
+                  <div className="calc-fin-grid">
+                    <div className="calc-fin-field">
+                      <label htmlFor="loan-principal">Loan Amount ({currSymbol})</label>
+                      <input
+                        id="loan-principal"
+                        type="number"
+                        min="0"
+                        step="1000"
+                        value={loanPrincipal}
+                        onChange={(e) => setLoanPrincipal(e.target.value)}
+                        placeholder="500000"
+                      />
+                    </div>
+                    <div className="calc-fin-field">
+                      <label htmlFor="loan-rate">Annual Interest Rate (%)</label>
+                      <input
+                        id="loan-rate"
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={loanRate}
+                        onChange={(e) => setLoanRate(e.target.value)}
+                        placeholder="8.5"
+                      />
+                    </div>
+                    <div className="calc-fin-field">
+                      <label htmlFor="loan-tenure">Duration (Months)</label>
+                      <input
+                        id="loan-tenure"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={loanMonths}
+                        onChange={(e) => setLoanMonths(e.target.value)}
+                        placeholder="36"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="calc-fin-results">
+                    <div className="calc-fin-res-col">
+                      <span>Monthly EMI</span>
+                      <strong style={{ color: 'var(--brand-primary)' }}>{currSymbol}{emiCalculations.emi.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong>
+                    </div>
+                    <div className="calc-fin-res-col">
+                      <span>Total Interest</span>
+                      <strong style={{ color: 'var(--warning-color, #f59e0b)' }}>{currSymbol}{emiCalculations.totalInterest.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong>
+                    </div>
+                    <div className="calc-fin-res-col">
+                      <span>Total Amount</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>{currSymbol}{emiCalculations.totalPayable.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => handleTransferToCalculator(emiCalculations.emi)}
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px' }}
+                  >
+                    <ArrowRight size={15} /> <span>Use EMI in Calculator ({currSymbol}{emiCalculations.emi.toFixed(2)})</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Sub-tool 2: Tip & Bill Splitter */}
+              {financeTool === 'tip' && (
+                <div className="calc-fin-card glass">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Dining Tip & Group Bill Split
+                    </h3>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Per-person split</span>
+                  </div>
+
+                  <div className="calc-fin-grid">
+                    <div className="calc-fin-field">
+                      <label htmlFor="bill-amount">Bill Total ({currSymbol})</label>
+                      <input
+                        id="bill-amount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={billAmount}
+                        onChange={(e) => setBillAmount(e.target.value)}
+                        placeholder="120.00"
+                      />
+                    </div>
+                    <div className="calc-fin-field">
+                      <label htmlFor="tip-percent">Tip Percentage (%)</label>
+                      <input
+                        id="tip-percent"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={tipPercent}
+                        onChange={(e) => setTipPercent(e.target.value)}
+                        placeholder="15"
+                      />
+                    </div>
+                    <div className="calc-fin-field">
+                      <label htmlFor="split-count">Number of People</label>
+                      <input
+                        id="split-count"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={splitCount}
+                        onChange={(e) => setSplitCount(e.target.value)}
+                        placeholder="2"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="calc-fin-results">
+                    <div className="calc-fin-res-col">
+                      <span>Tip Amount</span>
+                      <strong style={{ color: 'var(--warning-color, #f59e0b)' }}>{currSymbol}{tipCalculations.tipAmount.toFixed(2)}</strong>
+                    </div>
+                    <div className="calc-fin-res-col">
+                      <span>Total with Tip</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>{currSymbol}{tipCalculations.totalWithTip.toFixed(2)}</strong>
+                    </div>
+                    <div className="calc-fin-res-col">
+                      <span>Each Person Pays</span>
+                      <strong style={{ color: 'var(--success-color, #10b981)' }}>{currSymbol}{tipCalculations.perPerson.toFixed(2)}</strong>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => handleTransferToCalculator(tipCalculations.perPerson)}
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px' }}
+                  >
+                    <ArrowRight size={15} /> <span>Use Per-Person Share ({currSymbol}{tipCalculations.perPerson.toFixed(2)})</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Sub-tool 3: Compound Interest */}
+              {financeTool === 'compound' && (
+                <div className="calc-fin-card glass">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Compound Interest & Wealth Growth
+                    </h3>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Compounded monthly</span>
+                  </div>
+
+                  <div className="calc-fin-grid">
+                    <div className="calc-fin-field">
+                      <label htmlFor="compound-init">Initial Deposit ({currSymbol})</label>
+                      <input
+                        id="compound-init"
+                        type="number"
+                        min="0"
+                        step="500"
+                        value={initialDeposit}
+                        onChange={(e) => setInitialDeposit(e.target.value)}
+                        placeholder="10000"
+                      />
+                    </div>
+                    <div className="calc-fin-field">
+                      <label htmlFor="compound-monthly">Monthly Addition ({currSymbol})</label>
+                      <input
+                        id="compound-monthly"
+                        type="number"
+                        min="0"
+                        step="50"
+                        value={monthlyAddition}
+                        onChange={(e) => setMonthlyAddition(e.target.value)}
+                        placeholder="500"
+                      />
+                    </div>
+                    <div className="calc-fin-field">
+                      <label htmlFor="compound-return">Annual Return (%)</label>
+                      <input
+                        id="compound-return"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={annualReturnRate}
+                        onChange={(e) => setAnnualReturnRate(e.target.value)}
+                        placeholder="10"
+                      />
+                    </div>
+                    <div className="calc-fin-field">
+                      <label htmlFor="compound-years">Time Horizon (Years)</label>
+                      <input
+                        id="compound-years"
+                        type="number"
+                        min="1"
+                        max="50"
+                        value={investmentYears}
+                        onChange={(e) => setInvestmentYears(e.target.value)}
+                        placeholder="5"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="calc-fin-results">
+                    <div className="calc-fin-res-col">
+                      <span>Total Invested</span>
+                      <strong style={{ color: 'var(--text-secondary)' }}>{currSymbol}{compoundCalculations.totalDeposited.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
+                    </div>
+                    <div className="calc-fin-res-col">
+                      <span>Wealth Gained</span>
+                      <strong style={{ color: 'var(--success-color, #10b981)' }}>+{currSymbol}{compoundCalculations.interestGained.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
+                    </div>
+                    <div className="calc-fin-res-col">
+                      <span>Maturity Value</span>
+                      <strong style={{ color: 'var(--brand-primary)' }}>{currSymbol}{compoundCalculations.futureValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => handleTransferToCalculator(compoundCalculations.futureValue)}
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px' }}
+                  >
+                    <ArrowRight size={15} /> <span>Use Maturity Value ({currSymbol}{compoundCalculations.futureValue.toFixed(2)})</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
-        <aside className="calculator-history glass" aria-label="Calculation history">
+        {/* ===================== Calculation History Sidebar / Drawer ===================== */}
+        <aside
+          className={`calculator-history glass ${showMobileHistory ? 'is-mobile-visible' : ''}`}
+          aria-label="Calculation history"
+          style={{
+            display: showMobileHistory ? 'block' : undefined,
+          }}
+        >
           <div className="calculator-history-heading">
             <div>
               <span className="calculator-eyebrow">
@@ -938,6 +1361,7 @@ export default function ScientificCalculator() {
                       setAngleMode(item.angleMode || 'DEG');
                       setLastAnswer(Number.isFinite(item.numericResult) ? item.numericResult : 0);
                       setErrorMessage('');
+                      setCalculatorMode('standard');
                     }}
                     aria-label={`Restore calculation: ${item.expression} = ${item.result}`}
                   >

@@ -31,7 +31,7 @@ import {
   Bell, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon,
   Menu, X, Zap, Search, Keyboard, User, Users, Sun, Moon, Check,
   HelpCircle, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon, ReceiptText,
-  Home as HomeIcon, Cloud
+  Home as HomeIcon, Cloud, FileCheck
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
@@ -63,6 +63,7 @@ const NAV_ITEMS = [
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics' },
   { to: '/calculator', icon: CalculatorIcon, labelKey: 'calculator' },
   { to: '/tax', icon: ReceiptText, labelKey: 'tax' },
+  { to: '/reports', icon: FileCheck, labelKey: 'reports' },
   { to: '/accounts', icon: Landmark, labelKey: 'accounts' },
   { to: '/budgets', icon: PieChart, labelKey: 'budgets' },
   { to: '/goals', icon: Target, labelKey: 'goals' },
@@ -90,6 +91,9 @@ const preloadRoute = (to) => {
     case '/analytics': import('../pages/Analytics'); break;
     case '/calculator': import('../pages/Calculator'); break;
     case '/tax': import('../pages/Tax'); break;
+    case '/reports':
+    case '/download':
+    case '/statements': import('../pages/Reports'); break;
     case '/accounts': import('../pages/Accounts'); break;
     case '/budgets': import('../pages/Budgets'); break;
     case '/goals': import('../pages/Goals'); break;
@@ -138,6 +142,7 @@ const PAGE_TITLE_FALLBACKS = {
   analytics: 'Analytics',
   calculator: 'Calculator',
   tax: 'Tax Center',
+  reports: 'Statements & Reports',
   accounts: 'Accounts',
   budgets: 'Budgets',
   goals: 'Savings Goals',

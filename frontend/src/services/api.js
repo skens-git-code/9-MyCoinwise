@@ -545,7 +545,12 @@ export const api = {
   // ── Download the Excel export as a file ──
   exportToExcel: async (userId, options = {}) => {
     const safeId = String(userId || 'export').replace(/[^a-zA-Z0-9_-]/g, '');
-    const res = await apiClient.get(`${API_URL}/export/${userId}`, { responseType: 'blob', ...options });
+    const { params, responseType = 'blob', ...rest } = options;
+    const queryParams = params || rest;
+    const res = await apiClient.get(`${API_URL}/export/${userId}`, {
+      responseType,
+      params: queryParams,
+    });
     const blob = new Blob([res.data]);
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');

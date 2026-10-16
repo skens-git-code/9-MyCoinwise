@@ -20,6 +20,7 @@
  */
 
 const assert = require('assert');
+const crypto = require('crypto');
 
 let passed = 0;
 let failed = 0;
@@ -516,6 +517,74 @@ async function main() {
     await test('P5-16: /api/ai/chat returns 401 without authentication', async () => {
       const res = await h.post('/api/ai/chat', { message: 'hello', history: [] });
       assert.strictEqual(res.status, 401, `expected 401, got ${res.status}: ${res.raw}`);
+    });
+
+    // ── Password Reset Flow: database alignment, hashing, session invalidation, single-use ──
+    await test('Password Reset Flow: live end-to-end verification and database alignment', async () => {
+      const oldPassword = 'OldPassword123!';
+      const newPassword = 'NewSecretPassword456!';
+      const user = await h.createUser({ password: oldPassword });
+
+      // 1. Forgot password request for unknown email (anti-enumeration check)
+      const fakeRes = await h.post('/api/auth/forgot-password', { email: 'nonexistent@example.com' });
+      assert.strictEqual(fakeRes.status, 200, 'must return 200 for unknown email');
+      assert.strictEqual(fakeRes.body.message, 'If an account with that email exists, a password reset link has been sent.');
+
+      // 2. Forgot password request for existing user
+      const forgotRes = await h.post('/api/auth/forgot-password', { email: user.email });
+      assert.strictEqual(forgotRes.status, 200);
+
+      // Verify token in database
+      const dbUser = await h.User.findById(user.id).select('+reset_password_token +reset_password_expires');
+      assert.ok(dbUser.reset_password_token, 'reset_password_token must be set in database');
+      assert.ok(dbUser.reset_password_expires, 'reset_password_expires must be set in database');
+      assert.ok(new Date(dbUser.reset_password_expires) > new Date(), 'expiry must be in future');
+
+      // The raw token in email was generated with crypto.randomBytes(32).toString('hex').
+      // For this test, generate a known token & store its hash to test the reset endpoint directly:
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+      dbUser.reset_password_token = hashedToken;
+      dbUser.reset_password_expires = new Date(Date.now() + 3600000);
+      await dbUser.save({ validateBeforeSave: false });
+
+      // 3. Reset with same password must be rejected
+      const sameRes = await h.post('/api/auth/reset-password', { token: rawToken, password: oldPassword });
+      assert.strictEqual(sameRes.status, 400);
+      assert.strictEqual(sameRes.body.error, 'New password must be different from your current password.');
+
+      // 4. Reset with weak password must be rejected by validator
+      const weakRes = await h.post('/api/auth/reset-password', { token: rawToken, password: 'weak' });
+      assert.strictEqual(weakRes.status, 400);
+      assert.ok(Array.isArray(weakRes.body.errors), 'validation errors must be returned');
+
+      // 5. Successful reset with valid new password
+      const resetRes = await h.post('/api/auth/reset-password', { token: rawToken, password: newPassword });
+      assert.strictEqual(resetRes.status, 200);
+      assert.strictEqual(resetRes.body.message, 'Password has been reset. Please log in with your new password.');
+
+      // 6. Verify database state after reset
+      const updatedUser = await h.User.findById(user.id).select('+reset_password_token +reset_password_expires +password');
+      assert.strictEqual(updatedUser.reset_password_token, null, 'reset_password_token must be cleared (single-use)');
+      assert.strictEqual(updatedUser.reset_password_expires, null, 'reset_password_expires must be cleared');
+      assert.ok(updatedUser.session_version > 0, 'session_version must be incremented');
+
+      // 7. Verify old sessions are marked inactive in Session collection
+      const activeSessions = await h.Session.find({ user_id: user.id, is_active: true });
+      assert.strictEqual(activeSessions.length, 0, 'all old user sessions must be inactivated');
+
+      // 8. Single-use: attempting to reuse the same token must fail
+      const reuseRes = await h.post('/api/auth/reset-password', { token: rawToken, password: 'AnotherPassword789!' });
+      assert.strictEqual(reuseRes.status, 400);
+      assert.strictEqual(reuseRes.body.error, 'Reset link is invalid or has expired. Please request a new one.');
+
+      // 9. Login with old password must fail; login with new password must succeed
+      const oldLogin = await h.post('/api/auth/login', { email: user.email, password: oldPassword });
+      assert.strictEqual(oldLogin.status, 401, `expected 401 for old password, got ${oldLogin.status}`);
+
+      const newLogin = await h.post('/api/auth/login', { email: user.email, password: newPassword });
+      assert.strictEqual(newLogin.status, 200, `login with new password must succeed (got ${newLogin.status}: ${newLogin.raw})`);
+      assert.ok(newLogin.body.token, 'login must return JWT');
     });
 
     // ── RATE-LIMIT configuration assertions (see note at top of file) ───────

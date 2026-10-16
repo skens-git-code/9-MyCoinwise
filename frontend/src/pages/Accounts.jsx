@@ -160,6 +160,7 @@ const StatCard = React.memo(({ icon, label, value, sub, tone = 'default' }) => (
         fontSize: '1.5rem',
         fontWeight: 700,
         letterSpacing: '-0.02em',
+        fontVariantNumeric: 'tabular-nums',
         color:
           tone === 'success'
             ? 'var(--success-color, #10b981)'
@@ -287,11 +288,6 @@ export default function Accounts() {
     [user]
   );
 
-  // ── All type options: built-ins + custom + 'other' ──
-  const allTypeOptions = useMemo(() => {
-    const set = new Set([...BASE_ACCOUNT_TYPES, ...customTypes, 'other']);
-    return Array.from(set);
-  }, [customTypes]);
 
   // Currency options — include editing account's currency even if it's not in CURRENCIES.
   const allCurrencyOptions = useMemo(() => {
@@ -300,6 +296,48 @@ export default function Accounts() {
     if (currency && !set.has(currency)) set.add(currency);
     return Array.from(set);
   }, [editingAccount, currency]);
+  // ── Dynamic Mobile Viewport & Virtual Keypad Height Tracking for Modal ──
+  useEffect(() => {
+    if (!showAdd || typeof window === 'undefined') return undefined;
+
+    const updateViewportBounds = () => {
+      const vv = window.visualViewport;
+      const height = vv ? vv.height : window.innerHeight;
+      const offsetTop = vv ? vv.offsetTop : 0;
+      document.documentElement.style.setProperty('--tx-modal-viewport-height', `${height}px`);
+      document.documentElement.style.setProperty('--tx-modal-viewport-offset-top', `${offsetTop}px`);
+    };
+
+    updateViewportBounds();
+
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', updateViewportBounds);
+      vv.addEventListener('scroll', updateViewportBounds);
+    }
+    return () => {
+      if (vv) {
+        vv.removeEventListener('resize', updateViewportBounds);
+        vv.removeEventListener('scroll', updateViewportBounds);
+      }
+      document.documentElement.style.removeProperty('--tx-modal-viewport-height');
+      document.documentElement.style.removeProperty('--tx-modal-viewport-offset-top');
+    };
+  }, [showAdd]);
+
+  const handleAddBalancePreset = useCallback((presetVal) => {
+    const current = parseFloat(initialBalance) || 0;
+    setInitialBalance(String(current + presetVal));
+    setFormError('');
+  }, [initialBalance]);
+
+  const handleBalanceChange = useCallback((e) => {
+    const clean = e.target.value.replace(/,/g, '.');
+    if (clean === '' || /^-?\d*\.?\d{0,2}$/.test(clean)) {
+      setInitialBalance(clean);
+      setFormError('');
+    }
+  }, []);
 
   /* ---------------- Outside‑click / Escape for sort menu ---------------- */
   useEffect(() => {
@@ -844,80 +882,62 @@ export default function Accounts() {
     >
 
       {/* ===================== Header ===================== */}
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          marginBottom: 'var(--spacing-lg, 24px)',
-          gap: '1rem',
-          flexWrap: 'wrap',
-        }}
-      >
+      {/* ===================== Header ===================== */}
+      <header className="island-header glass-sm accounts-header" style={{ marginBottom: '1.25rem' }}>
         {/* ── Page title + subtitle ── */}
-        <div style={{ flex: '1 1 300px' }}>
-          <h1
-            style={{
-              fontSize: '1.875rem',
-              fontWeight: 700,
-              marginBottom: '0.5rem',
-              color: 'var(--text-main)',
-            }}
-          >
-            {tr('accounts', 'Accounts')}
-          </h1>
-          <p style={{ color: 'var(--text-muted)' }}>
-            {tr('bank_accounts', 'Manage your bank accounts, wallets, and credit cards.')}
-          </p>
+        <div className="ih-left">
+          <div className="ih-titles">
+            <h1 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Landmark className="text-brand" size={24} aria-hidden />
+              {tr('accounts', 'Accounts')}
+            </h1>
+            <p>{tr('bank_accounts', 'Manage your bank accounts, wallets, and credit cards.')}</p>
+          </div>
         </div>
 
         {/* ── Header actions: archive toggle, refresh, add ── */}
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="inbox-header-actions">
           <button
+            type="button"
             className="btn-secondary"
             onClick={() => setShowArchived((s) => !s)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.82rem', padding: '8px 14px' }}
             aria-pressed={showArchived}
           >
-            {showArchived ? <EyeOff size={18} /> : <Eye size={18} />}
-            {showArchived ? 'Hide Archived' : 'Show Archived'}
+            {showArchived ? <EyeOff size={15} /> : <Eye size={15} />}
+            <span>{showArchived ? 'Hide Archived' : 'Show Archived'}</span>
             {stats.archived > 0 && !showArchived && (
-              <span
-                style={{
-                  background: 'var(--bg-color)',
-                  padding: '1px 6px',
-                  borderRadius: 10,
-                  fontSize: '0.7rem',
-                }}
-              >
+              <span className="ih-badge" style={{ marginLeft: 4 }}>
                 {stats.archived}
               </span>
             )}
           </button>
           <button
+            type="button"
             className="btn-secondary"
             onClick={handleRefresh}
             disabled={isRefreshing}
             title="Refresh accounts"
             aria-label="Refresh accounts"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', padding: '8px 14px' }}
           >
             {isRefreshing ? (
-              <Loader2 size={16} className="spin" />
+              <Loader2 size={15} className="spin" />
             ) : (
-              <RefreshCw size={16} />
+              <RefreshCw size={15} />
             )}
-            Refresh
+            <span>Refresh</span>
           </button>
           <button
+            type="button"
             className="btn-primary"
             onClick={() => {
               resetForm();
               setShowAdd(true);
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem', padding: '9px 16px' }}
           >
-            <Plus size={18} /> {tr('add_account', 'Add Account')}
+            <Plus size={16} /> <span>{tr('add_account', 'Add Account')}</span>
           </button>
         </div>
       </header>
@@ -1378,6 +1398,8 @@ export default function Accounts() {
                           style={{
                             fontWeight: 700,
                             fontSize: '1.2rem',
+                            fontVariantNumeric: 'tabular-nums',
+                            letterSpacing: '-0.01em',
                             color:
                               balanceNum < 0
                                 ? 'var(--danger-color, #ef4444)'
@@ -1470,75 +1492,220 @@ export default function Accounts() {
               resetForm();
             }}
           >
-            <form onSubmit={handleSubmit} className="account-form" noValidate>
-              {/* ── Account name ── */}
-              <div className="form-field account-form-name">
-                <label htmlFor="account-name">Account Name *</label>
-                <input
-                  id="account-name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    clearError();
-                  }}
-                  required
-                  maxLength={100}
-                  placeholder="e.g. Chase Checking"
-                  autoComplete="off"
-                  autoFocus={!isEditing}
-                  aria-describedby={formError ? 'account-form-error' : undefined}
-                  aria-invalid={Boolean(formError)}
-                />
-              </div>
-
-              <div className="account-form-grid">
-                {/* ── Account type + custom type ── */}
-                <div className="form-field">
-                  <label htmlFor="account-type">Type *</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <select
-                      id="account-type"
-                      value={type}
-                      onChange={(e) => {
-                        setType(e.target.value);
-                        clearError();
+            <form
+              onSubmit={handleSubmit}
+              className="account-form"
+              noValidate
+              onFocusCapture={() => {
+                if (typeof window !== 'undefined' && window.scrollY !== 0) window.scrollTo(0, 0);
+              }}
+            >
+              <div className="modal-form-scrollable">
+                {/* ── Form Error Banner ── */}
+                <AnimatePresence>
+                  {formError && (
+                    <motion.p
+                      id="account-form-error"
+                      className="form-error"
+                      role="alert"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      style={{
+                        display: 'flex',
+                        gap: '0.4rem',
+                        alignItems: 'center',
+                        color: 'var(--danger-color, #ef4444)',
+                        marginBottom: '1rem',
+                        fontSize: '0.84rem',
+                        fontWeight: 600,
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        padding: '10px 14px',
+                        borderRadius: 12,
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
                       }}
-                      style={{ flex: 1 }}
                     >
-                      {allTypeOptions.map((typeKey) => (
-                        <option key={typeKey} value={typeKey}>
-                          {typeKey === 'other' ? 'Other…' : humanizeType(typeKey)}
-                        </option>
-                      ))}
-                    </select>
+                      <AlertTriangle size={15} /> {formError}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
 
-                    {/* ── Remove custom type (only when the current type is custom) ── */}
-                    {customTypes.includes(type) && (
-                      <button
-                        type="button"
-                        onClick={() => setCustomTypeToRemove(type)}
-                        className="btn-secondary"
-                        style={{ padding: '0.5rem' }}
-                        title="Remove this custom type"
-                        aria-label="Remove custom type"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
+                {/* ── Hero Balance Card (when adding) or Balance Info (when editing) ── */}
+                {!isEditing ? (
+                  <div className="tx-hero-amount income" style={{ marginBottom: '1.25rem' }}>
+                    <div className="tx-amount-label-row">
+                      <span className="tx-field-label">Initial Balance *</span>
+                      <span className="tx-currency-badge">
+                        {CURRENCIES?.[currency]?.symbol || currency} {currency}
+                      </span>
+                    </div>
+                    <div className="tx-amount-display">
+                      <span className="tx-amount-symbol" aria-hidden="true">
+                        {CURRENCIES?.[currency]?.symbol || currency}
+                      </span>
+                      <input
+                        id="account-balance"
+                        type="text"
+                        value={initialBalance}
+                        onChange={handleBalanceChange}
+                        placeholder="0.00"
+                        required
+                        inputMode="decimal"
+                        className="tx-amount-input"
+                        aria-label={`Initial Balance in ${currency}`}
+                      />
+                    </div>
+                    {/* Quick Preset Chips */}
+                    <div className="tx-amount-presets" role="group" aria-label="Quick balance presets">
+                      {[1000, 5000, 10000, 50000].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          className="tx-preset-chip"
+                          onClick={() => handleAddBalancePreset(preset)}
+                        >
+                          +{CURRENCIES?.[currency]?.symbol || ''}{preset.toLocaleString()}
+                        </button>
+                      ))}
+                      {initialBalance ? (
+                        <button
+                          type="button"
+                          className="tx-preset-chip tx-preset-clear"
+                          onClick={() => setInitialBalance('')}
+                          title="Clear balance"
+                        >
+                          Clear
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      background: 'var(--surface-1)',
+                      border: '1px solid var(--glass-border)',
+                      padding: '12px 16px',
+                      borderRadius: 14,
+                      marginBottom: '1.25rem',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+                        Current Balance
+                      </span>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(initialBalance, currency, locale)}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', maxWidth: 200, textAlign: 'right' }}>
+                      Reconciled via transactions
+                    </span>
+                  </div>
+                )}
+
+                {/* ── Account Name ── */}
+                <div className="form-field account-form-name" style={{ marginBottom: '1rem' }}>
+                  <label htmlFor="account-name" style={{ fontSize: '0.8rem', fontWeight: 650, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.35rem' }}>
+                    Account Name *
+                  </label>
+                  <input
+                    id="account-name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      clearError();
+                    }}
+                    required
+                    maxLength={100}
+                    placeholder="e.g. Chase Checking, HDFC Salary"
+                    autoComplete="off"
+                    autoFocus={!isEditing}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: 12,
+                      border: '1px solid var(--glass-border)',
+                      background: 'var(--surface-1)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.92rem',
+                    }}
+                    aria-describedby={formError ? 'account-form-error' : undefined}
+                    aria-invalid={Boolean(formError)}
+                  />
+                </div>
+
+                {/* ── Segmented Account Type Selector ── */}
+                <div style={{ marginBottom: '1.15rem' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 650, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.45rem' }}>
+                    Account Type *
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '6px' }}>
+                    {[
+                      { key: 'bank', label: 'Bank', iconName: 'Landmark', defaultColor: '#3b82f6', emoji: '🏦' },
+                      { key: 'credit_card', label: 'Card', iconName: 'CreditCard', defaultColor: '#ef4444', emoji: '💳' },
+                      { key: 'wallet', label: 'Wallet', iconName: 'Wallet', defaultColor: '#8b5cf6', emoji: '👛' },
+                      { key: 'investment', label: 'Invest', iconName: 'Coins', defaultColor: '#10b981', emoji: '📈' },
+                      { key: 'cash', label: 'Cash', iconName: 'Coins', defaultColor: '#f59e0b', emoji: '💵' },
+                      { key: 'other', label: 'Other', iconName: 'Wallet', defaultColor: '#6b7280', emoji: '✨' },
+                    ].map((tItem) => {
+                      const isSelected = type === tItem.key;
+                      return (
+                        <button
+                          key={tItem.key}
+                          type="button"
+                          onClick={() => {
+                            setType(tItem.key);
+                            setIcon(tItem.iconName);
+                            if (!isEditing) setColor(tItem.defaultColor);
+                            clearError();
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '5px',
+                            padding: '8px 10px',
+                            borderRadius: 10,
+                            border: isSelected ? '1px solid var(--brand-primary)' : '1px solid var(--glass-border)',
+                            background: isSelected ? 'rgba(14, 165, 233, 0.12)' : 'var(--surface-1)',
+                            color: isSelected ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                            fontWeight: isSelected ? 700 : 500,
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.16s ease',
+                          }}
+                        >
+                          <span>{tItem.emoji}</span>
+                          <span>{tItem.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
 
-                  {/* ── Custom type input (only when "other" is selected) ── */}
+                  {/* Custom type input when "other" is selected */}
                   {type === 'other' && (
                     <input
                       type="text"
-                      placeholder="Enter custom account type"
+                      placeholder="Enter custom account type name"
                       value={customType}
                       onChange={(e) => {
                         setCustomType(e.target.value);
                         clearError();
                       }}
-                      style={{ marginTop: '0.5rem' }}
+                      style={{
+                        marginTop: '0.5rem',
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: 10,
+                        border: '1px solid var(--glass-border)',
+                        background: 'var(--surface-1)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.85rem',
+                      }}
                       required
                       maxLength={40}
                       aria-label="Custom account type"
@@ -1546,146 +1713,131 @@ export default function Accounts() {
                   )}
                 </div>
 
-                {/* ── Currency ── */}
-                <div className="form-field">
-                  <label htmlFor="account-currency">Currency *</label>
-                  <select
-                    id="account-currency"
-                    value={currency}
-                    onChange={(e) => setCurrency(e.target.value)}
-                    disabled={isEditing && !editingBalanceIsZero}
-                  >
-                    {allCurrencyOptions.map((code) => {
-                      const info = CURRENCIES?.[code];
-                      return (
-                        <option key={code} value={code}>
-                          {code}
-                          {info?.name ? ` — ${info.name}` : ''}
+                {/* ── Currency & Icon Grid ── */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.15rem' }}>
+                  {/* Currency */}
+                  <div className="form-field">
+                    <label htmlFor="account-currency" style={{ fontSize: '0.78rem', fontWeight: 650, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.35rem' }}>
+                      Currency *
+                    </label>
+                    <select
+                      id="account-currency"
+                      value={currency}
+                      onChange={(e) => setCurrency(e.target.value)}
+                      disabled={isEditing && !editingBalanceIsZero}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: 10,
+                        border: '1px solid var(--glass-border)',
+                        background: 'var(--surface-1)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      {allCurrencyOptions.map((code) => {
+                        const info = CURRENCIES?.[code];
+                        return (
+                          <option key={code} value={code}>
+                            {code} {info?.symbol ? `(${info.symbol})` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {/* Icon */}
+                  <div className="form-field">
+                    <label htmlFor="account-icon" style={{ fontSize: '0.78rem', fontWeight: 650, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.35rem' }}>
+                      Icon
+                    </label>
+                    <select
+                      id="account-icon"
+                      value={icon}
+                      onChange={(e) => setIcon(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: 10,
+                        border: '1px solid var(--glass-border)',
+                        background: 'var(--surface-1)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      {Object.keys(ICONS).map((k) => (
+                        <option key={k} value={k}>
+                          {k}
                         </option>
-                      );
-                    })}
-                  </select>
-                  {isEditing && !editingBalanceIsZero && (
-                    <p
-                      style={{
-                        fontSize: '0.75rem',
-                        color: 'var(--warning-color, #f59e0b)',
-                        marginTop: '0.25rem',
-                      }}
-                    >
-                      Currency cannot be changed while the balance is non‑zero.
-                    </p>
-                  )}
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                {/* ── Balance (initial on create, read-only on edit) ── */}
-                <div className="form-field">
-                  <label htmlFor="account-balance">
-                    {isEditing ? 'Current Balance' : 'Initial Balance *'}
+                {/* ── Color Picker Palette ── */}
+                <div className="form-field" style={{ marginBottom: '1rem' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 650, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.45rem' }}>
+                    Card Color Accent
                   </label>
-                  <input
-                    id="account-balance"
-                    type="number"
-                    step="0.01"
-                    value={initialBalance}
-                    onChange={(e) => {
-                      setInitialBalance(e.target.value);
-                      clearError();
-                    }}
-                    required={!isEditing}
-                    placeholder="0.00"
-                    disabled={isEditing}
-                    inputMode="decimal"
-                  />
-                  {isEditing && (
-                    <p
-                      style={{
-                        fontSize: '0.75rem',
-                        color: 'var(--text-muted)',
-                        marginTop: '0.25rem',
-                      }}
-                    >
-                      Balance is derived from transactions and cannot be edited here.
-                    </p>
-                  )}
-                </div>
-
-                {/* ── Icon ── */}
-                <div className="form-field">
-                  <label htmlFor="account-icon">Icon</label>
-                  <select
-                    id="account-icon"
-                    value={icon}
-                    onChange={(e) => setIcon(e.target.value)}
-                  >
-                    {Object.keys(ICONS).map((k) => (
-                      <option key={k} value={k}>
-                        {k}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* ── Color picker with presets ── */}
-              <div className="form-field">
-                <label>Color</label>
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: '0.5rem',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                  }}
-                >
-                  {COLOR_PRESETS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      className={`color-swatch ${color === c ? 'active' : ''}`}
-                      style={{ background: c }}
-                      onClick={() => setColor(c)}
-                      aria-label={`Choose color ${c}`}
-                      aria-pressed={color === c}
-                    />
-                  ))}
-                  <input
-                    id="account-color"
-                    type="color"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
+                  <div
                     style={{
-                      width: 40,
-                      height: 40,
-                      padding: 0,
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: 'transparent',
+                      display: 'flex',
+                      gap: '0.55rem',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
                     }}
-                    aria-label="Custom color picker"
-                  />
+                  >
+                    {COLOR_PRESETS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        className={`color-swatch ${color === c ? 'active' : ''}`}
+                        style={{
+                          background: c,
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          border: color === c ? '3px solid #ffffff' : '2px solid transparent',
+                          boxShadow: color === c ? `0 0 0 2px ${c}` : 'none',
+                          cursor: 'pointer',
+                          transition: 'all 0.16s ease',
+                        }}
+                        onClick={() => setColor(c)}
+                        aria-label={`Choose color ${c}`}
+                        aria-pressed={color === c}
+                      />
+                    ))}
+                    <input
+                      id="account-color"
+                      type="color"
+                      value={color}
+                      onChange={(e) => setColor(e.target.value)}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        padding: 0,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: 'transparent',
+                        borderRadius: '50%',
+                      }}
+                      aria-label="Custom color picker"
+                    />
+                  </div>
                 </div>
               </div>
-
-              {/* ── Form error ── */}
-              {formError && (
-                <p
-                  id="account-form-error"
-                  className="form-error"
-                  role="alert"
-                  style={{
-                    display: 'flex',
-                    gap: '0.4rem',
-                    alignItems: 'center',
-                    color: 'var(--danger-color, #ef4444)',
-                  }}
-                >
-                  <AlertTriangle size={14} /> {formError}
-                </p>
-              )}
 
               {/* ── Actions ── */}
-              <div className="account-form-actions">
+              <div
+                className="account-form-actions"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '0.75rem',
+                  paddingTop: '1rem',
+                  borderTop: '1px solid var(--glass-border)',
+                }}
+              >
                 <button
                   type="button"
                   className="btn-secondary"
@@ -1694,15 +1846,30 @@ export default function Accounts() {
                     resetForm();
                   }}
                   disabled={isSubmitting}
+                  style={{ padding: '9px 18px', borderRadius: 10 }}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary" disabled={isSubmitting}>
-                  {isSubmitting
-                    ? 'Saving…'
-                    : isEditing
-                      ? 'Update Account'
-                      : 'Create Account'}
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={isSubmitting}
+                  style={{
+                    padding: '9px 22px',
+                    borderRadius: 10,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                  }}
+                >
+                  {isSubmitting && <Loader2 size={16} className="spin" />}
+                  <span>
+                    {isSubmitting
+                      ? 'Saving…'
+                      : isEditing
+                        ? 'Update Account'
+                        : 'Create Account'}
+                  </span>
                 </button>
               </div>
             </form>

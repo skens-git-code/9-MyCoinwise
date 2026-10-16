@@ -1,13 +1,14 @@
 import React, {
-  useState, useMemo, useCallback, useEffect, useRef,
+  useState, useMemo, useCallback, useEffect,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Edit3, Trash2, AlertCircle, Calendar, Wallet, Copy,
-  ToggleLeft, ToggleRight, Eye, EyeOff, Loader2,
+  ToggleLeft, ToggleRight, Eye, EyeOff, Loader2, Sparkles,
+  ChevronDown, CheckCircle2, TrendingUp, AlertTriangle, Layers,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
-import { api } from '../services/api';
+import { api, CURRENCIES } from '../services/api';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
 
@@ -29,6 +30,23 @@ const VALID_DECIMAL_REGEX = /^\d+(\.\d{1,2})?$/;
 const MAX_TITLE_LENGTH = 100;
 const COPY_SUFFIX = ' (Copy)';
 const MAX_BASE_NAME_LENGTH = MAX_TITLE_LENGTH - COPY_SUFFIX.length;
+
+const POPULAR_BUDGET_CATEGORIES = [
+  { name: 'Food & Dining', emoji: '🍔' },
+  { name: 'Groceries', emoji: '🛒' },
+  { name: 'Shopping', emoji: '🛍️' },
+  { name: 'Transport', emoji: '🚗' },
+  { name: 'Entertainment', emoji: '🎬' },
+  { name: 'Bills & Utilities', emoji: '💡' },
+  { name: 'Health & Medical', emoji: '❤️' },
+  { name: 'Travel', emoji: '✈️' },
+  { name: 'Personal Care', emoji: '💅' },
+  { name: 'Education', emoji: '📚' },
+  { name: 'Investments', emoji: '📈' },
+  { name: 'General', emoji: '🏷️' },
+];
+
+const QUICK_AMOUNT_PRESETS = [1000, 2500, 5000, 10000, 25000];
 
 const LANGUAGE_LOCALE_MAP = {
   en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
@@ -52,13 +70,11 @@ const getBrowserLocale = (languageCode) => LANGUAGE_LOCALE_MAP[languageCode] || 
 const formatToLocalDateString = (inputValue) => {
   if (!inputValue) return '';
   
-  // Handle ISO strings directly to avoid timezone conversion issues
   if (typeof inputValue === 'string') {
     const match = inputValue.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (match) return `${match[1]}-${match[2]}-${match[3]}`;
   }
 
-  // Fallback for Date objects
   const dateObj = inputValue instanceof Date ? inputValue : new Date(inputValue);
   if (Number.isNaN(dateObj.getTime())) return '';
   
@@ -81,6 +97,40 @@ const parseLocalDateObject = (dateString) => {
   
   const fallbackDate = dateString instanceof Date ? new Date(dateString) : new Date(dateString);
   return Number.isNaN(fallbackDate.getTime()) ? null : fallbackDate;
+};
+
+/**
+ * Computes default start and end dates based on budget type.
+ */
+const getDefaultDatesForType = (type) => {
+  const now = new Date();
+  if (type === 'monthly') {
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+      start: formatToLocalDateString(firstDay),
+      end: formatToLocalDateString(lastDay),
+    };
+  }
+  if (type === 'weekly') {
+    const day = now.getDay();
+    const diffToMonday = now.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(now.setDate(diffToMonday));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    return {
+      start: formatToLocalDateString(monday),
+      end: formatToLocalDateString(sunday),
+    };
+  }
+  // custom
+  const today = new Date();
+  const nextMonth = new Date();
+  nextMonth.setDate(today.getDate() + 30);
+  return {
+    start: formatToLocalDateString(today),
+    end: formatToLocalDateString(nextMonth),
+  };
 };
 
 /**
@@ -133,7 +183,11 @@ const calculateInclusiveDayCount = (startDateStr, endDateStr) => {
 const formatDisplayDate = (dateInput, locale) => {
   const dateObj = parseLocalDateObject(dateInput);
   if (!dateObj) return '—';
-  return dateObj.toLocaleDateString(locale || undefined);
+  return dateObj.toLocaleDateString(locale || undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 };
 
 /* 
@@ -143,9 +197,6 @@ const formatDisplayDate = (dateInput, locale) => {
  * ————————————————————————————————————————————
  */
 
-/**
- * Generates a numeric hash from an ID string for consistent color selection.
- */
 const generateIdHash = (id) => {
   const idString = String(id ?? '');
   let hashValue = 0;
@@ -155,62 +206,70 @@ const generateIdHash = (id) => {
   return Math.abs(hashValue);
 };
 
-/**
- * Selects a color from the palette based on the budget ID or index.
- */
-const selectBudgetColor = (budgetId, index) => PALETTE[generateIdHash(budgetId ?? index) % PALETTE.length];
+const selectBudgetColor = (id, fallbackIndex = 0) => {
+  if (id != null) {
+    const colorIndex = generateIdHash(id) % PALETTE.length;
+    return PALETTE[colorIndex];
+  }
+  return PALETTE[fallbackIndex % PALETTE.length];
+};
 
-/**
- * Extracts the unique identifier from a budget object, handling different API formats.
- */
-const extractBudgetId = (budgetObject) => budgetObject?.id ?? budgetObject?._id ?? null;
-
-/* 
- * ————————————————————————————————————————————
- * SUB-COMPONENTS
- * Small, reusable UI elements.
- * ————————————————————————————————————————————
- */
-
-/**
- * A transparent button wrapper for icon-only actions.
- */
-const ActionIconButton = ({ onClick, accessibilityLabel, children, isDisabled, variant }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    disabled={isDisabled}
-    aria-label={accessibilityLabel}
-    title={accessibilityLabel}
-    style={{
-      background: 'transparent',
-      border: 'none',
-      color: variant === 'danger' ? 'var(--danger-color, #ef4444)' : 'var(--text-muted)',
-      cursor: isDisabled ? 'not-allowed' : 'pointer',
-      padding: 4,
-      borderRadius: 6,
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      opacity: isDisabled ? 0.4 : 1,
-    }}
-  >
-    {children}
-  </button>
-);
+const extractBudgetId = (budget) => budget?._id || budget?.id || null;
 
 /* 
  * ————————————————————————————————————————————
- * MAIN COMPONENT: BudgetManager
- * Handles listing, creating, editing, and deleting budgets.
+ * SUB-COMPONENT: ACTION ICON BUTTON
+ * Accessible button wrapper with micro-interactions.
  * ————————————————————————————————————————————
  */
-export default function BudgetManager() {
+const ActionIconButton = React.memo(({
+  onClick,
+  accessibilityLabel,
+  children,
+  isDisabled = false,
+  variant = 'default',
+}) => {
+  const isDangerVariant = variant === 'danger';
+  return (
+    <motion.button
+      type="button"
+      whileHover={{ scale: isDisabled ? 1 : 1.1 }}
+      whileTap={{ scale: isDisabled ? 1 : 0.95 }}
+      onClick={onClick}
+      disabled={isDisabled}
+      aria-label={accessibilityLabel}
+      title={accessibilityLabel}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        cursor: isDisabled ? 'not-allowed' : 'pointer',
+        padding: '0.4rem',
+        borderRadius: '8px',
+        color: isDangerVariant ? 'var(--danger-color, #ef4444)' : 'var(--text-secondary, #94a3b8)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: isDisabled ? 0.4 : 1,
+        transition: 'color 0.15s ease, background 0.15s ease',
+      }}
+      className="budget-action-btn"
+    >
+      {children}
+    </motion.button>
+  );
+});
+
+/* 
+ * ————————————————————————————————————————————
+ * MAIN COMPONENT: BUDGETS
+ * ————————————————————————————————————————————
+ */
+export default function Budgets() {
   const {
     budgets = [],
     transactions = [],
-    loading: isLoadingData,
     lang: currentLanguage,
+    currency = 'USD',
   } = useAppState();
   const {
     refetch: refreshData,
@@ -219,21 +278,17 @@ export default function BudgetManager() {
   } = useAppActions();
   
   const { showToast } = useToast();
+  const currSymbol = CURRENCIES?.[currency]?.symbol || currency || '$';
 
   const userLocale = useMemo(() => getBrowserLocale(currentLanguage), [currentLanguage]);
   const getTranslation = useCallback((key, fallbackText) => translate?.(key) || fallbackText, [translate]);
 
-  /* 
-   * ————————————————————————————————————————————
-   * STATE MANAGEMENT
-   * ————————————————————————————————————————————
-   */
-  
   // Modal Visibility States
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [budgetToEdit, setBudgetToEdit] = useState(null);
   const [budgetToDelete, setBudgetToDelete] = useState(null);
   const [showInactiveBudgets, setShowInactiveBudgets] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState('all');
 
   // Loading States
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
@@ -251,15 +306,36 @@ export default function BudgetManager() {
   const [formErrorMessage, setFormErrorMessage] = useState('');
 
   // Concurrency Control for Toggles
-  const activeToggleRequestsRef = useRef(new Set());
-  const [, triggerToggleReRender] = useState(0);
+  const [togglingIds, setTogglingIds] = useState(new Set());
 
-  /* 
-   * ————————————————————————————————————————————
-   * DERIVED DATA
-   * Memoized calculations for categories, expenses, and budget stats.
-   * ————————————————————————————————————————————
-   */
+  // Mobile Keypad & Viewport height stability
+  useEffect(() => {
+    if (!isCreateModalOpen || typeof window === 'undefined') return undefined;
+
+    const updateViewportBounds = () => {
+      const vv = window.visualViewport;
+      const height = vv ? vv.height : window.innerHeight;
+      const offsetTop = vv ? vv.offsetTop : 0;
+      document.documentElement.style.setProperty('--tx-modal-viewport-height', `${height}px`);
+      document.documentElement.style.setProperty('--tx-modal-viewport-offset-top', `${offsetTop}px`);
+    };
+
+    updateViewportBounds();
+
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', updateViewportBounds);
+      vv.addEventListener('scroll', updateViewportBounds);
+    }
+    return () => {
+      if (vv) {
+        vv.removeEventListener('resize', updateViewportBounds);
+        vv.removeEventListener('scroll', updateViewportBounds);
+      }
+      document.documentElement.style.removeProperty('--tx-modal-viewport-height');
+      document.documentElement.style.removeProperty('--tx-modal-viewport-offset-top');
+    };
+  }, [isCreateModalOpen]);
 
   /**
    * Extracts unique categories from existing transactions and budgets.
@@ -272,7 +348,7 @@ export default function BudgetManager() {
   }, [transactions, budgets]);
 
   /**
-   * Filters and normalizes expense transactions for efficient client-side calculation.
+   * Filters and normalizes expense transactions for client-side calculation.
    */
   const normalizedExpenses = useMemo(() => {
     if (!Array.isArray(transactions)) return [];
@@ -293,7 +369,6 @@ export default function BudgetManager() {
       });
     }
     
-    // Sort by time for efficient range scanning later
     processedExpenses.sort((a, b) => a.timestamp - b.timestamp);
     return processedExpenses;
   }, [transactions]);
@@ -310,7 +385,6 @@ export default function BudgetManager() {
       const targetCategoryKey = (budget.category || '').trim().toLowerCase();
       let clientCalculatedSpent = 0;
 
-      // Calculate spent amount from local transactions if period is valid
       if (isPeriodValid) {
         for (const tx of normalizedExpenses) {
           if (tx.timestamp < periodStartMs) continue;
@@ -320,23 +394,22 @@ export default function BudgetManager() {
         }
       }
 
-      // Merge with backend reported spent amount (take the higher value to be safe)
-      const backendSpentValue = Number(budget.total_spent);
-      const isBackendSpentValid = Number.isFinite(backendSpentValue) && backendSpentValue >= 0;
-      const finalSpentAmount = Math.max(clientCalculatedSpent, isBackendSpentValid ? backendSpentValue : 0);
+      const serverSpent = Number(budget.spent);
+      const finalSpentAmount = isPeriodValid
+        ? clientCalculatedSpent
+        : (Number.isFinite(serverSpent) ? serverSpent : 0);
 
-      // Calculate effective limit including rollover
-      const rolloverValue = Number.isFinite(Number(budget.rollover_amount)) ? Number(budget.rollover_amount) : 0;
-      const baseLimitValue = Number.isFinite(Number(budget.total_limit)) ? Number(budget.total_limit) : 0;
+      const baseLimitValue = Number(budget.total_limit) || 0;
+      const rolloverValue = budget.rollover_enabled ? (Number(budget.rollover_amount) || 0) : 0;
       const effectiveLimit = baseLimitValue + rolloverValue;
-      
       const remainingBalance = effectiveLimit - finalSpentAmount;
-      const usagePercentage = effectiveLimit > 0 ? (finalSpentAmount / effectiveLimit) * 100 : 0;
+      
+      const usagePercentage = effectiveLimit > 0
+        ? Math.max(0, (finalSpentAmount / effectiveLimit) * 100)
+        : 0;
 
       return {
         ...budget,
-        category: budget.category || '',
-        clientSpent: clientCalculatedSpent,
         spent: finalSpentAmount,
         baseLimit: baseLimitValue,
         rolloverAmount: rolloverValue,
@@ -350,15 +423,19 @@ export default function BudgetManager() {
   }, [budgets, normalizedExpenses]);
 
   /**
-   * Filters budgets based on the "Show Inactive" toggle.
+   * Calculates overall totals for the summary strip.
    */
-  const displayedBudgets = useMemo(
-    () => (showInactiveBudgets ? enrichedBudgets : enrichedBudgets.filter((b) => b.is_active !== false)),
-    [enrichedBudgets, showInactiveBudgets]
-  );
+  const overallTotals = useMemo(() => {
+    const activeList = enrichedBudgets.filter((b) => b.is_active !== false);
+    const totalLimit = activeList.reduce((acc, b) => acc + (b.limit || 0), 0);
+    const totalSpent = activeList.reduce((acc, b) => acc + (b.spent || 0), 0);
+    const totalRemaining = totalLimit - totalSpent;
+    const spentPercent = totalLimit > 0 ? (totalSpent / totalLimit) * 100 : 0;
+    return { totalLimit, totalSpent, totalRemaining, spentPercent };
+  }, [enrichedBudgets]);
 
   /**
-   * Calculates summary statistics for the dashboard header.
+   * Summary counts for filters and alerts.
    */
   const dashboardStats = useMemo(() => {
     const activeList = enrichedBudgets.filter((b) => b.is_active !== false);
@@ -375,39 +452,71 @@ export default function BudgetManager() {
     };
   }, [enrichedBudgets]);
 
+  /**
+   * Filters budgets based on preset tabs.
+   */
+  const displayedBudgets = useMemo(() => {
+    switch (selectedFilter) {
+      case 'active':
+        return enrichedBudgets.filter((b) => b.is_active !== false);
+      case 'nearLimit':
+        return enrichedBudgets.filter((b) => b.is_active !== false && b.progress >= STATUS_WARNING_THRESHOLD && b.progress < STATUS_CRITICAL_THRESHOLD);
+      case 'overBudget':
+        return enrichedBudgets.filter((b) => b.is_active !== false && b.remaining < 0);
+      case 'inactive':
+        return enrichedBudgets.filter((b) => b.is_active === false);
+      case 'all':
+      default:
+        return showInactiveBudgets ? enrichedBudgets : enrichedBudgets.filter((b) => b.is_active !== false);
+    }
+  }, [enrichedBudgets, selectedFilter, showInactiveBudgets]);
+
   /* 
    * ————————————————————————————————————————————
    * FORM HANDLERS
-   * Logic for opening, closing, and populating the edit/create modal.
    * ————————————————————————————————————————————
    */
 
-  /**
-   * Resets all form fields to their initial empty state.
-   */
   const resetFormFields = useCallback(() => {
+    const defaultDates = getDefaultDatesForType('monthly');
     setFormName('');
     setFormType('monthly');
     setFormCategory('');
     setFormLimit('');
-    setFormStartDate('');
-    setFormEndDate('');
+    setFormStartDate(defaultDates.start);
+    setFormEndDate(defaultDates.end);
     setIsRolloverEnabled(false);
     setIsBudgetActive(true);
     setBudgetToEdit(null);
     setFormErrorMessage('');
   }, []);
 
-  /**
-   * Clears any existing validation error messages.
-   */
   const clearFormError = useCallback(() => {
     setFormErrorMessage((prevError) => (prevError ? '' : prevError));
   }, []);
 
-  /**
-   * Populates the form with data from an existing budget, optionally preparing it for duplication.
-   */
+  const handleTypeChange = useCallback((newType) => {
+    setFormType(newType);
+    clearFormError();
+    const newDates = getDefaultDatesForType(newType);
+    setFormStartDate(newDates.start);
+    setFormEndDate(newDates.end);
+  }, [clearFormError]);
+
+  const handleAddPreset = useCallback((presetVal) => {
+    const current = parseFloat(formLimit) || 0;
+    setFormLimit(String(current + presetVal));
+    clearFormError();
+  }, [formLimit, clearFormError]);
+
+  const handleAmountChange = useCallback((e) => {
+    const clean = e.target.value.replace(/,/g, '.');
+    if (clean === '' || /^\d*\.?\d{0,2}$/.test(clean)) {
+      setFormLimit(clean);
+      clearFormError();
+    }
+  }, [clearFormError]);
+
   const loadFormWithData = useCallback((sourceBudget, { isDuplicateMode = false } = {}) => {
     const originalName = String(sourceBudget.name || '');
     const newName = isDuplicateMode
@@ -417,7 +526,6 @@ export default function BudgetManager() {
     let startDate = formatToLocalDateString(sourceBudget.period_start);
     let endDate = formatToLocalDateString(sourceBudget.period_end);
 
-    // If duplicating, shift the dates forward by the original duration
     if (isDuplicateMode && startDate && endDate) {
       const durationDays = calculateInclusiveDayCount(startDate, endDate) || 1;
       startDate = addDaysToDateString(startDate, durationDays);
@@ -432,8 +540,8 @@ export default function BudgetManager() {
         ? String(sourceBudget.total_limit)
         : ''
     );
-    setFormStartDate(startDate);
-    setFormEndDate(endDate);
+    setFormStartDate(startDate || getDefaultDatesForType(sourceBudget.type || 'monthly').start);
+    setFormEndDate(endDate || getDefaultDatesForType(sourceBudget.type || 'monthly').end);
     setIsRolloverEnabled(Boolean(sourceBudget.rollover_enabled));
     setIsBudgetActive(isDuplicateMode ? true : sourceBudget.is_active !== false);
     setBudgetToEdit(isDuplicateMode ? null : sourceBudget);
@@ -444,12 +552,6 @@ export default function BudgetManager() {
   const initiateEdit = useCallback((budget) => loadFormWithData(budget, { isDuplicateMode: false }), [loadFormWithData]);
   const initiateDuplicate = useCallback((budget) => loadFormWithData(budget, { isDuplicateMode: true }), [loadFormWithData]);
 
-  /* 
-   * ————————————————————————————————————————————
-   * VALIDATION LOGIC
-   * Ensures form data meets requirements before submission.
-   * ————————————————————————————————————————————
-   */
   const validateFormData = useCallback(() => {
     const trimmedName = formName.trim();
     
@@ -458,7 +560,6 @@ export default function BudgetManager() {
       return { isValid: false, errorMessage: `Name must be ${MAX_TITLE_LENGTH} characters or fewer.` };
     }
 
-    // Check for duplicate names (excluding the current budget being edited)
     const currentEditingId = extractBudgetId(budgetToEdit);
     const nameExists = budgets.some(
       (existingBudget) =>
@@ -467,7 +568,6 @@ export default function BudgetManager() {
     );
     if (nameExists) return { isValid: false, errorMessage: 'A budget with that name already exists.' };
 
-    // Validate Limit Format
     if (!VALID_DECIMAL_REGEX.test(String(formLimit))) {
       return { isValid: false, errorMessage: 'Limit must be a positive number with at most two decimal places.' };
     }
@@ -479,7 +579,6 @@ export default function BudgetManager() {
       return { isValid: false, errorMessage: `Limit cannot exceed ${MAX_FINANCIAL_LIMIT}.` };
     }
 
-    // Validate Dates
     if (!formStartDate || !formEndDate) {
       return { isValid: false, errorMessage: 'Start and end dates are required.' };
     }
@@ -508,16 +607,6 @@ export default function BudgetManager() {
     formType, formCategory, isRolloverEnabled, isBudgetActive,
   ]);
 
-  /* 
-   * ————————————————————————————————————————————
-   * API ACTIONS
-   * Handlers for Create, Update, Delete, and Toggle operations.
-   * ————————————————————————————————————————————
-   */
-
-  /**
-   * Submits the form data to create or update a budget.
-   */
   const handleFormSubmission = useCallback(async (event) => {
     if (event?.preventDefault) event.preventDefault();
     if (isSubmittingForm) return;
@@ -549,9 +638,6 @@ export default function BudgetManager() {
     }
   }, [isSubmittingForm, validateFormData, budgetToEdit, refreshData, resetFormFields, showToast]);
 
-  /**
-   * Deletes the currently selected budget.
-   */
   const confirmDeletion = useCallback(async () => {
     if (!budgetToDelete || isDeletingBudget) return;
     
@@ -575,19 +661,13 @@ export default function BudgetManager() {
     }
   }, [budgetToDelete, isDeletingBudget, refreshData, showToast]);
 
-  /**
-   * Toggles the active status of a budget, preventing duplicate requests.
-   */
   const toggleBudgetStatus = useCallback(async (targetBudget) => {
     const targetId = extractBudgetId(targetBudget);
     if (!targetId) return;
     
-    // Prevent concurrent toggles for the same ID
-    if (activeToggleRequestsRef.current.has(targetId)) return;
+    if (togglingIds.has(targetId)) return;
 
-    activeToggleRequestsRef.current.add(targetId);
-    triggerToggleReRender((counter) => counter + 1);
-
+    setTogglingIds((prev) => new Set(prev).add(targetId));
     const currentlyActive = targetBudget.is_active !== false;
     
     try {
@@ -596,183 +676,230 @@ export default function BudgetManager() {
     } catch (error) {
       showToast('error', error?.response?.data?.error || 'Failed to update status.');
     } finally {
-      activeToggleRequestsRef.current.delete(targetId);
-      triggerToggleReRender((counter) => counter + 1);
+      setTogglingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(targetId);
+        return next;
+      });
     }
-  }, [refreshData, showToast]);
+  }, [refreshData, showToast, togglingIds]);
 
   /* 
    * ————————————————————————————————————————————
-   * EFFECTS
-   * Side effects for keyboard navigation and cleanup.
-   * ————————————————————————————————————————————
-   */
-  useEffect(() => {
-    if (!isCreateModalOpen && !budgetToDelete) return undefined;
-    
-    const handleKeyDown = (event) => {
-      if (event.key !== 'Escape') return;
-      if (isSubmittingForm || isDeletingBudget) return;
-      
-      if (budgetToDelete) {
-        setBudgetToDelete(null);
-      } else if (isCreateModalOpen) {
-        setIsCreateModalOpen(false);
-        resetFormFields();
-      }
-    };
-    
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isCreateModalOpen, budgetToDelete, isSubmittingForm, isDeletingBudget, resetFormFields]);
-
-  /* 
-   * ————————————————————————————————————————————
-   * RENDER: LOADING STATE
-   * ————————————————————————————————————————————
-   */
-  if (isLoadingData && budgets.length === 0) {
-    return (
-      <div className="budget-page" style={{ maxWidth: 1200, margin: '0 auto', width: '100%' }}>
-        <div style={{ textAlign: 'center', padding: '3rem' }}>
-          <Loader2 size={40} className="spin" style={{ margin: '0 auto 1rem', opacity: 0.6 }} />
-          <p style={{ color: 'var(--text-muted)' }}>{getTranslation('loading', 'Loading budgets…')}</p>
-        </div>
-      </div>
-    );
-  }
-
-  /* 
-   * ————————————————————————————————————————————
-   * RENDER: MAIN INTERFACE
+   * RENDER INTERFACE
    * ————————————————————————————————————————————
    */
   return (
-    <div className="budget-page" style={{ maxWidth: 1200, margin: '0 auto', width: '100%' }}>
-
-      {/* 
-       * ————————————————————————————————————————————
-       * HEADER SECTION
-       * ————————————————————————————————————————————
-       */}
-      <header
-        style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          marginBottom: 'var(--spacing-lg)', gap: '1rem', flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ flex: '1 1 300px' }}>
-          <h1 style={{ fontSize: '1.875rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-main)' }}>
-            {getTranslation('budgets', 'Budgets')}
-          </h1>
-          <p style={{ color: 'var(--text-muted)' }}>
-            {getTranslation('monthly_budgets', 'Control your spending and track category limits.')}
-          </p>
+    <div className="budget-page" style={{ maxWidth: 1400, margin: '0 auto', padding: 'clamp(1rem, 2.5vw, 2rem)' }}>
+      {/* ===================== Header ===================== */}
+      <header className="island-header glass-sm" style={{ marginBottom: '1.25rem' }}>
+        <div className="ih-left">
+          <div className="ih-titles">
+            <h1 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Wallet className="text-brand" size={24} aria-hidden />
+              {getTranslation('budgets', 'Budgets')}
+            </h1>
+            <p>{getTranslation('monthly_budgets', 'Control your spending and track category limits.')}</p>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+
+        <div className="inbox-header-actions">
           {dashboardStats.inactive > 0 && (
-            <button
+            <motion.button
               type="button"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               className="btn-secondary"
-              onClick={() => setShowInactiveBudgets((prevState) => !prevState)}
+              onClick={() => {
+                setShowInactiveBudgets((prev) => !prev);
+                if (!showInactiveBudgets) setSelectedFilter('all');
+              }}
               aria-pressed={showInactiveBudgets}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.82rem', padding: '8px 14px' }}
             >
-              {showInactiveBudgets ? <EyeOff size={18} /> : <Eye size={18} />}
-              {showInactiveBudgets ? 'Hide Inactive' : 'Show Inactive'}
+              {showInactiveBudgets ? <EyeOff size={15} /> : <Eye size={15} />}
+              <span>{showInactiveBudgets ? 'Hide Inactive' : 'Show Inactive'}</span>
               {!showInactiveBudgets && (
-                <span style={{ background: 'var(--bg-color)', padding: '1px 6px', borderRadius: 10, fontSize: '0.7rem' }}>
+                <span className="ih-badge" style={{ marginLeft: 4 }}>
                   {dashboardStats.inactive}
                 </span>
               )}
-            </button>
+            </motion.button>
           )}
-          {displayedBudgets.length > 0 && (
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => { resetFormFields(); setIsCreateModalOpen(true); }}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              <Plus size={18} /> {getTranslation('create_budget', 'New Budget')}
-            </button>
-          )}
+
+          <motion.button
+            type="button"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="btn-primary"
+            onClick={() => { resetFormFields(); setIsCreateModalOpen(true); }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem', padding: '9px 16px' }}
+          >
+            <Plus size={16} /> <span>{getTranslation('create_budget', 'New Budget')}</span>
+          </motion.button>
         </div>
       </header>
 
-      {/* 
-       * ————————————————————————————————————————————
-       * DASHBOARD SUMMARY
-       * ————————————————————————————————————————————
-       */}
+      {/* ===================== Modern Bento Summary Grid ===================== */}
       {enrichedBudgets.length > 0 && (
-        <div
-          className="glass"
-          style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: '0.75rem', padding: '0.85rem 1rem', borderRadius: 12,
-            marginBottom: 'var(--spacing-lg)',
-          }}
-        >
-          {[
-            { label: 'Active', value: dashboardStats.active },
-            { label: 'Near Limit', value: dashboardStats.nearLimit, color: dashboardStats.nearLimit > 0 ? 'var(--warning-color, #f59e0b)' : undefined },
-            { label: 'Over Budget', value: dashboardStats.overBudget, color: dashboardStats.overBudget > 0 ? 'var(--danger-color, #ef4444)' : undefined },
-            { label: 'Total', value: dashboardStats.total },
-          ].map((statItem) => (
-            <div key={statItem.label}>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                {statItem.label}
-              </div>
-              <div style={{ fontWeight: 700, fontSize: '1.15rem', color: statItem.color }}>
-                {statItem.value}
+        <div className="budget-summary-grid">
+          {/* Card 1: Total Limit */}
+          <div className="budget-summary-card">
+            <div className="bsc-top">
+              <span className="bsc-label">{getTranslation('total_limit', 'Total Budget')}</span>
+              <div className="bsc-icon"><Wallet size={16} aria-hidden /></div>
+            </div>
+            <div className="bsc-val">{formatCurrency(overallTotals.totalLimit)}</div>
+            <div className="bsc-sub">
+              <span>{dashboardStats.active} active {dashboardStats.active === 1 ? 'budget' : 'budgets'}</span>
+            </div>
+          </div>
+
+          {/* Card 2: Total Spent */}
+          <div className="budget-summary-card">
+            <div className="bsc-top">
+              <span className="bsc-label">{getTranslation('spent', 'Total Spent')}</span>
+              <div className="bsc-icon"><TrendingUp size={16} aria-hidden /></div>
+            </div>
+            <div className="bsc-val expense">{formatCurrency(overallTotals.totalSpent)}</div>
+            <div className="bsc-sub">
+              <span>
+                {overallTotals.totalLimit > 0
+                  ? `${((overallTotals.totalSpent / overallTotals.totalLimit) * 100).toFixed(0)}% of allocation`
+                  : '0% used'}
+              </span>
+            </div>
+          </div>
+
+          {/* Card 3: Remaining / Over */}
+          <div className="budget-summary-card">
+            <div className="bsc-top">
+              <span className="bsc-label">
+                {overallTotals.totalRemaining < 0 ? 'Over Budget' : getTranslation('remaining_budget', 'Remaining')}
+              </span>
+              <div className="bsc-icon"><Layers size={16} aria-hidden /></div>
+            </div>
+            <div className={`bsc-val ${overallTotals.totalRemaining < 0 ? 'expense' : 'income'}`}>
+              {overallTotals.totalRemaining < 0
+                ? `-${formatCurrency(Math.abs(overallTotals.totalRemaining))}`
+                : formatCurrency(overallTotals.totalRemaining)}
+            </div>
+            <div className="bsc-sub">
+              <span className={overallTotals.totalRemaining < 0 ? 'text-danger' : 'text-success'}>
+                {overallTotals.totalRemaining < 0 ? 'Exceeded overall limit' : 'Safe spending margin'}
+              </span>
+            </div>
+          </div>
+
+          {/* Card 4: Health */}
+          <div className="budget-summary-card">
+            <div className="bsc-top">
+              <span className="bsc-label">Status & Health</span>
+              <div className="bsc-icon">
+                {dashboardStats.overBudget > 0 ? (
+                  <AlertTriangle size={16} color="var(--danger-color, #ef4444)" aria-hidden />
+                ) : (
+                  <CheckCircle2 size={16} color="var(--success-color, #10b981)" aria-hidden />
+                )}
               </div>
             </div>
+            <div
+              className={`bsc-val ${
+                dashboardStats.overBudget > 0 ? 'expense' : dashboardStats.nearLimit > 0 ? 'text-warning' : 'income'
+              }`}
+              style={{ fontSize: '1.25rem' }}
+            >
+              {dashboardStats.overBudget > 0
+                ? `⚠️ ${dashboardStats.overBudget} Over Limit`
+                : dashboardStats.nearLimit > 0
+                  ? `⚡ ${dashboardStats.nearLimit} Near Limit`
+                  : '✓ All Within Limit'}
+            </div>
+            <div className="bsc-sub">
+              <span>
+                {dashboardStats.total} {dashboardStats.total === 1 ? 'category tracked' : 'categories tracked'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== Quick Preset Filters ===================== */}
+      {enrichedBudgets.length > 0 && (
+        <div className="tx-presets-strip" role="group" aria-label="Budget filters" style={{ marginBottom: '1.25rem' }}>
+          {[
+            { id: 'all', label: 'All Budgets', count: showInactiveBudgets ? dashboardStats.total : dashboardStats.active },
+            { id: 'active', label: 'Active', count: dashboardStats.active },
+            { id: 'nearLimit', label: 'Near Limit', count: dashboardStats.nearLimit },
+            { id: 'overBudget', label: 'Over Budget', count: dashboardStats.overBudget },
+            ...(dashboardStats.inactive > 0 ? [{ id: 'inactive', label: 'Inactive', count: dashboardStats.inactive }] : []),
+          ].map((pill) => (
+            <button
+              key={pill.id}
+              type="button"
+              className={`tx-preset-pill ${selectedFilter === pill.id ? 'active' : ''}`}
+              onClick={() => {
+                setSelectedFilter(pill.id);
+                if (pill.id === 'inactive') setShowInactiveBudgets(true);
+              }}
+            >
+              <span>{pill.label}</span>
+              <span className="tx-preset-count">{pill.count}</span>
+            </button>
           ))}
         </div>
       )}
 
-      {/* 
-       * ————————————————————————————————————————————
-       * BUDGET LIST GRID
-       * ————————————————————————————————————————————
-       */}
+      {/* ===================== Budget List Grid ===================== */}
       {displayedBudgets.length === 0 ? (
-        <div className="budgets-empty glass" style={{ padding: '3rem 1rem', textAlign: 'center', borderRadius: 14 }}>
-          <Wallet size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem', opacity: 0.5 }} aria-hidden />
-          <h3 style={{ marginBottom: '0.5rem' }}>
-            {showInactiveBudgets ? getTranslation('no_budgets', 'No budgets yet') : getTranslation('no_budgets_yet', 'No active budgets')}
+        <div className="budgets-empty glass" style={{ padding: '3.5rem 1.5rem', textAlign: 'center', borderRadius: 18 }}>
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: '50%',
+              background: 'rgba(14, 165, 233, 0.1)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '1rem',
+              color: 'var(--brand-primary)',
+            }}
+          >
+            <Wallet size={32} aria-hidden />
+          </div>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+            {selectedFilter !== 'all'
+              ? 'No budgets match this filter'
+              : showInactiveBudgets
+                ? getTranslation('no_budgets', 'No budgets created yet.')
+                : getTranslation('no_budgets_yet', 'No active budgets right now.')}
           </h3>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-            {getTranslation('set_first_budget', 'Create a budget to start tracking your spending.')}
+          <p style={{ color: 'var(--text-muted)', maxWidth: 420, margin: '0 auto 1.5rem', fontSize: '0.9rem' }}>
+            {selectedFilter !== 'all'
+              ? 'Try selecting "All Budgets" to see your full financial tracking.'
+              : getTranslation('set_first_budget', 'Create your first budget to keep spending under control.')}
           </p>
           <button
             type="button"
             className="btn-primary"
             onClick={() => { resetFormFields(); setIsCreateModalOpen(true); }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <Plus size={18} /> {getTranslation('create_budget', 'Create First Budget')}
+            <Plus size={18} /> {getTranslation('create_budget', 'Create Budget')}
           </button>
         </div>
       ) : (
-        <div
-          className="budgets-grid"
-          style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem',
-          }}
-        >
+        <div className="budgets-grid">
           {displayedBudgets.map((budgetItem) => {
             const uniqueId = extractBudgetId(budgetItem);
             const isInactive = budgetItem.is_active === false;
-            const isToggleInProgress = uniqueId ? activeToggleRequestsRef.current.has(uniqueId) : false;
+            const isToggleInProgress = uniqueId ? togglingIds.has(uniqueId) : false;
             const isOverSpent = budgetItem.remaining < 0;
             const progressPercent = budgetItem.progress;
-            
-            // Clamp progress for visual bar (0-100%)
             const clampedProgress = Math.max(0, Math.min(100, progressPercent));
             const ariaProgressValue = Math.round(clampedProgress);
             
-            // Determine progress bar color based on status
             const progressBarColor = isOverSpent
               ? 'var(--danger-color, #ef4444)'
               : progressPercent >= STATUS_WARNING_THRESHOLD
@@ -788,139 +915,177 @@ export default function BudgetManager() {
                 className="budget-card glass"
                 style={{
                   borderLeft: `4px solid ${isInactive ? 'var(--text-muted)' : budgetItem.assignedColor}`,
-                  opacity: isInactive ? 0.7 : 1,
-                  padding: '1rem 1.1rem', borderRadius: 12,
+                  opacity: isInactive ? 0.72 : 1,
+                  padding: '1.15rem 1.25rem',
+                  borderRadius: 16,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
                 }}
               >
                 {/* Card Header: Title & Actions */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', gap: '0.75rem' }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <h3
-                      style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '0.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      title={budgetItem.name}
-                    >
-                      {budgetItem.name}
-                      {isInactive && (
-                        <span style={{ fontSize: '0.72rem', marginLeft: '0.5rem', color: 'var(--text-muted)', fontWeight: 400 }}>
-                          (inactive)
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.65rem', gap: '0.75rem' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <h3
+                        style={{
+                          fontSize: '1.1rem',
+                          fontWeight: 700,
+                          margin: 0,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          color: 'var(--text-primary)',
+                        }}
+                        title={budgetItem.name}
+                      >
+                        {budgetItem.name}
+                        {isInactive && (
+                          <span style={{ fontSize: '0.72rem', marginLeft: '0.5rem', color: 'var(--text-muted)', fontWeight: 400 }}>
+                            (inactive)
+                          </span>
+                        )}
+                      </h3>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                        <Calendar size={13} aria-hidden />
+                        <span>
+                          {formatDisplayDate(budgetItem.period_start, userLocale)} – {formatDisplayDate(budgetItem.period_end, userLocale)}
                         </span>
-                      )}
-                    </h3>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                      <Calendar size={13} aria-hidden />
-                      <span>
-                        {formatDisplayDate(budgetItem.period_start, userLocale)} – {formatDisplayDate(budgetItem.period_end, userLocale)}
-                      </span>
-                      {budgetItem.category && (
-                        <span style={{ fontSize: '0.7rem', background: 'var(--bg-color)', padding: '1px 8px', borderRadius: 10 }}>
-                          {budgetItem.category}
-                        </span>
-                      )}
+                        {budgetItem.category && (
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              background: 'var(--surface-2)',
+                              border: '1px solid var(--glass-border)',
+                              padding: '2px 8px',
+                              borderRadius: 8,
+                              fontWeight: 600,
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            {budgetItem.category}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {budgetItem.rolloverAmount > 0 && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
-                        Base {formatCurrency(budgetItem.baseLimit)} + Rollover {formatCurrency(budgetItem.rolloverAmount)} = {formatCurrency(budgetItem.limit)}
-                      </div>
-                    )}
-                    {!budgetItem.isPeriodValid && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--danger-color, #ef4444)', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                        <AlertCircle size={13} aria-hidden /> Invalid period dates.
-                      </div>
-                    )}
+
+                    {/* Action Buttons */}
+                    <div style={{ display: 'flex', gap: '0.15rem', alignItems: 'center' }}>
+                      <ActionIconButton
+                        onClick={() => toggleBudgetStatus(budgetItem)}
+                        accessibilityLabel={isInactive ? `Activate ${budgetItem.name}` : `Deactivate ${budgetItem.name}`}
+                        isDisabled={Boolean(isToggleInProgress)}
+                      >
+                        {isToggleInProgress ? (
+                          <Loader2 size={16} className="spin" />
+                        ) : isInactive ? (
+                          <ToggleLeft size={18} color="var(--text-muted)" />
+                        ) : (
+                          <ToggleRight size={18} color="var(--success-color, #10b981)" />
+                        )}
+                      </ActionIconButton>
+                      <ActionIconButton onClick={() => initiateEdit(budgetItem)} accessibilityLabel={`Edit ${budgetItem.name}`}>
+                        <Edit3 size={15} />
+                      </ActionIconButton>
+                      <ActionIconButton onClick={() => initiateDuplicate(budgetItem)} accessibilityLabel={`Duplicate ${budgetItem.name}`}>
+                        <Copy size={15} />
+                      </ActionIconButton>
+                      <ActionIconButton onClick={() => setBudgetToDelete(budgetItem)} accessibilityLabel={`Delete ${budgetItem.name}`} variant="danger">
+                        <Trash2 size={15} />
+                      </ActionIconButton>
+                    </div>
                   </div>
 
-                  {/* Action Buttons */}
-                  <div style={{ display: 'flex', gap: '0.15rem', alignItems: 'center' }}>
-                    <ActionIconButton
-                      onClick={() => toggleBudgetStatus(budgetItem)}
-                      accessibilityLabel={isInactive ? `Activate ${budgetItem.name}` : `Deactivate ${budgetItem.name}`}
-                      isDisabled={Boolean(isToggleInProgress)}
-                    >
-                      {isToggleInProgress ? (
-                        <Loader2 size={16} className="spin" />
-                      ) : isInactive ? (
-                        <ToggleLeft size={18} color="var(--text-muted)" />
-                      ) : (
-                        <ToggleRight size={18} color="var(--success-color, #10b981)" />
-                      )}
-                    </ActionIconButton>
-                    <ActionIconButton onClick={() => initiateEdit(budgetItem)} accessibilityLabel={`Edit ${budgetItem.name}`}>
-                      <Edit3 size={15} />
-                    </ActionIconButton>
-                    <ActionIconButton onClick={() => initiateDuplicate(budgetItem)} accessibilityLabel={`Duplicate ${budgetItem.name}`}>
-                      <Copy size={15} />
-                    </ActionIconButton>
-                    <ActionIconButton onClick={() => setBudgetToDelete(budgetItem)} accessibilityLabel={`Delete ${budgetItem.name}`} variant="danger">
-                      <Trash2 size={15} />
-                    </ActionIconButton>
-                  </div>
+                  {budgetItem.rolloverAmount > 0 && (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--brand-primary)', marginBottom: '0.5rem', fontWeight: 600 }}>
+                      ⚡ Rollover: +{formatCurrency(budgetItem.rolloverAmount)} added
+                    </div>
+                  )}
+
+                  {!budgetItem.isPeriodValid && (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--danger-color, #ef4444)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <AlertCircle size={13} aria-hidden /> Invalid period dates.
+                    </div>
+                  )}
                 </div>
 
                 {/* Financial Details */}
-                <div style={{ marginBottom: '0.85rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.88rem' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem', fontSize: '0.85rem' }}>
                     <span style={{ color: 'var(--text-muted)' }}>{getTranslation('spent', 'Spent')}</span>
-                    <span style={{ fontWeight: 600, color: isOverSpent ? 'var(--danger-color, #ef4444)' : 'var(--text-main)' }}>
+                    <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: isOverSpent ? 'var(--danger-color, #ef4444)' : 'var(--text-primary)' }}>
                       {formatCurrency(budgetItem.spent)}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.88rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem', fontSize: '0.85rem' }}>
                     <span style={{ color: 'var(--text-muted)' }}>
-                      {isOverSpent ? 'Over' : getTranslation('remaining_budget', 'Remaining')}
+                      {isOverSpent ? 'Over Limit' : getTranslation('remaining_budget', 'Remaining')}
                     </span>
                     <span style={{
-                      fontWeight: 600,
+                      fontWeight: 700,
+                      fontVariantNumeric: 'tabular-nums',
                       color: isOverSpent ? 'var(--danger-color, #ef4444)' : 'var(--success-color, #10b981)',
                     }}>
                       {isOverSpent ? `-${formatCurrency(Math.abs(budgetItem.remaining))}` : formatCurrency(budgetItem.remaining)}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.88rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.65rem', fontSize: '0.85rem' }}>
                     <span style={{ color: 'var(--text-muted)' }}>{getTranslation('budget_limit', 'Total Limit')}</span>
-                    <span style={{ fontWeight: 600 }}>{formatCurrency(budgetItem.limit)}</span>
+                    <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>
+                      {formatCurrency(budgetItem.limit)}
+                    </span>
                   </div>
-                </div>
 
-                {/* Progress Bar */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {/* Progress Bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div
+                      role="progressbar"
+                      aria-valuenow={ariaProgressValue}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`${budgetItem.name} usage`}
+                      style={{
+                        flex: 1,
+                        height: 8,
+                        background: 'var(--surface-2)',
+                        borderRadius: 4,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${clampedProgress}%` }}
+                        transition={{ duration: 0.6, ease: 'easeOut' }}
+                        style={{ height: '100%', background: progressBarColor, borderRadius: 4 }}
+                      />
+                    </div>
+                    {progressPercent >= STATUS_WARNING_THRESHOLD && (
+                      <span
+                        title={isOverSpent ? 'Over budget' : 'Near limit'}
+                        aria-label={isOverSpent ? 'Over budget' : 'Near limit'}
+                      >
+                        <AlertCircle
+                          size={15}
+                          color={isOverSpent ? 'var(--danger-color, #ef4444)' : 'var(--warning-color, #f59e0b)'}
+                        />
+                      </span>
+                    )}
+                  </div>
+
                   <div
-                    role="progressbar"
-                    aria-valuenow={ariaProgressValue}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-label={`${budgetItem.name} usage`}
                     style={{
-                      flex: 1, height: 8, background: 'var(--bg-color)',
-                      borderRadius: 4, overflow: 'hidden',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginTop: '0.35rem',
+                      fontSize: '0.72rem',
+                      color: isOverSpent ? 'var(--danger-color, #ef4444)' : 'var(--text-muted)',
                     }}
                   >
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${clampedProgress}%` }}
-                      transition={{ duration: 0.6, ease: 'easeOut' }}
-                      style={{ height: '100%', background: progressBarColor, borderRadius: 4 }}
-                    />
+                    <span>{progressPercent.toFixed(0)}% used</span>
+                    <span>{isOverSpent ? 'Exceeded' : `${(100 - clampedProgress).toFixed(0)}% left`}</span>
                   </div>
-                  {progressPercent >= STATUS_WARNING_THRESHOLD && (
-                    <span
-                      title={isOverSpent ? 'Over budget' : 'Near limit'}
-                      aria-label={isOverSpent ? 'Over budget' : 'Near limit'}
-                    >
-                      <AlertCircle
-                        size={16}
-                        color={isOverSpent ? 'var(--danger-color, #ef4444)' : 'var(--warning-color, #f59e0b)'}
-                      />
-                    </span>
-                  )}
-                </div>
-
-                <div
-                  style={{
-                    textAlign: 'right', marginTop: '0.4rem', fontSize: '0.75rem',
-                    color: isOverSpent ? 'var(--danger-color, #ef4444)' : 'var(--text-muted)',
-                  }}
-                >
-                  {progressPercent.toFixed(0)}% used
                 </div>
               </motion.div>
             );
@@ -930,7 +1095,7 @@ export default function BudgetManager() {
 
       {/* 
        * ————————————————————————————————————————————
-       * MODAL: CREATE / EDIT BUDGET
+       * MODAL: CREATE / EDIT BUDGET (BEST-IN-CLASS FORM)
        * ————————————————————————————————————————————
        */}
       <AnimatePresence>
@@ -944,147 +1109,359 @@ export default function BudgetManager() {
               resetFormFields();
             }}
           >
-            <form onSubmit={handleFormSubmission} className="budget-form" noValidate>
-              <div className="form-field">
-                <label htmlFor="budget-name">Budget Name *</label>
-                <input
-                  id="budget-name"
-                  type="text"
-                  value={formName}
-                  onChange={(e) => { setFormName(e.target.value); clearFormError(); }}
-                  required
-                  maxLength={MAX_TITLE_LENGTH}
-                  placeholder="e.g. Monthly Essentials"
-                  autoComplete="off"
-                  autoFocus
-                  aria-describedby={formErrorMessage ? 'budget-form-error' : undefined}
-                  aria-invalid={Boolean(formErrorMessage)}
-                />
-              </div>
+            <form
+              onSubmit={handleFormSubmission}
+              className="budget-form"
+              noValidate
+              onFocusCapture={() => {
+                if (typeof window !== 'undefined' && window.scrollY !== 0) window.scrollTo(0, 0);
+              }}
+            >
+              <div className="modal-form-scrollable">
+                {/* ── Error Banner ── */}
+                <AnimatePresence>
+                  {formErrorMessage && (
+                    <motion.p
+                      id="budget-form-error"
+                      className="form-error"
+                      role="alert"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      style={{
+                        display: 'flex',
+                        gap: '0.4rem',
+                        alignItems: 'center',
+                        color: 'var(--danger-color, #ef4444)',
+                        marginBottom: '1rem',
+                        fontSize: '0.84rem',
+                        fontWeight: 600,
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        padding: '10px 14px',
+                        borderRadius: 12,
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                      }}
+                    >
+                      <AlertCircle size={15} aria-hidden /> {formErrorMessage}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
 
-              <div className="budget-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div className="form-field">
-                  <label htmlFor="budget-type">Budget Type</label>
-                  <select
-                    id="budget-type"
-                    value={formType}
-                    onChange={(e) => { setFormType(e.target.value); clearFormError(); }}
-                  >
-                    {PERIOD_TYPES.map((typeOption) => (
-                      <option key={typeOption} value={typeOption}>
-                        {typeOption.charAt(0).toUpperCase() + typeOption.slice(1)}
-                      </option>
+                {/* ── Hero Limit Card ── */}
+                <div className="tx-hero-amount expense" style={{ marginBottom: '1.25rem' }}>
+                  <div className="tx-amount-label-row">
+                    <span className="tx-field-label">Total Budget Limit *</span>
+                    <span className="tx-currency-badge">
+                      {currSymbol} {currency}
+                    </span>
+                  </div>
+                  <div className="tx-amount-display">
+                    <span className="tx-amount-symbol" aria-hidden="true">
+                      {currSymbol}
+                    </span>
+                    <input
+                      id="budget-limit"
+                      type="text"
+                      value={formLimit}
+                      onChange={handleAmountChange}
+                      placeholder="0.00"
+                      required
+                      inputMode="decimal"
+                      aria-label={`Total Budget Limit in ${currSymbol}`}
+                      className="tx-amount-input"
+                    />
+                  </div>
+
+                  {/* Quick Preset Chips */}
+                  <div className="tx-amount-presets" role="group" aria-label="Quick limit presets">
+                    {QUICK_AMOUNT_PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        className="tx-preset-chip"
+                        onClick={() => handleAddPreset(preset)}
+                      >
+                        +{currSymbol}{preset.toLocaleString()}
+                      </button>
                     ))}
-                  </select>
+                    {formLimit ? (
+                      <button
+                        type="button"
+                        className="tx-preset-chip tx-preset-clear"
+                        onClick={() => setFormLimit('')}
+                        title="Clear amount"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
-                <div className="form-field">
-                  <label htmlFor="budget-category">Category (optional)</label>
+                {/* ── Budget Name ── */}
+                <div className="form-field" style={{ marginBottom: '1rem' }}>
+                  <label htmlFor="budget-name" style={{ fontSize: '0.8rem', fontWeight: 650, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.35rem' }}>
+                    Budget Name *
+                  </label>
+                  <input
+                    id="budget-name"
+                    type="text"
+                    value={formName}
+                    onChange={(e) => { setFormName(e.target.value); clearFormError(); }}
+                    required
+                    maxLength={MAX_TITLE_LENGTH}
+                    placeholder="e.g. Monthly Essentials, Dining Out"
+                    autoComplete="off"
+                    autoFocus
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: 12,
+                      border: '1px solid var(--glass-border)',
+                      background: 'var(--surface-1)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.92rem',
+                    }}
+                    aria-describedby={formErrorMessage ? 'budget-form-error' : undefined}
+                    aria-invalid={Boolean(formErrorMessage)}
+                  />
+                </div>
+
+                {/* ── Segmented Budget Type Slider ── */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 650, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.45rem' }}>
+                    Budget Period
+                  </label>
+                  <div
+                    className="tx-segmented-control"
+                    role="tablist"
+                    style={{ background: 'var(--surface-1)', padding: 4, borderRadius: 12 }}
+                  >
+                    {PERIOD_TYPES.map((typeOption) => {
+                      const isSelected = formType === typeOption;
+                      return (
+                        <button
+                          key={typeOption}
+                          type="button"
+                          role="tab"
+                          aria-selected={isSelected}
+                          className={`tx-segmented-btn ${isSelected ? 'active' : ''}`}
+                          onClick={() => handleTypeChange(typeOption)}
+                          style={{
+                            background: isSelected ? 'var(--brand-primary)' : 'transparent',
+                            color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                            borderRadius: 10,
+                            padding: '8px 12px',
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          {typeOption.charAt(0).toUpperCase() + typeOption.slice(1)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Dates Row (Interactive or custom) ── */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-field">
+                      <label htmlFor="budget-start" style={{ fontSize: '0.76rem', fontWeight: 650, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.35rem' }}>
+                        Start Date *
+                      </label>
+                      <input
+                        id="budget-start"
+                        type="date"
+                        value={formStartDate}
+                        max={formEndDate || undefined}
+                        onChange={(e) => { setFormStartDate(e.target.value); clearFormError(); }}
+                        required
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          borderRadius: 10,
+                          border: '1px solid var(--glass-border)',
+                          background: 'var(--surface-1)',
+                          color: 'var(--text-primary)',
+                          fontSize: '0.85rem',
+                        }}
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label htmlFor="budget-end" style={{ fontSize: '0.76rem', fontWeight: 650, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.35rem' }}>
+                        End Date *
+                      </label>
+                      <input
+                        id="budget-end"
+                        type="date"
+                        value={formEndDate}
+                        min={formStartDate || undefined}
+                        onChange={(e) => { setFormEndDate(e.target.value); clearFormError(); }}
+                        required
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          borderRadius: 10,
+                          border: '1px solid var(--glass-border)',
+                          background: 'var(--surface-1)',
+                          color: 'var(--text-primary)',
+                          fontSize: '0.85rem',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Category Quick Emoji Chips + Input ── */}
+                <div className="tx-category-section" style={{ marginBottom: '1.25rem' }}>
+                  <div className="tx-category-header">
+                    <label htmlFor="budget-category">Category (optional)</label>
+                    {formCategory && (
+                      <span className="tx-current-cat-badge">
+                        {formCategory}
+                      </span>
+                    )}
+                  </div>
+                  <div className="tx-cat-chips-scroll" role="group" aria-label="Popular categories">
+                    {POPULAR_BUDGET_CATEGORIES.map((cat) => {
+                      const isSelected = formCategory.toLowerCase() === cat.name.toLowerCase();
+                      return (
+                        <button
+                          key={cat.name}
+                          type="button"
+                          className={`tx-cat-chip ${isSelected ? 'active' : ''}`}
+                          onClick={() => {
+                            setFormCategory(isSelected ? '' : cat.name);
+                            clearFormError();
+                          }}
+                        >
+                          <span>{cat.emoji}</span>
+                          <span>{cat.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <input
                     id="budget-category"
                     type="text"
                     list="budget-category-options"
                     value={formCategory}
                     onChange={(e) => { setFormCategory(e.target.value); clearFormError(); }}
-                    placeholder="e.g. Groceries"
+                    placeholder="Or type a custom category…"
                     maxLength={60}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: 10,
+                      border: '1px solid var(--glass-border)',
+                      background: 'var(--surface-1)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.85rem',
+                      marginTop: '0.4rem',
+                    }}
                   />
                   <datalist id="budget-category-options">
                     {availableCategories.map((cat) => <option key={cat} value={cat} />)}
                   </datalist>
                 </div>
-              </div>
 
-              <div className="form-field">
-                <label htmlFor="budget-limit">Total Limit *</label>
-                <input
-                  id="budget-limit"
-                  type="number"
-                  min="0.01"
-                  max={MAX_FINANCIAL_LIMIT}
-                  step="0.01"
-                  value={formLimit}
-                  onChange={(e) => { setFormLimit(e.target.value); clearFormError(); }}
-                  required
-                  placeholder="0.00"
-                  inputMode="decimal"
-                />
-              </div>
+                {/* ── Best-in-Class Switch Cards ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginBottom: '1rem' }}>
+                  {/* Rollover Toggle Card */}
+                  <div
+                    className={`form-toggle-card ${isRolloverEnabled ? 'is-active' : ''}`}
+                    onClick={() => setIsRolloverEnabled((prev) => !prev)}
+                    role="checkbox"
+                    aria-checked={isRolloverEnabled}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === ' ' || e.key === 'Enter') {
+                        e.preventDefault();
+                        setIsRolloverEnabled((prev) => !prev);
+                      }
+                    }}
+                  >
+                    <div className="form-toggle-info">
+                      <div className="form-toggle-title">Enable Rollover</div>
+                      <div className="form-toggle-desc">Automatically carry unspent budget balance forward into the next period.</div>
+                    </div>
+                    <div className="form-toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={isRolloverEnabled}
+                        readOnly
+                        tabIndex={-1}
+                        aria-hidden="true"
+                      />
+                      <span className="form-toggle-slider" />
+                    </div>
+                  </div>
 
-              <div className="budget-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div className="form-field">
-                  <label htmlFor="budget-start">Start Date *</label>
-                  <input
-                    id="budget-start"
-                    type="date"
-                    value={formStartDate}
-                    max={formEndDate || undefined}
-                    onChange={(e) => { setFormStartDate(e.target.value); clearFormError(); }}
-                    required
-                  />
+                  {/* Active Toggle Card */}
+                  <div
+                    className={`form-toggle-card ${isBudgetActive ? 'is-active' : ''}`}
+                    onClick={() => setIsBudgetActive((prev) => !prev)}
+                    role="checkbox"
+                    aria-checked={isBudgetActive}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === ' ' || e.key === 'Enter') {
+                        e.preventDefault();
+                        setIsBudgetActive((prev) => !prev);
+                      }
+                    }}
+                  >
+                    <div className="form-toggle-info">
+                      <div className="form-toggle-title">Active Budget</div>
+                      <div className="form-toggle-desc">Budget is visible and active in calculations and alert notifications.</div>
+                    </div>
+                    <div className="form-toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={isBudgetActive}
+                        readOnly
+                        tabIndex={-1}
+                        aria-hidden="true"
+                      />
+                      <span className="form-toggle-slider" />
+                    </div>
+                  </div>
                 </div>
-                <div className="form-field">
-                  <label htmlFor="budget-end">End Date *</label>
-                  <input
-                    id="budget-end"
-                    type="date"
-                    value={formEndDate}
-                    min={formStartDate || undefined}
-                    onChange={(e) => { setFormEndDate(e.target.value); clearFormError(); }}
-                    required
-                  />
-                </div>
               </div>
 
-              <div className="budget-rollover-field" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.75rem' }}>
-                <input
-                  type="checkbox"
-                  id="rollover"
-                  checked={isRolloverEnabled}
-                  onChange={(e) => setIsRolloverEnabled(e.target.checked)}
-                />
-                <label htmlFor="rollover" style={{ margin: 0 }}>
-                  Enable rollover (carry remaining budget forward)
-                </label>
-              </div>
-
-              <div className="budget-rollover-field" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
-                <input
-                  type="checkbox"
-                  id="active-toggle"
-                  checked={isBudgetActive}
-                  onChange={(e) => setIsBudgetActive(e.target.checked)}
-                />
-                <label htmlFor="active-toggle" style={{ margin: 0 }}>
-                  Active (visible and tracked)
-                </label>
-              </div>
-
-              {formErrorMessage && (
-                <p
-                  id="budget-form-error"
-                  className="form-error"
-                  role="alert"
-                  style={{
-                    display: 'flex', gap: '0.4rem', alignItems: 'center',
-                    color: 'var(--danger-color, #ef4444)', marginTop: '0.75rem',
-                  }}
-                >
-                  <AlertCircle size={14} aria-hidden /> {formErrorMessage}
-                </p>
-              )}
-
-              <div className="budget-form-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
+              {/* ── Form Actions ── */}
+              <div
+                className="budget-form-actions"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '0.75rem',
+                  paddingTop: '1rem',
+                  borderTop: '1px solid var(--glass-border)',
+                }}
+              >
                 <button
                   type="button"
                   className="btn-secondary"
                   onClick={() => { setIsCreateModalOpen(false); resetFormFields(); }}
                   disabled={isSubmittingForm}
+                  style={{ padding: '9px 18px', borderRadius: 10 }}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary" disabled={isSubmittingForm}>
-                  {isSubmittingForm ? 'Saving…' : budgetToEdit ? 'Update Budget' : 'Create Budget'}
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={isSubmittingForm}
+                  style={{
+                    padding: '9px 22px',
+                    borderRadius: 10,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                  }}
+                >
+                  {isSubmittingForm && <Loader2 size={16} className="spin" />}
+                  <span>{isSubmittingForm ? 'Saving…' : budgetToEdit ? 'Update Budget' : 'Create Budget'}</span>
                 </button>
               </div>
             </form>
@@ -1104,32 +1481,33 @@ export default function BudgetManager() {
             title="Delete Budget"
             onClose={() => { if (!isDeletingBudget) setBudgetToDelete(null); }}
           >
-            <div style={{ padding: '1rem 0' }}>
-              <p>
+            <div style={{ padding: '0.75rem 0' }}>
+              <p style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
                 Are you sure you want to delete the budget{' '}
                 <strong>{budgetToDelete.name}</strong>?
               </p>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
-                This action cannot be undone. Your transactions will <strong>not</strong> be
-                deleted. Consider deactivating instead.
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem', lineHeight: 1.45 }}>
+                This action cannot be undone. Your recorded transactions will <strong>not</strong> be
+                deleted. You can also deactivate this budget instead of deleting it.
               </p>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.75rem' }}>
                 <button
                   type="button"
                   className="btn-secondary"
                   disabled={isDeletingBudget}
                   onClick={() => setBudgetToDelete(null)}
+                  style={{ padding: '8px 16px', borderRadius: 10 }}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   className="btn-primary"
-                  style={{ background: 'var(--danger-color, #ef4444)' }}
+                  style={{ background: 'var(--danger-color, #ef4444)', padding: '8px 18px', borderRadius: 10 }}
                   disabled={isDeletingBudget}
                   onClick={confirmDeletion}
                 >
-                  {isDeletingBudget ? 'Deleting…' : 'Delete'}
+                  {isDeletingBudget ? 'Deleting…' : 'Delete Budget'}
                 </button>
               </div>
             </div>

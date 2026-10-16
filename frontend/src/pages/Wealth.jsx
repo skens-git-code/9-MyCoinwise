@@ -189,6 +189,36 @@ export default function Wealth() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
 
+  // ── Dynamic Mobile Viewport & Virtual Keypad Height Tracking for Modal ──
+  const isFormModalOpen = isAddingItem || editingItem !== null;
+  useEffect(() => {
+    if (!isFormModalOpen || typeof window === 'undefined') return undefined;
+
+    const updateViewportBounds = () => {
+      const vv = window.visualViewport;
+      const height = vv ? vv.height : window.innerHeight;
+      const offsetTop = vv ? vv.offsetTop : 0;
+      document.documentElement.style.setProperty('--tx-modal-viewport-height', `${height}px`);
+      document.documentElement.style.setProperty('--tx-modal-viewport-offset-top', `${offsetTop}px`);
+    };
+
+    updateViewportBounds();
+
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', updateViewportBounds);
+      vv.addEventListener('scroll', updateViewportBounds);
+    }
+    return () => {
+      if (vv) {
+        vv.removeEventListener('resize', updateViewportBounds);
+        vv.removeEventListener('scroll', updateViewportBounds);
+      }
+      document.documentElement.style.removeProperty('--tx-modal-viewport-height');
+      document.documentElement.style.removeProperty('--tx-modal-viewport-offset-top');
+    };
+  }, [isFormModalOpen]);
+
   /* ---------------- UI State: search, filter, sort ---------------- */
 
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -921,7 +951,7 @@ export default function Wealth() {
     <div className="masonry-layout-page wealth-page-wrap">
 
       {/* ===================== Header ===================== */}
-      <div className="masonry-header">
+      <header className="masonry-header island-header glass-sm">
         <div className="mh-titles">
           <h2>{tr('wealth', 'Wealth Portfolio')}</h2>
           <span className="mh-badge">
@@ -995,7 +1025,7 @@ export default function Wealth() {
             <Plus size={16} /> {tr('add_entry', 'Add Entry')}
           </button>
         </div>
-      </div>
+      </header>
 
       {/* ===================== Fetch Error Banner ===================== */}
       {fetchError && (
@@ -1033,26 +1063,26 @@ export default function Wealth() {
         <h3 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 2, fontSize: '0.8rem', marginBottom: 8 }}>
           {tr('net_worth', 'Total Net Worth')}
         </h3>
-        <div style={{ fontSize: 'clamp(2.4rem, 5vw, 3.4rem)', fontWeight: 900, fontFamily: 'var(--font-mono)', color: nwColor }}>
+        <div style={{ fontSize: 'clamp(2.4rem, 5vw, 3.4rem)', fontWeight: 900, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: nwColor }}>
           {fmt(metrics.netWorth)}
         </div>
         {/* ── Sub-stats: assets, liabilities, debt-to-asset ── */}
         <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 32, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>{tr('assets', 'Assets')}</div>
-            <div style={{ fontWeight: 700, color: 'var(--brand-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--brand-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <TrendingUp size={14} aria-hidden /> {fmt(metrics.totalAssets)}
             </div>
           </div>
           <div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>{tr('liabilities', 'Liabilities')}</div>
-            <div style={{ fontWeight: 700, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <TrendingDown size={14} aria-hidden /> -{fmt(metrics.totalLiabilities)}
             </div>
           </div>
           <div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>{tr('debt_to_asset', 'Debt-to-Asset')}</div>
-            <div style={{ fontWeight: 700, color: metrics.debtToAssetRatio > 0.5 ? 'var(--warning)' : 'var(--brand-primary)' }}>
+            <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: metrics.debtToAssetRatio > 0.5 ? 'var(--warning)' : 'var(--brand-primary)' }}>
               {(metrics.debtToAssetRatio * 100).toFixed(1)}%
             </div>
           </div>
@@ -1197,7 +1227,6 @@ export default function Wealth() {
                 style={{ width: '100%', padding: '6px 10px', marginTop: 4, borderRadius: 8 }}
                 placeholder="e.g. 5000"
                 inputMode="decimal"
-                inputMode="decimal"
               />
             </div>
 
@@ -1214,7 +1243,6 @@ export default function Wealth() {
                 onChange={(e) => setExtraPayment(Math.max(0, safeNumber(e.target.value, 0)))}
                 style={{ width: '100%', padding: '6px 10px', marginTop: 4, borderRadius: 8 }}
                 placeholder="e.g. 2000"
-                inputMode="decimal"
                 inputMode="decimal"
               />
             </div>
@@ -1522,137 +1550,155 @@ export default function Wealth() {
         onConfirm={handleSaveItem}
         isLoading={isSubmitting}
       >
-        {/* ── Name ── */}
-        <div className="form-group" style={{ marginBottom: 14 }}>
-          <label htmlFor="wealth_name">{tr('name_required', 'Name *')}</label>
-          <input
-            id="wealth_name"
-            value={formData.name}
-            onChange={(e) => { setFormData({ ...formData, name: e.target.value }); clearError(); }}
-            placeholder={tr('name_placeholder', 'e.g. HDFC FD, S&P 500 ETF, Home Mortgage')}
-            autoFocus
-            maxLength={100}
-            aria-required="true"
-          />
-        </div>
-
-        {/* ── Class + value ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-          <div className="form-group">
-            <label htmlFor="wealth_class">{tr('asset_class', 'Asset Category')}</label>
-            <select
-              id="wealth_class"
-              value={formData.asset_class}
-              onChange={(e) => { setFormData({ ...formData, asset_class: e.target.value }); clearError(); }}
-              style={{ width: '100%' }}
-            >
-              {ASSET_CLASSES.map((cls) => (
-                <option key={cls} value={cls}>{CLASS_LABELS[cls]}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="wealth_value">
-              {formData.asset_class === 'liability'
-                ? tr('principal_owed', 'Principal Owed *')
-                : tr('base_value', 'Base Valuation *')}
-            </label>
+        <div
+          className="modal-form-scrollable"
+          onFocusCapture={() => {
+            if (typeof window !== 'undefined' && window.scrollY !== 0) {
+              window.scrollTo({ top: 0, behavior: 'instant' });
+            }
+          }}
+        >
+          {/* ── Name ── */}
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label htmlFor="wealth_name">{tr('name_required', 'Name *')}</label>
             <input
-              id="wealth_value"
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={formData.base_value}
-              onChange={(e) => { setFormData({ ...formData, base_value: e.target.value }); clearError(); }}
-              placeholder="0.00"
+              id="wealth_name"
+              value={formData.name}
+              onChange={(e) => { setFormData({ ...formData, name: e.target.value }); clearError(); }}
+              placeholder={tr('name_placeholder', 'e.g. HDFC FD, S&P 500 ETF, Home Mortgage')}
+              autoFocus
+              maxLength={100}
               aria-required="true"
-              inputMode="decimal"
-              inputMode="decimal"
             />
           </div>
-        </div>
 
-        {/* ── Liquid-asset extras: symbol + quantity ── */}
-        {formData.asset_class === 'liquid_asset' && (
+          {/* ── Class + value ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
             <div className="form-group">
-              <label htmlFor="wealth_symbol">{tr('ticker_symbol', 'Ticker Symbol')}</label>
+              <label htmlFor="wealth_class">{tr('asset_class', 'Asset Category')}</label>
+              <select
+                id="wealth_class"
+                value={formData.asset_class}
+                onChange={(e) => { setFormData({ ...formData, asset_class: e.target.value }); clearError(); }}
+                style={{ width: '100%' }}
+              >
+                {ASSET_CLASSES.map((cls) => (
+                  <option key={cls} value={cls}>{CLASS_LABELS[cls]}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="wealth_value">
+                {formData.asset_class === 'liability'
+                  ? tr('principal_owed', 'Principal Owed *')
+                  : tr('base_value', 'Base Valuation *')}
+              </label>
               <input
-                id="wealth_symbol"
-                value={formData.symbol}
-                onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase().slice(0, MAX_SYMBOL_LENGTH) })}
-                placeholder="AAPL, BTC, INFY"
-                maxLength={MAX_SYMBOL_LENGTH}
+                id="wealth_value"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={formData.base_value}
+                onChange={(e) => {
+                  const clean = e.target.value.replace(/,/g, '.');
+                  setFormData({ ...formData, base_value: clean });
+                  clearError();
+                }}
+                placeholder="0.00"
+                aria-required="true"
+                inputMode="decimal"
+              />
+            </div>
+          </div>
+
+          {/* ── Liquid-asset extras: symbol + quantity ── */}
+          {formData.asset_class === 'liquid_asset' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+              <div className="form-group">
+                <label htmlFor="wealth_symbol">{tr('ticker_symbol', 'Ticker Symbol')}</label>
+                <input
+                  id="wealth_symbol"
+                  value={formData.symbol}
+                  onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase().slice(0, MAX_SYMBOL_LENGTH) })}
+                  placeholder="AAPL, BTC, INFY"
+                  maxLength={MAX_SYMBOL_LENGTH}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="wealth_qty">{tr('quantity', 'Quantity / Units')}</label>
+                <input
+                  id="wealth_qty"
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={formData.quantity}
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/,/g, '.');
+                    setFormData({ ...formData, quantity: clean });
+                    clearError();
+                  }}
+                  placeholder="e.g. 10"
+                  inputMode="decimal"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── Liability extra: interest rate ── */}
+          {formData.asset_class === 'liability' && (
+            <div className="form-group" style={{ marginBottom: 14 }}>
+              <label htmlFor="wealth_rate">{tr('interest_rate', 'Annual Interest Rate (%)')}</label>
+              <input
+                id="wealth_rate"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={formData.interest_rate}
+                onChange={(e) => {
+                  const clean = e.target.value.replace(/,/g, '.');
+                  setFormData({ ...formData, interest_rate: clean });
+                  clearError();
+                }}
+                placeholder="e.g. 8.5"
+                inputMode="decimal"
+              />
+            </div>
+          )}
+
+          {/* ── Acquisition date + note ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+            <div className="form-group">
+              <label htmlFor="wealth_date">{tr('acquisition_date', 'Acquisition Date')}</label>
+              <input
+                id="wealth_date"
+                type="date"
+                value={formData.acquisition_date}
+                onChange={(e) => setFormData({ ...formData, acquisition_date: e.target.value })}
               />
             </div>
             <div className="form-group">
-              <label htmlFor="wealth_qty">{tr('quantity', 'Quantity / Units')}</label>
+              <label htmlFor="wealth_note">
+                {tr('note', 'Note')} <span className="form-label-hint">({tr('optional', 'optional')})</span>
+              </label>
               <input
-                id="wealth_qty"
-                type="number"
-                min="0"
-                step="0.0001"
-                value={formData.quantity}
-                onChange={(e) => { setFormData({ ...formData, quantity: e.target.value }); clearError(); }}
-                placeholder="e.g. 10"
-                inputMode="decimal"
-                inputMode="decimal"
+                id="wealth_note"
+                value={formData.note}
+                onChange={(e) => setFormData({ ...formData, note: e.target.value.slice(0, MAX_NOTE_LENGTH) })}
+                placeholder={tr('note_placeholder', 'e.g. Bought at discount')}
+                maxLength={MAX_NOTE_LENGTH}
               />
             </div>
           </div>
-        )}
 
-        {/* ── Liability extra: interest rate ── */}
-        {formData.asset_class === 'liability' && (
-          <div className="form-group" style={{ marginBottom: 14 }}>
-            <label htmlFor="wealth_rate">{tr('interest_rate', 'Annual Interest Rate (%)')}</label>
-            <input
-              id="wealth_rate"
-              type="number"
-              min="0"
-              max="100"
-              step="0.01"
-              value={formData.interest_rate}
-              onChange={(e) => { setFormData({ ...formData, interest_rate: e.target.value }); clearError(); }}
-              placeholder="e.g. 8.5"
-              inputMode="decimal"
-              inputMode="decimal"
-            />
-          </div>
-        )}
-
-        {/* ── Acquisition date + note ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-          <div className="form-group">
-            <label htmlFor="wealth_date">{tr('acquisition_date', 'Acquisition Date')}</label>
-            <input
-              id="wealth_date"
-              type="date"
-              value={formData.acquisition_date}
-              onChange={(e) => setFormData({ ...formData, acquisition_date: e.target.value })}
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="wealth_note">
-              {tr('note', 'Note')} <span className="form-label-hint">({tr('optional', 'optional')})</span>
-            </label>
-            <input
-              id="wealth_note"
-              value={formData.note}
-              onChange={(e) => setFormData({ ...formData, note: e.target.value.slice(0, MAX_NOTE_LENGTH) })}
-              placeholder={tr('note_placeholder', 'e.g. Bought at discount')}
-              maxLength={MAX_NOTE_LENGTH}
-            />
-          </div>
+          {/* ── Form error ── */}
+          {formError && (
+            <p role="alert" style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+              <AlertOctagon size={14} aria-hidden /> {formError}
+            </p>
+          )}
         </div>
-
-        {/* ── Form error ── */}
-        {formError && (
-          <p role="alert" style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
-            <AlertOctagon size={14} aria-hidden /> {formError}
-          </p>
-        )}
       </Modal>
 
       {/* ===================== Delete Modal ===================== */}

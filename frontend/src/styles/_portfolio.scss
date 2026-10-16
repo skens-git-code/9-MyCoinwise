@@ -1383,9 +1383,71 @@ body,
   box-sizing: border-box;
 }
 
-/* Hide the old inline headers if any to let the floating navbar lead */
+/* Modern Responsive In-Page Glass Header */
 .island-header {
-  display: none !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 14px 16px !important;
+  padding: 16px 20px !important;
+  border-radius: 18px !important;
+  background: var(--surface-1, rgba(255, 255, 255, 0.03)) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--shadow-sm) !important;
+  margin-bottom: 1.5rem !important;
+  position: relative !important;
+  top: auto !important;
+  z-index: 10 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+
+  .ih-left {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  .ih-titles {
+    min-width: 0 !important;
+
+    h1 {
+      font-size: clamp(1.2rem, 2.5vw, 1.5rem) !important;
+      font-weight: 800 !important;
+      font-family: var(--font-head) !important;
+      letter-spacing: -0.02em !important;
+      color: var(--text-primary) !important;
+      margin: 0 !important;
+      line-height: 1.25 !important;
+      white-space: normal !important;
+      word-break: normal !important;
+      overflow-wrap: break-word !important;
+      hyphens: none !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+    }
+
+    p {
+      font-size: 0.84rem !important;
+      color: var(--text-muted) !important;
+      font-weight: 500 !important;
+      margin: 4px 0 0 !important;
+      line-height: 1.4 !important;
+    }
+  }
+
+  .inbox-header-actions,
+  .calc-mode-segmented,
+  .accounts-header-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+    flex-shrink: 0 !important;
+  }
 }
 
 /* ================================================================

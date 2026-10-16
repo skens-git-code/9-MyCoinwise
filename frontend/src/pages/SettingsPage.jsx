@@ -32,7 +32,7 @@ import {
   Palette, Database, Plus, Settings, ShieldAlert, Globe, Bell, Bell as BellIcon, Zap, Smartphone,
   FileText, Trash2, Loader, Key, Shield, Eye, Mail,
   Lock, LogOut, RefreshCw, AlertTriangle, EyeOff, Search,
-  Monitor, Calendar, Activity, Upload, Clock, Cookie,
+  Monitor, Calendar, Activity, Upload, Clock, Cookie, FileCheck, ArrowRight,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { CURRENCIES, AVATAR_COLORS, api } from '../services/api';
@@ -2175,7 +2175,9 @@ const CookieSettingsSection = React.memo(({ showMessage }) => {
 });
 CookieSettingsSection.displayName = 'CookieSettingsSection';
 
-const DataTab = React.memo(({ setModals, handleExcelExport, handlePDFExport, excelLoading, pdfLoading, showMessage, t }) => (
+const DataTab = React.memo(({ setModals, handleExcelExport, handlePDFExport, excelLoading, pdfLoading, showMessage, t }) => {
+  const navigate = useNavigate();
+  return (
   <>
     {/* ── Header ── */}
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
@@ -2191,6 +2193,46 @@ const DataTab = React.memo(({ setModals, handleExcelExport, handlePDFExport, exc
     </div>
 
     <div className="idp-body" style={{ background: 'transparent', border: 'none', padding: 0 }}>
+      {/* ── Official A4 Statement & Reports Hub Hero Card ── */}
+      <div
+        className="idp-section"
+        style={{
+          background: 'linear-gradient(135deg, rgba(15,23,42,0.06) 0%, rgba(5,150,105,0.08) 100%)',
+          border: '1px solid rgba(5,150,105,0.25)',
+          padding: 24,
+          borderRadius: 20,
+          marginBottom: 24,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ maxWidth: 480 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <FileCheck size={20} style={{ color: 'var(--brand-primary)' }} />
+            <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+              {t?.('official_statements_hub') || 'Official Statements & Report Center'}
+            </h4>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            {t?.('official_statements_hub_desc') || 'Generate and download print-perfect A4 financial statements, itemized ledgers, and audit-ready tax reports.'}
+          </p>
+        </div>
+        <motion.button
+          type="button"
+          className="btn-primary"
+          onClick={() => navigate('/reports')}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          style={{ padding: '12px 20px', fontSize: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+        >
+          <span>{t?.('open_statement_hub') || 'Open Statements Hub'}</span>
+          <ArrowRight size={16} />
+        </motion.button>
+      </div>
+
       {/* ── Export buttons ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 30 }}>
         <motion.button
@@ -2250,7 +2292,8 @@ const DataTab = React.memo(({ setModals, handleExcelExport, handlePDFExport, exc
       </div>
     </div>
   </>
-));
+  );
+});
 DataTab.displayName = 'DataTab';
 
 /* ============================================================

@@ -23,18 +23,25 @@ export default function ForgotPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!email.trim()) {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
       setError('Please enter your email address.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      setError('Please enter a valid email address.');
       return;
     }
     setLoading(true);
     try {
-      await api.forgotPassword(email.trim().toLowerCase());
+      await api.forgotPassword(trimmedEmail);
       setSent(true);
     } catch (err) {
-      // Backend always returns 200; network failures hit here
       setError(
+        err.response?.data?.errors?.[0]?.msg ||
         err.response?.data?.error ||
+        err.response?.data?.message ||
         'Could not reach the server. Please check your connection and try again.'
       );
     } finally {

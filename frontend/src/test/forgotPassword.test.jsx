@@ -104,4 +104,99 @@ describe('ResetPassword Page', () => {
     expect(screen.getByLabelText(/new password/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/confirm password/i)).toBeInTheDocument();
   });
+
+  it('validates password complexity client-side', async () => {
+    render(
+      <MemoryRouter initialEntries={['/reset-password?token=abcdef1234567890abcdef1234567890']}>
+        <ToastProvider>
+          <ResetPassword />
+        </ToastProvider>
+      </MemoryRouter>
+    );
+
+    const pwdInput = screen.getByLabelText(/new password/i);
+    const confirmInput = screen.getByLabelText(/confirm password/i);
+    const submitBtn = screen.getByRole('button', { name: /reset password/i });
+
+    // Test too short
+    fireEvent.change(pwdInput, { target: { value: 'Short1!' } });
+    fireEvent.change(confirmInput, { target: { value: 'Short1!' } });
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText(/at least 8 characters/i)).toBeInTheDocument();
+
+    // Test missing uppercase
+    fireEvent.change(pwdInput, { target: { value: 'password123!' } });
+    fireEvent.change(confirmInput, { target: { value: 'password123!' } });
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText(/uppercase letter/i)).toBeInTheDocument();
+
+    // Test missing special character
+    fireEvent.change(pwdInput, { target: { value: 'Password123' } });
+    fireEvent.change(confirmInput, { target: { value: 'Password123' } });
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText(/special character/i)).toBeInTheDocument();
+
+    // Test password mismatch
+    fireEvent.change(pwdInput, { target: { value: 'Password123!' } });
+    fireEvent.change(confirmInput, { target: { value: 'DifferentPass123!' } });
+    fireEvent.click(submitBtn);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/passwords do not match/i);
+  });
+
+  it('handles backend error messages correctly without falling back to expired token message', async () => {
+    api.resetPassword.mockRejectedValueOnce({
+      response: {
+        data: {
+          error: 'New password must be different from your current password.',
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/reset-password?token=abcdef1234567890abcdef1234567890']}>
+        <ToastProvider>
+          <ResetPassword />
+        </ToastProvider>
+      </MemoryRouter>
+    );
+
+    const pwdInput = screen.getByLabelText(/new password/i);
+    const confirmInput = screen.getByLabelText(/confirm password/i);
+    const submitBtn = screen.getByRole('button', { name: /reset password/i });
+
+    fireEvent.change(pwdInput, { target: { value: 'StrongPass123!' } });
+    fireEvent.change(confirmInput, { target: { value: 'StrongPass123!' } });
+    fireEvent.click(submitBtn);
+
+    expect(await screen.findByText('New password must be different from your current password.')).toBeInTheDocument();
+  });
+
+  it('submits successfully and shows success state', async () => {
+    api.resetPassword.mockResolvedValueOnce({ message: 'Password has been reset.' });
+
+    render(
+      <MemoryRouter initialEntries={['/reset-password?token=abcdef1234567890abcdef1234567890']}>
+        <ToastProvider>
+          <ResetPassword />
+        </ToastProvider>
+      </MemoryRouter>
+    );
+
+    const pwdInput = screen.getByLabelText(/new password/i);
+    const confirmInput = screen.getByLabelText(/confirm password/i);
+    const submitBtn = screen.getByRole('button', { name: /reset password/i });
+
+    fireEvent.change(pwdInput, { target: { value: 'NewStrongPass123!' } });
+    fireEvent.change(confirmInput, { target: { value: 'NewStrongPass123!' } });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(api.resetPassword).toHaveBeenCalledWith({
+        token: 'abcdef1234567890abcdef1234567890',
+        newPassword: 'NewStrongPass123!',
+      });
+    });
+
+    expect(await screen.findByText(/password updated/i)).toBeInTheDocument();
+  });
 });

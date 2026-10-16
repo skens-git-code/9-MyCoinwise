@@ -57,6 +57,22 @@ export default function ResetPassword() {
       setError('Password must be at least 8 characters.');
       return;
     }
+    if (!/[a-z]/.test(password)) {
+      setError('Password must contain at least one lowercase letter.');
+      return;
+    }
+    if (!/[A-Z]/.test(password)) {
+      setError('Password must contain at least one uppercase letter.');
+      return;
+    }
+    if (!/\d/.test(password)) {
+      setError('Password must contain at least one digit.');
+      return;
+    }
+    if (!/[^a-zA-Z0-9]/.test(password)) {
+      setError('Password must contain at least one special character.');
+      return;
+    }
     if (password !== confirm) {
       setError('Passwords do not match.');
       return;
@@ -69,10 +85,12 @@ export default function ResetPassword() {
       showToast('success', 'Password reset! Redirecting to login…');
       setTimeout(() => navigate('/login', { replace: true }), 2200);
     } catch (err) {
-      setError(
+      const serverMsg =
+        err.response?.data?.errors?.[0]?.msg ||
         err.response?.data?.error ||
-        'Could not reset your password. The link may have expired.'
-      );
+        err.response?.data?.message ||
+        'Could not reset your password. The link may have expired.';
+      setError(serverMsg);
     } finally {
       setLoading(false);
     }

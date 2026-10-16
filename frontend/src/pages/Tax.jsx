@@ -17,6 +17,7 @@
  * ————————————————————————————————————— */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, BarChart3, CheckCircle2, Circle, Download, FileText, Plus, RefreshCw, Trash2, Wallet, X } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
@@ -482,10 +483,36 @@ export default function Tax() {
       </>}
 
       {/* ===================== Profile form modal ===================== */}
-      {showProfileForm && <div className="tax-modal-backdrop" role="presentation"><div className="tax-modal glass" role="dialog" aria-modal="true" aria-label="Tax profile form"><div className="tax-modal-header"><h2>{editingProfile ? 'Edit tax profile' : 'New tax profile'}</h2><button className="icon-button" onClick={() => { setShowProfileForm(false); setEditingProfile(null); }} aria-label="Close"><X size={18} /></button></div><TaxProfileForm user={user} initial={editingProfile} onSubmit={createOrUpdateProfile} onCancel={() => { setShowProfileForm(false); setEditingProfile(null); }} isSaving={busy} /></div></div>}
+      {showProfileForm && createPortal(
+        <div className="tax-modal-backdrop" role="presentation" style={{ zIndex: 'var(--z-modal, 999999)' }}>
+          <div className="tax-modal glass" role="dialog" aria-modal="true" aria-label="Tax profile form">
+            <div className="tax-modal-header">
+              <h2>{editingProfile ? 'Edit tax profile' : 'New tax profile'}</h2>
+              <button className="icon-button" onClick={() => { setShowProfileForm(false); setEditingProfile(null); }} aria-label="Close">
+                <X size={18} />
+              </button>
+            </div>
+            <TaxProfileForm user={user} initial={editingProfile} onSubmit={createOrUpdateProfile} onCancel={() => { setShowProfileForm(false); setEditingProfile(null); }} isSaving={busy} />
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* ===================== Payment form modal ===================== */}
-      {showPaymentForm && <div className="tax-modal-backdrop" role="presentation"><div className="tax-modal glass" role="dialog" aria-modal="true" aria-label="Tax payment form"><div className="tax-modal-header"><h2>Record payment</h2><button className="icon-button" onClick={() => setShowPaymentForm(false)} aria-label="Close"><X size={18} /></button></div><TaxPaymentForm currency={profile.currency} onSubmit={addPayment} onCancel={() => setShowPaymentForm(false)} isSaving={busy} /></div></div>}
+      {showPaymentForm && createPortal(
+        <div className="tax-modal-backdrop" role="presentation" style={{ zIndex: 'var(--z-modal, 999999)' }}>
+          <div className="tax-modal glass" role="dialog" aria-modal="true" aria-label="Tax payment form">
+            <div className="tax-modal-header">
+              <h2>Record payment</h2>
+              <button className="icon-button" onClick={() => setShowPaymentForm(false)} aria-label="Close">
+                <X size={18} />
+              </button>
+            </div>
+            <TaxPaymentForm currency={profile.currency} onSubmit={addPayment} onCancel={() => setShowPaymentForm(false)} isSaving={busy} />
+          </div>
+        </div>,
+        document.body
+      )}
     </main>
   );
 }

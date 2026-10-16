@@ -73,38 +73,58 @@
 
   /* ─── HEADER MOBILE ALIGNMENT ─── */
   .island-header {
-    padding: 10px 14px !important;
-    padding-top: max(10px, env(safe-area-inset-top, 0px)) !important;
-    min-height: 56px !important;
-    gap: 8px !important;
+    padding: 12px 14px !important;
+    min-height: auto !important;
+    gap: 10px 12px !important;
     display: flex !important;
     align-items: center !important;
-    flex-wrap: nowrap !important;
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 20 !important;
+    justify-content: space-between !important;
+    flex-wrap: wrap !important;
+    position: relative !important;
+    top: auto !important;
+    z-index: 5 !important;
     background: color-mix(in srgb, var(--ambient-base) 88%, transparent) !important;
     backdrop-filter: blur(18px) !important;
     -webkit-backdrop-filter: blur(18px) !important;
+    border-radius: 16px !important;
   }
 
   .ih-left {
-    flex: 1 !important;
+    flex: 1 1 auto !important;
     min-width: 0 !important;
     display: flex !important;
     align-items: center !important;
     gap: 8px !important;
   }
 
+  .ih-titles {
+    min-width: 0 !important;
+  }
+
   .ih-titles h1 {
-    font-size: 1.05rem !important;
-    line-height: 1.2 !important;
+    font-size: 1.12rem !important;
+    line-height: 1.25 !important;
     white-space: normal !important;
+    word-break: normal !important;
     overflow-wrap: break-word !important;
+    hyphens: none !important;
   }
 
   .ih-titles p {
-    display: none !important;
+    display: block !important;
+    font-size: 0.78rem !important;
+    color: var(--text-muted) !important;
+    margin-top: 2px !important;
+    line-height: 1.35 !important;
+  }
+
+  .inbox-header-actions,
+  .calc-mode-segmented {
+    width: auto !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
   }
 
   .ih-right {
@@ -1226,11 +1246,14 @@
     }
   }
 
-  /* ─── MODALS — FULL WIDTH ON MOBILE ─── */
+  /* ─── MODALS — RESPONSIVE CENTERING & SCROLLING ON MOBILE ─── */
   .modal-overlay,
   .tax-modal-backdrop {
     padding: 12px !important;
-    align-items: flex-end !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
   }
 
   .modal-overlay.modal-overlay-centered,
@@ -1240,12 +1263,24 @@
     padding: 16px !important;
   }
 
+  .modal-box {
+    margin: auto !important;
+    max-height: calc(100dvh - 32px) !important;
+    border-radius: 20px !important;
+    width: 100% !important;
+    max-width: 480px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
   .modal-box.modal-confirm {
     border-radius: 20px !important;
     margin: auto !important;
     max-width: 440px !important;
     width: 100% !important;
     max-height: 85dvh !important;
+    overflow: auto !important;
   }
 
   .modal-panel,
@@ -1253,10 +1288,11 @@
   .tax-modal {
     width: 100% !important;
     max-width: 100% !important;
-    max-height: 92dvh !important;
-    border-radius: 20px 20px 0 0 !important;
-    padding: 16px !important;
-    margin: 0 !important;
+    max-height: calc(100dvh - 36px) !important;
+    border-radius: 20px !important;
+    padding: 18px 16px !important;
+    margin: auto !important;
+    overflow-y: auto !important;
   }
 
   /* ─── TABLES — SCROLL INSIDE CONTAINER ─── */
@@ -1305,8 +1341,9 @@
 
   /* ─── TYPOGRAPHY STANDARDIZATION ─── */
   h1, h2, h3, h4, h5, h6 {
-    word-break: break-word !important;
+    word-break: normal !important;
     overflow-wrap: break-word !important;
+    hyphens: none !important;
   }
 
   .spage-title h1,

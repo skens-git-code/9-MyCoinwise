@@ -38,6 +38,7 @@ const Calculator = lazy(() => import('./pages/Calculator'));
 const Tax = lazy(() => import('./pages/Tax'));
 const Terms = lazy(() => import('./pages/Terms'));
 const Privacy = lazy(() => import('./pages/Privacy'));
+const Reports = lazy(() => import('./pages/Reports'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 import {
@@ -73,6 +74,9 @@ function AppRoutes() {
         <Route path="/about" element={<Suspense fallback={<PageSkeleton title="About" />}><About /></Suspense>} />
         <Route path="/calculator" element={<Suspense fallback={<PageSkeleton title="Calculator" />}><Calculator /></Suspense>} />
         <Route path="/tax" element={<Suspense fallback={<PageSkeleton title="Tax" />}><Tax /></Suspense>} />
+        <Route path="/reports" element={<Suspense fallback={<PageSkeleton title="Statements & Reports" />}><Reports /></Suspense>} />
+        <Route path="/download" element={<Suspense fallback={<PageSkeleton title="Statements & Reports" />}><Reports /></Suspense>} />
+        <Route path="/statements" element={<Suspense fallback={<PageSkeleton title="Statements & Reports" />}><Reports /></Suspense>} />
         <Route path="/terms" element={<Suspense fallback={<PageSkeleton title="Terms" />}><Terms /></Suspense>} />
         <Route path="/privacy" element={<Suspense fallback={<PageSkeleton title="Privacy" />}><Privacy /></Suspense>} />
         <Route path="/404" element={<Suspense fallback={<PageSkeleton title="Not Found" />}><NotFound /></Suspense>} />

@@ -329,6 +329,36 @@ export default function Subscriptions() {
     debouncedSetSearch(val);
   }, [debouncedSetSearch]);
 
+  // ── Dynamic Mobile Viewport & Virtual Keypad Height Tracking for Modal ──
+  const isFormModalOpen = showAdd || editingSub !== null;
+  useEffect(() => {
+    if (!isFormModalOpen || typeof window === 'undefined') return undefined;
+
+    const updateViewportBounds = () => {
+      const vv = window.visualViewport;
+      const height = vv ? vv.height : window.innerHeight;
+      const offsetTop = vv ? vv.offsetTop : 0;
+      document.documentElement.style.setProperty('--tx-modal-viewport-height', `${height}px`);
+      document.documentElement.style.setProperty('--tx-modal-viewport-offset-top', `${offsetTop}px`);
+    };
+
+    updateViewportBounds();
+
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', updateViewportBounds);
+      vv.addEventListener('scroll', updateViewportBounds);
+    }
+    return () => {
+      if (vv) {
+        vv.removeEventListener('resize', updateViewportBounds);
+        vv.removeEventListener('scroll', updateViewportBounds);
+      }
+      document.documentElement.style.removeProperty('--tx-modal-viewport-height');
+      document.documentElement.style.removeProperty('--tx-modal-viewport-offset-top');
+    };
+  }, [isFormModalOpen]);
+
 
   /* ---------------- Independent Loading Flags ---------------- */
 
@@ -886,7 +916,7 @@ export default function Subscriptions() {
   return (
     <div className="masonry-layout-page subscriptions-page-wrap">
       {/* ===================== Header ===================== */}
-      <div className="masonry-header">
+      <header className="masonry-header island-header glass-sm">
         <div className="mh-titles">
           <h2>{tr('subscriptions_hub_title', 'Subscriptions & Recurring Hub')}</h2>
           <span className="mh-badge">
@@ -901,7 +931,7 @@ export default function Subscriptions() {
         >
           <Plus size={16} /> {tr('add_subscription_btn', 'Add Subscription')}
         </motion.button>
-      </div>
+      </header>
 
       {/* ===================== Summary tiles ===================== */}
       <div className="carousel-wrapper" style={{ minHeight: 90 }}>
@@ -1328,154 +1358,216 @@ export default function Subscriptions() {
         onConfirm={handleSaveSub}
         isLoading={isSaving}
       >
-        {/* ── Service name ── */}
-        <div className="form-group" style={{ marginBottom: 12 }}>
-          <label htmlFor="sub_name">{tr('service_name', 'Service Name')}</label>
-          <input
-            id="sub_name"
-            value={name}
-            onChange={(e) => { setName(e.target.value); clearError(); }}
-            placeholder={tr('service_name_placeholder', 'e.g. Netflix, Gym, AWS')}
-            autoFocus
-            maxLength={80}
-          />
-        </div>
-
-        {/* ── Amount ── */}
-        <div className="form-group" style={{ marginBottom: 12 }}>
-          <label htmlFor="sub_amount">{tr('amount', 'Amount')}</label>
-          <input
-            id="sub_amount"
-            type="number"
-            min="0.01"
-            step="0.01"
-            value={amount}
-            onChange={(e) => { setAmount(e.target.value); clearError(); }}
-            placeholder="0.00"
-            inputMode="decimal"
-            inputMode="decimal"
-          />
-        </div>
-
-        {/* ── Billing cycle ── */}
-        <div className="form-group" style={{ marginBottom: 12 }}>
-          <label htmlFor="sub_cycle">{tr('billing_cycle', 'Billing Cycle')}</label>
-          <select
-            id="sub_cycle"
-            value={cycle}
-            onChange={(e) => { setCycle(e.target.value); clearError(); }}
-            style={{ width: '100%' }}
-          >
-            {CYCLE_OPTIONS.map((c) => (
-              <option key={c.value} value={c.value}>
-                {tr(c.labelKey, c.fallback)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* ✨ NEW: icon picker */}
-        <div className="form-group" style={{ marginBottom: 12 }}>
-          <label>{tr('icon', 'Icon')}</label>
-          <div role="group" aria-label={tr('choose_icon', 'Choose icon')} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {['💳', 'Tv', 'Music', 'PlaySquare', 'Cloud', 'Gamepad2', 'Package', 'Sparkles'].map((ic) => {
-              const IconCmp = ICON_MAP[ic];
-              const isSelected = icon === ic;
-              return (
+        <div
+          className="modal-form-scrollable"
+          onFocusCapture={() => {
+            if (typeof window !== 'undefined' && window.scrollY !== 0) {
+              window.scrollTo({ top: 0, behavior: 'instant' });
+            }
+          }}
+        >
+          {/* ── Hero Amount Card ── */}
+          <div className="tx-hero-amount" style={{ marginBottom: '1.25rem' }}>
+            <label htmlFor="sub_amount" style={{ display: 'block', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600 }}>
+              {tr('recurring_amount', 'Recurring Cost')} *
+            </label>
+            <div className="tx-hero-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+              <span className="tx-hero-currency" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                {currency || '₹'}
+              </span>
+              <input
+                id="sub_amount"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                className="tx-hero-input"
+                value={amount}
+                onChange={(e) => {
+                  const clean = e.target.value.replace(/,/g, '.');
+                  if (clean === '' || /^\d*\.?\d{0,2}$/.test(clean)) {
+                    setAmount(clean);
+                    clearError();
+                  }
+                }}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="tx-presets-strip" style={{ display: 'flex', justifyContent: 'center', gap: '0.4rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+              {[100, 250, 500, 1000, 2500].map((presetVal) => (
                 <button
-                  key={ic}
+                  key={presetVal}
                   type="button"
-                  onClick={() => setIcon(ic)}
-                  aria-pressed={isSelected}
-                  aria-label={`${tr('choose_icon', 'Choose icon')} ${ic}`}
-                  style={{
-                    width: 40, height: 40, borderRadius: 10,
-                    border: isSelected ? '2px solid var(--brand-primary)' : '1px solid var(--glass-border)',
-                    background: isSelected ? 'rgba(var(--brand-primary-rgb),0.08)' : 'var(--surface-1)',
-                    cursor: 'pointer', display: 'inline-flex',
-                    alignItems: 'center', justifyContent: 'center',
-                    fontSize: '1.1rem',
+                  className="tx-preset-pill"
+                  onClick={() => {
+                    const cur = parseFloat(amount) || 0;
+                    setAmount(String(Math.round((cur + presetVal) * 100) / 100));
+                    clearError();
                   }}
                 >
-                  {IconCmp ? <IconCmp size={18} /> : ic}
+                  +{presetVal >= 1000 ? `${presetVal / 1000}k` : presetVal}
                 </button>
-              );
-            })}
+              ))}
+              {parseFloat(amount) > 0 && (
+                <button
+                  type="button"
+                  className="tx-preset-pill"
+                  style={{ color: 'var(--danger-color, #ef4444)' }}
+                  onClick={() => { setAmount(''); clearError(); }}
+                >
+                  {tr('clear', 'Clear')}
+                </button>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* ── Color picker ── */}
-        <div className="form-group" style={{ marginBottom: 12 }}>
-          <label>{tr('color', 'Color')}</label>
-          <div role="group" aria-label={tr('choose_color', 'Choose color')} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {PRESET_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setColor(c)}
-                aria-pressed={color === c}
-                aria-label={`${tr('choose_color', 'Choose color')} ${c}`}
-                style={{
-                  width: 28, height: 28, borderRadius: '50%',
-                  background: c,
-                  border: color === c ? '3px solid var(--text-primary)' : '2px solid transparent',
-                  cursor: 'pointer',
-                }}
-              />
-            ))}
+          {/* ── Service name ── */}
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label htmlFor="sub_name">{tr('service_name', 'Service Name')} *</label>
+            <input
+              id="sub_name"
+              value={name}
+              onChange={(e) => { setName(e.target.value); clearError(); }}
+              placeholder={tr('service_name_placeholder', 'e.g. Netflix, Gym, AWS')}
+              autoFocus
+              maxLength={80}
+            />
           </div>
-        </div>
 
-        {/* ── Next renewal date ── */}
-        <div className="form-group" style={{ marginBottom: 12 }}>
-          <label htmlFor="sub_next_date">{tr('next_renewal_date', 'Next Renewal Date')}</label>
-          <input
-            id="sub_next_date"
-            type="date"
-            value={nextBillingDate}
-            onChange={(e) => { setNextBillingDate(e.target.value); clearError(); }}
-          />
-        </div>
+          {/* ── Billing cycle ── */}
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label htmlFor="sub_cycle">{tr('billing_cycle', 'Billing Cycle')}</label>
+            <div className="tx-presets-strip" style={{ display: 'flex', gap: '0.35rem', overflowX: 'auto', padding: '2px 0', marginTop: '4px' }}>
+              {CYCLE_OPTIONS.map((c) => {
+                const isSel = cycle === c.value;
+                return (
+                  <button
+                    key={c.value}
+                    type="button"
+                    className={`tx-preset-pill ${isSel ? 'active' : ''}`}
+                    style={{
+                      flex: '1 1 auto',
+                      padding: '0.45rem 0.65rem',
+                      textAlign: 'center',
+                      background: isSel ? 'var(--brand-primary)' : 'rgba(255,255,255,0.04)',
+                      color: isSel ? '#fff' : 'var(--text-secondary)',
+                      fontWeight: isSel ? 700 : 500,
+                      border: isSel ? '1px solid var(--brand-primary)' : '1px solid var(--glass-border)',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                    }}
+                    onClick={() => { setCycle(c.value); clearError(); }}
+                  >
+                    {tr(c.labelKey, c.fallback)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-        {/* ── Payment method ── */}
-        <div className="form-group" style={{ marginBottom: 12 }}>
-          <label htmlFor="sub_pm">{tr('payment_method', 'Payment Method')}</label>
-          <select
-            id="sub_pm"
-            value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value)}
-            style={{ width: '100%' }}
-          >
-            {PAYMENT_METHODS.map((pm) => (
-              <option key={pm.value} value={pm.value}>
-                {tr(pm.labelKey, pm.fallback)}
-              </option>
-            ))}
-          </select>
-        </div>
+          {/* ✨ Icon picker */}
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label>{tr('icon', 'Icon')}</label>
+            <div role="group" aria-label={tr('choose_icon', 'Choose icon')} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+              {['💳', 'Tv', 'Music', 'PlaySquare', 'Cloud', 'Gamepad2', 'Package', 'Sparkles'].map((ic) => {
+                const IconCmp = ICON_MAP[ic];
+                const isSelected = icon === ic;
+                return (
+                  <button
+                    key={ic}
+                    type="button"
+                    onClick={() => setIcon(ic)}
+                    aria-pressed={isSelected}
+                    aria-label={`${tr('choose_icon', 'Choose icon')} ${ic}`}
+                    style={{
+                      width: 40, height: 40, borderRadius: 10,
+                      border: isSelected ? '2px solid var(--brand-primary)' : '1px solid var(--glass-border)',
+                      background: isSelected ? 'rgba(var(--brand-primary-rgb),0.08)' : 'var(--surface-1)',
+                      cursor: 'pointer', display: 'inline-flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      fontSize: '1.1rem',
+                    }}
+                  >
+                    {IconCmp ? <IconCmp size={18} /> : ic}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-        {/* ── Notes ── */}
-        <div className="form-group" style={{ marginBottom: 12 }}>
-          <label htmlFor="sub_notes">
-            {tr('notes', 'Notes')}{' '}
-            <span className="form-label-hint">({tr('optional', 'optional')})</span>
-          </label>
-          <textarea
-            id="sub_notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder={tr('notes_placeholder', 'e.g. Shared with family, renews automatically')}
-            maxLength={500}
-            rows={3}
-          />
-        </div>
+          {/* ── Color picker ── */}
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label>{tr('color', 'Color')}</label>
+            <div role="group" aria-label={tr('choose_color', 'Choose color')} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+              {PRESET_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  aria-pressed={color === c}
+                  aria-label={`${tr('choose_color', 'Choose color')} ${c}`}
+                  style={{
+                    width: 28, height: 28, borderRadius: '50%',
+                    background: c,
+                    border: color === c ? '3px solid var(--text-primary)' : '2px solid transparent',
+                    cursor: 'pointer',
+                  }}
+                />
+              ))}
+            </div>
+          </div>
 
-        {/* ── Form error ── */}
-        {formError && (
-          <p role="alert" style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', gap: 6, alignItems: 'center' }}>
-            <AlertCircle size={14} aria-hidden /> {formError}
-          </p>
-        )}
+          {/* ── Next renewal date ── */}
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label htmlFor="sub_next_date">{tr('next_renewal_date', 'Next Renewal Date')}</label>
+            <input
+              id="sub_next_date"
+              type="date"
+              value={nextBillingDate}
+              onChange={(e) => { setNextBillingDate(e.target.value); clearError(); }}
+            />
+          </div>
+
+          {/* ── Payment method ── */}
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label htmlFor="sub_pm">{tr('payment_method', 'Payment Method')}</label>
+            <select
+              id="sub_pm"
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              style={{ width: '100%' }}
+            >
+              {PAYMENT_METHODS.map((pm) => (
+                <option key={pm.value} value={pm.value}>
+                  {tr(pm.labelKey, pm.fallback)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* ── Notes ── */}
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label htmlFor="sub_notes">
+              {tr('notes', 'Notes')}{' '}
+              <span className="form-label-hint">({tr('optional', 'optional')})</span>
+            </label>
+            <textarea
+              id="sub_notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={tr('notes_placeholder', 'e.g. Shared with family, renews automatically')}
+              maxLength={500}
+              rows={3}
+            />
+          </div>
+
+          {/* ── Form error ── */}
+          {formError && (
+            <p role="alert" style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', gap: 6, alignItems: 'center' }}>
+              <AlertCircle size={14} aria-hidden /> {formError}
+            </p>
+          )}
+        </div>
       </Modal>
 
       {/* ===================== Delete modal ===================== */}
