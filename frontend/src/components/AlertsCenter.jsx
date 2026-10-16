@@ -17,12 +17,14 @@
  *   - Framer Motion drives the panel and item enter/exit animations.
  * ————————————————————————————————————— */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bell, X, AlertTriangle, Info, CheckCircle,
   Lightbulb, ShieldAlert, Trash2
 } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /* —————————————————————————————————————
  * Type Configuration
@@ -30,11 +32,11 @@ import {
  * display label. Unknown types fall back to `info` at render time.
  * ————————————————————————————————————— */
 const TYPE_CONFIG = {
-  danger:  { color: 'var(--danger)',          bg: 'rgba(239,68,68,0.10)',   border: 'rgba(239,68,68,0.22)',   icon: ShieldAlert,   label: 'Critical'  },
-  warning: { color: 'var(--warning)',         bg: 'rgba(245,158,11,0.10)',  border: 'rgba(245,158,11,0.22)',  icon: AlertTriangle, label: 'Warning'   },
-  info:    { color: 'var(--info)',            bg: 'rgba(6,182,212,0.10)',   border: 'rgba(6,182,212,0.22)',   icon: Info,          label: 'Info'      },
-  success: { color: 'var(--success)',         bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.22)',  icon: CheckCircle,   label: 'Good news' },
-  tip:     { color: 'var(--brand-secondary)', bg: 'rgba(5,150,105,0.10)',  border: 'rgba(5,150,105,0.22)',   icon: Lightbulb,     label: 'Tip'       },
+  danger:  { color: 'var(--danger, #ef4444)',          bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.28)',   icon: ShieldAlert,   label: 'Critical'  },
+  warning: { color: 'var(--warning, #f59e0b)',         bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.28)',  icon: AlertTriangle, label: 'Warning'   },
+  info:    { color: 'var(--info, #06b6d4)',            bg: 'rgba(6,182,212,0.12)',   border: 'rgba(6,182,212,0.28)',   icon: Info,          label: 'Info'      },
+  success: { color: 'var(--success, #10b981)',         bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.28)',  icon: CheckCircle,   label: 'Good news' },
+  tip:     { color: 'var(--brand-secondary, #059669)', bg: 'rgba(5,150,105,0.12)',  border: 'rgba(5,150,105,0.28)',   icon: Lightbulb,     label: 'Tip'       },
 };
 
 /* —————————————————————————————————————
@@ -43,7 +45,7 @@ const TYPE_CONFIG = {
  * composite key from type, index, and message prefix.
  * ————————————————————————————————————— */
 function stableId(alert, index) {
-  return alert.id ?? `${alert.type ?? 'info'}-${index}-${String(alert.message ?? '').slice(0, 24)}`;
+  return alert.id ?? `${alert.type ?? 'info'}-${index}-${String(alert.message ?? alert.title ?? '').slice(0, 24)}`;
 }
 
 /* —————————————————————————————————————
@@ -67,13 +69,33 @@ const itemVariants = {
 /* —————————————————————————————————————
  * Component
  * ————————————————————————————————————— */
-export default function AlertsCenter({ alerts = [], onClose }) {
-  // ── Local set of dismissed stable IDs ──
-  const [dismissed, setDismissed] = useState(() => new Set());
+export default function AlertsCenter({
+  alerts = [],
+  onClose,
+  onDismissOne,
+  onDismissAll,
+}) {
+  // ── Read persisted dismissals from localStorage ──
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      const stored = localStorage.getItem('mcw_dismissed_alerts');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
 
-  // ── Refs for focus trapping and initial focus ──
-  const modalRef    = useRef(null);
+  const modalRef = useRef(null);
   const closeBtnRef = useRef(null);
+
+  // ── Sync to localStorage ──
+  const persistDismissed = useCallback((nextSet) => {
+    try {
+      localStorage.setItem('mcw_dismissed_alerts', JSON.stringify([...nextSet]));
+    } catch (e) {
+      console.warn('Failed to persist dismissed alerts to storage', e);
+    }
+  }, []);
 
   // ── Enrich alerts with a stable ID for keying and dismissal ──
   const enriched = useMemo(
@@ -83,63 +105,50 @@ export default function AlertsCenter({ alerts = [], onClose }) {
 
   // ── Only alerts that have not been dismissed ──
   const visible = useMemo(
-    () => enriched.filter(a => !dismissed.has(a._sid)),
+    () => enriched.filter((a) => !dismissed.has(a._sid) && !dismissed.has(a.id)),
     [enriched, dismissed]
   );
 
   // ── Count of urgent alerts (danger + warning) ──
   const urgentCount = useMemo(
-    () => visible.filter(a => a.type === 'danger' || a.type === 'warning').length,
+    () => visible.filter((a) => a.type === 'danger' || a.type === 'warning').length,
     [visible]
   );
 
   // ── Dismiss a single alert by its stable ID ──
-  const dismissOne = useCallback((sid) => {
-    setDismissed(prev => new Set([...prev, sid]));
-  }, []);
+  const dismissOne = useCallback((sid, rawId) => {
+    setDismissed((prev) => {
+      const next = new Set(prev);
+      next.add(sid);
+      if (rawId) next.add(rawId);
+      persistDismissed(next);
+      return next;
+    });
+    if (typeof onDismissOne === 'function') onDismissOne(rawId || sid);
+  }, [persistDismissed, onDismissOne]);
 
   // ── Dismiss every currently enriched alert ──
   const dismissAll = useCallback(() => {
-    setDismissed(new Set(enriched.map(a => a._sid)));
-  }, [enriched]);
+    const allSids = enriched.map((a) => a._sid);
+    const allRawIds = enriched.map((a) => a.id).filter(Boolean);
+    const next = new Set([...dismissed, ...allSids, ...allRawIds]);
+    setDismissed(next);
+    persistDismissed(next);
+    if (typeof onDismissAll === 'function') onDismissAll();
+  }, [enriched, dismissed, persistDismissed, onDismissAll]);
 
   /* —————————————————————————————————————
-   * Focus Management
-   * Focus the close button on mount, trap Tab inside the modal, and
-   * close on Escape.
+   * Focus Management & Accessibility Trap
    * ————————————————————————————————————— */
-  useEffect(() => {
-    closeBtnRef.current?.focus();
-    const modal = modalRef.current;
-    if (!modal) return;
+  useFocusTrap({
+    isOpen: true,
+    onClose,
+    containerRef: modalRef,
+    closeOnEscape: true,
+    lockScroll: true,
+  });
 
-    // ── Collect focusable elements inside the modal ──
-    const getFocusable = () => [
-      ...modal.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      )
-    ];
-
-    // ── Escape closes; Tab cycles within the modal ──
-    function onKeyDown(e) {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
-      if (e.key === 'Tab') {
-        const focusable = getFocusable();
-        const first = focusable[0];
-        const last  = focusable[focusable.length - 1];
-        if (e.shiftKey) {
-          if (document.activeElement === first) { e.preventDefault(); last?.focus(); }
-        } else {
-          if (document.activeElement === last) { e.preventDefault(); first?.focus(); }
-        }
-      }
-    }
-
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
-
-  return (
+  return createPortal(
     // ── Overlay: closes the modal on click ──
     <motion.div
       className="ac-overlay"
@@ -222,7 +231,7 @@ export default function AlertsCenter({ alerts = [], onClose }) {
             ) : (
               /* ── Alert items ── */
               visible.map((alert, i) => {
-                const cfg  = TYPE_CONFIG[alert.type] ?? TYPE_CONFIG.info;
+                const cfg  = TYPE_CONFIG[String(alert?.type || '').toLowerCase()] ?? TYPE_CONFIG.info;
                 const Icon = cfg.icon;
                 return (
                   <motion.div
@@ -295,6 +304,7 @@ export default function AlertsCenter({ alerts = [], onClose }) {
           </div>
         )}
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }

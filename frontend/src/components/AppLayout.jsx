@@ -574,10 +574,33 @@ export default function AppLayout({ children }) {
     [activeAlerts]
   );
 
+  // ── Mark single alert as dismissed locally ──
+  const handleDismissAlert = useCallback((id) => {
+    setDismissedAlertIds(prev => {
+      const next = new Set(prev);
+      if (id) next.add(id);
+      try {
+        localStorage.setItem('mcw_dismissed_alerts', JSON.stringify([...next]));
+      } catch (err) {
+        console.warn('Failed to save dismissed alerts', err);
+      }
+      return next;
+    });
+  }, []);
+
   // ── Mark every alert as dismissed locally ──
   const handleDismissAllAlerts = useCallback(() => {
     const safeAlerts = Array.isArray(alerts) ? alerts : [];
-    setDismissedAlertIds(new Set(safeAlerts.map(a => a?.id || a?.title).filter(Boolean)));
+    const allIds = safeAlerts.map(a => a?.id || a?.title).filter(Boolean);
+    setDismissedAlertIds(prev => {
+      const next = new Set([...prev, ...allIds]);
+      try {
+        localStorage.setItem('mcw_dismissed_alerts', JSON.stringify([...next]));
+      } catch (err) {
+        console.warn('Failed to save dismissed alerts', err);
+      }
+      return next;
+    });
   }, [alerts]);
 
   // [FIX #7] pageTitleKey is now derived from NAV_ITEMS so it can
@@ -991,6 +1014,8 @@ export default function AppLayout({ children }) {
               <AlertsCenter
                 key="alerts-center"
                 alerts={alerts}
+                onDismissOne={handleDismissAlert}
+                onDismissAll={handleDismissAllAlerts}
                 onClose={() => setShowAlerts(false)}
               />
             )}

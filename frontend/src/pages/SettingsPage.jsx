@@ -30,7 +30,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Save, User, Users, Target, Moon, Sun, Download, CheckCircle,
   Palette, Database, Plus, Settings, ShieldAlert, Globe, Bell, Bell as BellIcon, Zap, Smartphone,
-  FileText, Trash2, Loader, Key, Shield, Eye,
+  FileText, Trash2, Loader, Key, Shield, Eye, Mail,
   Lock, LogOut, RefreshCw, AlertTriangle, EyeOff, Search,
   Monitor, Calendar, Activity, Upload, Clock, Cookie,
 } from 'lucide-react';
@@ -104,33 +104,32 @@ const validateGoal = (goal) => {
 /** Safe trim — no destructive character stripping (React escapes output). */
 const sanitizeInput = (input) => String(input || '').trim();
 
-// ── Split a user's combined name into first / last parts ──
-const getNameParts = (user) => {
+// ── Extract user's display name consistently with Register/Login ──
+const getUserFullName = (user) => {
   const username = String(user?.username || user?.name || '').trim();
   const surname = String(user?.last_name || user?.surname || '').trim();
-  const words = username.split(/\s+/).filter(Boolean);
-  const surnameMatchesUsername =
-    surname &&
-    words.length > 1 &&
-    words[words.length - 1].toLocaleLowerCase() === surname.toLocaleLowerCase();
-  return {
-    firstName: surnameMatchesUsername ? words.slice(0, -1).join(' ') : words[0] || '',
-    lastName: surname || (words.length > 1 ? words.slice(1).join(' ') : ''),
-  };
+  if (surname && !username.toLowerCase().includes(surname.toLowerCase())) {
+    return `${username} ${surname}`.trim();
+  }
+  return username || '';
 };
 
 // ── Build the reducer's initial/reset payload from the user ──
-const buildResetPayload = (user) => ({
-  firstName: getNameParts(user).firstName,
-  lastName: getNameParts(user).lastName,
-  profession: user?.profession || user?.role || 'Trader',
-  monthlyGoal: user?.monthly_goal != null ? String(user.monthly_goal) : '',
-  currency: user?.currency || 'INR',
-  avatar: user?.profile_avatar || '😊',
-  avatarColor: user?.profile_color || '#059669',
-  notificationPrefs: user?.notification_prefs || { ...DEFAULT_NOTIFICATION_PREFS },
-  advancedPrefs: user?.advanced_prefs || { ...DEFAULT_ADVANCED_PREFS },
-});
+const buildResetPayload = (user) => {
+  const name = getUserFullName(user);
+  return {
+    fullName: name,
+    firstName: name,
+    lastName: '',
+    profession: user?.profession || user?.role || 'Trader',
+    monthlyGoal: user?.monthly_goal != null ? String(user.monthly_goal) : '',
+    currency: user?.currency || 'INR',
+    avatar: user?.profile_avatar || '😊',
+    avatarColor: user?.profile_color || '#059669',
+    notificationPrefs: user?.notification_prefs || { ...DEFAULT_NOTIFICATION_PREFS },
+    advancedPrefs: user?.advanced_prefs || { ...DEFAULT_ADVANCED_PREFS },
+  };
+};
 
 // ── True when the avatar value looks like a usable image source ──
 const isUsableAvatarSource = (value) => {
@@ -655,14 +654,44 @@ const BackupRestore = ({ userId, showMessage }) => {
  * Notification preferences
  * ============================================================ */
 
-// ── Notification toggle definitions (key, icon, label) ──
+// ── Notification toggle definitions (key, icon, label, description) ──
 const NOTIFICATION_TOGGLES = [
-  { key: 'emailReports', icon: Bell, label: 'Monthly Email Reports' },
-  { key: 'weeklyDigest', icon: Calendar, label: 'Weekly Digest' },
-  { key: 'budgetAlerts', icon: Bell, label: 'Budget Alerts' },
-  { key: 'goalMilestones', icon: Target, label: 'Goal Milestone Achievements' },
-  { key: 'unusualSpending', icon: AlertTriangle, label: 'Unusual Spending Alerts' },
-  { key: 'pushNotifications', icon: Smartphone, label: 'Push Notifications' },
+  {
+    key: 'budgetAlerts',
+    icon: Bell,
+    label: 'Budget Alerts',
+    description: 'Instant alerts when spending approaches or exceeds your monthly goal.',
+  },
+  {
+    key: 'unusualSpending',
+    icon: AlertTriangle,
+    label: 'Unusual Spending Alerts',
+    description: 'Flags transactions that deviate significantly from your regular pattern.',
+  },
+  {
+    key: 'goalMilestones',
+    icon: Target,
+    label: 'Goal Milestone Achievements',
+    description: 'Milestone notifications when you reach 25%, 50%, 75%, and 100% of savings goals.',
+  },
+  {
+    key: 'weeklyDigest',
+    icon: Calendar,
+    label: 'Weekly Digest',
+    description: 'A weekly summary of cash flow, category breakdowns, and tips every Monday.',
+  },
+  {
+    key: 'emailReports',
+    icon: Mail,
+    label: 'Monthly Email Reports',
+    description: 'Full monthly financial overview and exportable statement sent to your email.',
+  },
+  {
+    key: 'pushNotifications',
+    icon: Smartphone,
+    label: 'Push Notifications',
+    description: 'Deliver alerts directly to your browser or mobile home screen.',
+  },
 ];
 
 // ── Notification preferences panel with quiet-hours support ──
@@ -674,75 +703,122 @@ const NotificationPreferences = ({ preferences, onChange }) => {
     !prefs.quietHoursEnabled ||
     (prefs.quietHoursStart && prefs.quietHoursEnd && prefs.quietHoursStart !== prefs.quietHoursEnd);
 
+  // ── Helper to toggle a specific preference key ──
+  const togglePref = (key) => {
+    onChange({ ...prefs, [key]: !prefs[key] });
+  };
+
+  const toggleQuietHours = () => {
+    onChange({ ...prefs, quietHoursEnabled: !prefs.quietHoursEnabled });
+  };
+
   return (
     <>
       {/* ── Header ── */}
-      <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
+      <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 24 }}>
         <div
           className="idp-hero-icon"
           style={{
-            width: 64, height: 64, marginBottom: 16,
-            background: 'rgba(251,191,36,0.1)', color: 'var(--warning)',
+            width: 60, height: 60, marginBottom: 14,
+            background: 'rgba(251,191,36,0.12)', color: 'var(--warning)',
           }}
           aria-hidden
         >
-          <BellIcon size={28} />
+          <BellIcon size={26} />
         </div>
-        <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+        <h3 style={{ fontSize: '1.85rem', margin: '0 0 6px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
           Notification Preferences
         </h3>
-        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Control how and when we notify you.</p>
+        <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.92rem' }}>
+          Customize how and when MyCoinwise alerts you regarding budgets, goals, and activity.
+        </p>
       </div>
 
       <div className="idp-body">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="settings-toggle-group">
           {/* ── Notification toggles ── */}
-          {NOTIFICATION_TOGGLES.map(({ key, icon: Icon, label }) => (
-            <div className="form-field" key={key}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-                <div className="toggle-switch">
+          {NOTIFICATION_TOGGLES.map(({ key, icon: Icon, label, description }) => {
+            const isChecked = Boolean(prefs[key]);
+            return (
+              <div
+                className={`settings-toggle-card ${isChecked ? 'is-active' : ''}`}
+                key={key}
+                onClick={() => togglePref(key)}
+                role="switch"
+                aria-checked={isChecked}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === ' ' || e.key === 'Enter') {
+                    e.preventDefault();
+                    togglePref(key);
+                  }
+                }}
+              >
+                <div className="stc-main">
+                  <div className="stc-icon-badge" aria-hidden="true">
+                    <Icon size={18} />
+                  </div>
+                  <div className="stc-text">
+                    <span className="stc-label">{label}</span>
+                    <span className="stc-desc">{description}</span>
+                  </div>
+                </div>
+                <div className="toggle-switch" style={{ pointerEvents: 'none' }}>
                   <input
                     type="checkbox"
-                    checked={Boolean(prefs[key])}
-                    onChange={(e) => onChange({ ...prefs, [key]: e.target.checked })}
-                    role="switch"
-                    aria-checked={Boolean(prefs[key])}
-                    aria-label={label}
+                    id={`pref-${key}`}
+                    checked={isChecked}
+                    readOnly
+                    tabIndex={-1}
+                    aria-hidden="true"
                   />
                   <span className="slider" />
                 </div>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Icon size={16} aria-hidden /> {label}
-                </span>
-              </label>
-            </div>
-          ))}
+              </div>
+            );
+          })}
 
-          <div style={{ height: 1, background: 'var(--glass-border)', margin: '8px 0' }} />
+          <div style={{ height: 1, background: 'var(--glass-border)', margin: '12px 0' }} />
 
           {/* ── Quiet hours toggle ── */}
-          <div className="form-field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-              <div className="toggle-switch">
-                <input
-                  type="checkbox"
-                  checked={Boolean(prefs.quietHoursEnabled)}
-                  onChange={(e) => onChange({ ...prefs, quietHoursEnabled: e.target.checked })}
-                  role="switch"
-                  aria-checked={Boolean(prefs.quietHoursEnabled)}
-                  aria-label="Enable quiet hours"
-                />
-                <span className="slider" />
+          <div
+            className={`settings-toggle-card ${prefs.quietHoursEnabled ? 'active-section is-active' : ''}`}
+            onClick={toggleQuietHours}
+            role="switch"
+            aria-checked={Boolean(prefs.quietHoursEnabled)}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                toggleQuietHours();
+              }
+            }}
+          >
+            <div className="stc-main">
+              <div className="stc-icon-badge" aria-hidden="true" style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}>
+                <Moon size={18} />
               </div>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Moon size={16} aria-hidden /> Enable Quiet Hours
-              </span>
-            </label>
+              <div className="stc-text">
+                <span className="stc-label">Enable Quiet Hours</span>
+                <span className="stc-desc">Mute all push alerts during your resting hours so you stay undisturbed.</span>
+              </div>
+            </div>
+            <div className="toggle-switch" style={{ pointerEvents: 'none' }}>
+              <input
+                type="checkbox"
+                id="pref-quiet-hours"
+                checked={Boolean(prefs.quietHoursEnabled)}
+                readOnly
+                tabIndex={-1}
+                aria-hidden="true"
+              />
+              <span className="slider" />
+            </div>
           </div>
 
           {/* ── Quiet hours time range (shown only when enabled) ── */}
           {prefs.quietHoursEnabled && (
-            <div style={{ marginLeft: 24 }}>
+            <div className="quiet-hours-range-box">
               <div style={{ display: 'flex', gap: 12 }}>
                 <div className="form-field" style={{ flex: 1 }}>
                   <label htmlFor="quiet_start">Start Time</label>
@@ -1360,10 +1436,9 @@ const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMess
   // ── Detect whether the current avatar is a URL/base64 image ──
   const isBase64Avatar = /^(?:data:image\/|blob:|https?:\/\/|\/(?!\/))/i.test(String(formState.avatar || '').trim());
 
-  // ── Compute profile completion % from populated fields ──
+  // ── Compute profile completion % from populated fields (unified full name) ──
   const profileChecks = [
-    Boolean(formState.firstName?.trim()),
-    Boolean(formState.lastName?.trim()),
+    Boolean((formState.fullName || formState.firstName)?.trim()),
     Boolean(formState.profession?.trim()),
     Boolean(formState.avatar),
     Boolean(user?.email),
@@ -1500,32 +1575,27 @@ const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMess
           </div>
         </div>
 
-        <div style={{ height: 1, background: 'var(--glass-border)', margin: '10px 0' }} />
+        <div style={{ height: 1, background: 'var(--glass-border)', margin: '14px 0' }} />
 
-        {/* ── First name + Surname ── */}
-        <div className="profile-name-row" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-          <div className="form-field" style={{ flex: 1, minWidth: 200 }}>
-            <label htmlFor="first_name">{t?.('first_name') || 'First Name'}</label>
-            <input
-              id="first_name"
-              value={formState.firstName}
-              onChange={(e) => handleFieldChange('firstName', e.target.value)}
-              placeholder="First name"
-              autoCapitalize="words"
-              maxLength={80}
-            />
-          </div>
-          <div className="form-field" style={{ flex: 1, minWidth: 200 }}>
-            <label htmlFor="last_name">{t?.('last_name') || 'Surname'}</label>
-            <input
-              id="last_name"
-              value={formState.lastName}
-              onChange={(e) => handleFieldChange('lastName', e.target.value)}
-              placeholder="Surname"
-              autoCapitalize="words"
-              maxLength={80}
-            />
-          </div>
+        {/* ── Full Name (consistent with Login/Register) ── */}
+        <div className="form-field">
+          <label htmlFor="full_name">{t?.('full_name') || 'Full Name'}</label>
+          <input
+            id="full_name"
+            type="text"
+            value={formState.fullName ?? formState.firstName ?? ''}
+            onChange={(e) => {
+              handleFieldChange('fullName', e.target.value);
+              handleFieldChange('firstName', e.target.value);
+            }}
+            placeholder={t?.('full_name_placeholder') || 'Your name'}
+            autoComplete="name"
+            autoCapitalize="words"
+            maxLength={100}
+          />
+          <span className="form-help">
+            {t?.('full_name_hint') || 'Display name used across transactions, reports, and greeting.'}
+          </span>
         </div>
 
         {/* ── Profession ── */}
@@ -2204,8 +2274,18 @@ const FactoryResetModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
  * ============================================================ */
 const settingsReducer = (state, action) => {
   switch (action.type) {
-    case 'SET_FIELD':
+    case 'SET_FIELD': {
+      if (action.field === 'fullName') {
+        return {
+          ...state,
+          fullName: action.value,
+          firstName: action.value,
+          lastName: '',
+          isDirty: true,
+        };
+      }
       return { ...state, [action.field]: action.value, isDirty: true };
+    }
     case 'RESET_FORM':
       return { ...action.payload, isDirty: false };
     case 'CLEAR_DIRTY':
@@ -2415,10 +2495,9 @@ function SettingsInner({ context }) {
       return;
     }
 
-    const sanitizedFirstName = sanitizeInput(formState.firstName);
-    const sanitizedLastName = sanitizeInput(formState.lastName);
-    if (!sanitizedFirstName) {
-      showMessage('error', 'First name cannot be empty.');
+    const sanitizedName = sanitizeInput(formState.fullName || formState.firstName);
+    if (!sanitizedName) {
+      showMessage('error', 'Full name cannot be empty.');
       return;
     }
 
@@ -2445,8 +2524,8 @@ function SettingsInner({ context }) {
 
     try {
       await api.updateSettings(USER_ID, {
-        username: sanitizedFirstName,
-        last_name: sanitizedLastName,
+        username: sanitizedName,
+        last_name: '',
         profession: sanitizeInput(formState.profession),
         monthly_goal: isGoalValid ? goalValue : (user?.monthly_goal || 0),
         currency: formState.currency,
@@ -2596,8 +2675,8 @@ function SettingsInner({ context }) {
         const { isValid: isGoalValid, value: goalValue } = validateGoal(formState.monthlyGoal);
         showMessage('info', 'Auto-saving changes before switching…');
         await api.updateSettings(USER_ID, {
-          username: sanitizeInput(formState.firstName || ''),
-          last_name: sanitizeInput(formState.lastName || ''),
+          username: sanitizeInput(formState.fullName || formState.firstName || ''),
+          last_name: '',
           profession: sanitizeInput(formState.profession || ''),
           monthly_goal: isGoalValid ? goalValue : (user?.monthly_goal || 0),
           currency: formState.currency,
@@ -2863,11 +2942,18 @@ function SettingsInner({ context }) {
               />
               <input
                 type="search"
+                className="settings-search-input"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t?.('search_settings', 'Search settings…')}
                 aria-label={t?.('search_settings', 'Search settings')}
-                style={{ width: '100%', paddingLeft: 32, fontSize: '0.85rem' }}
+                style={{
+                  width: '100%',
+                  paddingLeft: 36,
+                  fontSize: '0.85rem',
+                  WebkitAppearance: 'none',
+                  appearance: 'none',
+                }}
                 enterKeyHint="search"
               />
             </div>
