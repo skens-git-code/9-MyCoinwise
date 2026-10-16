@@ -112,13 +112,16 @@ export function useFocusTrap({
 
     // ── Background scroll lock (compensate for the scrollbar to avoid a jump) ──
     let previousOverflow = '';
+    let previousDocOverflow = '';
     let previousPaddingRight = '';
     if (lockScroll && typeof document !== 'undefined') {
-      const { body } = document;
+      const { body, documentElement } = document;
       previousOverflow = body.style.overflow;
+      previousDocOverflow = documentElement.style.overflow;
       previousPaddingRight = body.style.paddingRight;
-      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
       body.style.overflow = 'hidden';
+      documentElement.style.overflow = 'hidden';
       if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
     }
 
@@ -128,6 +131,7 @@ export function useFocusTrap({
 
       if (lockScroll && typeof document !== 'undefined') {
         document.body.style.overflow = previousOverflow;
+        document.documentElement.style.overflow = previousDocOverflow;
         document.body.style.paddingRight = previousPaddingRight;
       }
 

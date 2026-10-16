@@ -415,21 +415,6 @@ export default function App() {
     });
   }, []);
 
-  const login = useCallback(async (newToken, userData, rememberMe = true) => {
-    localStorage.removeItem('mcw-token');
-    sessionStorage.removeItem('mcw-token');
-    localStorage.removeItem('mcw-user');
-    sessionStorage.removeItem('mcw-user');
-    const storage = rememberMe ? localStorage : sessionStorage;
-    storage.setItem('mcw-token', newToken);
-    if (userData) {
-      storage.setItem('mcw-user', JSON.stringify(userData));
-      setUser(userData);
-      setIsInitialAuthLoad(false);
-    }
-    setToken(newToken);
-  }, []);
-
   const logout = useCallback(() => {
     api.logout().catch(() => { });
     localStorage.removeItem('mcw-token');
@@ -487,34 +472,69 @@ export default function App() {
     return () => window.removeEventListener('mcw:auth-expired', handleAuthExpired);
   }, []);
 
-  const fetchData = useCallback(async (overrideToken) => {
+  const fetchData = useCallback(async (overrideToken, overrideUser) => {
     const activeToken = overrideToken || token;
     if (!activeToken) {
       setIsInitialAuthLoad(false);
       return;
     }
 
+    const activeUser = overrideUser || userRef.current || getStoredUser();
+    const hasExistingUser = Boolean(activeUser && (activeUser._id || activeUser.id));
+
     try {
-      if (!userRef.current && !overrideToken) setIsInitialAuthLoad(true);
+      if (!hasExistingUser) setIsInitialAuthLoad(true);
       else setIsBackgroundSyncing(true);
       setGlobalError(null);
 
-      const me = await api.getMe();
-      if (!me || (!me._id && !me.id)) {
-        throw new Error('Invalid user profile response');
+      const knownUserId = activeUser?._id || activeUser?.id;
+      let me;
+      let txResult, goalsResult, subsResult, eventsResult, budgetsResult, accountsResult, usersResult;
+
+      if (knownUserId) {
+        // Fast-path: Execute profile verification and all resource requests concurrently in parallel
+        const [meRes, ...resourceResults] = await Promise.allSettled([
+          api.getMe(),
+          api.getTransactions(knownUserId),
+          api.getGoals(knownUserId),
+          api.getSubscriptions(knownUserId),
+          api.getEvents(knownUserId),
+          api.getBudgets(knownUserId),
+          api.getAccounts(knownUserId),
+          api.getAllUsers()
+        ]);
+
+        if (meRes.status === 'fulfilled' && (meRes.value?._id || meRes.value?.id)) {
+          me = meRes.value;
+        } else if (meRes.status === 'rejected' && meRes.reason?.response?.status === 401) {
+          throw meRes.reason;
+        } else {
+          // If profile check had a non-401 blip (cold start/timeout), gracefully fallback to active cached user
+          me = activeUser;
+        }
+
+        [txResult, goalsResult, subsResult, eventsResult, budgetsResult, accountsResult, usersResult] = resourceResults;
+      } else {
+        me = await api.getMe();
+        if (!me || (!me._id && !me.id)) {
+          throw new Error('Invalid user profile response');
+        }
+        const activeId = me._id || me.id;
+
+        const results = await Promise.allSettled([
+          api.getTransactions(activeId),
+          api.getGoals(activeId),
+          api.getSubscriptions(activeId),
+          api.getEvents(activeId),
+          api.getBudgets(activeId),
+          api.getAccounts(activeId),
+          api.getAllUsers()
+        ]);
+        [txResult, goalsResult, subsResult, eventsResult, budgetsResult, accountsResult, usersResult] = results;
       }
+
       const activeId = me._id || me.id;
 
-      const results = await Promise.allSettled([
-        api.getTransactions(activeId),
-        api.getGoals(activeId),
-        api.getSubscriptions(activeId),
-        api.getEvents(activeId),
-        api.getBudgets(activeId),
-        api.getAccounts(activeId),
-        api.getAllUsers()
-      ]);
-      const [txResult, goalsResult, subsResult, eventsResult, budgetsResult, accountsResult, usersResult] = results;
       const settledArray = (result) => {
         if (result?.status !== 'fulfilled' || result.value === undefined || result.value === null) return null;
         if (Array.isArray(result.value)) return result.value;
@@ -578,7 +598,7 @@ export default function App() {
         logout();
       } else {
         // If we have a cached user, avoid popping up a blocking error on cold-start
-        if (!userRef.current) {
+        if (!userRef.current && !getStoredUser()) {
           setGlobalError(tRef.current?.('sync_error') || "Failed to synchronize live data. Retrying in background...");
         } else {
           console.warn('Background sync failed to refresh data:', err?.message || err);
@@ -589,6 +609,23 @@ export default function App() {
       setIsBackgroundSyncing(false);
     }
   }, [token, logout]);
+
+  const login = useCallback(async (newToken, userData, rememberMe = true) => {
+    localStorage.removeItem('mcw-token');
+    sessionStorage.removeItem('mcw-token');
+    localStorage.removeItem('mcw-user');
+    sessionStorage.removeItem('mcw-user');
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem('mcw-token', newToken);
+    if (userData) {
+      storage.setItem('mcw-user', JSON.stringify(userData));
+      userRef.current = userData;
+      setUser(userData);
+      setIsInitialAuthLoad(false);
+    }
+    setToken(newToken);
+    fetchData(newToken, userData);
+  }, [fetchData]);
 
   useEffect(() => { fetchData(); }, [token]);
 
@@ -678,7 +715,7 @@ export default function App() {
         sessionStorage.removeItem('mcw-token');
         (usedSessionStorage ? sessionStorage : localStorage).setItem('mcw-token', response.token);
         setToken(response.token);
-        await fetchData(response.token);
+        await fetchData(response.token, response.user);
         return response;
       }
     } catch (error) {

@@ -20,6 +20,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAppState, useAppActions } from '../contexts/AppContext';
+import { getStoredToken } from '../services/api';
 import Loader from './Loader';
 import ErrorState from './ErrorState';
 import useDelayedLoading from '../hooks/useDelayedLoading';
@@ -29,31 +30,46 @@ import useDelayedLoading from '../hooks/useDelayedLoading';
  * ————————————————————————————————————— */
 export default function ProtectedRoute({ children }) {
   // ── Auth state from context ──
-  const { user, isInitialAuthLoad, globalError } = useAppState();
+  const { user, isInitialAuthLoad, globalError, token } = useAppState();
   const { refetch } = useAppActions();
 
   // ── Current location, needed to redirect back after login ──
   const location = useLocation();
 
+  // Check if session token exists in context or local/session storage
+  const hasStoredToken = Boolean(token || getStoredToken());
+
   // ── Delay the loader so fast auth checks do not flash ──
   const showLoader = useDelayedLoading(isInitialAuthLoad, 250);
 
-  // ── Auth failed: show a full-screen retryable error ──
+  // ── 1. Unauthenticated: No token and initial auth check is finished ──
+  if (!hasStoredToken && !user && !isInitialAuthLoad) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // ── 2. Auth failed: show a full-screen retryable error ──
   if (globalError && !user) {
     return <ErrorState title="Connection Failed" message={globalError} onRetry={refetch} fullScreen />;
   }
 
-  // Only show full screen loader on initial check. Background syncs shouldn't unmount the UI.
-  // ── Initial load still in progress: show the full-screen loader ──
-  if (showLoader && !user) {
+  // ── 3. Initial load still in progress: show the full-screen loader ──
+  if ((showLoader || (hasStoredToken && !user)) && isInitialAuthLoad) {
     return <Loader fullScreen mode="auth" />;
   }
 
-  // ── Initial check finished with no user: redirect to login ──
-  if (!user && !isInitialAuthLoad) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  // ── 4. Token exists but user profile is missing after initial sync (e.g. backend cold start or timeout) ──
+  // NEVER bounce them to /login in a 5-second redirect loop! Give them a clean retry screen.
+  if (hasStoredToken && !user) {
+    return (
+      <ErrorState
+        title="Syncing Your Account"
+        message="Your session is active but data could not be refreshed from the server. Please check your connection."
+        onRetry={refetch}
+        fullScreen
+      />
+    );
   }
 
-  // ── Auth is valid: render the protected subtree ──
+  // ── 5. Auth is valid: render the protected subtree ──
   return children;
 }

@@ -235,6 +235,49 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     }
   }, [amount, note, isEditMode, onClose]);
 
+  const isTouchDevice = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(pointer: coarse)').matches;
+  }, []);
+
+  // ── Dynamic Mobile Viewport & Virtual Keypad Height Tracking ──
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') return undefined;
+
+    const updateViewportBounds = () => {
+      const vv = window.visualViewport;
+      const height = vv ? vv.height : window.innerHeight;
+      const offsetTop = vv ? vv.offsetTop : 0;
+      document.documentElement.style.setProperty('--tx-modal-viewport-height', `${height}px`);
+      document.documentElement.style.setProperty('--tx-modal-viewport-offset-top', `${offsetTop}px`);
+    };
+
+    updateViewportBounds();
+
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', updateViewportBounds);
+      vv.addEventListener('scroll', updateViewportBounds);
+    }
+    window.addEventListener('resize', updateViewportBounds);
+
+    return () => {
+      if (vv) {
+        vv.removeEventListener('resize', updateViewportBounds);
+        vv.removeEventListener('scroll', updateViewportBounds);
+      }
+      window.removeEventListener('resize', updateViewportBounds);
+      document.documentElement.style.removeProperty('--tx-modal-viewport-height');
+      document.documentElement.style.removeProperty('--tx-modal-viewport-offset-top');
+    };
+  }, [isOpen]);
+
+  const handleFormFocusCapture = useCallback(() => {
+    if (typeof window !== 'undefined' && window.scrollY !== 0) {
+      window.scrollTo(0, 0);
+    }
+  }, []);
+
   const handleOverlayPointerDown = useCallback((e) => {
     overlayPointerDownRef.current = e.target === e.currentTarget;
   }, []);
@@ -482,7 +525,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
           {isOpen && (
             <motion.div
               key="tx-modal-overlay"
-              className="modal-overlay"
+              className="modal-overlay modal-overlay-centered transaction-modal-overlay"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -535,7 +578,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                 </div>
 
                 {/* ── Form Body ── */}
-                <form onSubmit={handleSubmit} className="transaction-form">
+                <form onSubmit={handleSubmit} className="transaction-form" onFocusCapture={handleFormFocusCapture}>
                   <div className="transaction-form-scrollable">
                     {/* ── Error Banner ── */}
                     <AnimatePresence>
@@ -611,7 +654,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                           value={amount}
                           onChange={handleAmountChange}
                           placeholder="0.00"
-                          autoFocus={!initialData}
+                          autoFocus={!initialData && !isTouchDevice}
                           disabled={isSubmitting}
                           aria-label={`${t?.('amount') || 'Amount'} in ${currSymbol}`}
                           aria-required="true"
