@@ -122,4 +122,36 @@ describe('TransactionForm Reset on Reopen (Bug #1 Fix)', () => {
     // For edit transactions, fields should not be wiped to empty
     expect(amountInput.value).toBe('150');
   });
+
+  it('normalizes amount input: converts commas to dots, trims extra decimals and leading zeroes', () => {
+    render(
+      <AppStateContext.Provider value={mockState}>
+        <AppActionsContext.Provider value={mockActions}>
+          <TransactionForm
+            isOpen={true}
+            onClose={vi.fn()}
+            onSubmit={vi.fn()}
+          />
+        </AppActionsContext.Provider>
+      </AppStateContext.Provider>
+    );
+
+    const amountInput = screen.getByPlaceholderText(/0\.00/i);
+
+    // Typing with comma (e.g. 500,50) converts to 500.50
+    fireEvent.change(amountInput, { target: { value: '500,50' } });
+    expect(amountInput.value).toBe('500.50');
+
+    // Capping at 2 decimals (500.555 -> 500.55)
+    fireEvent.change(amountInput, { target: { value: '500.555' } });
+    expect(amountInput.value).toBe('500.55');
+
+    // Cleans up multiple leading zeros (0500 -> 500)
+    fireEvent.change(amountInput, { target: { value: '0500' } });
+    expect(amountInput.value).toBe('500');
+
+    // Preserves zero decimal prefix like 0.5
+    fireEvent.change(amountInput, { target: { value: '0.5' } });
+    expect(amountInput.value).toBe('0.5');
+  });
 });
