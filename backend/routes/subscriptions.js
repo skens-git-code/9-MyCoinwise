@@ -261,8 +261,12 @@ router.post(
         // normalizePaymentMethod helper maps aliases into the enum.
         payment_method: normalizePaymentMethod(payment_method),
 
+        // `start_date` anchors recurring occurrences (calendar + upcoming
+        // bills). It was validated but dropped, so it must be persisted here.
+        start_date: start_date || null,
         next_billing_date: next_billing_date || null,
         trial_ends: trial_ends || null,
+        notes: notes ? String(notes).trim() : null,
         is_active: true,
         is_paused: false,
       };

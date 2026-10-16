@@ -39,8 +39,8 @@ const calculateDepreciation = (baseValue, acquisitionDate, rate = 0.15) => {
  * ————————————————————————————————————— */
 const takeSnapshot = async (userId) => {
   try {
-    // ── Load the user's wealth items ──
-    const items = await WealthItem.find({ user_id: userId });
+    // ── Load the user's active wealth items (exclude sold assets) ──
+    const items = await WealthItem.find({ user_id: userId, sold_at: null });
 
     // ── Short-circuit when there is nothing to snapshot ──
     if (items.length === 0) {

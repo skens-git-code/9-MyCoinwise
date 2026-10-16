@@ -423,6 +423,13 @@ userSchema.virtual('id').get(function() {
   return this._id.toHexString();
 });
 
+// ── Alias for username (get + set) ──
+userSchema.virtual('name').get(function() {
+  return this.username;
+}).set(function(value) {
+  this.username = value;
+});
+
 /* —————————————————————————————————————
  * Indexes
  * ————————————————————————————————————— */

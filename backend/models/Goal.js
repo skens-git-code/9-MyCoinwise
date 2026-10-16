@@ -223,8 +223,8 @@ goalSchema.index({ user_id: 1, created_at: -1 });
 goalSchema.index({ user_id: 1, created_at: 1 });
 goalSchema.index({ user_id: 1, category: 1 });
 
-// ── Supports queries on the `status` virtual field ──
-goalSchema.index({ user_id: 1, status: 1 });
+// NOTE: `status` is a virtual — it is never persisted — so it cannot be
+// indexed. (A previous index here targeted a non-existent `status` field.)
 
 // ── Dashboard summary query ──
 goalSchema.index({ user_id: 1, is_completed: 1, priority: 1, deadline: 1 });

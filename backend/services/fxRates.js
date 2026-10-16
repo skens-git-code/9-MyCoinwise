@@ -19,9 +19,10 @@
 
 const axios = require('axios');
 
-// ── Static fallback: units of each currency per 1 INR ──
-// Kept in sync with the frontend's bundled table. Values are approximate
-// and only used when both cache and upstream are unavailable.
+// ── Static fallback: INR per 1 unit of each currency ──
+// e.g. `USD: 83.5` means 1 USD = 83.5 INR. Kept in sync with the
+// frontend's bundled table. Values are approximate and only used when
+// both cache and upstream are unavailable.
 const FALLBACK_TO_INR = Object.freeze({
   INR: 1,
   USD: 83.5,
@@ -62,19 +63,20 @@ function normalizeBase(value) {
 }
 
 /**
- * Convert a per-INR table into per-`base` rates (upstream v4 shape).
+ * Convert an INR-per-unit table into per-`base` rates (upstream v4 shape).
  *
- * @param {Record<string, number>} toInr Units of each currency per 1 INR.
+ * @param {Record<string, number>} inrPerUnit INR per 1 unit of each currency.
  * @param {string} base Supported base code.
  * @returns {Record<string, number>} Foreign units per 1 `base`.
  */
-function toBaseRates(toInr, base) {
-  const baseRate = Number(toInr[base]);
+function toBaseRates(inrPerUnit, base) {
+  const baseRate = Number(inrPerUnit[base]);
   if (!Number.isFinite(baseRate) || baseRate <= 0) return { [base]: 1 };
   const out = {};
-  for (const [code, rate] of Object.entries(toInr)) {
+  for (const [code, rate] of Object.entries(inrPerUnit)) {
     const numeric = Number(rate);
-    if (Number.isFinite(numeric) && numeric > 0) out[code] = numeric / baseRate;
+    // units-of-code per 1 base = (INR per base) / (INR per unit of code)
+    if (Number.isFinite(numeric) && numeric > 0) out[code] = baseRate / numeric;
   }
   out[base] = 1;
   return out;

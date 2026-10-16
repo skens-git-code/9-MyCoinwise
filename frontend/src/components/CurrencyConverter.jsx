@@ -54,12 +54,22 @@ const ALL_CURRENCIES = {
   THB: { symbol: '฿', name: 'Thai Baht', flag: '🇹🇭' },
 };
 
-// ── Offline fallback rates (INR-based) used when the API fails ──
-const FALLBACK_RATES = {
+// ── Offline fallback rates, expressed as "units per 1 INR" — the same
+// shape the live provider returns for base=INR, which is what `convert()`
+// below consumes (it divides by the source rate and multiplies by the target
+// rate, both relative to INR). Built from an INR-per-unit table so the two
+// conventions stay in sync.
+const FALLBACK_RATES_TO_INR = {
   INR: 1, USD: 83.5, EUR: 90.2, GBP: 105.8, JPY: 0.56,
   CAD: 61.2, AUD: 53.8, SGD: 61.5, AED: 22.7, CHF: 95.0,
   CNY: 11.5, MXN: 4.9, BRL: 16.4, KRW: 0.063, THB: 2.35,
 };
+const FALLBACK_RATES = Object.fromEntries(
+  Object.entries(FALLBACK_RATES_TO_INR).map(([code, inrPerUnit]) => [
+    code,
+    code === 'INR' || !inrPerUnit ? 1 : 1 / inrPerUnit,
+  ])
+);
 
 // ── API and UI tuning constants ──
 const API_CONFIG = {

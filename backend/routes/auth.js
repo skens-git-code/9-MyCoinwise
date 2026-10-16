@@ -205,16 +205,24 @@ const getTransactionBalance = async (userId) => {
   if (!mongoose.isValidObjectId(userId)) return 0;
   const [user, transactions, accounts] = await Promise.all([
     User.findById(userId).select('currency').lean(),
-    Transaction.find({ user_id: userId, is_deleted: { $ne: true } })
+    Transaction.find({
+      $or: [
+        { user_id: new mongoose.Types.ObjectId(String(userId)) },
+        { user_id: String(userId) },
+      ],
+      is_deleted: { $ne: true },
+    })
       // See the note in routes/transactions.js: `date` must be selected or the
       // dedupe step treats every row as future-dated and the balance collapses to 0.
-      .select('type amount currency account_id date')
+      // The fields below must match routes/transactions.js exactly, otherwise
+      // the integrity key degrades and distinct rows collapse into one.
+      .select('type amount currency account_id date import_fingerprint recurrence_instance_key category merchant note')
       .lean(),
     Account.find({ user_id: userId }).select('_id currency').lean(),
   ]);
   const displayCurrency = normalizeCurrency(user?.currency);
   const accountCurrencies = new Map(
-    accounts.map((account) => [String(account._id), normalizeCurrency(account.currency, displayCurrency)])
+    (accounts || []).map((account) => [String(account._id), normalizeCurrency(account.currency, displayCurrency)])
   );
   const balance = dedupeTransactions(transactions).reduce((sum, transaction) => {
     const sourceCurrency = normalizeCurrency(
@@ -222,7 +230,8 @@ const getTransactionBalance = async (userId) => {
       displayCurrency
     );
     const amount = convertToCurrency(transaction.amount, sourceCurrency, displayCurrency);
-    return sum + (transaction.type === 'income' ? amount : -amount);
+    const type = String(transaction.type || '').trim().toLowerCase();
+    return sum + (type === 'income' ? amount : type === 'expense' ? -amount : 0);
   }, 0);
   return Number(balance.toFixed(2));
 };

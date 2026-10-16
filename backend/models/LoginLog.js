@@ -388,7 +388,6 @@ loginLogSchema.index({ token_id: 1 });
 
 // ── Rate limiting & monitoring ──
 loginLogSchema.index({ email: 1, status: 1, created_at: -1 });
-loginLogSchema.index({ ip: 1, status: 'failed', created_at: -1 });
 loginLogSchema.index({ created_at: -1, is_suspicious: 1 });
 
 /* —————————————————————————————————————

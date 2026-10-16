@@ -135,8 +135,8 @@ const getId = (item) => {
   return id == null ? '' : String(id);
 };
 
-// ── True when the item is not soft-deleted ──
-const isLiveItem = (item) => item && typeof item === 'object' && item.is_deleted !== true;
+// ── True when the item is not soft-deleted and not sold ──
+const isLiveItem = (item) => item && typeof item === 'object' && item.is_deleted !== true && !item.sold_at;
 
 // ── Normalize history payloads into { month, netWorth } rows ──
 const formatHistoryData = (rawData) => {

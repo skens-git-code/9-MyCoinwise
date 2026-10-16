@@ -56,7 +56,7 @@ const parseMoney = (value, { allowZero = true } = {}) => {
 
 // ── Allowed auto-save intervals and priorities ──
 const INTERVALS = ['daily', 'weekly', 'monthly'];
-const PRIORITIES = ['low', 'medium', 'high'];
+const PRIORITIES = ['low', 'medium', 'high', 'critical'];
 
 // ── Category alias map (accepts UI spellings and canonical values) ──
 const CATEGORY_ALIASES = {
@@ -173,9 +173,9 @@ router.post(
     body('name').isString().trim().notEmpty().withMessage('Goal name is required.'),
     body('target').isFloat({ min: 0.01 }).withMessage('Target must be a positive number.'),
     body('saved').optional({ nullable: true }).isFloat({ min: 0 }).toFloat(),
-    body('color').optional().isString().trim().matches(/^#[0-9a-f]{3,6}$/i).withMessage('Invalid hex color.'),
+    body('color').optional().isString().trim().matches(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i).withMessage('Invalid hex color.'),
     body('icon').optional().isString().trim().isLength({ max: 50 }),
-    body('deadline').optional({ nullable: true, checkFalsy: true }),
+    body('deadline').optional({ nullable: true, checkFalsy: true }).isISO8601().withMessage('Deadline must be a valid date.'),
     body('priority').optional().isIn(PRIORITIES),
     body('category').optional().isString().trim().notEmpty(),
     body('notes').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 1000 }),
@@ -395,6 +395,15 @@ router.put(
           goal.is_completed = false;
           goal.completed_at = null;
         }
+      }
+
+      // ── Guard: a goal can only be completed when fully funded ──
+      // The model's pre-save hook re-opens any goal with saved < target, so
+      // accepting the request would silently discard it. Reject up-front.
+      if (achieved === true && goal.saved < goal.target) {
+        return res.status(400).json({
+          error: 'Saved amount must reach the target before the goal can be marked complete.',
+        });
       }
 
       // ── Guard: saved cannot exceed target after all updates ──

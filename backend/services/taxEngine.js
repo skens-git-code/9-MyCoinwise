@@ -68,7 +68,25 @@ const calculateIncomeTax = ({ grossIncome, ruleSet, profile }) => {
   const preTax = lineTotal(profile.pre_tax_contributions);
   const standardDeduction = Math.max(0, finite(ruleSet.standard_deduction));
   const itemized = lineTotal(profile.itemized_deductions);
-  const taxableIncome = Math.max(0, gross - preTax - standardDeduction - itemized);
+
+  // US filers take the GREATER of the standard and itemized deductions —
+  // they are mutually exclusive. Other jurisdictions (e.g. India) allow the
+  // standard deduction to stack with itemized/chapter-VI-A deductions.
+  const isUS = String(ruleSet.jurisdiction || '').toUpperCase() === 'US';
+  let appliedStandard = standardDeduction;
+  let appliedItemized = itemized;
+  if (isUS) {
+    if (itemized >= standardDeduction) appliedStandard = 0;
+    else appliedItemized = 0;
+  }
+
+  const deductionRoom = Math.max(0, gross - preTax);
+  const standardDeductionApplied = Math.min(appliedStandard, deductionRoom);
+  const itemizedDeductionsApplied = Math.min(
+    appliedItemized,
+    Math.max(0, deductionRoom - standardDeductionApplied)
+  );
+  const taxableIncome = Math.max(0, deductionRoom - standardDeductionApplied - itemizedDeductionsApplied);
 
   // ── Sort brackets from lowest to highest `min` ──
   const brackets = (Array.isArray(ruleSet.brackets) ? ruleSet.brackets : [])
@@ -119,8 +137,8 @@ const calculateIncomeTax = ({ grossIncome, ruleSet, profile }) => {
   return {
     grossIncome: roundMoney(gross),
     preTaxContributions: roundMoney(preTax),
-    standardDeductionApplied: roundMoney(Math.min(standardDeduction, gross)),
-    itemizedDeductionsApplied: roundMoney(Math.min(itemized, Math.max(0, gross - preTax - standardDeduction))),
+    standardDeductionApplied: roundMoney(standardDeductionApplied),
+    itemizedDeductionsApplied: roundMoney(itemizedDeductionsApplied),
     taxableIncome: roundMoney(taxableIncome),
     brackets: bracketBreakdown,
     subtotal: roundMoney(subtotal),
@@ -160,7 +178,7 @@ const calculateCapitalGains = ({ holdings, ruleSet }) => {
     const costBasis = Math.max(0, finite(holding.base_value));
     const salePrice = Math.max(0, finite(holding.sale_price));
     const fees = Math.max(0, finite(holding.sale_fees));
-    const acquisition = new Date(holding.acquisition_date || holding.created_at);
+    const acquisition = new Date(holding.acquisition_date || holding.createdAt);
     const soldAt = new Date(holding.sold_at);
     const holdingDays = Number.isNaN(acquisition.getTime()) || Number.isNaN(soldAt.getTime())
       ? 0
@@ -212,6 +230,8 @@ const calculateSalesTaxSummary = ({ transactions, defaultRate = 0 }) => {
   let totalTaxPaid = 0;
 
   for (const transaction of Array.isArray(transactions) ? transactions : []) {
+    // Sales tax applies to expenditures only — income must not be taxed here.
+    if (String(transaction?.type).toLowerCase() !== 'expense') continue;
     const amount = Math.max(0, finite(transaction?.amount));
     const explicitTax = transaction?.tax_amount ?? transaction?.sales_tax;
     const tax = explicitTax == null

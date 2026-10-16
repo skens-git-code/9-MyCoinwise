@@ -297,16 +297,16 @@ router.get('/items', async (req, res) => {
     const hydratedItems = items.map((item) => {
       let currentValue;
 
-      if (item.asset_class === 'illiquid_asset' || item.asset_class === 'business_equity') {
-        if (item.current_value_override != null) {
-          currentValue = item.current_value_override;
-        } else {
-          currentValue = calculateDepreciation(
-            item.base_value,
-            item.acquisition_date,
-            item.asset_class
-          );
-        }
+      // A manual override always wins, for every asset class — this matches
+      // snapshotEngine so the portfolio view and net-worth history agree.
+      if (item.current_value_override != null) {
+        currentValue = item.current_value_override;
+      } else if (item.asset_class === 'illiquid_asset' || item.asset_class === 'business_equity') {
+        currentValue = calculateDepreciation(
+          item.base_value,
+          item.acquisition_date,
+          item.asset_class
+        );
       } else if (item.symbol && item.quantity && livePrices[item.symbol] != null) {
         currentValue = Number((item.quantity * livePrices[item.symbol]).toFixed(2));
       } else {
@@ -584,13 +584,15 @@ router.get('/history', async (req, res) => {
       }
     }
 
-    // ── Load and shape snapshots for the frontend ──
+    // ── Load and shape the MOST RECENT 24 snapshots ──
+    // Query newest-first so `.limit(24)` keeps the latest months, then
+    // reverse into ascending order for the chart.
     const history = await NetWorthHistory.find(filter)
-      .sort({ snapshot_date: 1 })
+      .sort({ snapshot_date: -1 })
       .limit(24);
 
     return res.json(
-      history.map((h) => ({
+      history.reverse().map((h) => ({
         month: new Date(h.snapshot_date).toLocaleDateString('en-US', {
           month: 'short',
           year: '2-digit',

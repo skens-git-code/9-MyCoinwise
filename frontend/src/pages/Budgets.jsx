@@ -383,13 +383,20 @@ export default function Budgets() {
       const isPeriodValid = periodStartMs != null && periodEndMs != null && periodStartMs <= periodEndMs;
       
       const targetCategoryKey = (budget.category || '').trim().toLowerCase();
+      const subcatSet = Array.isArray(budget.categories) && budget.categories.length > 0
+        ? new Set(budget.categories.map((c) => (typeof c === 'string' ? c : c?.name || '').trim().toLowerCase()).filter(Boolean))
+        : null;
       let clientCalculatedSpent = 0;
 
       if (isPeriodValid) {
         for (const tx of normalizedExpenses) {
           if (tx.timestamp < periodStartMs) continue;
           if (tx.timestamp > periodEndMs) break;
-          if (targetCategoryKey && tx.normalizedCategory !== targetCategoryKey) continue;
+          if (targetCategoryKey) {
+            if (tx.normalizedCategory !== targetCategoryKey) continue;
+          } else if (subcatSet && subcatSet.size > 0) {
+            if (!subcatSet.has(tx.normalizedCategory)) continue;
+          }
           clientCalculatedSpent += tx.amount;
         }
       }

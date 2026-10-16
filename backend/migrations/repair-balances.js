@@ -26,12 +26,13 @@ const { logger } = require('../utils/logger');
 
 // ── Must match routes/transactions.js ──
 const FALLBACK_RATES_TO_INR = {
-  INR: 1, USD: 83.5, EUR: 90.5, GBP: 106, JPY: 0.56,
-  AUD: 55, CAD: 61.5, CHF: 94, CNY: 11.5, SGD: 62,
+  INR: 1, USD: 83.5, EUR: 90.2, GBP: 105.8, JPY: 0.56, CAD: 61.2,
+  AUD: 53.8, SGD: 61.5, AED: 22.7, CHF: 95, CNY: 11.5, MXN: 4.9,
+  BRL: 16.4, KRW: 0.063, THB: 2.35,
 };
 
-/** @returns {string} Uppercased currency code, defaulting to USD. */
-const normalizeCurrency = (value, fallback = 'USD') => {
+/** @returns {string} Uppercased currency code, defaulting to INR. */
+const normalizeCurrency = (value, fallback = 'INR') => {
   const normalized = String(value || '').trim().toUpperCase();
   return normalized || fallback;
 };
@@ -64,7 +65,7 @@ async function computeBalance(Transaction, Account, user) {
 
   const [transactions, accounts] = await Promise.all([
     Transaction.find({ user_id: userId, is_deleted: { $ne: true } })
-      .select('type amount currency account_id date')
+      .select('type amount currency account_id date import_fingerprint recurrence_instance_key category merchant note')
       .lean(),
     Account.find({ user_id: userId }).select('_id currency').lean(),
   ]);

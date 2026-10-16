@@ -672,6 +672,7 @@ export default function Dashboard() {
   const [editingTx, setEditingTx] = useState(null);
   const [dateFilter, setDateFilter] = useState(() => safeGetItem(dateFilterKey, 'all'));
   const [categoryFilter, setCategoryFilter] = useState(() => safeGetItem(categoryFilterKey, 'all'));
+  const [hoveredPieIndex, setHoveredPieIndex] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
@@ -913,17 +914,21 @@ export default function Dashboard() {
     const recurringBills = (Array.isArray(subscriptions) ? subscriptions : [])
       .filter((sub) => !sub?.is_paused && !sub?.cancelled_at)
       .reduce((sum, sub) => {
-        const amount = toNumber(sub?.amount, 0);
-        const cycle = String(sub?.billing_cycle || sub?.frequency || 'monthly').toLowerCase();
+        const rawAmount = toNumber(sub?.amount, 0);
+        const subCurrency = resolveCurrency(sub?.currency, displayCurrency);
+        const amount = convertCurrency(rawAmount, subCurrency, displayCurrency, fxRatesToInr) ?? rawAmount;
+        const cycle = String(sub?.cycle || sub?.billing_cycle || sub?.frequency || 'monthly').toLowerCase();
         if (cycle === 'yearly' || cycle === 'annual') return sum + amount / 12;
+        if (cycle === 'quarterly') return sum + amount / 3;
         if (cycle === 'weekly') return sum + amount * 4.33;
+        if (cycle === 'daily') return sum + amount * 30;
         return sum + amount;
       }, 0);
     const netAvailable = Math.max(0, spendableBalance - recurringBills);
     const dailyRaw = netAvailable / daysRemaining;
     const dailyCapped = Math.min(dailyRaw, Math.max(100, spendableBalance * 0.05));
     return Math.max(0, dailyCapped);
-  }, [spendableBalance, subscriptions]);
+  }, [spendableBalance, subscriptions, displayCurrency, fxRatesToInr]);
 
   // 7. Animated counter completion state for hero card glow
   const [balanceDone, setBalanceDone] = useState(false);
@@ -2371,7 +2376,7 @@ export default function Dashboard() {
           {/* ===================== Pie chart (category breakdown) ===================== */}
           <motion.div variants={CARD_VARIANTS} className="bento-tile bento-pie glass">
             <div className="bt-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <h3 className="heading-accent">{tr('breakdown', 'Breakdown')}</h3>
                 {pieTotal > 0 && (
                   <span
@@ -2388,59 +2393,199 @@ export default function Dashboard() {
                     {formatCurrencyText(pieTotal, safeFmt, currencySymbol)}
                   </span>
                 )}
+                {categoryFilter !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCategoryFilter('all');
+                    }}
+                    style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      padding: '2px 7px',
+                      borderRadius: 999,
+                      background: 'rgba(99, 102, 241, 0.15)',
+                      color: 'var(--brand-primary, #6366f1)',
+                      border: '1px solid rgba(99, 102, 241, 0.3)',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 3,
+                    }}
+                    title="Clear category filter"
+                  >
+                    {categoryFilter} <X size={10} />
+                  </button>
+                )}
               </div>
-              <PieIcon size={16} className="bt-icon-muted" aria-hidden="true" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTx({ type: 'expense' });
+                    setFormInstanceId((prev) => prev + 1);
+                    setShowForm(true);
+                  }}
+                  className="bg-topup-btn"
+                  style={{
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    padding: '3px 8px',
+                    fontSize: '0.72rem',
+                    borderRadius: 6,
+                    border: '1px solid var(--border-color, rgba(148, 163, 184, 0.2))',
+                    background: 'var(--surface-hover, rgba(255, 255, 255, 0.06))',
+                    color: 'var(--text-secondary, #94a3b8)',
+                    cursor: 'pointer',
+                  }}
+                  title="Add an expense in breakdown"
+                >
+                  <Plus size={12} /> Add
+                </button>
+                <NavLink
+                  to="/analytics"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    color: 'var(--text-muted, #94a3b8)',
+                    textDecoration: 'none',
+                  }}
+                  className="hover-brand"
+                  title="View detailed category analytics"
+                >
+                  <PieIcon size={16} className="bt-icon-muted" aria-hidden="true" />
+                </NavLink>
+              </div>
             </div>
-            <div className="bt-pie-wrap" style={{ height: 215, minHeight: 180 }}>
+            <div className="bt-pie-wrap" style={{ height: 215, minHeight: 180, position: 'relative' }}>
               {pieData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={215} minWidth={1} minHeight={180}>
-                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <Pie
-                      isAnimationActive={!prefersReducedMotion && !loading}
-                      animationBegin={100}
-                      animationDuration={900}
-                      animationEasing="ease-out"
-                      data={pieData}
-                      cx="50%"
-                      cy="44%"
-                      innerRadius="50%"
-                      outerRadius="74%"
-                      paddingAngle={4}
-                      cornerRadius={5}
-                      dataKey="value"
-                      nameKey="name"
-                      stroke="var(--surface-card, #ffffff)"
-                      strokeWidth={2}
+                <>
+                  <ResponsiveContainer width="100%" height={215} minWidth={1} minHeight={180}>
+                    <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                      <Pie
+                        isAnimationActive={!prefersReducedMotion && !loading}
+                        animationBegin={100}
+                        animationDuration={900}
+                        animationEasing="ease-out"
+                        data={pieData}
+                        cx="50%"
+                        cy="44%"
+                        startAngle={90}
+                        endAngle={-270}
+                        innerRadius="50%"
+                        outerRadius="74%"
+                        paddingAngle={pieData.length > 1 ? 4 : 0}
+                        cornerRadius={pieData.length > 1 ? 5 : 0}
+                        dataKey="value"
+                        nameKey="name"
+                        stroke={pieData.length > 1 ? "var(--surface-card, #ffffff)" : "none"}
+                        strokeWidth={pieData.length > 1 ? 2 : 0}
+                        onMouseEnter={(_, index) => setHoveredPieIndex(index)}
+                        onMouseLeave={() => setHoveredPieIndex(null)}
+                        onClick={(entry) => {
+                          const catName = entry?.name;
+                          if (catName) {
+                            setCategoryFilter((prev) => (prev.toLowerCase() === catName.toLowerCase() ? 'all' : catName));
+                          }
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        {pieData.map((entry, i) => (
+                          <Cell
+                            key={`cell-${String(entry.name || i).replace(/\s+/g, '-')}-${i}`}
+                            fill={PIE_COLORS[i % PIE_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        formatter={(val, name) => {
+                          const amount = Number(val) || 0;
+                          const pct = pieTotal > 0 ? ((amount / pieTotal) * 100).toFixed(1) : '0.0';
+                          return [`${formatCurrencyText(amount, safeFmt, currencySymbol)} (${pct}%)`, name];
+                        }}
+                      />
+                      <Legend
+                        verticalAlign="bottom"
+                        height={36}
+                        iconType="circle"
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: '0.74rem', fontWeight: 600, paddingTop: 4, cursor: 'pointer' }}
+                        onClick={(e) => {
+                          const catName = e?.value;
+                          if (catName) {
+                            setCategoryFilter((prev) => (prev.toLowerCase() === catName.toLowerCase() ? 'all' : catName));
+                          }
+                        }}
+                        formatter={(value) => {
+                          const item = pieData.find((p) => p.name === value);
+                          const pct = item && pieTotal > 0 ? ` (${((item.value / pieTotal) * 100).toFixed(0)}%)` : '';
+                          const isSelected = categoryFilter.toLowerCase() === String(value || '').toLowerCase();
+                          return (
+                            <span style={{
+                              color: isSelected ? 'var(--brand-primary, #6366f1)' : 'var(--text-secondary)',
+                              fontWeight: isSelected ? 700 : 600,
+                            }}>
+                              {value}{pct}
+                            </span>
+                          );
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+
+                  {/* ── Donut Center Badge (Category / Total Amount) ── */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '44%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      textAlign: 'center',
+                      pointerEvents: 'none',
+                      userSelect: 'none',
+                      maxWidth: '42%',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '0.66rem',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                        color: 'var(--text-muted, #94a3b8)',
+                        whiteSpace: 'nowrap',
+                        textOverflow: 'ellipsis',
+                        overflow: 'hidden',
+                      }}
                     >
-                      {pieData.map((entry, i) => (
-                        <Cell
-                          key={`cell-${String(entry.name || i).replace(/\s+/g, '-')}-${i}`}
-                          fill={PIE_COLORS[i % PIE_COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={tooltipStyle}
-                      formatter={(val, name) => {
-                        const amount = Number(val) || 0;
-                        const pct = pieTotal > 0 ? ((amount / pieTotal) * 100).toFixed(1) : '0.0';
-                        return [`${formatCurrencyText(amount, safeFmt, currencySymbol)} (${pct}%)`, name];
+                      {hoveredPieIndex !== null && pieData[hoveredPieIndex]
+                        ? pieData[hoveredPieIndex].name
+                        : pieData.length === 1
+                          ? pieData[0].name
+                          : tr('total', 'Total')}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '0.92rem',
+                        fontWeight: 800,
+                        color: 'var(--text-primary, #0f172a)',
+                        fontVariantNumeric: 'tabular-nums',
+                        lineHeight: 1.15,
+                        marginTop: 1,
                       }}
-                    />
-                    <Legend
-                      verticalAlign="bottom"
-                      height={36}
-                      iconType="circle"
-                      iconSize={8}
-                      wrapperStyle={{ fontSize: '0.74rem', fontWeight: 600, paddingTop: 4 }}
-                      formatter={(value) => {
-                        const item = pieData.find((p) => p.name === value);
-                        const pct = item && pieTotal > 0 ? ` (${((item.value / pieTotal) * 100).toFixed(0)}%)` : '';
-                        return <span style={{ color: 'var(--text-secondary)' }}>{value}{pct}</span>;
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+                    >
+                      {hoveredPieIndex !== null && pieData[hoveredPieIndex]
+                        ? formatCurrencyText(pieData[hoveredPieIndex].value, safeFmt, currencySymbol)
+                        : formatCurrencyText(pieTotal, safeFmt, currencySymbol)}
+                    </div>
+                  </div>
+                </>
               ) : (
                 /* ── Empty state when there are no expenses yet ── */
                 <div className="bento-empty">
@@ -2449,6 +2594,14 @@ export default function Dashboard() {
                   </span>
                   <p className="bento-empty-title">{tr('no_exp_yet', 'No expenses yet')}</p>
                   <p className="bento-empty-sub">{tr('track_spend_breakdown', 'Track spending to see category breakdown.')}</p>
+                  <button
+                    type="button"
+                    className="bento-empty-cta pulse-encouragement"
+                    onClick={handleOpenAddForm}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    <Plus size={13} /> {tr('add_expense', 'Add Expense')}
+                  </button>
                 </div>
               )}
             </div>

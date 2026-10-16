@@ -470,9 +470,14 @@ const estimate = async (req, res) => {
     user_id: userIdOf(req),
     tax_profile_id: profile._id,
   }).lean();
+  // Bound sold holdings to the profile's fiscal year. Previously every
+  // holding the user had ever sold was re-taxed inside each year's estimate.
   const holdings = await WealthItem.find({
     user_id: userIdOf(req),
-    sold_at: { $ne: null },
+    sold_at: {
+      $gte: fiscalBounds(profile).start,
+      $lt: fiscalBounds(profile).end,
+    },
   }).lean();
 
   // ── Run the tax engine ──
@@ -544,9 +549,14 @@ router.post('/estimate/compare', estimateLimiter, [profileIdBody], async (req, r
     user_id: userIdOf(req),
     tax_profile_id: profile._id,
   }).lean();
+  // Bound sold holdings to the profile's fiscal year. Previously every
+  // holding the user had ever sold was re-taxed inside each year's estimate.
   const holdings = await WealthItem.find({
     user_id: userIdOf(req),
-    sold_at: { $ne: null },
+    sold_at: {
+      $gte: fiscalBounds(profile).start,
+      $lt: fiscalBounds(profile).end,
+    },
   }).lean();
 
   // ── Run the estimate under each regime ──
@@ -589,9 +599,14 @@ router.post('/estimate/capital-gains', gainsLimiter, [profileIdBody], async (req
   if (!ruleSet) return missingRules(res, profile);
 
   // ── Load sold holdings and run the calculation ──
+  // Bound sold holdings to the profile's fiscal year. Previously every
+  // holding the user had ever sold was re-taxed inside each year's estimate.
   const holdings = await WealthItem.find({
     user_id: userIdOf(req),
-    sold_at: { $ne: null },
+    sold_at: {
+      $gte: fiscalBounds(profile).start,
+      $lt: fiscalBounds(profile).end,
+    },
   }).lean();
   const result = calculateCapitalGains({ holdings, ruleSet });
 
@@ -735,9 +750,12 @@ router.post('/payments', [
   }
 
   // ── Create the payment record ──
+  // NOTE: the client sends `profile_id`; the schema requires `tax_profile_id`,
+  // so it MUST be mapped explicitly — otherwise every insert fails validation.
   const payment = await TaxPayment.create({
     ...req.body,
     user_id: userIdOf(req),
+    tax_profile_id: profile._id,
     currency: String(req.body.currency).toUpperCase(),
     amount: Number(req.body.amount),
   });
@@ -803,9 +821,12 @@ router.post('/documents', [
   }
 
   // ── Create the document with an encrypted file_url ──
+  // NOTE: the client sends `profile_id`; the schema requires `tax_profile_id`,
+  // so it MUST be mapped explicitly — otherwise every insert fails validation.
   const document = await TaxDocument.create({
     ...req.body,
     user_id: userIdOf(req),
+    tax_profile_id: profile._id,
     file_url: encrypt(req.body.file_url),
   });
 
@@ -863,9 +884,14 @@ router.get('/report/:profile_id', reportLimiter, [
     user_id: userIdOf(req),
     tax_profile_id: profile._id,
   }).lean();
+  // Bound sold holdings to the profile's fiscal year. Previously every
+  // holding the user had ever sold was re-taxed inside each year's estimate.
   const holdings = await WealthItem.find({
     user_id: userIdOf(req),
-    sold_at: { $ne: null },
+    sold_at: {
+      $gte: fiscalBounds(profile).start,
+      $lt: fiscalBounds(profile).end,
+    },
   }).lean();
 
   // ── Compute the estimate and sales-tax summary ──

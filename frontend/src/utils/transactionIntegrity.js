@@ -27,11 +27,12 @@ const dayKey = (value) => {
 };
 
 // ── True when the date is after the end of today ──
-// Invalid dates are treated as future (returns true) so callers can
-// safely filter them out.
+// Invalid or missing dates are NOT treated as future (returns false) so that
+// unprojected date fields or pending rows are not silently zeroed/dropped.
 export const isFutureTransaction = (value, now = new Date()) => {
+  if (value === null || value === undefined || value === '') return false;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return true;
+  if (Number.isNaN(date.getTime())) return false;
   const endOfToday = new Date(now);
   endOfToday.setHours(23, 59, 59, 999);
   return date.getTime() > endOfToday.getTime();

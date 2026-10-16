@@ -18,7 +18,7 @@ const FALLBACK_RATES_TO_INR = Object.freeze({
   THB: 2.35,
 });
 
-const CACHE_KEY = 'mcw-fx-rates-to-inr';
+const CACHE_KEY = 'mcw-fx-rates-to-inr-v2';
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
 const normalizeCurrency = (currency, fallback = 'INR') => {
@@ -69,11 +69,26 @@ export const fetchRatesToInr = async (signal) => {
 };
 
 const parseRatesPayload = (payload) => {
-  // Parse the rates payload from the API response
-  if (!payload || !payload.rates) {
+  // The provider — and our backend, which proxies it — returns "foreign
+  // units per 1 base" with base=INR, e.g. { INR: 1, USD: 0.012 }.
+  // `convertCurrency` and the bundled fallback both use the reciprocal
+  // convention — INR per 1 unit — so normalize (invert) here. This is the
+  // single point where live rates are converted to the stored shape.
+  if (!payload || !payload.rates || typeof payload.rates !== 'object') {
     throw new Error('Invalid rates payload');
   }
-  return payload.rates;
+  const out = { INR: 1 };
+  for (const [code, value] of Object.entries(payload.rates)) {
+    const key = String(code || '').trim().toUpperCase();
+    const numeric = Number(value);
+    if (key && key !== 'INR' && Number.isFinite(numeric) && numeric > 0) {
+      out[key] = 1 / numeric;
+    }
+  }
+  if (Object.keys(out).length <= 1) {
+    throw new Error('Invalid rates payload');
+  }
+  return out;
 };
 
 export const convertCurrency = (amount, fromCurrency, toCurrency, ratesToInr = FALLBACK_RATES_TO_INR) => {

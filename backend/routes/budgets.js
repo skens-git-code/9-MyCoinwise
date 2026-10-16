@@ -149,7 +149,7 @@ const computeRollover = async (budget, presuppliedExpenses = null) => {
       is_deleted: { $ne: true },
       date: { $gte: budget.period_start, $lte: budget.period_end },
     })
-      .select('date amount')
+      .select('date amount category')
       .lean();
   } else {
     const start = new Date(budget.period_start).getTime();
@@ -160,11 +160,21 @@ const computeRollover = async (budget, presuppliedExpenses = null) => {
     });
   }
 
-  // ── Compute leftover and store it as the new rollover ──
-  const totalSpent = expenses.reduce(
-    (sum, exp) => sum + (Number(exp.amount) || 0),
-    0
-  );
+  const targetCategoryKey = (budget.category || '').trim().toLowerCase();
+  const subcatSet = Array.isArray(budget.categories) && budget.categories.length > 0
+    ? new Set(budget.categories.map((c) => String(c.name || '').trim().toLowerCase()))
+    : null;
+
+  // ── Compute leftover within budget scope and store it as the new rollover ──
+  const totalSpent = expenses.reduce((sum, exp) => {
+    const key = String(exp.category || '').trim().toLowerCase();
+    if (targetCategoryKey) {
+      if (key !== targetCategoryKey) return sum;
+    } else if (subcatSet) {
+      if (!subcatSet.has(key)) return sum;
+    }
+    return sum + (Number(exp.amount) || 0);
+  }, 0);
   const available = Number(budget.total_limit || 0) + Number(budget.rollover_amount || 0);
   const remaining = Math.max(0, available - totalSpent);
   budget.rollover_amount = Number(remaining.toFixed(2));
@@ -178,6 +188,10 @@ const computeRollover = async (budget, presuppliedExpenses = null) => {
 const getBudgetProgress = (budget, expenses) => {
   const start = new Date(budget.period_start).getTime();
   const end = new Date(budget.period_end).getTime();
+  const targetCategoryKey = (budget.category || '').trim().toLowerCase();
+  const subcatSet = Array.isArray(budget.categories) && budget.categories.length > 0
+    ? new Set(budget.categories.map((c) => String(c.name || '').trim().toLowerCase()))
+    : null;
 
   // ── Aggregate spend per category and overall ──
   const categorySpent = new Map();
@@ -187,9 +201,16 @@ const getBudgetProgress = (budget, expenses) => {
     const time = new Date(expense.date).getTime();
     if (time < start || time > end) continue;
     const amount = Number(expense.amount) || 0;
-    totalSpent += amount;
     const key = String(expense.category || '').trim().toLowerCase();
     categorySpent.set(key, (categorySpent.get(key) || 0) + amount);
+
+    if (targetCategoryKey) {
+      if (key === targetCategoryKey) totalSpent += amount;
+    } else if (subcatSet) {
+      if (subcatSet.has(key)) totalSpent += amount;
+    } else {
+      totalSpent += amount;
+    }
   }
 
   // ── Build the response object ──

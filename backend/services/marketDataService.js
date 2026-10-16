@@ -15,8 +15,23 @@
 
 // ── LRU price cache (max 500 symbols) prevents unbounded memory growth ──
 const { LRUCache } = require('lru-cache');
+const { isProduction } = require('../config/env');
 const priceCache = new LRUCache({ max: 500, ttl: 15 * 60 * 1000 });
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+// ── Development-only mock quotes ──
+// These are FIXTURES, never real data. They are only ever served when
+// NODE_ENV !== 'production', so a deployed instance can never report a
+// fabricated portfolio value. Unknown symbols resolve to no price so callers
+// fall back to the user's `base_value` instead of a bogus constant.
+const DEV_MOCK_PRICES = {
+  '^NSEI': 22450.00,       // Nifty 50
+  'RELIANCE.NS': 2950.40,  // Reliance
+  'HDFCBANK.NS': 1440.10,  // HDFC
+  'BTC-USD': 5200000.00,   // Bitcoin in INR (approx)
+  'AAPL': 175.50,          // Apple
+  'ETH-USD': 250000.00     // Ethereum in INR
+};
 
 // ── Fetch live prices for an array of ticker symbols ──
 // @param {Array<String>} symbols - e.g., ['^NSEI', 'RELIANCE.NS', 'BTC-USD']
@@ -38,21 +53,20 @@ const getLivePrices = async (symbols) => {
   if (symbolsToFetch.length === 0) return results;
 
   // ── 2. Fetch missing symbols ──
-  try {
-    // ── Development mock (replace this block in production) ──
-    console.log(`[DEV] Mocking API call for: ${symbolsToFetch.join(', ')}`);
-    const mockDb = {
-      '^NSEI': 22450.00,       // Nifty 50
-      'RELIANCE.NS': 2950.40,  // Reliance
-      'HDFCBANK.NS': 1440.10,  // HDFC
-      'BTC-USD': 5200000.00,   // Bitcoin in INR (approx)
-      'AAPL': 175.50,          // Apple
-      'ETH-USD': 250000.00     // Ethereum in INR
-    };
+  // In production there is no live provider wired up yet, so return no prices
+  // (empty result) rather than inventing values. Callers already treat a
+  // missing price as "use base_value".
+  if (isProduction) {
+    return results;
+  }
 
+  try {
+    // ── Development mock (never runs in production) ──
     symbolsToFetch.forEach(symbol => {
+      const basePrice = DEV_MOCK_PRICES[symbol];
+      if (!Number.isFinite(basePrice)) return; // unknown symbol → no price
+
       // Add slight randomness to simulate live market fluctuations
-      const basePrice = mockDb[symbol] || 1000;
       const variance = basePrice * 0.005 * (Math.random() > 0.5 ? 1 : -1);
       const livePrice = Number((basePrice + variance).toFixed(2));
 
@@ -62,15 +76,17 @@ const getLivePrices = async (symbols) => {
       priceCache.set(symbol, { price: livePrice, timestamp: now });
     });
 
-    // ── Production code (uncomment when ready) ──
+    // ── Production provider (enable when a key is configured) ──
     /*
-    const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+    const axios = require('axios');
     const apiKey = process.env.FINNHUB_API_KEY;
     for (const symbol of symbolsToFetch) {
-      const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`);
-      const data = await response.json();
-      results[symbol] = data.c; // 'c' is current price in Finnhub
-      priceCache.set(symbol, { price: data.c, timestamp: now });
+      const response = await axios.get(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`);
+      const price = Number(response.data?.c);
+      if (Number.isFinite(price) && price > 0) {
+        results[symbol] = price;
+        priceCache.set(symbol, { price, timestamp: now });
+      }
     }
     */
 
