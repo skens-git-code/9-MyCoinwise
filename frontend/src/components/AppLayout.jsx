@@ -1420,11 +1420,22 @@ const Header = React.memo(({
             title={`Switch to ${theme === 'dark' || theme === 'amoled' ? 'Light' : 'Dark'} theme`}
             aria-label="Toggle theme"
           >
-            {theme === 'dark' || theme === 'amoled' ? (
-              <Sun size={18} strokeWidth={1.75} />
-            ) : (
-              <Moon size={18} strokeWidth={1.75} />
-            )}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={theme === 'dark' || theme === 'amoled' ? 'sun' : 'moon'}
+                initial={{ rotate: -90, scale: 0.6, opacity: 0 }}
+                animate={{ rotate: 0, scale: 1, opacity: 1 }}
+                exit={{ rotate: 90, scale: 0.6, opacity: 0 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                {theme === 'dark' || theme === 'amoled' ? (
+                  <Sun size={18} strokeWidth={1.75} />
+                ) : (
+                  <Moon size={18} strokeWidth={1.75} />
+                )}
+              </motion.span>
+            </AnimatePresence>
           </button>
 
           {/* ── Alerts dropdown ── */}

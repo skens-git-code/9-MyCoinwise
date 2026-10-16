@@ -275,19 +275,44 @@ export default function App() {
   }, [deferredPrompt]);
 
   const toggleTheme = useCallback(() => {
-    setTheme(prev => {
-      const idx = AVAILABLE_THEMES.indexOf(prev);
-      const next = AVAILABLE_THEMES[(idx + 1) % AVAILABLE_THEMES.length];
-      localStorage.setItem('mcw-theme', next);
-      return next;
-    });
+    const applyNext = () => {
+      setTheme(prev => {
+        const idx = AVAILABLE_THEMES.indexOf(prev);
+        const next = AVAILABLE_THEMES[(idx + 1) % AVAILABLE_THEMES.length];
+        localStorage.setItem('mcw-theme', next);
+        document.documentElement.setAttribute('data-theme', next);
+        return next;
+      });
+    };
+
+    if (
+      typeof document !== 'undefined' &&
+      typeof document.startViewTransition === 'function' &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      document.startViewTransition(applyNext);
+    } else {
+      applyNext();
+    }
   }, []);
 
   const setThemeDirect = useCallback((t) => {
     const nextTheme = normalizeTheme(t);
-    setTheme(nextTheme);
-    localStorage.setItem('mcw-theme', nextTheme);
-    document.documentElement.setAttribute('data-theme', nextTheme);
+    const applyNext = () => {
+      setTheme(nextTheme);
+      localStorage.setItem('mcw-theme', nextTheme);
+      document.documentElement.setAttribute('data-theme', nextTheme);
+    };
+
+    if (
+      typeof document !== 'undefined' &&
+      typeof document.startViewTransition === 'function' &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      document.startViewTransition(applyNext);
+    } else {
+      applyNext();
+    }
   }, []);
 
   const setLanguage = useCallback((code) => {
