@@ -42,7 +42,8 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
  * ————————————————————————————————————— */
 
 // ── Directory where screenshots are written ──
-const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.resolve(__dirname, '../.artifacts');
+const ARTIFACTS_DIR = process.env.ARTIFACT_DIR || path.resolve(__dirname, '../../.artifacts');
+if (!fs.existsSync(ARTIFACTS_DIR)) fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
 
 // ── Chrome binary path (macOS) ──
 const CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -64,7 +65,7 @@ async function getAuthToken() {
   const Session = mongoose.model('Session', new mongoose.Schema({ user_id: mongoose.Schema.Types.ObjectId, token_id: String, device: String, ip: String, user_agent: String }));
 
   // ── Look up the seed user ──
-  const user = await User.findOne({ email: 'sarthak@gmail.com' });
+  const user = (await User.findOne({ email: 'sarthak@gmail.com' })) || (await User.findOne({}));
   if (!user) throw new Error('User not found');
 
   // ── Sign a JWT with a unique jti ──
@@ -218,7 +219,11 @@ async function main() {
     console.log('Navigating to Dashboard...');
     await setViewport(1440, 1350, false);
     await cdp.send('Page.navigate', { url: `http://localhost:5173/?token=${token}` });
-    await sleep(3500);
+    // Dismiss cookie banner so all UI below is visible
+    await cdp.send('Runtime.evaluate', {
+      expression: "localStorage.setItem('cookie_consent', 'accepted'); localStorage.setItem('clarity-consent', 'accepted'); localStorage.setItem('mcw-cookie-consent', 'accepted');"
+    });
+    await sleep(1000);
     await capture('compact_dashboard_1440.png', 1440, 1350, false);
 
     // ── 2. Dashboard at 1920x1080 and mobile ──
@@ -230,6 +235,7 @@ async function main() {
     await cdp.send('Page.navigate', { url: 'http://localhost:5173/transactions' });
     await sleep(2000);
     await capture('compact_transactions_1440.png', 1440, 900, false);
+    await capture('compact_transactions_mobile_390.png', 390, 844, true);
 
     // ── 4. Calendar page (desktop + mobile) ──
     console.log('Navigating to Calendar...');
@@ -241,10 +247,60 @@ async function main() {
     // ── 5. Analytics page ──
     console.log('Navigating to Analytics...');
     await cdp.send('Page.navigate', { url: 'http://localhost:5173/analytics' });
-    await sleep(2500);
+    await sleep(2000);
     await capture('compact_analytics_1440.png', 1440, 900, false);
+    await capture('compact_analytics_mobile_390.png', 390, 844, true);
 
-    console.log('All compact screenshots captured!');
+    // ── 6. Accounts page ──
+    console.log('Navigating to Accounts...');
+    await cdp.send('Page.navigate', { url: 'http://localhost:5173/accounts' });
+    await sleep(2000);
+    await capture('compact_accounts_1440.png', 1440, 900, false);
+    await capture('compact_accounts_mobile_390.png', 390, 844, true);
+
+    // ── 7. Budgets page ──
+    console.log('Navigating to Budgets...');
+    await cdp.send('Page.navigate', { url: 'http://localhost:5173/budgets' });
+    await sleep(2000);
+    await capture('compact_budgets_1440.png', 1440, 900, false);
+    await capture('compact_budgets_mobile_390.png', 390, 844, true);
+
+    // ── 8. Goals page ──
+    console.log('Navigating to Goals...');
+    await cdp.send('Page.navigate', { url: 'http://localhost:5173/goals' });
+    await sleep(2000);
+    await capture('compact_goals_1440.png', 1440, 900, false);
+    await capture('compact_goals_mobile_390.png', 390, 844, true);
+
+    // ── 9. Subscriptions page ──
+    console.log('Navigating to Subscriptions...');
+    await cdp.send('Page.navigate', { url: 'http://localhost:5173/subscriptions' });
+    await sleep(2000);
+    await capture('compact_subscriptions_1440.png', 1440, 900, false);
+    await capture('compact_subscriptions_mobile_390.png', 390, 844, true);
+
+    // ── 10. Calculator page ──
+    console.log('Navigating to Calculator...');
+    await cdp.send('Page.navigate', { url: 'http://localhost:5173/calculator' });
+    await sleep(2000);
+    await capture('compact_calculator_1440.png', 1440, 900, false);
+    await capture('compact_calculator_mobile_390.png', 390, 844, true);
+
+    // ── 11. Tax page ──
+    console.log('Navigating to Tax...');
+    await cdp.send('Page.navigate', { url: 'http://localhost:5173/tax' });
+    await sleep(2000);
+    await capture('compact_tax_1440.png', 1440, 900, false);
+    await capture('compact_tax_mobile_390.png', 390, 844, true);
+
+    // ── 12. Settings page ──
+    console.log('Navigating to Settings...');
+    await cdp.send('Page.navigate', { url: 'http://localhost:5173/settings' });
+    await sleep(2000);
+    await capture('compact_settings_1440.png', 1440, 900, false);
+    await capture('compact_settings_mobile_390.png', 390, 844, true);
+
+    console.log('All comprehensive page screenshots captured!');
   } finally {
     // ── Tear down: close CDP, kill Chrome, remove temp profile ──
     cdp.close();

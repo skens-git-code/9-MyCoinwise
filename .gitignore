@@ -74,3 +74,4 @@ desktop.ini
 # Local DB & Test artifacts
 mongodb-data/
 .tmp-*
+.artifacts/

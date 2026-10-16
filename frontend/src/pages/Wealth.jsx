@@ -1067,7 +1067,7 @@ export default function Wealth() {
           {fmt(metrics.netWorth)}
         </div>
         {/* ── Sub-stats: assets, liabilities, debt-to-asset ── */}
-        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 32, flexWrap: 'wrap' }}>
+        <div className="wealth-substats" style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 32, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>{tr('assets', 'Assets')}</div>
             <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--brand-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>

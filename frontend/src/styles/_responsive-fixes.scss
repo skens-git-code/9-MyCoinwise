@@ -122,7 +122,262 @@ img {
   .page-content,
   .page-shell,
   .settings-page,
-  .tax-page {
+  .tax-page,
+  .masonry-layout-page {
     padding-bottom: calc(96px + env(safe-area-inset-bottom, 16px)) !important;
   }
 }
+
+// 12. Universal Tabular Numbers and Currency formatting:
+// Guarantees stable digits, consistent currency alignment, and prevents awkward character wrapping across all pages.
+.amount,
+.metric-value,
+.stat-value,
+.dqs-val,
+.currency-val,
+.tx-amount,
+.ci-val,
+.bsc-val,
+.total-val,
+.sc-value,
+.stat-card .sc-value,
+[data-numeric='true'],
+.tabular-nums {
+  font-variant-numeric: tabular-nums !important;
+  font-feature-settings: 'tnum' 1 !important;
+  white-space: nowrap !important;
+  letter-spacing: -0.01em;
+}
+
+// 13. Mobile Input & Select optimization (16px base font to prevent iOS Safari auto-zoom viewport jumping)
+@media (max-width: 768px) {
+  input[type='text'],
+  input[type='email'],
+  input[type='password'],
+  input[type='number'],
+  input[type='date'],
+  input[type='search'],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+// 14. Responsive KPI & Stat Grids across pages (Accounts, Budgets, Subscriptions, Goals)
+.accounts-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+
+  @media (max-width: 1024px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  @media (max-width: 640px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+
+    .stat-card {
+      padding: 10px 12px !important;
+      min-height: 80px !important;
+      border-radius: 14px !important;
+
+      .sc-header {
+        font-size: 0.68rem !important;
+        gap: 0.35rem !important;
+        svg {
+          width: 13px !important;
+          height: 13px !important;
+        }
+      }
+
+      .sc-value {
+        font-size: 1.12rem !important;
+        margin-top: 2px !important;
+      }
+
+      .sc-sub {
+        font-size: 0.65rem !important;
+        min-height: 0.95rem !important;
+        line-height: 1.2 !important;
+      }
+    }
+  }
+}
+
+// Ensure Budgets bento summary maintains a clean 2x2 layout on mobile instead of collapsing into a single-column stack
+@media (max-width: 640px) {
+  .budget-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+
+    .budget-summary-card {
+      padding: 12px 14px !important;
+      border-radius: 14px !important;
+      gap: 6px !important;
+
+      .bsc-top {
+        margin-bottom: 2px;
+        .bsc-label {
+          font-size: 0.68rem !important;
+        }
+        .bsc-icon {
+          width: 26px !important;
+          height: 26px !important;
+          svg {
+            width: 13px !important;
+            height: 13px !important;
+          }
+        }
+      }
+
+      .bsc-val {
+        font-size: 1.15rem !important;
+      }
+
+      .bsc-sub {
+        font-size: 0.66rem !important;
+        line-height: 1.25 !important;
+      }
+    }
+  }
+}
+
+// Subscriptions & Goals carousel tracks on mobile:
+// On mobile viewports, transform into clean structured grids so cards don't get clipped at the right margin.
+@media (max-width: 640px) {
+  .subscriptions-page-wrap .carousel-wrapper {
+    overflow-x: visible;
+  }
+  .subscriptions-page-wrap .carousel-track {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100% !important;
+    min-width: unset !important;
+    gap: 10px !important;
+
+    .carousel-item {
+      width: 100% !important;
+      min-width: 0 !important;
+      padding: 10px 12px !important;
+      border-radius: 14px !important;
+      gap: 10px !important;
+
+      .ci-icon-box {
+        width: 32px !important;
+        height: 32px !important;
+        font-size: 1rem !important;
+        flex-shrink: 0;
+        svg {
+          width: 15px !important;
+          height: 15px !important;
+        }
+      }
+
+      .ci-info {
+        min-width: 0;
+        .ci-val {
+          font-size: 1.05rem !important;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .ci-lbl {
+          font-size: 0.68rem !important;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+      }
+    }
+  }
+
+  .goals-page-wrap .carousel-wrapper {
+    overflow-x: visible;
+  }
+  .goals-page-wrap .carousel-track {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    width: 100% !important;
+    min-width: unset !important;
+    gap: 8px !important;
+
+    .carousel-item {
+      width: 100% !important;
+      min-width: 0 !important;
+      padding: 8px 8px !important;
+      border-radius: 14px !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      text-align: center !important;
+      gap: 4px !important;
+
+      .ci-icon-box {
+        width: 26px !important;
+        height: 26px !important;
+        font-size: 0.85rem !important;
+      }
+
+      .ci-info {
+        min-width: 0;
+        width: 100%;
+        .ci-val {
+          font-size: 0.92rem !important;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .ci-lbl {
+          font-size: 0.62rem !important;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+      }
+    }
+  }
+}
+
+// 15. Header Actions, Wealth Substats, and Button wrap optimizations
+@media (max-width: 640px) {
+  .inbox-header,
+  .masonry-header,
+  .island-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+
+    .inbox-header-actions,
+    .mh-actions,
+    .ih-actions {
+      display: flex !important;
+      width: 100% !important;
+      align-items: center !important;
+      gap: 8px !important;
+      flex-wrap: wrap !important;
+
+      button {
+        min-height: 38px !important;
+      }
+    }
+  }
+
+  .hero-networth-card {
+    padding: 22px 14px !important;
+
+    .wealth-substats {
+      gap: 14px 20px !important;
+    }
+  }
+}
+
+// 16. Clean Card Borders & Elevation Polish
+.glass,
+.glass-sm,
+.bento-tile,
+.stat-card,
+.budget-summary-card,
+.modal-panel {
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--shadow-sm);
+}
+

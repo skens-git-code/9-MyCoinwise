@@ -139,6 +139,7 @@ const StatCard = React.memo(({ icon, label, value, sub, tone = 'default' }) => (
   >
     {/* ── Header: icon + uppercase label ── */}
     <div
+      className="sc-header"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -156,6 +157,7 @@ const StatCard = React.memo(({ icon, label, value, sub, tone = 'default' }) => (
 
     {/* ── Value (tone controls color) ── */}
     <div
+      className="sc-value tabular-nums"
       style={{
         fontSize: '1.5rem',
         fontWeight: 700,
@@ -173,7 +175,7 @@ const StatCard = React.memo(({ icon, label, value, sub, tone = 'default' }) => (
     </div>
 
     {/* ── Optional sub text ── */}
-    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', minHeight: '1.1rem' }}>
+    <div className="sc-sub" style={{ fontSize: '0.78rem', color: 'var(--text-muted)', minHeight: '1.1rem' }}>
       {sub || ''}
     </div>
   </motion.div>
@@ -944,9 +946,9 @@ export default function Accounts() {
 
       {/* ===================== Summary stats ===================== */}
       <div
+        className="accounts-kpi-grid"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
           gap: '1rem',
           marginBottom: 'var(--spacing-lg, 24px)',
         }}
