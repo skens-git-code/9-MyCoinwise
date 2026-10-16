@@ -584,13 +584,14 @@ export default function App() {
       if (subsData !== null) setSubscriptions(subsData);
       if (eventsData !== null) setEvents(eventsData);
 
-      if (failedResources.length > 0) {
-        if (failedResources.length >= 5) {
-          setGlobalError("Offline or syncing with server. Displaying cached data. Retrying in background...");
-        } else {
-          setGlobalError(`Some live data could not be refreshed (${failedResources.join(', ')}). Existing data was kept.`);
-        }
+      if (failedResources.length >= 5) {
+        setGlobalError("Offline or syncing with server. Displaying cached data. Retrying in background...");
+      } else if (txData === null && accountsData === null && (!transactions.length || !accounts.length)) {
+        setGlobalError("Unable to connect to live services. Retrying in background...");
       } else {
+        if (failedResources.length > 0) {
+          console.warn(`[Coinwise Sync] Secondary resources pending: ${failedResources.join(', ')}`);
+        }
         setGlobalError(null);
       }
 

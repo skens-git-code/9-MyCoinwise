@@ -6,6 +6,7 @@
 
 // ── Load mongoose ──
 const mongoose = require('mongoose');
+const { isValidObjectId } = require('../utils/schemaStandardizer');
 
 // ── Create ownership-check middleware ──
 const checkOwnership = (idParamName = 'userId', ownershipOptions = {}) => {
@@ -23,7 +24,7 @@ const checkOwnership = (idParamName = 'userId', ownershipOptions = {}) => {
 
       // ── Verify ownership through a model ──
       if (ownershipOptions.model) {
-        if (!mongoose.isValidObjectId(targetId)) {
+        if (!isValidObjectId(targetId)) {
           return res.status(400).json({ error: 'Invalid resource ID.' });
         }
 
@@ -45,7 +46,7 @@ const checkOwnership = (idParamName = 'userId', ownershipOptions = {}) => {
       if (ownershipOptions.household) {
         const User = require('../models/User');
 
-        if (!mongoose.isValidObjectId(targetId)) {
+        if (!isValidObjectId(targetId)) {
           return res.status(400).json({ error: 'Invalid user ID.' });
         }
 

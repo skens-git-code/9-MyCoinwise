@@ -262,8 +262,6 @@ export default function Login() {
 
   /* ---------------- Pre-emptive Server Wake-Up & Idle Prefetch ---------------- */
   useEffect(() => {
-    // Fire the health-check with 20s timeout so Render cold-start finishes warming up
-    setServerWarm(null); // pending
     try {
       const p = api?.healthCheck?.({ timeout: 20000 });
       if (p && typeof p.then === 'function') {
@@ -273,10 +271,10 @@ export default function Login() {
           setServerWarm(false);
         });
       } else {
-        setServerWarm(true);
+        queueMicrotask(() => setServerWarm(true));
       }
     } catch {
-      setServerWarm(true);
+      queueMicrotask(() => setServerWarm(true));
     }
 
     // Prefetch Dashboard and AppLayout during idle so sign-in transition is 0ms instant
@@ -330,7 +328,7 @@ export default function Login() {
       case 'email': {
         const v = String(value || '').trim();
         if (!v) return tr('email_required', 'Email is required.');
-        if (!EMAIL_REGEX.test(v)) return tr('invalid_email', 'Enter a valid email address.');
+        if (v.includes('@') && !EMAIL_REGEX.test(v)) return tr('invalid_email', 'Enter a valid email address.');
         return '';
       }
       case 'password':

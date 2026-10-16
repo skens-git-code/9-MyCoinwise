@@ -436,6 +436,10 @@ userSchema.virtual('name').get(function() {
 userSchema.index({ username: 1 });
 userSchema.index({ email_verify_token: 1 }, { sparse: true });
 
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(userSchema);
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

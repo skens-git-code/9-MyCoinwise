@@ -51,9 +51,13 @@ const netWorthHistorySchema = new mongoose.Schema({
     required: true 
   }
 }, {
-  // ── Auto-managed createdAt / updatedAt fields ──
-  timestamps: true
+  // ── Auto-managed created_at / updated_at fields ──
+  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
+
+// ── Backward-compatible virtuals for legacy camelCase ──
+netWorthHistorySchema.virtual('createdAt').get(function() { return this.created_at; });
+netWorthHistorySchema.virtual('updatedAt').get(function() { return this.updated_at; });
 
 /* —————————————————————————————————————
  * Indexes
@@ -61,6 +65,10 @@ const netWorthHistorySchema = new mongoose.Schema({
 
 // ── One snapshot per user per date (prevents duplicates on concurrent writes) ──
 netWorthHistorySchema.index({ user_id: 1, snapshot_date: 1 }, { unique: true });
+
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(netWorthHistorySchema);
 
 /* —————————————————————————————————————
  * Export

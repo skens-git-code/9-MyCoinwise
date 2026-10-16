@@ -118,9 +118,13 @@ const wealthItemSchema = new mongoose.Schema({
   }
 
 }, {
-  // ── Auto-managed createdAt / updatedAt fields ──
-  timestamps: true 
+  // ── Auto-managed created_at / updated_at fields ──
+  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
+
+// ── Backward-compatible virtuals for legacy camelCase ──
+wealthItemSchema.virtual('createdAt').get(function() { return this.created_at; });
+wealthItemSchema.virtual('updatedAt').get(function() { return this.updated_at; });
 
 /* —————————————————————————————————————
  * Indexes
@@ -129,6 +133,10 @@ const wealthItemSchema = new mongoose.Schema({
 // ── Fast per-user lookups (avoids COLLSCAN on /api/wealth/items) ──
 wealthItemSchema.index({ user_id: 1 });
 wealthItemSchema.index({ user_id: 1, asset_class: 1 });
+
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(wealthItemSchema);
 
 /* —————————————————————————————————————
  * Export

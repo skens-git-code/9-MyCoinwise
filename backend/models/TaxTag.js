@@ -98,6 +98,10 @@ const taxTagSchema = new mongoose.Schema({
 // ── Filter a user's tags by treatment ──
 taxTagSchema.index({ user_id: 1, treatment: 1 });
 
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(taxTagSchema);
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

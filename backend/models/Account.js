@@ -150,5 +150,9 @@ accountSchema.virtual('id').get(function () {
   return this._id.toHexString();
 });
 
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(accountSchema);
+
 // ── Export model ──
 module.exports = mongoose.model('Account', accountSchema);

@@ -74,24 +74,15 @@ const eventSchema = new mongoose.Schema({
 });
 
 /* —————————————————————————————————————
- * Serialization
- * ————————————————————————————————————— */
-
-// ── Convert _id → id and strip internal fields for API responses ──
-eventSchema.methods.toJSON = function() {
-  const obj = this.toObject();
-  obj.id = obj._id;
-  delete obj._id;
-  delete obj.__v;
-  return obj;
-};
-
-/* —————————————————————————————————————
  * Indexes
  * ————————————————————————————————————— */
 
 // ── Fast calendar queries: filter by user, sorted by date ──
 eventSchema.index({ user_id: 1, date: 1 });
+
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(eventSchema);
 
 /* —————————————————————————————————————
  * Export

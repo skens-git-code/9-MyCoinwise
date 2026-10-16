@@ -48,6 +48,8 @@ const convertToCurrency = (amount, fromCurrency, toCurrency) => {
   return ((Number(amount) || 0) * fromRate) / toRate;
 };
 
+const { dedupeTransactions } = require('../utils/transactionIntegrity');
+
 /**
  * Recompute one user's balance from their transactions.
  *
@@ -75,36 +77,10 @@ async function computeBalance(Transaction, Account, user) {
     accounts.map((account) => [String(account._id), normalizeCurrency(account.currency, displayCurrency)])
   );
 
-  // Same rules as dedupeTransactions(), inlined to keep this module dependency-free.
-  const endOfToday = new Date();
-  endOfToday.setHours(23, 59, 59, 999);
-  const seen = new Set();
+  const cleanTransactions = dedupeTransactions(transactions, { excludeFuture: true });
   let balance = 0;
 
-  for (const transaction of transactions) {
-    if (transaction.is_deleted === true) continue;
-
-    const date = transaction.date === null || transaction.date === undefined || transaction.date === ''
-      ? null
-      : new Date(transaction.date);
-
-    // A missing/invalid date is NOT treated as future (matches the fixed helper).
-    if (date && !Number.isNaN(date.getTime()) && date.getTime() > endOfToday.getTime()) continue;
-
-    const key = [
-      'manual',
-      date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : '',
-      String(transaction.type || '').toLowerCase(),
-      (Number(transaction.amount || 0)).toFixed(2),
-      String(transaction.category || '').trim().toLowerCase(),
-      '',
-      normalizeCurrency(transaction.currency),
-      String(transaction.account_id || ''),
-    ].join('|');
-
-    if (seen.has(key)) continue;
-    seen.add(key);
-
+  for (const transaction of cleanTransactions) {
     const sourceCurrency = normalizeCurrency(
       transaction.currency || accountCurrencies.get(String(transaction.account_id || '')),
       displayCurrency

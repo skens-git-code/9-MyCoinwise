@@ -765,38 +765,38 @@ export default function Dashboard() {
     return out;
   }, [rawTransactions, accountCurrencies, displayCurrency, fxRatesToInr]);
 
-  // 2. Apply filters
+  // 2. Period-filtered transactions (drives category breakdown & period trends)
+  const periodTransactions = useMemo(() => {
+    if (dateFilter === 'all') return allParsed;
+    const now = getAppDate();
+    now.setHours(23, 59, 59, 999);
+    const startOfToday = getAppDate();
+    startOfToday.setHours(0, 0, 0, 0);
+    return allParsed.filter((tx) => {
+      const t = tx.parsedDate;
+      if (!t || t > now) return false;
+      if (dateFilter === '7days') {
+        const diff = (startOfToday - t) / 86400000;
+        return diff <= 7;
+      }
+      if (dateFilter === '30days') {
+        const diff = (startOfToday - t) / 86400000;
+        return diff <= 30;
+      }
+      if (dateFilter === 'thisMonth') {
+        return t.getMonth() === now.getMonth() && t.getFullYear() === now.getFullYear();
+      }
+      return true;
+    });
+  }, [allParsed, dateFilter]);
+
+  // 3. Category + Period filtered transactions (drives filtered tables and active category drilldown)
   const parsedTransactions = useMemo(() => {
-    let processed = allParsed;
-    if (categoryFilter !== 'all') {
-      processed = processed.filter(
-        (tx) => canonicalCategoryName(tx.category).toLowerCase() === categoryFilter.toLowerCase()
-      );
-    }
-    if (dateFilter !== 'all') {
-      const now = getAppDate();
-      now.setHours(23, 59, 59, 999);
-      const startOfToday = getAppDate();
-      startOfToday.setHours(0, 0, 0, 0);
-      processed = processed.filter((tx) => {
-        const t = tx.parsedDate;
-        if (t > now) return false;
-        if (dateFilter === '7days') {
-          const diff = (startOfToday - t) / 86400000;
-          return diff <= 7;
-        }
-        if (dateFilter === '30days') {
-          const diff = (startOfToday - t) / 86400000;
-          return diff <= 30;
-        }
-        if (dateFilter === 'thisMonth') {
-          return t.getMonth() === now.getMonth() && t.getFullYear() === now.getFullYear();
-        }
-        return true;
-      });
-    }
-    return processed;
-  }, [allParsed, categoryFilter, dateFilter]);
+    if (categoryFilter === 'all') return periodTransactions;
+    return periodTransactions.filter(
+      (tx) => canonicalCategoryName(tx.category).toLowerCase() === categoryFilter.toLowerCase()
+    );
+  }, [periodTransactions, categoryFilter]);
 
   // 3. Metrics
   //    Unfiltered metrics drive the hero + income + expense cards.
@@ -1255,7 +1255,7 @@ export default function Dashboard() {
   // 15. Pie data (top 5 categories + 'Other' for the selected period, ensuring 100% mathematical integrity)
   const pieData = useMemo(() => {
     const catMap = new Map();
-    for (const t of parsedTransactions) {
+    for (const t of periodTransactions) {
       const type = String(t?.type || '').trim().toLowerCase();
       if (type !== 'expense') continue;
       const amt = Math.abs(Number(t?.displayAmount ?? t?.amount) || 0);
@@ -1277,7 +1277,7 @@ export default function Dashboard() {
       top5.push({ name: 'Other', value: Number(remainder.toFixed(2)) });
     }
     return top5;
-  }, [parsedTransactions]);
+  }, [periodTransactions]);
 
   const pieTotal = useMemo(
     () => Number(pieData.reduce((sum, entry) => sum + entry.value, 0).toFixed(2)),

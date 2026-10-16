@@ -1197,6 +1197,9 @@ router.post('/', async (req, res) => {
       validation.currency || selectedAccount?.currency || owner?.currency
     );
 
+    const generatedTxNumber = validation.transaction_number ||
+      `CW-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
     // ── Persist the transaction ──
     const transaction = await Transaction.create({
       user_id: req.userId,
@@ -1209,7 +1212,7 @@ router.post('/', async (req, res) => {
       merchant: validation.merchant,
       tags: validation.tags,
       payment_method: validation.payment_method,
-      transaction_number: validation.transaction_number,
+      transaction_number: generatedTxNumber,
       account_id: validation.account_id || null,
       is_recurring: validation.is_recurring,
       recurrence_interval: validation.recurrence_interval,

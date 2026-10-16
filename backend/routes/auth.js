@@ -145,20 +145,29 @@ const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 // ── Shape every auth response uses ──
 // Including `household_id`, `theme`, and `balance` lets the frontend
 // hydrate state immediately without waiting for extra profile queries.
-const toSafeUser = (user) => ({
-  id: user._id,
-  username: user.username,
-  last_name: user.last_name || '',
-  profession: user.profession || 'Trader',
-  email: user.email,
-  profile_avatar: user.profile_avatar || '😊',
-  profile_color: user.profile_color || '#0ea5e9',
-  currency: user.currency || 'INR',
-  household_id: user.household_id || user._id,
-  balance: typeof user.balance === 'number' ? user.balance : 0,
-  theme: user.theme || 'light',
-  monthly_goal: typeof user.monthly_goal === 'number' ? user.monthly_goal : 0,
-});
+const toSafeUser = (user) => {
+  const idStr = user?._id ? (user._id.toHexString ? user._id.toHexString() : String(user._id)) : '';
+  const householdStr = user?.household_id
+    ? (user.household_id.toHexString ? user.household_id.toHexString() : String(user.household_id))
+    : idStr;
+
+  return {
+    id: idStr,
+    _id: idStr,
+    username: user.username,
+    name: user.username,
+    last_name: user.last_name || '',
+    profession: user.profession || 'Trader',
+    email: user.email,
+    profile_avatar: user.profile_avatar || '😊',
+    profile_color: user.profile_color || '#0ea5e9',
+    currency: user.currency || 'INR',
+    household_id: householdStr,
+    balance: typeof user.balance === 'number' ? user.balance : 0,
+    theme: user.theme || 'light',
+    monthly_goal: typeof user.monthly_goal === 'number' ? user.monthly_goal : 0,
+  };
+};
 
 // ── Sign a JWT and persist a Session record ──
 // `user.session_version || 0` guards against legacy users whose
@@ -282,7 +291,7 @@ router.post(
   registerLimiter,
   [
     body('username').notEmpty().trim().isLength({ min: 2, max: 80 }),
-    body('email').isEmail().normalizeEmail(),
+    body('email').isEmail().normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }),
     passwordPolicy('password'),
   ],
   async (req, res) => {
@@ -391,13 +400,21 @@ router.post(
 /* —————————————————————————————————————
  * POST /login
  * Authenticate credentials and issue a session token.
+ * Supports email or username identification.
  * ————————————————————————————————————— */
 router.post(
   '/login',
   loginLimiter,
   [
-    body('email').isEmail().normalizeEmail(),
-    body('password').isString().notEmpty(),
+    body('email')
+      .optional()
+      .custom((val, { req }) => {
+        if (!val && !req.body.username) {
+          throw new Error('Enter your email or username.');
+        }
+        return true;
+      }),
+    body('password').isString().notEmpty().withMessage('Enter your password.'),
   ],
   async (req, res) => {
     // ── Validate input ──
@@ -406,7 +423,12 @@ router.post(
       return res.status(400).json({ error: 'Enter a valid email and password.' });
     }
 
-    const email = normalizeEmail(req.body.email);
+    const rawIdentifier = String(req.body.email || req.body.username || '').trim();
+    if (!rawIdentifier) {
+      return res.status(400).json({ error: 'Enter a valid email and password.' });
+    }
+
+    const email = rawIdentifier.toLowerCase();
     const password = req.body.password;
 
     // ── Collect request metadata ──
@@ -416,10 +438,18 @@ router.post(
     const { device_type, browser, os } = LoginLog.parseUserAgent(ua);
 
     try {
+      const escapeRegExp = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       // ── Load the user (password field is select: false by default) ──
-      const user = await User.findOne({ email }).select('+password');
+      const user = await User.findOne({
+        $or: [
+          { email },
+          { username: new RegExp(`^${escapeRegExp(rawIdentifier)}$`, 'i') },
+        ],
+      }).select('+password');
 
-      // ── Handle unknown email ──
+      const loginEmail = user?.email || email;
+
+      // ── Handle unknown account ──
       if (!user) {
         LoginLog.create({
           email,
@@ -447,7 +477,7 @@ router.post(
           const minutesLeft = Math.ceil((user.locked_until - new Date()) / 60000);
           LoginLog.create({
             user_id: user._id,
-            email,
+            email: loginEmail,
             status: 'failed',
             reason: 'account_locked',
             ip: ipAddr,
@@ -492,7 +522,7 @@ router.post(
 
         LoginLog.create({
           user_id: user._id,
-          email,
+          email: loginEmail,
           status: 'failed',
           reason: 'invalid_password',
           ip: ipAddr,
@@ -530,7 +560,7 @@ router.post(
       // ── Write audit log (non-blocking) ──
       LoginLog.create({
         user_id: user._id,
-        email,
+        email: loginEmail,
         status: 'success',
         reason: 'login',
         ip: ipAddr,

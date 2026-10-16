@@ -79,21 +79,12 @@ calculationSchema.index({ user_id: 1, created_at: -1 });
 calculationSchema.index({ user_id: 1, client_id: 1 }, { unique: true });
 
 /* —————————————————————————————————————
- * Serialization
+ * Standardize & Export
  * ————————————————————————————————————— */
 
-// ── Convert _id → id and remove internal fields for API responses ──
-calculationSchema.methods.toJSON = function() {
-  const value = this.toObject();
-  value.id = value._id;
-  delete value._id;
-  delete value.__v;
-  return value;
-};
-
-/* —————————————————————————————————————
- * Export
- * ————————————————————————————————————— */
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(calculationSchema);
 
 // ── Register and export the model ──
 module.exports = mongoose.model('Calculation', calculationSchema);

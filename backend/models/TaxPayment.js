@@ -88,6 +88,10 @@ const taxPaymentSchema = new mongoose.Schema({
 
 taxPaymentSchema.index({ user_id: 1, payment_date: -1 });
 
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(taxPaymentSchema);
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

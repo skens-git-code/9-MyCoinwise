@@ -295,6 +295,10 @@ budgetSchema.virtual('progress_percentage').get(function () {
   return Number(((this.total_spent || 0) / totalAvailable * 100).toFixed(1));
 });
 
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(budgetSchema);
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

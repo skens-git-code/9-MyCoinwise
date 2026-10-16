@@ -91,6 +91,10 @@ const sessionSchema = new mongoose.Schema({
 // ── Fast lookup of a user's active sessions, newest activity first ──
 sessionSchema.index({ user_id: 1, is_active: 1, last_active: -1 });
 
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(sessionSchema);
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

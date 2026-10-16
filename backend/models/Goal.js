@@ -537,6 +537,10 @@ goalSchema.statics.getDashboardStats = async function(userId) {
   };
 };
 
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(goalSchema);
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

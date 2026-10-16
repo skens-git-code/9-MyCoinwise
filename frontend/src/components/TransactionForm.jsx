@@ -461,8 +461,10 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
           merchant: merchant.trim(),
           tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
           payment_method: paymentMethod,
-          transaction_number: transactionNumber.trim(),
+          transaction_number: transactionNumber.trim() ||
+            (initialData?.transaction_number || `CW-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`),
           account_id: accountId || null,
+          created_at: initialData?.created_at || new Date().toISOString(),
           currency:
             accounts.find((account) => String(account.id || account._id) === String(accountId))?.currency ||
             currency ||

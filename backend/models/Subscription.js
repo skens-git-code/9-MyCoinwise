@@ -196,6 +196,10 @@ subscriptionSchema.virtual('days_until_billing').get(function() {
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 });
 
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(subscriptionSchema);
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

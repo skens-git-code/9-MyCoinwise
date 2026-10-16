@@ -99,6 +99,10 @@ const taxDocumentSchema = new mongoose.Schema({
 
 taxDocumentSchema.index({ user_id: 1, created_at: -1 });
 
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(taxDocumentSchema);
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

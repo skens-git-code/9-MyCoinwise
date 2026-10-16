@@ -41,8 +41,8 @@ const connectToMongo = async ({ retries = 4 } = {}) => {
       await mongoose.connect(mongoUri, {
         serverSelectionTimeoutMS: 8000,
         heartbeatFrequencyMS: 10000,
-        maxPoolSize: 10,
-        minPoolSize: 1,
+        maxPoolSize: 50,
+        minPoolSize: 5,
         retryWrites: true,
         w: 'majority',
       });

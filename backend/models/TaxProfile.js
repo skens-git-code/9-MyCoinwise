@@ -237,6 +237,10 @@ taxProfileSchema.virtual('id').get(function id() {
   return this._id.toHexString();
 });
 
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(taxProfileSchema);
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

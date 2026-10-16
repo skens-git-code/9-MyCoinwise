@@ -61,6 +61,19 @@ const transactionIntegrityKey = (transaction) => {
   // ── Use the recurrence instance key when present ──
   if (transaction?.recurrence_instance_key) return `recurrence:${transaction.recurrence_instance_key}`;
 
+  // ── Explicit transaction number (cheque, receipt number, or reference) ──
+  if (transaction?.transaction_number) {
+    return `txnum:${normalizeText(transaction.transaction_number)}`;
+  }
+
+  // ── Persistent database creation timestamp / ID ──
+  if (transaction?.created_at) {
+    const createdTime = new Date(transaction.created_at).getTime();
+    if (!Number.isNaN(createdTime) && createdTime > 0) {
+      return `created:${transaction._id || transaction.id || ''}:${createdTime}`;
+    }
+  }
+
   // ── Fall back to a composite manual key ──
   return [
     'manual',
@@ -84,11 +97,13 @@ const transactionIntegrityKey = (transaction) => {
  *     (the default). A row with a missing/invalid date is NOT treated as
  *     future (see `isFutureTransaction`), so an unprojected `date` can never
  *     silently empty a balance.
- *   - Duplicates are detected via `transactionIntegrityKey`; the
- *     first occurrence in iteration order wins.
+ *   - Duplicates are detected via identical database IDs and `transactionIntegrityKey`;
+ *     the first occurrence in iteration order wins.
  * ————————————————————————————————————— */
 const dedupeTransactions = (transactions = [], { excludeFuture = true } = {}) => {
-  const seen = new Set();
+  const seenKeys = new Set();
+  const seenIds = new Set();
+
   return transactions.filter((transaction) => {
     // ── Skip missing or soft-deleted rows ──
     if (!transaction || transaction.is_deleted === true) return false;
@@ -96,10 +111,18 @@ const dedupeTransactions = (transactions = [], { excludeFuture = true } = {}) =>
     // ── Skip future-dated rows when requested ──
     if (excludeFuture && isFutureTransaction(transaction.date)) return false;
 
+    // ── Skip duplicates by identical database ID if present ──
+    const id = transaction._id || transaction.id;
+    if (id) {
+      const idStr = String(id);
+      if (seenIds.has(idStr)) return false;
+      seenIds.add(idStr);
+    }
+
     // ── Skip duplicates by integrity key ──
     const key = transactionIntegrityKey(transaction);
-    if (seen.has(key)) return false;
-    seen.add(key);
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
     return true;
   });
 };
