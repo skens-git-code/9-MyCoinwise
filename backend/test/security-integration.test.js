@@ -624,6 +624,67 @@ async function main() {
       const res = await h.get(`/api/export/${victim.id}?format=csv`, { token: attacker.token });
       assert.strictEqual(res.status, 403, `expected 403 forbidden for foreign export, got ${res.status}`);
     });
+
+    // ── Database Wipe & Reset Integrity ───────
+    await test('Account Reset: POST /api/users/:id/reset completely wipes user and old credentials cannot log in', async () => {
+      const user = await h.createUser({ password: 'ResetMePassword123!' });
+
+      // Verify the user can log in before reset
+      const preLogin = await h.post('/api/auth/login', { email: user.email, password: 'ResetMePassword123!' });
+      assert.strictEqual(preLogin.status, 200, 'must be able to log in before reset');
+
+      // Execute account reset
+      const resetRes = await h.post(`/api/users/${user.id}/reset`, {}, { token: user.token });
+      assert.strictEqual(resetRes.status, 200, `expected 200 for reset, got ${resetRes.status}: ${resetRes.raw}`);
+      assert.strictEqual(resetRes.body.success, true);
+
+      // Verify that old session token is rejected
+      const profileCheck = await h.get('/api/users/me', { token: user.token });
+      assert.strictEqual(profileCheck.status, 401, 'old token must be rejected after reset');
+
+      // Verify that old credentials cannot log in
+      const postLogin = await h.post('/api/auth/login', { email: user.email, password: 'ResetMePassword123!' });
+      assert.strictEqual(postLogin.status, 401, 'old credentials must be rejected with 401');
+
+      // Direct database assertions: user and sessions are purged
+      const dbUser = await h.User.findById(user.id);
+      assert.strictEqual(dbUser, null, 'User document must be completely removed from database');
+      const dbSessions = await h.Session.find({ user_id: user.id });
+      assert.strictEqual(dbSessions.length, 0, 'All active sessions must be deleted from database');
+    });
+
+    // ── Create Profile & Instant Auth Flow ───────
+    await test('Create Profile: POST /api/users returns session token, user, seeds account, and authenticates', async () => {
+      const parent = await h.createUser();
+      const uniqueSuffix = crypto.randomBytes(4).toString('hex');
+      const createRes = await h.post('/api/users', {
+        username: `child_${uniqueSuffix}`,
+        name: 'Child Profile',
+        email: `child_${uniqueSuffix}@harness.test`,
+        password: 'ChildSecurePass123!',
+        currency: 'EUR',
+        role: 'Designer',
+      }, { token: parent.token });
+
+      assert.strictEqual(createRes.status, 201, `expected 201, got ${createRes.status}: ${createRes.raw}`);
+      assert.ok(createRes.body.token, 'must return a signed JWT session token');
+      assert.ok(createRes.body.user, 'must return the created user object');
+      assert.strictEqual(createRes.body.user.role, 'Designer');
+      assert.strictEqual(createRes.body.user.currency, 'EUR');
+
+      // The new profile token must authenticate immediately without a password prompt
+      const childToken = createRes.body.token;
+      const profileRes = await h.get('/api/users/me', { token: childToken });
+      assert.strictEqual(profileRes.status, 200, 'new token must immediately authenticate');
+      assert.strictEqual(profileRes.body._id, String(createRes.body.user.id));
+
+      // Verify primary account was automatically seeded
+      const Account = require('../models/Account');
+      const accounts = await Account.find({ user_id: createRes.body.user.id });
+      assert.strictEqual(accounts.length, 1, 'Profile must have 1 seeded account');
+      assert.strictEqual(accounts[0].is_active, true, 'Seeded account must be active');
+      assert.strictEqual(accounts[0].type, 'wallet', 'Seeded account must be a wallet');
+    });
   } finally {
     await harness.stop();
   }

@@ -45,9 +45,15 @@ export default function TaxProfileForm({ user, initial = null, onSubmit, onCance
     } catch { return defaultTaxProfile(user); }
   });
 
-  // ── Persist the draft on every change (create mode only) ──
+  // ── Debounced draft persist (create mode only) to eliminate typing latency ──
   useEffect(() => {
-    if (!initial) localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+    if (initial) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+      } catch { /* storage full / restricted */ }
+    }, 250);
+    return () => clearTimeout(timer);
   }, [form, initial]);
 
   // ── Merge a single field change into state ──

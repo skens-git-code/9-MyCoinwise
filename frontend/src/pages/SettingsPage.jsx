@@ -28,9 +28,9 @@ import React, {
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
-  Save, User, Users, Target, Moon, Sun, Download, CheckCircle,
+  Save, User, Users, UserPlus, Target, Moon, Sun, Download, CheckCircle,
   Palette, Database, Plus, Settings, ShieldAlert, Globe, Bell, Bell as BellIcon, Zap, Smartphone,
-  FileText, Trash2, Loader, Key, Shield, Eye, Mail,
+  FileText, Trash2, Loader, Key, Shield, Eye, Mail, Check,
   Lock, LogOut, RefreshCw, AlertTriangle, EyeOff, Search,
   Monitor, Calendar, Activity, Upload, Clock, Cookie, FileCheck, ArrowRight,
 } from 'lucide-react';
@@ -2041,14 +2041,15 @@ const UsersTab = React.memo(({ sortedUsers, USER_ID, setModals, switchingUserId,
           </div>
         )}
 
-        {/* ── Add new user ── */}
+        {/* ── Create Profile button ── */}
         <motion.button
           type="button"
-          className="btn-secondary manage-users-add"
-          onClick={() => setModals((prev) => ({ ...prev, addUser: { name: '', email: '' } }))}
+          className="btn-primary manage-users-add"
+          onClick={() => setModals((prev) => ({ ...prev, addUser: true }))}
           whileHover={addHover}
+          style={{ width: 'max-content', display: 'inline-flex', alignItems: 'center', gap: 8 }}
         >
-          <Plus size={18} aria-hidden /> {t?.('add_new_user') || 'Add New User'}
+          <UserPlus size={18} aria-hidden /> {t?.('create_profile') || 'Create Profile'}
         </motion.button>
       </div>
     </>
@@ -2350,6 +2351,267 @@ const FactoryResetModalInner = ({ onClose, onConfirm, isLoading }) => {
 const FactoryResetModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
   if (!isOpen) return null;
   return <FactoryResetModalInner onClose={onClose} onConfirm={onConfirm} isLoading={isLoading} />;
+};
+
+/* ============================================================
+ * Create Profile modal
+ * Ultra-fast, user-friendly profile creation with live validation,
+ * avatar & color presets, password option, and zero-delay switching.
+ * ============================================================ */
+const PROFILE_AVATAR_PRESETS = ['👤', '💼', '🚀', '📈', '💎', '🎓', '👑', '🎯', '😊', '🐱', '🔥', '✨'];
+const PROFILE_COLOR_PRESETS = ['#059669', '#0284c7', '#7c3aed', '#d97706', '#e11d48', '#4f46e5'];
+
+const CreateProfileModalInner = ({ onClose, onConfirm, isLoading, defaultCurrency = 'INR', t }) => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [profession, setProfession] = useState('Family Member');
+  const [avatar, setAvatar] = useState('👤');
+  const [color, setColor] = useState('#059669');
+  const [currency, setCurrency] = useState(defaultCurrency);
+  const [autoSwitch, setAutoSwitch] = useState(true);
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e) => {
+    if (e) e.preventDefault();
+    const cleanName = name.trim();
+    const cleanEmail = email.trim();
+    if (!cleanName) {
+      setError('Profile name is required.');
+      return;
+    }
+    if (!cleanEmail || !validateEmail(cleanEmail)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    if (password && password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    setError('');
+    onConfirm({
+      name: cleanName,
+      email: cleanEmail,
+      password: password || undefined,
+      profession: profession.trim() || 'Family Member',
+      profile_avatar: avatar,
+      profile_color: color,
+      currency,
+      autoSwitch,
+    });
+  };
+
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={t?.('create_profile') || 'Create Profile'}
+      confirmText={autoSwitch ? 'Create & Switch Workspace' : (t?.('create_profile') || 'Create Profile')}
+      onConfirm={handleSubmit}
+      isLoading={isLoading}
+      confirmDisabled={!name.trim() || !email.trim()}
+    >
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', margin: 0, lineHeight: 1.5 }}>
+          Create an isolated financial workspace for yourself or a household member.
+        </p>
+
+        {error && (
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.12)',
+            color: 'var(--danger, #ef4444)',
+            padding: '8px 12px',
+            borderRadius: 8,
+            fontSize: '0.85rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}>
+            <AlertTriangle size={15} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="form-field">
+          <label htmlFor="cp_modal_name">Display / Profile Name *</label>
+          <input
+            id="cp_modal_name"
+            type="text"
+            value={name}
+            onChange={(e) => { setName(e.target.value); setError(''); }}
+            placeholder="e.g. Alex Morgan or Business Fund"
+            autoFocus
+            required
+          />
+        </div>
+
+        <div className="form-field">
+          <label htmlFor="cp_modal_email">Email Address *</label>
+          <input
+            id="cp_modal_email"
+            type="email"
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setError(''); }}
+            placeholder="alex@example.com"
+            required
+          />
+        </div>
+
+        <div className="form-field">
+          <label htmlFor="cp_modal_profession">Role / Profession</label>
+          <input
+            id="cp_modal_profession"
+            type="text"
+            value={profession}
+            onChange={(e) => setProfession(e.target.value)}
+            placeholder="e.g. Family Member, Trader, Student"
+          />
+        </div>
+
+        <div className="form-field">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <label htmlFor="cp_modal_password" style={{ margin: 0 }}>
+              Profile Password <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>(optional)</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--brand-primary, #059669)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: '0.78rem',
+                fontWeight: 600,
+              }}
+            >
+              {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          <input
+            id="cp_modal_password"
+            type={showPassword ? 'text' : 'password'}
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setError(''); }}
+            placeholder="Set a custom password or leave blank to auto-generate"
+            autoComplete="new-password"
+          />
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2, display: 'block' }}>
+            Leave blank to automatically generate a secure key.
+          </span>
+        </div>
+
+        {/* ── Avatar and color pickers ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label style={{ fontSize: '0.82rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+              Avatar Icon
+            </label>
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+              {PROFILE_AVATAR_PRESETS.slice(0, 8).map((av) => (
+                <button
+                  key={av}
+                  type="button"
+                  onClick={() => setAvatar(av)}
+                  style={{
+                    background: avatar === av ? 'rgba(5, 150, 105, 0.2)' : 'var(--surface-input, rgba(255,255,255,0.06))',
+                    border: avatar === av ? '2px solid var(--brand-primary, #059669)' : '1px solid transparent',
+                    borderRadius: 8,
+                    width: 32,
+                    height: 32,
+                    fontSize: '1rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {av}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label style={{ fontSize: '0.82rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+              Accent Color
+            </label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 3 }}>
+              {PROFILE_COLOR_PRESETS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  style={{
+                    background: c,
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    border: color === c ? '2px solid #fff' : '2px solid transparent',
+                    boxShadow: color === c ? `0 0 0 2px ${c}` : 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Currency and Auto-switch ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 2 }}>
+          <div className="form-field" style={{ margin: 0 }}>
+            <label htmlFor="cp_modal_currency">Currency</label>
+            <select
+              id="cp_modal_currency"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              style={{ width: '100%' }}
+            >
+              {Object.keys(CURRENCIES).map((code) => (
+                <option key={code} value={code}>
+                  {code} ({CURRENCIES[code]?.symbol || code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 20 }}>
+            <input
+              id="cp_modal_autoswitch"
+              type="checkbox"
+              checked={autoSwitch}
+              onChange={(e) => setAutoSwitch(e.target.checked)}
+              style={{ width: 16, height: 16, accentColor: 'var(--brand-primary, #059669)', cursor: 'pointer' }}
+            />
+            <label htmlFor="cp_modal_autoswitch" style={{ fontSize: '0.82rem', cursor: 'pointer', userSelect: 'none', margin: 0 }}>
+              Switch immediately
+            </label>
+          </div>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+// ── Wrapper: mounts only when open ──
+const CreateProfileModal = ({ isOpen, onClose, onConfirm, isLoading, defaultCurrency, t }) => {
+  if (!isOpen) return null;
+  return (
+    <CreateProfileModalInner
+      onClose={onClose}
+      onConfirm={onConfirm}
+      isLoading={isLoading}
+      defaultCurrency={defaultCurrency}
+      t={t}
+    />
+  );
 };
 
 /* ============================================================
@@ -2677,11 +2939,17 @@ function SettingsInner({ context }) {
    * Users
    * ============================================================ */
 
-  // ── Create a new household user and switch to it ──
-  const handleCreateUser = useCallback(async () => {
+  // ── Create a new household user profile and switch to it ──
+  const handleCreateUser = useCallback(async (formData) => {
     if (loadingStates.createUser) return;
-    const sanitizedName = sanitizeInput(modals.addUser?.name);
-    const sanitizedEmail = sanitizeInput(modals.addUser?.email);
+    const sanitizedName = sanitizeInput(formData?.name || formData?.username);
+    const sanitizedEmail = sanitizeInput(formData?.email);
+    const password = formData?.password ? String(formData.password).trim() : undefined;
+    const profile_avatar = formData?.profile_avatar || '😊';
+    const profile_color = formData?.profile_color || '#059669';
+    const currency = formData?.currency || user?.currency || 'INR';
+    const profession = formData?.profession || 'Family Member';
+    const autoSwitch = formData?.autoSwitch !== false;
 
     if (!sanitizedName || !sanitizedEmail) {
       showMessage('error', 'Please fill in both name and email.');
@@ -2694,12 +2962,24 @@ function SettingsInner({ context }) {
 
     setLoadingStates((prev) => ({ ...prev, createUser: true }));
     try {
-      const result = await createUser({ username: sanitizedName, email: sanitizedEmail });
-      const newId = result?.id || result?._id;
-      if (newId && switchUser) await switchUser(newId);
+      const payload = {
+        username: sanitizedName,
+        email: sanitizedEmail,
+        currency,
+        profile_avatar,
+        profile_color,
+        profession,
+      };
+      if (password) payload.password = password;
+
+      await createUser(payload, { autoSwitch });
       setModals((prev) => ({ ...prev, addUser: false }));
-      showMessage('success', 'New account created and switched!');
-      if (refetch) await refetch();
+      if (autoSwitch) {
+        showMessage('success', `Profile created! Switched to ${sanitizedName}.`);
+      } else {
+        showMessage('success', `Profile ${sanitizedName} created successfully.`);
+        if (refetch) await refetch();
+      }
     } catch (err) {
       const errorMsg = err?.response?.data?.error || err?.message;
       const displayMsg = errorMsg === 'Email already exists'
@@ -2709,7 +2989,7 @@ function SettingsInner({ context }) {
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, createUser: false }));
     }
-  }, [modals.addUser, createUser, switchUser, refetch, showMessage, loadingStates.createUser]);
+  }, [createUser, user?.currency, refetch, showMessage, loadingStates.createUser]);
 
   // ── Factory reset (gated by re-auth) ──
   const handleReset = useCallback(async () => {
@@ -2722,16 +3002,17 @@ function SettingsInner({ context }) {
     try {
       await resetAccount();
       setModals((prev) => ({ ...prev, resetConfirm: false }));
-      showMessage('success', 'Account completely reset.');
-      // Log out after a full reset — the token is no longer valid.
-      setTimeout(() => logout?.(), 800);
+      showMessage('success', 'Account completely reset. All records deleted.');
+      // Immediate clean logout — old credentials can never log in again
+      logout?.();
+      navigate('/login', { replace: true });
     } catch (error) {
       console.error('Reset error:', error);
       showMessage('error', 'Error resetting account.');
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, reset: false }));
     }
-  }, [resetAccount, showMessage, requestReAuth, loadingStates.reset, logout]);
+  }, [resetAccount, showMessage, requestReAuth, loadingStates.reset, logout, navigate]);
 
   // ── Delete a user (self-delete logs out; other-delete refreshes) ──
   const handleDeleteUser = useCallback(async () => {
@@ -3195,47 +3476,15 @@ function SettingsInner({ context }) {
         actionLabel={reAuthState.actionLabel}
       />
 
-      {/* ── Add user modal ── */}
-      <Modal
+      {/* ── Create profile modal ── */}
+      <CreateProfileModal
         isOpen={!!modals.addUser}
         onClose={() => setModals((prev) => ({ ...prev, addUser: false }))}
-        title="Add Family Member"
-        confirmText="Create Account"
         onConfirm={handleCreateUser}
         isLoading={loadingStates.createUser}
-      >
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 16 }}>
-          Create a completely separate account workspace.
-        </p>
-        <div className="form-field">
-          <label htmlFor="new_user_name">Display Name *</label>
-          <input
-            id="new_user_name"
-            value={modals.addUser?.name || ''}
-            onChange={(e) => setModals((prev) => ({
-              ...prev,
-              addUser: { ...prev.addUser, name: e.target.value },
-            }))}
-            placeholder="e.g. Alex"
-            aria-required="true"
-            autoFocus
-          />
-        </div>
-        <div className="form-field">
-          <label htmlFor="new_user_email">Email Address *</label>
-          <input
-            id="new_user_email"
-            type="email"
-            value={modals.addUser?.email || ''}
-            onChange={(e) => setModals((prev) => ({
-              ...prev,
-              addUser: { ...prev.addUser, email: e.target.value },
-            }))}
-            placeholder="alex@example.com"
-            aria-required="true"
-          />
-        </div>
-      </Modal>
+        defaultCurrency={user?.currency || 'INR'}
+        t={t}
+      />
 
       {/* ── Factory reset modal ── */}
       <FactoryResetModal

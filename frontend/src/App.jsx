@@ -510,10 +510,10 @@ export default function App() {
 
         if (meRes.status === 'fulfilled' && (meRes.value?._id || meRes.value?.id)) {
           me = meRes.value;
-        } else if (meRes.status === 'rejected' && meRes.reason?.response?.status === 401) {
+        } else if (meRes.status === 'rejected' && (meRes.reason?.response?.status === 401 || meRes.reason?.response?.status === 404)) {
           throw meRes.reason;
         } else {
-          // If profile check had a non-401 blip (cold start/timeout), gracefully fallback to active cached user
+          // If profile check had a non-auth blip (cold start/timeout), gracefully fallback to active cached user
           me = activeUser;
         }
 
@@ -602,7 +602,7 @@ export default function App() {
       localStorage.setItem('mcw-theme', resolvedTheme);
     } catch (err) {
       console.error('Error loading data:', err);
-      if (err.response?.status === 401) {
+      if (err.response?.status === 401 || err.response?.status === 404) {
         logout();
       } else {
         // If we have a cached user, avoid popping up a blocking error on cold-start
@@ -682,12 +682,35 @@ export default function App() {
 
   const resetAccount = useCallback(async () => {
     await api.resetAccount(userRef.current?.id || userRef.current?._id);
-    await fetchData();
-  }, [fetchData]);
+  }, []);
 
-  const createUser = useCallback(async (data) => {
+  const createUser = useCallback(async (data, { autoSwitch = true } = {}) => {
     const result = await api.createUser(data);
-    await fetchData();
+    if (autoSwitch && result?.token && result?.user) {
+      const curUser = userRef.current;
+      if (curUser) {
+        const prevSessionData = {
+          id: curUser.id || curUser._id,
+          username: curUser.username,
+          last_name: curUser.last_name || '',
+          profile_avatar: curUser.profile_avatar,
+          profile_color: curUser.profile_color,
+          email: curUser.email,
+          switchedAt: Date.now(),
+        };
+        sessionStorage.setItem('mcw-previous-session', JSON.stringify(prevSessionData));
+        setPreviousSession(prevSessionData);
+      }
+
+      const usedSessionStorage = !!sessionStorage.getItem('mcw-token');
+      localStorage.removeItem('mcw-token');
+      sessionStorage.removeItem('mcw-token');
+      (usedSessionStorage ? sessionStorage : localStorage).setItem('mcw-token', result.token);
+      setToken(result.token);
+      await fetchData(result.token, result.user);
+    } else {
+      await fetchData();
+    }
     return result;
   }, [fetchData]);
 

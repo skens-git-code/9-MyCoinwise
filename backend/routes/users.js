@@ -374,6 +374,7 @@ const USER_DATA_MODELS = [
 // ── Delete a user and all of their data ──
 // Uses a transaction when the deployment supports it; otherwise falls
 // back to sequential deletes (see the fallback note).
+// Cascades to linked household profiles when deleting a household root account.
 const deleteUserAndData = async (userId) => {
   let userObjectId;
   try {
@@ -382,8 +383,30 @@ const deleteUserAndData = async (userId) => {
     userObjectId = userId;
   }
 
+  const user = await User.findById(userObjectId);
+  if (!user) {
+    throw Object.assign(new Error('User not found.'), { status: 404 });
+  }
+
+  // Determine target user IDs: if this is a household root user,
+  // also clean up any linked profiles created in that household.
+  const isHouseholdRoot = !user.household_id || String(user.household_id) === String(user._id);
+
+  let targetUserIds = [user._id];
+  if (isHouseholdRoot) {
+    const memberUsers = await User.find({ household_id: user._id }).select('_id');
+    const memberIds = memberUsers.map((m) => m._id);
+    targetUserIds = Array.from(new Set([...targetUserIds.map(String), ...memberIds.map(String)])).map(
+      (id) => new mongoose.Types.ObjectId(id)
+    );
+  }
+
+  const allTargetIdStrings = targetUserIds.map(String);
   const userQuery = {
-    $or: [{ user_id: userObjectId }, { user_id: String(userId) }],
+    $or: [
+      { user_id: { $in: targetUserIds } },
+      { user_id: { $in: allTargetIdStrings } },
+    ],
   };
 
   try {
@@ -393,10 +416,7 @@ const deleteUserAndData = async (userId) => {
       for (const Model of USER_DATA_MODELS) {
         await Model.deleteMany(userQuery, { session });
       }
-      const deleted = await User.findByIdAndDelete(userId, { session });
-      if (!deleted) {
-        throw Object.assign(new Error('User not found.'), { status: 404 });
-      }
+      await User.deleteMany({ _id: { $in: targetUserIds } }, { session });
       await session.commitTransaction();
     } catch (error) {
       await session.abortTransaction().catch(() => {});
@@ -408,14 +428,11 @@ const deleteUserAndData = async (userId) => {
     if (sessionErr.status === 404) throw sessionErr;
 
     // Fallback: no transactions available (standalone Mongo). Run the
-    // deletes sequentially. If a mid-run failure occurs, the collection
-    // will be inconsistent — but this path only runs when a replica set
-    // is not configured.
+    // deletes sequentially.
     for (const Model of USER_DATA_MODELS) {
       await Model.deleteMany(userQuery);
     }
-    const deleted = await User.findByIdAndDelete(userId);
-    if (!deleted) throw Object.assign(new Error('User not found.'), { status: 404 });
+    await User.deleteMany({ _id: { $in: targetUserIds } });
   }
 };
 
@@ -499,12 +516,15 @@ router.post(
   '/',
   createUserLimiter,
   [
-    body('username').notEmpty().trim().isLength({ min: 2, max: 80 }),
+    body('username').notEmpty().trim().isLength({ min: 2, max: 80 }).withMessage('Name must be 2–80 characters.'),
     body('last_name').optional().isString().trim().isLength({ max: 80 }),
     body('profession').optional().isString().trim().isLength({ max: 80 }),
-    body('email').isEmail().normalizeEmail(),
+    body('role').optional().isString().trim().isLength({ max: 80 }),
+    body('email').isEmail().normalizeEmail().withMessage('Valid email required.'),
     body('currency').optional().isString(),
-    body('password').optional().isString().isLength({ min: 8 }),
+    body('password').optional().isString().isLength({ min: 6, max: 128 }).withMessage('Password must be at least 6 characters.'),
+    body('profile_avatar').optional().isString(),
+    body('profile_color').optional().isString(),
   ],
   async (req, res) => {
     // ── Reject validation errors ──
@@ -514,13 +534,16 @@ router.post(
     const {
       username,
       last_name = '',
-      profession = 'Trader',
+      profession,
+      role,
       email,
       password,
       currency = 'INR', // Consistent with the rest of the app.
       profile_avatar = '😊',
       profile_color = '#059669',
     } = req.body;
+
+    const assignedProfession = String(profession || role || 'Family Member').trim();
 
     try {
       // ── Validate currency ──
@@ -536,27 +559,71 @@ router.post(
       // ── Create the user ──
       const user = await User.create({
         username: String(username).trim(),
-        last_name,
-        profession: profession || 'Trader',
+        last_name: String(last_name || '').trim(),
+        profession: assignedProfession,
         email: String(email).trim().toLowerCase(),
         password: userPassword,
         balance: 0,
         currency: normalizedCurrency,
-        profile_avatar,
-        profile_color,
+        profile_avatar: String(profile_avatar || '😊').trim(),
+        profile_color: String(profile_color || '#059669').trim(),
         household_id: req.user.household_id || req.userId,
       });
 
-      // Log the auto-generated password server-side. The response still
-      // contains it, but if the client loses it, ops has a recovery path.
+      // ── Seed a primary account for the new profile so it is immediately functional ──
+      await Account.create({
+        user_id: user._id,
+        name: `${user.username}'s Wallet`,
+        type: 'wallet',
+        currency: normalizedCurrency,
+        initial_balance: 0,
+        current_balance: 0,
+        color: user.profile_color,
+        icon: 'Wallet',
+      }).catch((accErr) => {
+        logger.warn('[Users] Failed to seed default account for new profile:', accErr.message);
+      });
+
+      // ── Issue an active session token for smooth zero-friction profile switching ──
+      const tokenId = crypto.randomUUID();
+      const jwtSecret = (() => {
+        try {
+          return require('../config/env').config.JWT_SECRET || process.env.JWT_SECRET;
+        } catch {
+          return process.env.JWT_SECRET;
+        }
+      })();
+
+      const token = jwt.sign(
+        {
+          id: user._id,
+          session_version: user.session_version || 0,
+          jti: tokenId,
+          household_id: user.household_id,
+        },
+        jwtSecret,
+        { expiresIn: '7d' }
+      );
+
+      await Session.create({
+        user_id: user._id,
+        token_id: tokenId,
+        device: 'Web Client · Household Profile',
+        ip: String(req.ip || '').slice(0, 100),
+        user_agent: String(req.headers['user-agent'] || '').slice(0, 1000),
+        last_active: new Date(),
+        is_active: true,
+      });
+
+      // Log auto-generated credentials server-side if generated
       if (autoGenerated) {
-        logger.warn('[Users] Temporary password generated for new user', {
+        logger.warn('[Users] Temporary password generated for new profile', {
           newUserId: String(user._id),
           createdBy: String(req.userId),
         });
       }
 
-      auditLogger.info('Household user created', {
+      auditLogger.info('Household user profile created', {
         userId: String(req.userId),
         newUserId: String(user._id),
         ip: req.ip,
@@ -564,12 +631,29 @@ router.post(
 
       return res.status(201).json({
         id: user._id,
+        _id: user._id,
         username: user.username,
         last_name: user.last_name,
         profession: user.profession,
+        role: user.profession,
         email: user.email,
         temporaryPassword: autoGenerated ? userPassword : undefined,
-        message: 'User created successfully',
+        token,
+        user: {
+          id: user._id,
+          _id: user._id,
+          username: user.username,
+          last_name: user.last_name,
+          profession: user.profession,
+          role: user.profession,
+          email: user.email,
+          currency: user.currency,
+          profile_avatar: user.profile_avatar,
+          profile_color: user.profile_color,
+          balance: 0,
+          household_id: user.household_id,
+        },
+        message: 'Profile created successfully',
       });
     } catch (error) {
       // ── Map duplicate-key errors to a friendly message ──
@@ -817,7 +901,8 @@ router.put(
 
 /* —————————————————————————————————————
  * POST /:id/reset
- * Reset the user's financial data (keeps the account itself).
+ * Factory reset: permanently delete the account and all associated records.
+ * Ensures old users cannot log in with their previous credentials after a reset.
  * ————————————————————————————————————— */
 router.post(
   '/:id/reset',
@@ -830,34 +915,20 @@ router.post(
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
-      const userId = new mongoose.Types.ObjectId(req.params.id);
+      await deleteUserAndData(req.params.id);
 
-      // ── Wipe all financial data for the user ──
-      await Promise.all([
-        Transaction.deleteMany({ user_id: userId }),
-        Goal.deleteMany({ user_id: userId }),
-        Subscription.deleteMany({ user_id: userId }),
-        Event.deleteMany({ user_id: userId }),
-        WealthItem.deleteMany({ user_id: userId }),
-        NetWorthHistory.deleteMany({ user_id: userId }),
-        Budget.deleteMany({ user_id: userId }),
-        Account.deleteMany({ user_id: userId }),
-        Calculation.deleteMany({ user_id: userId }),
-      ]);
-
-      // ── Reset the cached balance ──
-      await User.findByIdAndUpdate(userId, { $set: { balance: 0 } });
-
-      auditLogger.info('User financial data reset', {
+      auditLogger.info('User account factory reset', {
         userId: String(req.userId),
-        targetId: req.params.id,
+        targetId: String(req.params.id),
         ip: req.ip,
       });
 
-      return res.json({ message: 'All financial data has been reset.' });
+      return res.json({ success: true, message: 'Account and all associated records have been permanently reset.' });
     } catch (error) {
       logger.error('[Users] reset account error:', error);
-      return res.status(500).json({ error: 'Unable to reset account data.' });
+      return res
+        .status(error.status || 500)
+        .json({ error: error.status ? error.message : 'Unable to reset account data.' });
     }
   }
 );

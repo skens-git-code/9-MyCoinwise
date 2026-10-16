@@ -424,6 +424,12 @@ userSchema.virtual('id').get(function() {
 });
 
 /* —————————————————————————————————————
+ * Indexes
+ * ————————————————————————————————————— */
+userSchema.index({ username: 1 });
+userSchema.index({ email_verify_token: 1 }, { sparse: true });
+
+/* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */
 
