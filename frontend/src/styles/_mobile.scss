@@ -90,7 +90,7 @@
     flex-wrap: wrap !important;
     position: relative !important;
     top: auto !important;
-    z-index: 5 !important;
+    z-index: 50 !important;
     background: color-mix(in srgb, var(--ambient-base) 88%, transparent) !important;
     backdrop-filter: blur(18px) !important;
     -webkit-backdrop-filter: blur(18px) !important;
@@ -728,6 +728,21 @@
       height: 6px !important;
       border-radius: 50% !important;
     }
+  }
+
+  /* ─── MOBILE ALERTS & PROFILE DROPDOWNS ─── */
+  .header-alerts-dropdown,
+  .header-profile-dropdown,
+  .header-stats-dropdown {
+    position: fixed !important;
+    top: calc(env(safe-area-inset-top, 0px) + 64px) !important;
+    left: auto !important;
+    right: 12px !important;
+    width: calc(100vw - 24px) !important;
+    max-width: 340px !important;
+    z-index: 999999 !important;
+    border-radius: 18px !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--glass-border) !important;
   }
 
   /* ─── REDUNDANT / REMOVED HEADER ACTIONS — HIDE ON MOBILE ─── */

@@ -585,7 +585,11 @@ export default function App() {
       if (eventsData !== null) setEvents(eventsData);
 
       if (failedResources.length > 0) {
-        setGlobalError(`Some live data could not be refreshed (${failedResources.join(', ')}). Existing data was kept. Retrying in the background...`);
+        if (failedResources.length >= 5) {
+          setGlobalError("Offline or syncing with server. Displaying cached data. Retrying in background...");
+        } else {
+          setGlobalError(`Some live data could not be refreshed (${failedResources.join(', ')}). Existing data was kept.`);
+        }
       } else {
         setGlobalError(null);
       }

@@ -372,12 +372,14 @@ const useClickOutside = (activeDropdown, onClose) => {
 
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside, { passive: true });
       document.addEventListener('keydown', handleEscapeKey);
     }, 0);
 
     return () => {
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
       document.removeEventListener('keydown', handleEscapeKey);
     };
   }, [activeDropdown, onClose]);
@@ -882,12 +884,12 @@ export default function AppLayout({ children }) {
           {globalError && (
             <div className="sync-error-banner" role="alert">
               <div className="sync-error-copy">
-                <AlertCircle size={16} aria-hidden="true" />
+                <AlertCircle size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
                 <span>{globalError}</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                 <button type="button" className="sync-error-retry" onClick={() => refetch?.()} disabled={isBackgroundSyncing}>
-                  <RefreshCw size={14} aria-hidden="true" />
+                  <RefreshCw size={14} aria-hidden="true" className={isBackgroundSyncing ? 'spin' : ''} />
                   {isBackgroundSyncing ? (t?.('loading') || 'Retrying…') : (t?.('retry') || 'Retry')}
                 </button>
                 {clearGlobalError && (
@@ -895,17 +897,9 @@ export default function AppLayout({ children }) {
                     type="button"
                     onClick={clearGlobalError}
                     aria-label="Dismiss alert"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--text-muted)',
-                      cursor: 'pointer',
-                      padding: '4px',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                    }}
+                    className="sync-error-dismiss"
                   >
-                    <X size={14} aria-hidden="true" />
+                    <X size={15} aria-hidden="true" />
                   </button>
                 )}
               </div>
@@ -1524,7 +1518,14 @@ const Header = React.memo(({
                     )}
                   </div>
                   <div className="had-footer">
-                    <button type="button" className="had-view-all-btn" onClick={onShowAlerts}>
+                    <button
+                      type="button"
+                      className="had-view-all-btn"
+                      onClick={() => {
+                        onCloseDropdowns?.();
+                        onShowAlerts?.();
+                      }}
+                    >
                       {t?.('open_alerts_center') || 'Open Alerts Center'} <ExternalLink size={13} />
                     </button>
                   </div>

@@ -872,13 +872,24 @@ body,
   gap: 12px;
   width: min(100% - 32px, 1280px);
   margin: 10px auto 0;
-  padding: 10px 14px;
-  color: var(--text-primary, #e8edf7);
-  background: color-mix(in srgb, #f59e0b 12%, var(--surface-card, #18202d));
-  border: 1px solid color-mix(in srgb, #f59e0b 38%, transparent);
+  padding: 10px 16px;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
   border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  font-size: 0.82rem;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.12);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  font-weight: 500;
+  box-sizing: border-box;
+}
+
+[data-theme='dark'] .sync-error-banner,
+[data-theme='amoled'] .sync-error-banner {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
 }
 
 .sync-error-copy {
@@ -898,18 +909,53 @@ body,
   flex: 0 0 auto;
   gap: 6px;
   min-height: 32px;
-  padding: 6px 10px;
+  padding: 6px 12px;
   color: inherit;
-  background: transparent;
+  background: rgba(245, 158, 11, 0.15);
   border: 1px solid currentColor;
   border-radius: 8px;
   cursor: pointer;
-  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.sync-error-retry:hover {
+  background: currentColor;
+  color: #fff;
 }
 
 .sync-error-retry:disabled {
   cursor: wait;
   opacity: 0.65;
+}
+
+.sync-error-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  opacity: 0.8;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.sync-error-dismiss:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='dark'] .sync-error-dismiss:hover,
+[data-theme='amoled'] .sync-error-dismiss:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 @media (max-width: 1024px) {
