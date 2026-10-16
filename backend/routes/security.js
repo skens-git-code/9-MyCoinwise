@@ -109,6 +109,30 @@ const passwordPolicyError = (password) => {
 };
 
 /* —————————————————————————————————————
+ * POST /verify-password
+ * Verify current user password for re-authentication prior to sensitive actions.
+ * ————————————————————————————————————— */
+router.post('/verify-password', auth, sensitiveLimiter, async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    if (!password || typeof password !== 'string') {
+      return res.status(400).json({ error: 'Password is required.' });
+    }
+    const user = await User.findById(req.user.id).select('+password');
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Incorrect password.' });
+    }
+    return res.json({ success: true, verified: true });
+  } catch (err) {
+    logger.error('[Security] verify-password error:', err);
+    return res.status(500).json({ error: 'Password verification failed.' });
+  }
+});
+
+/* —————————————————————————————————————
  * POST /change-password
  * Change the current user's password and revoke all sessions.
  * ————————————————————————————————————— */

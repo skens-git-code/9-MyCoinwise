@@ -526,7 +526,7 @@ router.post(
     body('last_name').optional().isString().trim().isLength({ max: 80 }),
     body('profession').optional().isString().trim().isLength({ max: 80 }),
     body('role').optional().isString().trim().isLength({ max: 80 }),
-    body('email').isEmail().normalizeEmail().withMessage('Valid email required.'),
+    body('email').isEmail().normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }).withMessage('Valid email required.'),
     body('currency').optional().isString(),
     body('password').optional().isString().isLength({ min: 6, max: 128 }).withMessage('Password must be at least 6 characters.'),
     body('profile_avatar').optional().isString(),
@@ -690,7 +690,7 @@ router.patch(
     body('username').optional().notEmpty().trim(),
     body('last_name').optional().isString().trim().isLength({ max: 80 }),
     body('profession').optional().isString().trim().isLength({ max: 80 }),
-    body('email').optional().isEmail().normalizeEmail(),
+    body('email').optional().isEmail().normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }),
     body('theme').optional().isIn(['light', 'amoled']),
     body('currency').optional().isString(),
     body('monthly_goal').optional().isFloat({ min: 0 }),
@@ -751,7 +751,7 @@ router.put(
     body('username').optional().notEmpty().trim(),
     body('last_name').optional().isString().trim().isLength({ max: 80 }),
     body('profession').optional().isString().trim().isLength({ max: 80 }),
-    body('email').optional().isEmail().normalizeEmail(),
+    body('email').optional().isEmail().normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }),
     body('theme').optional().isIn(['light', 'amoled']),
     body('currency').optional().isString(),
     body('monthly_goal').optional().isFloat({ min: 0 }),
@@ -943,17 +943,13 @@ router.post(
  * DELETE /:id
  * Delete a user and all associated data.
  *
- * SECURITY: strictly SELF-scoped. This previously used
- * `checkOwnership('id', { household: true })`, which only compared
- * `household_id`. Because a household member's `household_id` equals the root
- * account's `_id`, ANY member could hard-delete the root account (or a sibling)
- * along with all 15 of their collections. Deleting an account is not a
- * household-shared operation, so ownership must match the caller exactly.
+ * SECURITY: strictly self-scoped by default, but permits a household root
+ * account to delete child profiles created under their household.
+ * Non-root household members CANNOT delete the root account or siblings (satisfying P5-12).
  * ————————————————————————————————————— */
 router.delete(
   '/:id',
   [param('id').isMongoId().withMessage('Invalid user ID.')],
-  checkOwnership('id'),
   deleteLimiter,
   async (req, res) => {
     // ── Reject validation errors ──
@@ -961,6 +957,27 @@ router.delete(
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
+      const requesterId = String(req.userId);
+      const targetId = String(req.params.id);
+
+      const isSelf = targetId === requesterId;
+      if (!isSelf) {
+        // Only the household root is permitted to delete child profiles in their household.
+        const isHouseholdRoot = !req.user.household_id || String(req.user.household_id) === requesterId;
+        if (!isHouseholdRoot) {
+          return res.status(403).json({ error: 'Access denied: You do not have permission to delete this user.' });
+        }
+
+        const targetUser = await User.findById(targetId);
+        if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+        // Ensure the target is actually a child member belonging to this root user's household
+        const isTargetChild = String(targetUser.household_id) === requesterId;
+        if (!isTargetChild) {
+          return res.status(403).json({ error: 'Access denied: You can only delete child profiles in your household.' });
+        }
+      }
+
       // ── Delete the user and every user-scoped collection ──
       await deleteUserAndData(req.params.id);
 

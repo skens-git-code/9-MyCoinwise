@@ -681,8 +681,10 @@ export default function App() {
     return result;
   }, [applyBalance, syncAccountsSilently, fetchData]);
 
-  const resetAccount = useCallback(async () => {
-    await api.resetAccount(userRef.current?.id || userRef.current?._id);
+  const resetAccount = useCallback(async (explicitUserId) => {
+    const targetId = explicitUserId || userRef.current?.id || userRef.current?._id;
+    if (!targetId) throw new Error('No user ID found for reset.');
+    await api.resetAccount(targetId);
   }, []);
 
   const createUser = useCallback(async (data, { autoSwitch = true } = {}) => {

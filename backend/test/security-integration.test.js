@@ -191,6 +191,31 @@ async function main() {
       assert.strictEqual(gone, null, 'the account must be removed');
     });
 
+    await test('P5-12: a household ROOT CAN delete a child profile in their household', async () => {
+      const root = await h.createUser();
+      const child = await h.createUser({ householdId: root.id });
+
+      const res = await h.del(`/api/users/${child.id}`, { token: root.token });
+      assert.strictEqual(res.status, 200, `root deleting child must succeed, got ${res.status}: ${res.raw}`);
+
+      const childGone = await h.User.findById(child.id).lean();
+      assert.strictEqual(childGone, null, 'the child account must be removed');
+
+      const rootStillThere = await h.User.findById(root.id).lean();
+      assert.ok(rootStillThere, 'the root account must still exist');
+    });
+
+    await test('Security: POST /api/security/verify-password verifies password correctly', async () => {
+      const user = await h.createUser({ password: 'VerifyPassword123!' });
+
+      const wrongRes = await h.post('/api/security/verify-password', { password: 'WrongPassword!' }, { token: user.token });
+      assert.strictEqual(wrongRes.status, 401, 'wrong password must be rejected with 401');
+
+      const rightRes = await h.post('/api/security/verify-password', { password: 'VerifyPassword123!' }, { token: user.token });
+      assert.strictEqual(rightRes.status, 200, 'correct password must be verified with 200');
+      assert.strictEqual(rightRes.body.verified, true);
+    });
+
     // ── P5-13: cross-tenant Account writes ──────────────────────────────────
     await test('P5-13: a transaction cannot reference another user\'s account', async () => {
       const victim = await h.createUser();

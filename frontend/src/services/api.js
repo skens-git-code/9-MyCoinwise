@@ -671,6 +671,13 @@ export const api = {
 
   // ── Security ──────────────────────────────────────────────────────────────
 
+  // ── Verify current user's password for re-auth gating ──
+  verifyPassword: async (userIdOrPassword, maybePassword) => {
+    const password = maybePassword || userIdOrPassword;
+    const res = await apiClient.post(`${API_URL}/security/verify-password`, { password });
+    return res.data?.verified || res.data?.success || false;
+  },
+
   // ── Change the current user's password ──
   changePassword: async (userId, data) => {
     const res = await apiClient.post(`${API_URL}/security/change-password`, data);

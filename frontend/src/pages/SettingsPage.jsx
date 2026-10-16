@@ -879,7 +879,7 @@ const NotificationPreferences = ({ preferences, onChange }) => {
 /* ============================================================
  * Password change (with re-auth)
  * ============================================================ */
-const PasswordChange = ({ userId, showMessage, logout, requestReAuth }) => {
+const PasswordChange = ({ userId, showMessage, logout }) => {
   // ── Local form state + visibility toggle + loading ──
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -917,13 +917,6 @@ const PasswordChange = ({ userId, showMessage, logout, requestReAuth }) => {
       return;
     }
 
-    // Ask for re-auth before committing
-    const proceed = await requestReAuth(
-      'change your password',
-      passwordData.currentPassword
-    );
-    if (!proceed) return;
-
     setLoading(true);
     try {
       await api.changePassword(userId, {
@@ -932,9 +925,12 @@ const PasswordChange = ({ userId, showMessage, logout, requestReAuth }) => {
       });
       showMessage('success', 'Password changed successfully. Please sign in again.');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      setTimeout(() => logout?.(), 900);
+      setTimeout(() => {
+        logout?.();
+        window.location.href = '/login';
+      }, 900);
     } catch (error) {
-      showMessage('error', error?.response?.data?.message || 'Failed to change password');
+      showMessage('error', error?.response?.data?.error || error?.response?.data?.message || 'Failed to change password');
     } finally {
       setLoading(false);
     }
@@ -1304,7 +1300,7 @@ const AdvancedPreferences = ({ prefs, onChange }) => {
 /* ============================================================
  * Email change (with logout + re-auth)
  * ============================================================ */
-const EmailChangeSection = ({ user, showMessage, logout, requestReAuth, t }) => {
+const EmailChangeSection = ({ user, showMessage, logout, t }) => {
   // ── Modal visibility + form state ──
   const [showModal, setShowModal] = useState(false);
   const [emailForm, setEmailForm] = useState({ newEmail: '', currentPassword: '' });
@@ -1321,9 +1317,6 @@ const EmailChangeSection = ({ user, showMessage, logout, requestReAuth, t }) => 
       return;
     }
 
-    const proceed = await requestReAuth('change your email', emailForm.currentPassword);
-    if (!proceed) return;
-
     setLoading(true);
     try {
       const res = await api.changeEmail({
@@ -1333,9 +1326,12 @@ const EmailChangeSection = ({ user, showMessage, logout, requestReAuth, t }) => 
       showMessage('success', res.message || 'Email updated! Please log in again.');
       setShowModal(false);
       setEmailForm({ newEmail: '', currentPassword: '' });
-      setTimeout(() => logout?.(), 1200);
+      setTimeout(() => {
+        logout?.();
+        window.location.href = '/login';
+      }, 1200);
     } catch (err) {
-      showMessage('error', err?.response?.data?.message || 'Failed to update email.');
+      showMessage('error', err?.response?.data?.error || err?.response?.data?.message || 'Failed to update email.');
     } finally {
       setLoading(false);
     }
@@ -1639,7 +1635,6 @@ const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMess
           user={user}
           showMessage={showMessage}
           logout={logout}
-          requestReAuth={requestReAuth}
           t={t}
         />
 
@@ -2666,7 +2661,7 @@ function SettingsInner({ context }) {
     logout,
   } = context;
 
-  const navigate = useNavigate();
+  const _navigate = useNavigate();
   const { showToast: showMessage } = useToast();
 
   /* ---------------- Form state ---------------- */
@@ -2905,7 +2900,7 @@ function SettingsInner({ context }) {
       if (refetch) await refetch();
     } catch (error) {
       console.error('Save error:', error);
-      showMessage('error', 'Failed to save settings. Please try again.');
+      showMessage('error', error?.response?.data?.error || error?.response?.data?.errors?.[0]?.msg || 'Failed to save settings. Please try again.');
     } finally {
       if (isMounted.current) {
         setLoadingStates((prev) => ({ ...prev, save: false }));
@@ -2996,30 +2991,36 @@ function SettingsInner({ context }) {
   const handleReset = useCallback(async () => {
     if (loadingStates.reset) return;
 
+    // Close the factory reset modal first so two modals do not overlap
+    setModals((prev) => ({ ...prev, resetConfirm: false }));
+
     const proceed = await requestReAuth('reset your account');
     if (!proceed) return;
 
     setLoadingStates((prev) => ({ ...prev, reset: true }));
     try {
-      await resetAccount();
-      setModals((prev) => ({ ...prev, resetConfirm: false }));
+      const targetId = USER_ID || user?.id || user?._id;
+      await resetAccount(targetId);
       showMessage('success', 'Account completely reset. All records deleted.');
-      // Immediate clean logout — old credentials can never log in again
+      // Immediate clean logout and hard redirect to login
       logout?.();
-      navigate('/login', { replace: true });
+      window.location.href = '/login';
     } catch (error) {
       console.error('Reset error:', error);
-      showMessage('error', 'Error resetting account.');
+      showMessage('error', error?.response?.data?.error || error?.message || 'Error resetting account.');
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, reset: false }));
     }
-  }, [resetAccount, showMessage, requestReAuth, loadingStates.reset, logout, navigate]);
+  }, [resetAccount, showMessage, requestReAuth, loadingStates.reset, logout, USER_ID, user]);
 
   // ── Delete a user (self-delete logs out; other-delete refreshes) ──
   const handleDeleteUser = useCallback(async () => {
     if (loadingStates.deleteUser) return;
     const userId = modals.deleteUser;
     if (!userId) return;
+
+    // Close the delete user modal first so two modals do not overlap
+    setModals((prev) => ({ ...prev, deleteUser: null }));
 
     const proceed = await requestReAuth('delete this account');
     if (!proceed) return;
@@ -3028,11 +3029,11 @@ function SettingsInner({ context }) {
     try {
       await api.deleteUser(userId);
       if (String(userId) === String(USER_ID)) {
+        showMessage('success', 'Your account has been deleted.');
         logout?.();
-        navigate('/login', { replace: true });
+        window.location.href = '/login';
       } else {
         if (refetch) await refetch();
-        setModals((prev) => ({ ...prev, deleteUser: null }));
         showMessage('success', 'Account successfully removed.');
       }
     } catch (err) {
@@ -3040,7 +3041,7 @@ function SettingsInner({ context }) {
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, deleteUser: false }));
     }
-  }, [modals.deleteUser, USER_ID, refetch, showMessage, requestReAuth, loadingStates.deleteUser, logout, navigate]);
+  }, [modals.deleteUser, USER_ID, refetch, showMessage, requestReAuth, loadingStates.deleteUser, logout]);
 
   // ── Switch to a different user (auto-saves dirty state first) ──
   const handleSwitchUser = useCallback(async () => {
@@ -3255,7 +3256,6 @@ function SettingsInner({ context }) {
                 userId={USER_ID}
                 showMessage={showMessage}
                 logout={logout}
-                requestReAuth={requestReAuth}
               />
               <div style={{ height: 2, background: 'var(--glass-border)', margin: '32px 0' }} />
               <SessionManagement userId={USER_ID} showMessage={showMessage} />
