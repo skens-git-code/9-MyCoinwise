@@ -240,13 +240,25 @@
   }
 }
 
-/* The big number gets extruded text */
+/* The big number gets extruded text in dark mode */
 .bento-hero .bh-mid h2 {
+  transform: translateZ(40px);
+}
+
+[data-theme="dark"] .bento-hero .bh-mid h2,
+[data-theme="amoled"] .bento-hero .bh-mid h2 {
   text-shadow:
     0 1px 0 rgba(255, 255, 255, 0.35),
     0 6px 18px rgba(var(--brand-primary-rgb), 0.35),
     0 14px 34px rgba(0, 0, 0, 0.28);
-  transform: translateZ(40px);
+}
+
+[data-theme="light"] .bento-hero .bh-mid h2,
+[data-theme="light"] .stat-card .stat-value,
+[data-theme="light"] .bh-balance-num,
+[data-theme="light"] .bh-balance-num * {
+  text-shadow: none !important;
+  filter: none !important;
 }
 
 /* ── 4. Stat Cards — 3D Flip Reveal ─────────────────────────── */
@@ -296,6 +308,10 @@
 /* The stat value is the "floating" layer */
 .stat-card .stat-value {
   transform: translateZ(30px);
+}
+
+[data-theme="dark"] .stat-card .stat-value,
+[data-theme="amoled"] .stat-card .stat-value {
   text-shadow:
     0 2px 0 rgba(255, 255, 255, 0.20),
     0 8px 20px rgba(0, 0, 0, 0.25);
@@ -1070,13 +1086,15 @@ $card-radius-uniform: 16px;
 .bh-icon-wrap {
   width: 32px !important;
   height: 32px !important;
-  background: transparent !important;
-  border-radius: 0 !important;
-  display: flex !important;
+  background: var(--surface-1) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 10px !important;
+  display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   flex-shrink: 0 !important;
-  color: var(--text-secondary) !important;
+  color: #10b981 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
 }
 
 .stat-header .stat-icon {

@@ -1,0 +1,453 @@
+/* ================================================================
+   SETTINGS PAGE DEDICATED LAYOUT & ITEM VISIBILITY ENGINE
+   Comprehensive, responsive, and glitch-free presentation of all
+   settings tabs, sidebars, panels, cards, and inputs across
+   both desktop and mobile viewports.
+   ================================================================ */
+
+.settings-page.inbox-layout-page {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 20px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  min-height: 0 !important;
+
+  /* ── Header ──────────────────────────────────────────────────── */
+  .inbox-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+    width: 100% !important;
+
+    .ih-titles {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+
+      h2 {
+        font-size: 1.65rem !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.03em !important;
+        color: var(--text-primary) !important;
+        margin: 0 !important;
+        line-height: 1.2 !important;
+      }
+    }
+
+    .ih-badge {
+      font-size: 0.76rem !important;
+      font-weight: 700 !important;
+      background: rgba(var(--brand-primary-rgb), 0.12) !important;
+      color: var(--brand-primary) !important;
+      padding: 4px 12px !important;
+      border-radius: 9999px !important;
+      letter-spacing: 0.02em !important;
+      border: 1px solid rgba(var(--brand-primary-rgb), 0.25) !important;
+    }
+  }
+
+  /* ── Split Pane ──────────────────────────────────────────────── */
+  .inbox-split-pane {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: flex-start !important;
+    gap: 24px !important;
+    width: 100% !important;
+    min-height: calc(100vh - 160px) !important;
+    box-sizing: border-box !important;
+  }
+
+  /* ── Left Category Navigation Sidebar ────────────────────────── */
+  .inbox-list-pane {
+    flex: 0 0 280px !important;
+    width: 280px !important;
+    max-width: 280px !important;
+    min-width: 260px !important;
+    background: var(--surface-1) !important;
+    border-radius: 20px !important;
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04) !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    position: sticky !important;
+    top: 88px !important;
+    max-height: calc(100vh - 120px) !important;
+    z-index: 10 !important;
+
+    .il-filters {
+      padding: 16px 16px 12px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 8px !important;
+      border-bottom: 1px solid var(--glass-border) !important;
+      background: transparent !important;
+
+      .il-title {
+        font-size: 0.8rem !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.06em !important;
+        color: var(--text-muted) !important;
+        margin: 0 !important;
+      }
+
+      input[type="search"] {
+        width: 100% !important;
+        height: 38px !important;
+        background: var(--glass-2) !important;
+        border: 1px solid var(--glass-border) !important;
+        border-radius: 10px !important;
+        color: var(--text-primary) !important;
+        font-size: 0.86rem !important;
+        box-sizing: border-box !important;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+
+        &:focus {
+          border-color: var(--brand-primary) !important;
+          box-shadow: 0 0 0 2px rgba(var(--brand-primary-rgb), 0.15) !important;
+          outline: none !important;
+        }
+      }
+    }
+
+    .il-scrollable {
+      flex: 1 1 auto !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      padding: 10px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 6px !important;
+      scrollbar-width: thin !important;
+
+      &::-webkit-scrollbar {
+        width: 5px !important;
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background: var(--glass-border-hover) !important;
+        border-radius: 8px !important;
+      }
+    }
+  }
+
+  /* ── Tab Navigation Button ───────────────────────────────────── */
+  .settings-nav-tab {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 11px 16px !important;
+    border-radius: 12px !important;
+    border: 1px solid transparent !important;
+    cursor: pointer !important;
+    width: 100% !important;
+    background: transparent !important;
+    color: var(--text-secondary) !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    text-align: left !important;
+    box-sizing: border-box !important;
+
+    svg {
+      flex-shrink: 0 !important;
+    }
+
+    span {
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+    }
+
+    &:hover {
+      background: var(--glass-2) !important;
+      color: var(--text-primary) !important;
+      transform: translateX(3px) !important;
+    }
+
+    &.active {
+      background: linear-gradient(135deg, rgba(var(--brand-primary-rgb), 0.16), rgba(var(--brand-secondary-rgb), 0.08)) !important;
+      color: var(--brand-primary) !important;
+      font-weight: 700 !important;
+      border-color: rgba(var(--brand-primary-rgb), 0.25) !important;
+      box-shadow: inset 3px 0 0 var(--brand-primary) !important;
+    }
+  }
+
+  /* ── Right Content / Detail Pane (DESKTOP) ────────────────────── */
+  .inbox-detail-pane {
+    display: flex !important;
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    background: var(--surface-1) !important;
+    border-radius: 20px !important;
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04) !important;
+    box-sizing: border-box !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    min-height: calc(100vh - 160px) !important;
+    height: auto !important;
+    padding: 0 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .idp-content {
+    display: block !important;
+    width: 100% !important;
+    max-width: 860px !important;
+    box-sizing: border-box !important;
+    padding: clamp(24px, 3.5vw, 44px) !important;
+    padding-bottom: 120px !important;
+    overflow: visible !important;
+  }
+
+  /* ── Inner Tab Components Styling & Polish ─────────────────────── */
+  .idp-header {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    text-align: left !important;
+    margin-bottom: 28px !important;
+
+    h3 {
+      font-size: 1.85rem !important;
+      margin: 0 0 6px !important;
+      font-family: var(--font-head) !important;
+      font-weight: 800 !important;
+      color: var(--text-primary) !important;
+    }
+
+    p {
+      color: var(--text-secondary) !important;
+      margin: 0 !important;
+      font-size: 0.95rem !important;
+    }
+  }
+
+  .idp-body {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 20px !important;
+    width: 100% !important;
+  }
+
+  .profile-summary-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 14px !important;
+    margin-bottom: 24px !important;
+    width: 100% !important;
+  }
+
+  .profile-summary-card {
+    min-width: 0 !important;
+    padding: 16px !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 14px !important;
+    background: var(--surface-1) !important;
+    box-sizing: border-box !important;
+
+    strong {
+      font-size: 1.15rem !important;
+      color: var(--text-primary) !important;
+      font-weight: 700 !important;
+    }
+  }
+
+  .form-field {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+
+    label {
+      font-size: 0.86rem !important;
+      font-weight: 700 !important;
+      color: var(--text-primary) !important;
+    }
+
+    input, select, textarea {
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     TABLET & MOBILE VIEWPORT ( <= 768px )
+     ══════════════════════════════════════════════════════════════ */
+  @media (max-width: 768px) {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 16px)) !important;
+    gap: 14px !important;
+
+    .inbox-header {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 10px !important;
+
+      .ih-titles {
+        width: 100% !important;
+        justify-content: space-between !important;
+      }
+    }
+
+    .inbox-split-pane {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 14px !important;
+      width: 100% !important;
+      min-height: auto !important;
+    }
+
+    /* Categories tab strip on mobile */
+    .inbox-list-pane {
+      flex: none !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      height: auto !important;
+      max-height: none !important;
+      position: static !important;
+      top: auto !important;
+      padding: 12px !important;
+      border-radius: 16px !important;
+      overflow: visible !important;
+      box-sizing: border-box !important;
+
+      .il-filters {
+        display: block !important;
+        padding: 0 0 10px 0 !important;
+        border-bottom: 1px solid var(--glass-border) !important;
+
+        .il-title {
+          display: none !important;
+        }
+
+        input[type="search"] {
+          height: 38px !important;
+          font-size: 0.84rem !important;
+        }
+      }
+
+      .il-scrollable {
+        display: flex !important;
+        flex-direction: row !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
+        padding: 6px 2px !important;
+        gap: 8px !important;
+        scrollbar-width: none !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+
+        &::-webkit-scrollbar {
+          display: none !important;
+        }
+      }
+    }
+
+    /* Category pills */
+    .settings-nav-tab {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      flex: 0 0 auto !important;
+      width: auto !important;
+      height: 40px !important;
+      min-height: 40px !important;
+      padding: 0 16px !important;
+      border-radius: 9999px !important;
+      font-size: 0.84rem !important;
+      font-weight: 600 !important;
+      white-space: nowrap !important;
+      background: var(--glass-2, rgba(255, 255, 255, 0.05)) !important;
+      border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.07)) !important;
+      color: var(--text-secondary) !important;
+      box-shadow: none !important;
+      transform: none !important;
+
+      &:hover {
+        transform: none !important;
+      }
+
+      &.active {
+        background: var(--brand-primary, #10b981) !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        border-color: var(--brand-primary, #10b981) !important;
+        box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35) !important;
+      }
+    }
+
+    /* Settings content pane on mobile - MUST BE VISIBLE */
+    .inbox-detail-pane {
+      display: flex !important;
+      flex-direction: column !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: auto !important;
+      overflow: visible !important;
+      border-radius: 16px !important;
+      padding: 0 !important;
+    }
+
+    .idp-content {
+      padding: 18px 14px 100px !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow: visible !important;
+    }
+
+    .profile-summary-grid {
+      grid-template-columns: 1fr !important;
+      gap: 10px !important;
+    }
+
+    .profile-name-row {
+      flex-direction: column !important;
+      gap: 12px !important;
+    }
+  }
+
+  /* ── Extra small screens ( <= 480px ) ────────────────────────── */
+  @media (max-width: 480px) {
+    .idp-header h3 {
+      font-size: 1.5rem !important;
+    }
+
+    .settings-nav-tab {
+      height: 38px !important;
+      min-height: 38px !important;
+      padding: 0 13px !important;
+      font-size: 0.8rem !important;
+    }
+
+    .manage-users-hero {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 12px !important;
+    }
+
+    .manage-user-card {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 12px !important;
+
+      .manage-user-actions {
+        width: 100% !important;
+        justify-content: flex-end !important;
+      }
+    }
+  }
+}

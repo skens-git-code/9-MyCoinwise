@@ -31,6 +31,7 @@ import {
   Wallet, Sparkles, Zap, Settings, Minus,
   Rocket, LineChart, Tag, RefreshCw, Share2,
   Edit3, Trash2, ChevronDown, AlertTriangle, X, PieChart as PieIcon,
+  Eye, EyeOff, Calendar,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -143,6 +144,26 @@ const canonicalCategoryName = (value) => {
   const text = String(value || '').trim();
   if (!text) return 'Other';
   return text.charAt(0).toUpperCase() + text.slice(1);
+};
+
+// ── Smart category-aware icon/emoji mapping ──
+const getCategoryEmojiOrIcon = (category, type) => {
+  const cat = String(category || '').toLowerCase().trim();
+  if (cat.includes('food') || cat.includes('dining') || cat.includes('restaurant') || cat.includes('cafe')) return '🍔';
+  if (cat.includes('grocer')) return '🛒';
+  if (cat.includes('transport') || cat.includes('fuel') || cat.includes('uber') || cat.includes('cab') || cat.includes('car')) return '🚗';
+  if (cat.includes('shopping') || cat.includes('cloth')) return '🛍️';
+  if (cat.includes('salary') || cat.includes('income') || cat.includes('freelance') || cat.includes('paycheck')) return '💼';
+  if (cat.includes('bill') || cat.includes('utility') || cat.includes('electric') || cat.includes('water')) return '⚡';
+  if (cat.includes('rent') || cat.includes('mortgage') || cat.includes('home') || cat.includes('house')) return '🏠';
+  if (cat.includes('entertain') || cat.includes('movie') || cat.includes('game') || cat.includes('netflix')) return '🎬';
+  if (cat.includes('health') || cat.includes('med') || cat.includes('doctor') || cat.includes('pharm')) return '💊';
+  if (cat.includes('invest') || cat.includes('stock') || cat.includes('crypto')) return '📈';
+  if (cat.includes('travel') || cat.includes('flight') || cat.includes('hotel')) return '✈️';
+  if (cat.includes('gift') || cat.includes('donat')) return '🎁';
+  if (cat.includes('educat') || cat.includes('course') || cat.includes('book')) return '📚';
+  if (cat.includes('fit') || cat.includes('gym')) return '💪';
+  return type === 'income' ? '💰' : '🏷️';
 };
 
 const storageCache = new Map();
@@ -401,10 +422,10 @@ const StatCard = React.memo(({
         {value}
       </div>
 
-      {/* ── Bottom row: centered subtitle + optional trend indicator ── */}
-      <div className="stat-bottom-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', marginTop: 4 }}>
+      {/* ── Bottom row: left-aligned subtitle + optional trend indicator ── */}
+      <div className="stat-bottom-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', width: '100%', marginTop: 4 }}>
         {subtitle && (
-          <span className="stat-subtitle" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', textAlign: 'center', fontWeight: 500 }}>
+          <span className="stat-subtitle" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', textAlign: 'left', fontWeight: 500 }}>
             {subtitle}
           </span>
         )}
@@ -654,6 +675,17 @@ export default function Dashboard() {
   const [isExporting, setIsExporting] = useState(false);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [showBalance, setShowBalance] = useState(() => {
+    const saved = safeGetItem('budgeta_dash_show_balance', 'true');
+    return saved !== 'false';
+  });
+  const toggleShowBalance = useCallback(() => {
+    setShowBalance((prev) => {
+      const next = !prev;
+      safeSetItem('budgeta_dash_show_balance', String(next));
+      return next;
+    });
+  }, []);
   const hasLoadedOnceRef = useRef(!loading);
   if (!loading) {
     hasLoadedOnceRef.current = true;
@@ -1536,6 +1568,10 @@ export default function Dashboard() {
         <div className="bento-header">
           <div className="bento-title-wrap">
             <h2 className="bento-page-title">{tr('dashboard', 'Dashboard')}</h2>
+            <div className="dashboard-live-badge" title="Live financial overview">
+              <span className="live-dot" />
+              <span>Live Overview</span>
+            </div>
           </div>
           <div className="bento-actions">
             {/* ── Refresh ── */}
@@ -1546,8 +1582,8 @@ export default function Dashboard() {
               disabled={isRefreshing}
               title="Refresh"
               aria-label="Refresh data"
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.92 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
               <RefreshCw size={16} className={isRefreshing ? 'spinning' : ''} />
             </motion.button>
@@ -1559,14 +1595,14 @@ export default function Dashboard() {
               onClick={handleShare}
               title="Share dashboard"
               aria-label="Share"
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.92 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
               <Share2 size={16} />
             </motion.button>
 
             {/* ── Export CSV ── */}
-            <div className="export-group" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <div className="export-group">
               <motion.button
                 type="button"
                 className="bbtn-icon bbtn-export"
@@ -1588,16 +1624,16 @@ export default function Dashboard() {
               className="bbtn-pri bbtn-full"
               onClick={handleOpenAddForm}
               title="Ctrl+N"
-              whileHover={{ scale: 1.03 }}
+              whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
             >
-              <Plus size={14} /> {tr('add_transaction', 'Add Transaction')}
+              <Plus size={16} />
+              <span>{tr('add_transaction', 'Add Transaction')}</span>
             </motion.button>
           </div>
         </div>
 
         {/* ===================== Quick stats strip ===================== */}
-        {/* Quick stats strip — calm, restrained structure with delta badges */}
         <motion.div
           className="dashboard-quick-stats-strip"
           initial={{ opacity: 0, y: -8 }}
@@ -1605,34 +1641,49 @@ export default function Dashboard() {
         >
           {/* ── Savings rate ── */}
           <div className="dqs-pill">
-            <span className="dqs-label">Savings Rate:</span>
+            <span className="dqs-label">
+              <TrendingUp size={13} style={{ color: '#10b981' }} aria-hidden="true" />
+              Savings Rate:
+            </span>
             <span className="dqs-val">{savingsRate.toFixed(1)}%</span>
             <span className={`dqs-badge ${savingsRate >= 20 ? 'pos' : 'neutral'}`}>
               {savingsRate >= 20 ? 'Healthy' : savingsRate > 0 ? 'Active' : 'Low'}
             </span>
           </div>
 
+          <div className="dqs-divider" />
+
           {/* ── Top expense category ── */}
           <div className="dqs-pill">
-            <span className="dqs-label">Top Expense:</span>
+            <span className="dqs-label">
+              <Tag size={13} style={{ color: '#0ea5e9' }} aria-hidden="true" />
+              Top Expense:
+            </span>
             <span className="dqs-val">
               {topExpenseCategory ? topExpenseCategory.name : '—'}
             </span>
-            {topExpenseCategory && (
+            {topExpenseCategory ? (
               <span className="dqs-badge neutral">
-                {topExpenseCategory.pct}% of expenses
+                {topExpenseCategory.pct}% of total
               </span>
+            ) : (
+              <span className="dqs-badge neutral">None</span>
             )}
           </div>
 
+          <div className="dqs-divider" />
+
           {/* ── Daily average spend (30d) ── */}
           <div className="dqs-pill">
-            <span className="dqs-label">Daily Avg Spend:</span>
+            <span className="dqs-label">
+              <Zap size={13} style={{ color: '#f59e0b' }} aria-hidden="true" />
+              Daily Avg Spend:
+            </span>
             <span className="dqs-val">
               {formatCurrencyNode(dailyAverageSpend, safeFmt, currencySymbol)}
             </span>
             <span className="dqs-badge neutral">
-              Last 30 days
+              30d avg
             </span>
           </div>
         </motion.div>
@@ -1645,29 +1696,64 @@ export default function Dashboard() {
           role="search"
           aria-label="Filter transactions"
         >
-          {/* ── Date filter ── */}
-          <select
-            className="filter-select"
-            value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
-            aria-label="Filter by date"
-          >
-            <option value="all">{tr('all_time', 'All Time')}</option>
-            <option value="7days">{tr('last_7_days', 'Last 7 Days')}</option>
-            <option value="30days">{tr('last_30_days', 'Last 30 Days')}</option>
-            <option value="thisMonth">{tr('this_month', 'This Month')}</option>
-          </select>
+          {/* ── Quick Preset Pills ── */}
+          <div className="dashboard-presets">
+            {[
+              { id: 'all', label: tr('all_time', 'All Time') },
+              { id: 'thisMonth', label: tr('this_month', 'This Month') },
+              { id: '30days', label: tr('last_30_days', 'Last 30 Days') },
+              { id: '7days', label: tr('last_7_days', 'Last 7 Days') },
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`dashboard-preset-btn ${dateFilter === preset.id ? 'active' : ''}`}
+                onClick={() => setDateFilter(preset.id)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
 
-          {/* ── Category filter ── */}
-          <select
-            className="filter-select"
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            aria-label="Filter by category"
-          >
-            <option value="all">{tr('all_categories', 'All Categories')}</option>
-            {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          {/* ── Date filter select (responsive & accessible) ── */}
+          <div className="filter-select-wrap">
+            <span className="filter-select-icon" aria-hidden="true">
+              <Calendar size={13} />
+            </span>
+            <select
+              className="filter-select"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              aria-label="Filter by date"
+            >
+              <option value="all">{tr('all_time', 'All Time')}</option>
+              <option value="7days">{tr('last_7_days', 'Last 7 Days')}</option>
+              <option value="30days">{tr('last_30_days', 'Last 30 Days')}</option>
+              <option value="thisMonth">{tr('this_month', 'This Month')}</option>
+            </select>
+            <span className="filter-select-arrow" aria-hidden="true">
+              <ChevronDown size={14} />
+            </span>
+          </div>
+
+          {/* ── Category filter select ── */}
+          <div className="filter-select-wrap">
+            <span className="filter-select-icon" aria-hidden="true">
+              <Tag size={13} />
+            </span>
+            <select
+              className="filter-select"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              aria-label="Filter by category"
+            >
+              <option value="all">{tr('all_categories', 'All Categories')}</option>
+              {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <span className="filter-select-arrow" aria-hidden="true">
+              <ChevronDown size={14} />
+            </span>
+          </div>
 
           {/* ── Clear filters (only when a filter is active) ── */}
           {(dateFilter !== 'all' || categoryFilter !== 'all') && (
@@ -1677,6 +1763,7 @@ export default function Dashboard() {
               onClick={() => { setDateFilter('all'); setCategoryFilter('all'); }}
               aria-label="Clear filters"
             >
+              <X size={13} aria-hidden="true" />
               {tr('clear_filters', 'Clear Filters')}
             </button>
           )}
@@ -1705,30 +1792,31 @@ export default function Dashboard() {
               className="blob-glow"
               style={{
                 background: rawBalance >= 0
-                  ? 'rgba(16, 185, 129, 0.12)'
-                  : 'rgba(239, 68, 68, 0.12)',
+                  ? 'rgba(16, 185, 129, 0.16)'
+                  : 'rgba(239, 68, 68, 0.16)',
               }}
             />
-            <div className="bh-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 8 }}>
-              <span className="bh-label" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-secondary, #334155)', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: rawBalance >= 0 ? '#10b981' : '#ef4444', display: 'inline-block' }} aria-hidden="true" />
+            <div className="bh-top">
+              <span className="bh-label">
+                <span className="bh-indicator-dot" style={{ background: rawBalance >= 0 ? '#10b981' : '#ef4444' }} aria-hidden="true" />
                 {tr('total_balance', 'Total Balance')}
               </span>
-              <div
-                className="bh-icon-wrap"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--text-secondary)',
-                  background: 'transparent',
-                }}
-                aria-hidden="true"
-              >
-                <Wallet size={20} strokeWidth={1.8} />
+              <div className="bh-top-actions">
+                <button
+                  type="button"
+                  className="bh-eye-btn"
+                  onClick={toggleShowBalance}
+                  title={showBalance ? 'Hide balance' : 'Show balance'}
+                  aria-label={showBalance ? 'Hide balance' : 'Show balance'}
+                >
+                  {showBalance ? <Eye size={16} /> : <EyeOff size={16} />}
+                </button>
+                <div className="bh-icon-wrap" aria-hidden="true">
+                  <Wallet size={18} strokeWidth={2} />
+                </div>
               </div>
             </div>
-            <div className="bh-mid" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div className="bh-mid">
               <h2
                 className="bh-balance-num"
                 style={{
@@ -1744,6 +1832,8 @@ export default function Dashboard() {
                 <span style={{ fontSize: 'inherit', color: 'inherit', fontWeight: 'inherit' }}>
                   {loading && !hasLoadedOnce ? (
                     <span className="balance-placeholder" style={{ opacity: 0.6 }}>--</span>
+                  ) : !showBalance ? (
+                    <span>••••••••</span>
                   ) : (
                     <AnimatedNumber
                       value={rawBalance}
@@ -1758,13 +1848,13 @@ export default function Dashboard() {
 
               {/* ── Sparkline (net trajectory) ── */}
               {sparklineSvgPath && (
-                <div className="bh-sparkline-wrap" title="Net trajectory" style={{ height: 26, margin: '2px 0 4px', opacity: 0.85 }}>
+                <div className="bh-sparkline-wrap" title="Net trajectory">
                   <svg className="bh-sparkline-svg" viewBox="0 0 240 48" aria-hidden="true" style={{ width: '100%', height: '100%' }}>
                     <path
                       d={sparklineSvgPath}
                       fill="none"
                       stroke={balanceTrendColor}
-                      strokeWidth="2.2"
+                      strokeWidth="2.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
@@ -1773,20 +1863,15 @@ export default function Dashboard() {
               )}
 
               {/* ── Net position + month-over-month trend ── */}
-              <div
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  width: '100%', flexWrap: 'wrap', gap: 8,
-                }}
-              >
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+              <div className="bh-bottom-meta">
+                <span className="bh-net-label">
                   {tr('net_position', 'Net Position')}
                 </span>
                 {momMetrics.balance.val !== 'New' && dateFilter !== 'all' && (
-                  <div className={`bh-trend ${momMetrics.balance.dir}`} style={{ background: 'var(--glass-2)' }}>
-                    {momMetrics.balance.dir === 'up' && <ArrowUpRight size={14} aria-hidden="true" />}
-                    {momMetrics.balance.dir === 'down' && <ArrowDownRight size={14} aria-hidden="true" />}
-                    {momMetrics.balance.dir === 'neutral' && <Minus size={14} aria-hidden="true" />}
+                  <div className={`bh-trend ${momMetrics.balance.dir}`}>
+                    {momMetrics.balance.dir === 'up' && <ArrowUpRight size={13} aria-hidden="true" />}
+                    {momMetrics.balance.dir === 'down' && <ArrowDownRight size={13} aria-hidden="true" />}
+                    {momMetrics.balance.dir === 'neutral' && <Minus size={13} aria-hidden="true" />}
                     <span>{momMetrics.balance.val} vs last month</span>
                   </div>
                 )}
@@ -1881,11 +1966,17 @@ export default function Dashboard() {
                     const tx = item.data;
                     return (
                       <div key={item.key} className="bt-item" role="listitem">
-                        <div className={`bt-icn ${tx.type}`}><Tag size={18} aria-hidden="true" /></div>
+                        <div className={`bt-icn ${tx.type}`}>
+                          <span className="bt-cat-emoji" aria-hidden="true">
+                            {getCategoryEmojiOrIcon(tx.category, tx.type)}
+                          </span>
+                        </div>
                         <div className="bt-info">
                           <span className="bt-cat">{tx.category || 'Uncategorized'}</span>
                           <span className="bt-date">{getDateLabel(tx.date, locale)}</span>
-                          {tx.note && <span className="bt-note">{tx.note}</span>}
+                          {tx.note && tx.note.trim().toLowerCase() !== String(tx.category || '').trim().toLowerCase() && (
+                            <span className="bt-note">{tx.note}</span>
+                          )}
                         </div>
                         <div className="bt-amt-group">
                           {/* ── Signed amount ── */}

@@ -84,11 +84,29 @@ export const ToastProvider = ({ children }) => {
 
   // ── Map a toast type to its border color (uses CSS vars with fallback) ──
   const getBorderColor = (type) => {
+    if (type === 'success') return 'var(--toast-border-success, rgba(16, 185, 129, 0.40))';
+    if (type === 'error') return 'var(--toast-border-danger, rgba(239, 68, 68, 0.40))';
+    if (type === 'warning') return 'var(--toast-border-warning, rgba(245, 158, 11, 0.40))';
+    if (type === 'info') return 'var(--toast-border-info, rgba(6, 182, 212, 0.40))';
+    return 'var(--toast-border, var(--glass-border))';
+  };
+
+  // ── Map a toast type to its semantic color ──
+  const getIconColor = (type) => {
     if (type === 'success') return 'var(--success, #10b981)';
     if (type === 'error') return 'var(--danger, #ef4444)';
     if (type === 'warning') return 'var(--warning, #f59e0b)';
-    if (type === 'info') return 'var(--info, #3b82f6)';
-    return 'var(--glass-border)';
+    if (type === 'info') return 'var(--info, #06b6d4)';
+    return 'var(--brand-primary, #10b981)';
+  };
+
+  // ── Map a toast type to its soft tinted background ──
+  const getIconBg = (type) => {
+    if (type === 'success') return 'rgba(16, 185, 129, 0.12)';
+    if (type === 'error') return 'rgba(239, 68, 68, 0.12)';
+    if (type === 'warning') return 'rgba(245, 158, 11, 0.12)';
+    if (type === 'info') return 'rgba(6, 182, 212, 0.12)';
+    return 'rgba(16, 185, 129, 0.12)';
   };
 
   return (
@@ -124,36 +142,77 @@ export const ToastProvider = ({ children }) => {
               key={toast.id}
               role="alert"
               aria-live="assertive"
-              initial={{ opacity: 0, x: 40, scale: 0.95 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 40, scale: 0.95 }}
+              className={`notification-toast toast-${toast.type}`}
+              initial={{ opacity: 0, y: -10, x: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, x: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.93, transition: { duration: 0.18, ease: 'easeOut' } }}
               layout
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 320 }}
               style={{
                 pointerEvents: 'auto',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 12,
                 padding: '12px 16px',
-                borderRadius: 12,
-                // Opaque glass to avoid extra GPU composite layers (Glitch #12)
-                background: 'var(--toast-bg, rgba(20, 22, 28, 0.96))',
+                borderRadius: 14,
+                // Opaque theme surface matching active theme (Glitch #12)
+                background: 'var(--toast-bg, var(--surface-1, #ffffff))',
+                color: 'var(--toast-text, var(--text-primary))',
                 border: `1px solid ${getBorderColor(toast.type)}`,
-                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
-                width: '100%'
+                boxShadow: 'var(--toast-shadow, 0 12px 32px rgba(0, 0, 0, 0.18))',
+                width: '100%',
+                position: 'relative',
+                overflow: 'hidden'
               }}
             >
-              {/* ── Type icon ── */}
-              <div style={{ flexShrink: 0 }}>
-                {toast.type === 'success' && <CheckCircle size={22} color="var(--success, #10b981)" />}
-                {toast.type === 'error' && <AlertCircle size={22} color="var(--danger, #ef4444)" />}
-                {toast.type === 'warning' && <AlertTriangle size={22} color="var(--warning, #f59e0b)" />}
-                {toast.type === 'info' && <Info size={22} color="var(--info, #3b82f6)" />}
+              {/* ── Left status accent stripe ── */}
+              <div
+                className="toast-indicator-stripe"
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 4,
+                  background: getIconColor(toast.type),
+                  borderRadius: '14px 0 0 14px'
+                }}
+                aria-hidden="true"
+              />
+
+              {/* ── Status icon badge ── */}
+              <div
+                className="toast-icon-wrap"
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  background: getIconBg(toast.type),
+                  color: getIconColor(toast.type)
+                }}
+              >
+                {toast.type === 'success' && <CheckCircle size={19} color={getIconColor(toast.type)} />}
+                {toast.type === 'error' && <AlertCircle size={19} color={getIconColor(toast.type)} />}
+                {toast.type === 'warning' && <AlertTriangle size={19} color={getIconColor(toast.type)} />}
+                {toast.type === 'info' && <Info size={19} color={getIconColor(toast.type)} />}
               </div>
 
               {/* ── Message text ── */}
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 500, color: 'var(--text-primary)' }}>
+              <div className="toast-message-wrap" style={{ flex: 1, minWidth: 0 }}>
+                <p
+                  className="toast-message"
+                  style={{
+                    margin: 0,
+                    fontSize: '0.92rem',
+                    fontWeight: 500,
+                    lineHeight: 1.45,
+                    color: 'var(--toast-text, var(--text-primary))'
+                  }}
+                >
                   {toast.text}
                 </p>
               </div>
@@ -165,8 +224,19 @@ export const ToastProvider = ({ children }) => {
                     toast.action.onClick();
                     hideToast(toast.id);
                   }}
-                  className="btn-primary"
-                  style={{ padding: '6px 12px', fontSize: '0.85rem', height: 'auto', borderRadius: 8 }}
+                  className="toast-action-btn"
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    height: 'auto',
+                    borderRadius: 8,
+                    border: '1px solid var(--toast-border, var(--glass-border))',
+                    background: 'var(--toast-action-bg, rgba(125, 125, 125, 0.1))',
+                    color: 'var(--toast-text, var(--text-primary))',
+                    cursor: 'pointer',
+                    flexShrink: 0
+                  }}
                 >
                   {toast.action.label || 'Undo'}
                 </button>
@@ -175,15 +245,19 @@ export const ToastProvider = ({ children }) => {
               {/* ── Dismiss (X) button ── */}
               <button
                 onClick={() => hideToast(toast.id)}
+                className="toast-close-btn"
                 style={{
-                  background: 'none',
+                  background: 'transparent',
                   border: 'none',
-                  color: 'var(--text-muted)',
+                  color: 'var(--toast-text-muted, var(--text-muted))',
                   cursor: 'pointer',
-                  padding: 4,
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  flexShrink: 0
                 }}
                 aria-label="Close notification"
               >

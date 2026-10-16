@@ -132,6 +132,15 @@
    --text-muted: #6b7280;
    --text-dim: #374151;
 
+   /* ► Toast & Alert Notification Tokens (Default Dark) */
+   --toast-bg: rgba(18, 20, 24, 0.98);
+   --toast-text: #ffffff;
+   --toast-text-muted: #9ca3af;
+   --toast-border: rgba(255, 255, 255, 0.12);
+   --toast-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+   --toast-action-bg: rgba(255, 255, 255, 0.10);
+   --toast-action-hover: rgba(255, 255, 255, 0.18);
+
    /* ► Sidebar */
    --sidebar-bg: rgba(10, 11, 11, 0.88);
 

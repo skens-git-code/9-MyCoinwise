@@ -161,8 +161,20 @@ describe('Complete Suite: All 15 Pages Rendering Integrity', () => {
     expect(() => renderWithContext(Calendar)).not.toThrow();
   });
 
-  it('13. Renders Settings page without errors', () => {
-    expect(() => renderWithContext(SettingsPage)).not.toThrow();
+  it('13. Renders Settings page with all panes, tabs and items visible', () => {
+    let result;
+    expect(() => {
+      result = renderWithContext(SettingsPage);
+    }).not.toThrow();
+    const { container } = result;
+    expect(container.querySelector('.settings-page')).toBeTruthy();
+    expect(container.querySelector('.inbox-split-pane')).toBeTruthy();
+    expect(container.querySelector('.inbox-list-pane')).toBeTruthy();
+    expect(container.querySelector('.inbox-detail-pane')).toBeTruthy();
+    expect(container.querySelector('.idp-content')).toBeTruthy();
+    const tabs = container.querySelectorAll('.settings-nav-tab');
+    expect(tabs.length).toBeGreaterThanOrEqual(8);
+    expect(container.querySelector('#tabpanel-profile') || container.querySelector('[role="tabpanel"]')).toBeTruthy();
   });
 
   it('14. Renders About page without errors', () => {

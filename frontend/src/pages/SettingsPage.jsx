@@ -2849,7 +2849,7 @@ function SettingsInner({ context }) {
 
       <div className="inbox-split-pane">
         {/* ── Sidebar with tab list + search ── */}
-        <div className="inbox-list-pane glass" role="tablist" aria-orientation="vertical" style={{ minWidth: 0, maxWidth: '100%' }}>
+        <div className="inbox-list-pane glass" role="tablist" aria-orientation="vertical">
           <div className="il-filters">
             <h3 className="il-title">{t?.('categories') || 'Categories'}</h3>
             <div style={{ position: 'relative', marginTop: 8 }}>
@@ -2905,10 +2905,7 @@ function SettingsInner({ context }) {
 
         {/* ── Detail pane: current tab content ── */}
         <div className="inbox-detail-pane glass">
-          <div
-            className="idp-content"
-            style={{ maxWidth: 800, padding: 'clamp(16px, 5vw, 40px)', paddingBottom: 100 }}
-          >
+          <div className="idp-content">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}

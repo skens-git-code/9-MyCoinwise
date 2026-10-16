@@ -28,7 +28,7 @@ export const DashboardSkeleton = () => (
  * Matches inbox layout: header, search bar, list rows
  * ————————————————————————————————————— */
 export const TransactionsSkeleton = () => (
-  <div className="inbox-layout-page" aria-label="Loading transactions" role="status">
+  <div className="inbox-layout-page tx-page" aria-label="Loading transactions" role="status">
     <div className="inbox-header" style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <div className="skeleton" style={{ height: 36, width: 180, borderRadius: 10 }} />
       <div style={{ display: 'flex', gap: 10 }}>

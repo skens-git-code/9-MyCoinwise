@@ -720,7 +720,7 @@
       margin: 0 0 10px;
       line-height: 1;
       /* Animated gradient text for balance (handled via .gradient-text class) */
-      text-shadow: 0 8px 32px rgba(var(--brand-primary-rgb), 0.25), 0 4px 12px rgba(0, 0, 0, 0.2);
+      text-shadow: none;
     }
 
     .bh-trend {
@@ -1918,7 +1918,7 @@
     padding: 10px 12px !important;
   }
 
-  .settings-page .inbox-list-pane .il-filters {
+  .settings-page .inbox-list-pane .il-filters .il-title {
     display: none; // Hide CATEGORIES title on mobile to save vertical space
   }
 

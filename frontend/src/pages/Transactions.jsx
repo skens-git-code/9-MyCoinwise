@@ -1060,7 +1060,7 @@ export default function Transactions() {
   // ── Skeleton while the first page load is in progress ──
   if (contextLoading && transactions.length === 0) {
     return (
-      <div className="inbox-layout-page">
+      <div className="inbox-layout-page tx-page">
         <div className="inbox-header">
           <div className="ih-titles">
             <h2>{tr('transactions', 'Transactions')}</h2>
@@ -1080,7 +1080,7 @@ export default function Transactions() {
   const allFilteredSelected = filtered.length > 0 && selectedIds.size === filtered.length;
 
   return (
-    <div className="inbox-layout-page">
+    <div className="inbox-layout-page tx-page">
 
       {/* ── Hidden file input for statement import ── */}
       <input

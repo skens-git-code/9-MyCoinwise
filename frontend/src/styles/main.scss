@@ -17,6 +17,8 @@
 @use 'responsive-fixes';
 @use 'mobile';
 @use 'transactions';
+@use 'settings';
+@use 'dashboard';
 
 @media print {
 
