@@ -598,6 +598,32 @@ async function main() {
       );
       assert.ok(/const emailLimiter = rateLimit\(/.test(src), 'emailLimiter must be defined');
     });
+
+    // ── Export endpoint functional and security assertions ───────
+    await test('Backend Export: GET /api/export/:userId?format=csv returns valid UTF-8 CSV with headers', async () => {
+      const user = await h.createUser();
+      const res = await h.get(`/api/export/${user.id}?format=csv`, { token: user.token });
+      assert.strictEqual(res.status, 200, `expected 200, got ${res.status}`);
+      assert.ok(res.headers['content-type'].includes('text/csv'), `expected text/csv content type, got ${res.headers['content-type']}`);
+      assert.ok(res.headers['content-disposition'].includes('.csv'), `expected csv filename in content disposition, got ${res.headers['content-disposition']}`);
+      assert.ok(res.raw.startsWith('\uFEFF'), 'CSV must start with UTF-8 BOM');
+      assert.ok(res.raw.includes('"Date"'), 'CSV must include Date header');
+      assert.ok(res.raw.includes('"Amount"'), 'CSV must include Amount header');
+    });
+
+    await test('Backend Export: GET /api/export/:userId?format=xlsx returns valid Excel workbook', async () => {
+      const user = await h.createUser();
+      const res = await h.get(`/api/export/${user.id}?format=xlsx`, { token: user.token });
+      assert.strictEqual(res.status, 200, `expected 200, got ${res.status}`);
+      assert.ok(res.headers['content-type'].includes('spreadsheetml'), `expected spreadsheetml content type, got ${res.headers['content-type']}`);
+    });
+
+    await test('Backend Export Security: Foreign user cannot export another user data', async () => {
+      const victim = await h.createUser();
+      const attacker = await h.createUser();
+      const res = await h.get(`/api/export/${victim.id}?format=csv`, { token: attacker.token });
+      assert.strictEqual(res.status, 403, `expected 403 forbidden for foreign export, got ${res.status}`);
+    });
   } finally {
     await harness.stop();
   }

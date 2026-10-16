@@ -144,8 +144,9 @@ router.get(
   '/:userId',
   checkOwnership('userId'),
   [
-    // ── Validate user ID and optional date range ──
+    // ── Validate user ID, format, and optional date range ──
     param('userId').isMongoId().withMessage('Invalid user ID.'),
+    queryValidator('format').optional().isIn(['csv', 'xlsx']).withMessage('Format must be csv or xlsx.'),
     queryValidator('start').optional().isISO8601().toDate(),
     queryValidator('end').optional().isISO8601().toDate(),
   ],
@@ -157,7 +158,7 @@ router.get(
     }
 
     const { userId } = req.params;
-    const { start, end } = req.query;
+    const { start, end, format = 'xlsx' } = req.query;
 
     try {
       // ── Load the user (for currency + filename) ──
@@ -191,7 +192,47 @@ router.get(
       const truncated = transactions.length > MAX_EXPORT_ROWS;
       const rowsToExport = truncated ? transactions.slice(0, MAX_EXPORT_ROWS) : transactions;
 
-      // ── Create the workbook ──
+      // ── Handle CSV export format ──
+      if (format === 'csv') {
+        const escapeCsv = (val) => {
+          if (val === null || val === undefined) return '""';
+          const str = String(val).replace(/"/g, '""');
+          return `"${str}"`;
+        };
+
+        const headers = ['ID', 'Date', 'Type', 'Category', 'Amount', 'Currency', 'Note'];
+        const csvRows = [headers.map(escapeCsv).join(',')];
+
+        for (const t of rowsToExport) {
+          const amount = Number(t.amount);
+          if (!Number.isFinite(amount)) continue;
+
+          const dateObj = t.date instanceof Date ? t.date : new Date(t.date);
+          if (Number.isNaN(dateObj.getTime())) continue;
+
+          csvRows.push([
+            escapeCsv(t._id.toString()),
+            escapeCsv(localDateStamp(dateObj)),
+            escapeCsv(String(t.type || '').toUpperCase()),
+            escapeCsv(t.category || 'Uncategorized'),
+            escapeCsv(amount.toFixed(2)),
+            escapeCsv(currency),
+            escapeCsv(t.note || ''),
+          ].join(','));
+        }
+
+        const safeUsername = String(user.username || 'Report').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const filename = `MyCoinwise_${safeUsername}_${localDateStamp()}.csv`;
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+        );
+        return res.send(`\uFEFF${csvRows.join('\r\n')}`);
+      }
+
+      // ── Create the workbook (Excel format) ──
       const workbook = new excel.Workbook();
       workbook.creator = 'MyCoinwise';
       workbook.created = new Date();

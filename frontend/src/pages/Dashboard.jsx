@@ -34,6 +34,7 @@ import {
   Eye, EyeOff, Calendar,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
+import { api } from '../services/api';
 import ErrorBoundary from '../components/ErrorBoundary';
 import TransactionForm from '../components/TransactionForm';
 import PropTypes from 'prop-types';
@@ -1343,11 +1344,22 @@ export default function Dashboard() {
    * Event Handlers
    * ============================================================ */
 
-  // ── Export the current transaction set as CSV (BOM-prefixed) ──
+  // ── Export the transaction set as CSV (via backend API, with local fallback) ──
   const handleExportCSV = useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
+      const activeUserId = USER_ID || user?._id || user?.id;
+      if (activeUserId && typeof api?.exportData === 'function') {
+        try {
+          await api.exportData(activeUserId, { format: 'csv' });
+          showToast('success', 'CSV exported from backend successfully!');
+          return;
+        } catch (backendErr) {
+          console.warn('Backend export failed, falling back to local export:', backendErr);
+        }
+      }
+
       const data = parsedTransactions.length > 0 ? parsedTransactions : allParsed;
       const headers = ['Date', 'Type', 'Category', 'Amount', 'Currency', 'Note'];
       const rows = data.map((tx) => [
@@ -1379,7 +1391,7 @@ export default function Dashboard() {
     } finally {
       setIsExporting(false);
     }
-  }, [allParsed, parsedTransactions, isExporting, showToast, displayCurrency]);
+  }, [USER_ID, user, allParsed, parsedTransactions, isExporting, showToast, displayCurrency]);
 
   // ── Refresh transaction data from the API ──
   const handleRefresh = useCallback(async () => {

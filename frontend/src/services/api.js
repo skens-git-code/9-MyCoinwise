@@ -542,27 +542,44 @@ export const api = {
    * Export
    * ───────────────────────────────────── */
 
-  // ── Download the Excel export as a file ──
-  exportToExcel: async (userId, options = {}) => {
+  // ── Download export (CSV or Excel) from the backend ──
+  exportData: async (userId, options = {}) => {
     const safeId = String(userId || 'export').replace(/[^a-zA-Z0-9_-]/g, '');
-    const { params, responseType = 'blob', ...rest } = options;
-    const queryParams = params || rest;
+    const { format = 'csv', start, end, ...rest } = options;
+    const params = { format, ...rest };
+    if (start) params.start = start;
+    if (end) params.end = end;
+
     const res = await apiClient.get(`${API_URL}/export/${userId}`, {
-      responseType,
-      params: queryParams,
+      responseType: 'blob',
+      params,
     });
-    const blob = new Blob([res.data]);
+
+    const isXlsx = format === 'xlsx';
+    const ext = isXlsx ? 'xlsx' : 'csv';
+    const mime = isXlsx
+      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : 'text/csv;charset=utf-8;';
+
+    const blob = new Blob([res.data], { type: mime });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
+    const dateStamp = new Date().toISOString().slice(0, 10);
     try {
       link.href = url;
-      link.setAttribute('download', `mycoinwise_export_${safeId}.xlsx`);
+      link.setAttribute('download', `MyCoinwise_export_${safeId}_${dateStamp}.${ext}`);
       document.body.appendChild(link);
       link.click();
       link.remove();
     } finally {
-      window.URL.revokeObjectURL(url);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     }
+    return true;
+  },
+
+  // ── Download the Excel export as a file ──
+  exportToExcel: async (userId, options = {}) => {
+    return api.exportData(userId, { format: 'xlsx', ...options });
   },
 
   /* ─────────────────────────────────────
