@@ -166,8 +166,8 @@ router.get(
         return res.status(404).json({ error: 'User not found.' });
       }
 
-      const currency = user.currency || 'USD';
-      const currencySymbol = (CURRENCIES[currency] || CURRENCIES.USD).symbol;
+      const currency = user.currency || 'INR';
+      const currencySymbol = (CURRENCIES[currency] || CURRENCIES.INR).symbol;
 
       // Build the transaction query. `dateRange` avoids shadowing the
       // express-validator `query` import.

@@ -262,7 +262,7 @@ export default function Cashflow() {
     transactions = [],
     subscriptions = [],
     accounts = [],
-    currency = 'USD',
+    currency = 'INR',
     token,
     theme,
     lang,
@@ -282,7 +282,7 @@ export default function Cashflow() {
 
   // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
-  const displayCurrency = useMemo(() => resolveCurrency(currency, 'USD'), [currency]);
+  const displayCurrency = useMemo(() => resolveCurrency(currency, 'INR'), [currency]);
 
   // ── Dark-theme detection for chart stroke/fill colors ──
   const isDark = useMemo(() => {

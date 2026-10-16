@@ -12,6 +12,7 @@ import i18n, { getT, LANGUAGES } from './services/i18n';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './components/ToastProvider';
 import CookieBanner from './components/CookieBanner';
+import { initClarityOnAppStart } from './services/clarity';
 
 import { AppStateContext, AppActionsContext } from './contexts/AppContext';
 import { dedupeTransactions } from './utils/transactionIntegrity';
@@ -174,8 +175,8 @@ const LOCALE_MAP = {
   en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
 };
 
-export function formatCurrency(amount, currency = 'USD', localeOrLang = 'en-US') {
-  const info = CURRENCIES[currency] || CURRENCIES.USD;
+export function formatCurrency(amount, currency = 'INR', localeOrLang = 'en-IN') {
+  const info = CURRENCIES[currency] || CURRENCIES.INR;
   const parsedAmount = Number(amount);
   const val = Number.isFinite(parsedAmount) ? parsedAmount : 0;
   const isNeg = val < 0;
@@ -219,6 +220,11 @@ export default function App() {
       const p = api?.healthCheck?.({ timeout: 20000 });
       if (p && typeof p.catch === 'function') p.catch(() => {});
     } catch { /* best effort */ }
+
+    // Initialize Microsoft Clarity if user has previously granted consent
+    try {
+      initClarityOnAppStart();
+    } catch { /* non-blocking */ }
 
     // Keep active sessions warm: Render sleeps after 15 min; ping every 10 min while visible
     const keepAliveInterval = window.setInterval(() => {
@@ -627,8 +633,8 @@ export default function App() {
     return await switchUser(previousSessionRef.current.id);
   }, [switchUser]);
 
-  const currency = user?.currency || 'USD';
-  const currencyInfo = CURRENCIES[currency] || CURRENCIES.USD;
+  const currency = user?.currency || 'INR';
+  const currencyInfo = CURRENCIES[currency] || CURRENCIES.INR;
   const fmt = useCallback((amount) => formatCurrency(amount, currency, lang), [currency, lang]);
 
   const alerts = useMemo(() => generateAlerts(transactions, user, goals), [transactions, user, goals]);

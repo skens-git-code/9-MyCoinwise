@@ -14,8 +14,8 @@ const LOCALE_MAP = {
  * @param {string} currency - e.g. 'USD', 'INR', 'EUR'
  * @returns {string}
  */
-export function getCurrencySymbol(currency = 'USD') {
-  return CURRENCIES[currency]?.symbol || currency || '$';
+export function getCurrencySymbol(currency = 'INR') {
+  return CURRENCIES[currency]?.symbol || currency || '₹';
 }
 
 /**
@@ -24,19 +24,19 @@ export function getCurrencySymbol(currency = 'USD') {
  * @param {string} currency
  * @returns {{ symbol: string, name: string }}
  */
-export function getCurrencyInfo(currency = 'USD') {
-  return CURRENCIES[currency] || { symbol: currency || '$', name: currency || 'USD' };
+export function getCurrencyInfo(currency = 'INR') {
+  return CURRENCIES[currency] || { symbol: currency || '₹', name: currency || 'INR' };
 }
 
 /**
  * Formats a monetary amount with currency symbol and locale-sensitive decimal grouping.
  *
  * @param {number|string} amount
- * @param {string} currency - Currency ISO code (default: 'USD')
+ * @param {string} currency - Currency ISO code (default: 'INR')
  * @param {string} localeOrLang - Locale or language code (e.g. 'en-US', 'hi-IN')
  * @returns {string}
  */
-export function formatCurrency(amount, currency = 'USD', localeOrLang = 'en-US') {
+export function formatCurrency(amount, currency = 'INR', localeOrLang = 'en-IN') {
   const info = getCurrencyInfo(currency);
   const parsedAmount = Number(amount);
   const val = Number.isFinite(parsedAmount) ? parsedAmount : 0;
@@ -61,7 +61,7 @@ export function formatCurrency(amount, currency = 'USD', localeOrLang = 'en-US')
  * @param {string} localeOrLang
  * @returns {{ symbol: string, integer: string, decimal: string, isNegative: boolean, full: string }}
  */
-export function formatCurrencyParts(amount, currency = 'USD', localeOrLang = 'en-US') {
+export function formatCurrencyParts(amount, currency = 'INR', localeOrLang = 'en-IN') {
   const info = getCurrencyInfo(currency);
   const parsedAmount = Number(amount);
   const val = Number.isFinite(parsedAmount) ? parsedAmount : 0;

@@ -61,7 +61,7 @@ const FALLBACK_RATES_TO_INR = Object.freeze({
 });
 
 // ── Normalize a currency code (uppercase, default fallback) ──
-const normalizeCurrency = (value, fallback = 'USD') => {
+const normalizeCurrency = (value, fallback = 'INR') => {
   const normalized = String(value || '').trim().toUpperCase();
   return normalized || fallback;
 };
@@ -153,7 +153,7 @@ const toSafeUser = (user) => ({
   email: user.email,
   profile_avatar: user.profile_avatar || '😊',
   profile_color: user.profile_color || '#0ea5e9',
-  currency: user.currency || 'USD',
+  currency: user.currency || 'INR',
   household_id: user.household_id || user._id,
   balance: typeof user.balance === 'number' ? user.balance : 0,
   theme: user.theme || 'light',
@@ -292,7 +292,7 @@ router.post(
     const { username, password, profile_avatar, profile_color } = req.body;
     const email = normalizeEmail(req.body.email);
     const currency = req.body.currency === undefined
-      ? 'USD'
+      ? 'INR'
       : String(req.body.currency).trim().toUpperCase();
 
     if (!CURRENCY_CODES.has(currency)) {

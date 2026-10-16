@@ -330,7 +330,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         account_id: accountId || null,
         currency: accounts.find((account) => String(account.id || account._id) === String(accountId))?.currency
           || currency
-          || 'USD',
+          || 'INR',
         is_recurring: isRecurring,
         recurrence_interval: isRecurring ? recurrenceInterval : null
       };
@@ -430,7 +430,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 
                 {/* ── Form body ── */}
                 <form onSubmit={handleSubmit} className="transaction-form">
-                  {/* ── Error message ── */}
+                  <div className="transaction-form-scrollable">
+                    {/* ── Error message ── */}
                   <AnimatePresence>
                     {error && (
                       <motion.div
@@ -602,7 +603,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                       <option value="">{t?.('no_account_selected') || 'No account selected'}</option>
                       {accounts.filter(account => account.is_active !== false).map(account => (
                         <option key={account.id || account._id} value={account.id || account._id}>
-                          {account.name} · {account.currency || 'USD'}
+                          {account.name} · {account.currency || 'INR'}
                         </option>
                       ))}
                     </select>
@@ -696,6 +697,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                       )}
                     </div>
                   </div>
+                </div>
 
                   {/* ── Actions: cancel and submit ── */}
                   <div className="modal-actions transaction-form-actions">

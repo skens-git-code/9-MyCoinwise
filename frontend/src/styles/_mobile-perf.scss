@@ -134,29 +134,20 @@
     }
   }
 
-  /* ── GLITCH #6: Transactions filter dropdown truncation fix (Option A) ── */
+  /* ── GLITCH #6: Transactions filter dropdown responsive layout ── */
   @media (max-width: 480px) {
-    .il-controls,
     .transactions-filters {
-      display: flex !important;
-      flex-direction: column !important;
+      display: grid !important;
+      grid-template-columns: repeat(2, 1fr) !important;
       width: 100% !important;
-      gap: 8px !important;
+      gap: 6px !important;
 
       select {
         width: 100% !important;
-        min-width: 100% !important;
-        min-height: 42px !important;
+        min-height: 36px !important;
         box-sizing: border-box !important;
-        padding: 8px 14px !important;
-        font-size: 0.9rem !important;
-      }
-
-      .il-controls-actions {
-        display: flex !important;
-        width: 100% !important;
-        justify-content: flex-end !important;
-        gap: 8px !important;
+        padding: 6px 10px !important;
+        font-size: 0.82rem !important;
       }
     }
   }

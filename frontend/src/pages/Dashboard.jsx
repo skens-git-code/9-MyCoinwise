@@ -59,7 +59,7 @@ import { isMobileTier } from '../utils/deviceTier';
  * ============================================================ */
 
 // ── Pie chart color palette ──
-const PIE_COLORS = ['#059669', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4899'];
+const PIE_COLORS = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6', '#14b8a6'];
 
 // ── Default category suggestions (union with user's actual categories) ──
 const DEFAULT_CATEGORIES = [
@@ -565,7 +565,7 @@ export default function Dashboard() {
     theme = 'light',
     USER_ID = null,
     lang = 'en',
-    currency = 'USD',
+    currency = 'INR',
     currencyInfo,
     loading,
   } = useAppState();
@@ -585,7 +585,7 @@ export default function Dashboard() {
   // ── Derived theme / locale / currency ──
   const locale = useMemo(() => resolveLocale(lang), [lang]);
   const isDark = useMemo(() => isDarkTheme(theme), [theme]);
-  const displayCurrency = useMemo(() => resolveCurrency(currency, 'USD'), [currency]);
+  const displayCurrency = useMemo(() => resolveCurrency(currency, 'INR'), [currency]);
 
   // ── FX rates to INR (cache or bundled fallback) ──
   const [fxRatesToInr, setFxRatesToInr] = useState(() => (
@@ -1278,7 +1278,13 @@ export default function Dashboard() {
   }, [t]);
 
   /* ---------------- Theme Colors ---------------- */
-  const balanceHex = rawBalance >= 0 ? '#10b981' : '#ef4444';
+  const balanceHex = rawBalance >= 0
+    ? (isDark ? '#f8fafc' : '#0f172a')
+    : (isDark ? '#f87171' : '#dc2626');
+
+  const balanceTrendColor = rawBalance >= 0
+    ? (isDark ? '#34d399' : '#10b981')
+    : (isDark ? '#f87171' : '#dc2626');
 
   // ── Chart tooltip style (dark / light aware) ──
   const tooltipStyle = useMemo(() => ({
@@ -1704,7 +1710,8 @@ export default function Dashboard() {
               }}
             />
             <div className="bh-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 8 }}>
-              <span className="bh-label" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              <span className="bh-label" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-secondary, #334155)', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: rawBalance >= 0 ? '#10b981' : '#ef4444', display: 'inline-block' }} aria-hidden="true" />
                 {tr('total_balance', 'Total Balance')}
               </span>
               <div
@@ -1727,7 +1734,7 @@ export default function Dashboard() {
                 style={{
                   fontSize: 'clamp(2.4rem, 5.5vw, 3.4rem)',
                   fontWeight: 800,
-                  color: rawBalance >= 0 ? '#10b981' : '#ef4444',
+                  color: balanceHex,
                   margin: '4px 0 8px',
                   fontVariantNumeric: 'tabular-nums',
                   letterSpacing: '-0.03em',
@@ -1756,7 +1763,7 @@ export default function Dashboard() {
                     <path
                       d={sparklineSvgPath}
                       fill="none"
-                      stroke={balanceHex}
+                      stroke={balanceTrendColor}
                       strokeWidth="2.2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -1804,8 +1811,8 @@ export default function Dashboard() {
               )
             }
             valueText={formatCurrencyText(rawIncome, safeFmt, currencySymbol)}
-            colorRgb="16, 185, 129"
-            accentColor="#10b981"
+            colorRgb={isDark ? '52, 211, 153' : '16, 185, 129'}
+            accentColor={isDark ? '#34d399' : '#10b981'}
             subtitle={tr('all_time', 'All time')}
             trend={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.dir}
             trendVal={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.val}
@@ -1830,8 +1837,8 @@ export default function Dashboard() {
               )
             }
             valueText={formatCurrencyText(rawExpense, safeFmt, currencySymbol)}
-            colorRgb="239, 68, 68"
-            accentColor="#ef4444"
+            colorRgb={isDark ? '248, 113, 113' : '220, 38, 38'}
+            accentColor={isDark ? '#f87171' : '#dc2626'}
             subtitle={tr('all_time', 'All time')}
             trend={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.dir}
             trendVal={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.val}
@@ -1958,14 +1965,16 @@ export default function Dashboard() {
                     <defs>
                       {/* ── Income area gradient ── */}
                       <linearGradient id={gInId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.16} />
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.32} />
+                        <stop offset="65%" stopColor="#10b981" stopOpacity={0.08} />
+                        <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
                       </linearGradient>
 
                       {/* ── Expense area gradient ── */}
                       <linearGradient id={gExId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.14} />
-                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#ef4444" stopOpacity={0.28} />
+                        <stop offset="65%" stopColor="#ef4444" stopOpacity={0.06} />
+                        <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'} vertical={false} />
@@ -2097,8 +2106,8 @@ export default function Dashboard() {
                   <AreaChart data={netWorthData} margin={{ top: 5, right: 8, left: -5, bottom: 0 }}>
                     <defs>
                       <linearGradient id={gNWId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={balanceHex} stopOpacity={0.2} />
-                        <stop offset="95%" stopColor={balanceHex} stopOpacity={0} />
+                        <stop offset="5%" stopColor={balanceTrendColor} stopOpacity={0.2} />
+                        <stop offset="95%" stopColor={balanceTrendColor} stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 9 }} axisLine={false} tickLine={false} />
@@ -2131,7 +2140,7 @@ export default function Dashboard() {
                       animationEasing="ease-out"
                       type="monotone"
                       dataKey="balance"
-                      stroke={balanceHex}
+                      stroke={balanceTrendColor}
                       fill={`url(#${gNWId})`}
                       strokeWidth={2}
                       dot={{ r: 2 }}
@@ -2291,13 +2300,14 @@ export default function Dashboard() {
                       data={pieData}
                       cx="50%"
                       cy="44%"
-                      innerRadius="46%"
-                      outerRadius="70%"
-                      paddingAngle={3}
+                      innerRadius="50%"
+                      outerRadius="74%"
+                      paddingAngle={4}
+                      cornerRadius={5}
                       dataKey="value"
                       nameKey="name"
                       stroke="var(--surface-card, #ffffff)"
-                      strokeWidth={1.5}
+                      strokeWidth={2}
                     >
                       {pieData.map((entry, i) => (
                         <Cell

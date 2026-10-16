@@ -517,7 +517,7 @@ router.post(
       profession = 'Trader',
       email,
       password,
-      currency = 'USD', // Consistent with the rest of the app.
+      currency = 'INR', // Consistent with the rest of the app.
       profile_avatar = '😊',
       profile_color = '#059669',
     } = req.body;

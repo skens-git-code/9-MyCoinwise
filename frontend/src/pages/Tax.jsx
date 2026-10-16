@@ -100,6 +100,7 @@ export default function Tax() {
 
   // ── Report preview data ──
   const [report, setReport] = useState(null);
+  const [showRawJson, setShowRawJson] = useState(false);
 
   /* ============================================================
    * Derived Data
@@ -266,7 +267,85 @@ export default function Tax() {
         </aside></section>}
 
         {/* ===================== Deductions tab ===================== */}
-        {activeTab === 'deductions' && <section className="tax-tab-panel glass"><div className="tax-panel-header"><div><h3>Deduction tracker</h3><p>Tag a transaction once; duplicate deduction claims are rejected.</p></div><span className="tax-total-badge">{money(estimate?.deductions?.total)}</span></div><form className="tax-inline-form" onSubmit={tagTransaction}><select aria-label="Transaction to tag" value={tagForm.transaction_id} onChange={(e) => setTagForm({ ...tagForm, transaction_id: e.target.value })}><option value="">Choose an expense…</option>{taxTransactions.map((tx) => <option key={getId(tx)} value={getId(tx)}>{tx.category} · {money(tx.amount)} · {formatTaxDate(tx.date, taxLocale)}</option>)}</select><select aria-label="Tax treatment" value={tagForm.treatment} onChange={(e) => setTagForm({ ...tagForm, treatment: e.target.value })}>{TREATMENTS.map((treatment) => <option key={treatment} value={treatment}>{treatment.replaceAll('_', ' ')}</option>)}</select><input aria-label="Deductible portion" type="number" min="0" max="100" value={tagForm.portion} onChange={(e) => setTagForm({ ...tagForm, portion: e.target.value })} /><button className="btn-primary" type="submit">Tag transaction</button></form><div className="tax-table-wrap"><table className="tax-data-table"><thead><tr><th>Date</th><th>Transaction</th><th>Treatment</th><th>Portion</th><th>Amount</th></tr></thead><tbody>{tagged.length ? tagged.map((row) => <tr key={getId(row.tag)}><td>{formatTaxDate(row.transaction.date, taxLocale)}</td><td>{row.transaction.merchant || row.transaction.category}</td><td>{row.tag.treatment.replaceAll('_', ' ')}</td><td>{row.tag.portion}%</td><td>{money(Number(row.transaction.amount) * Number(row.tag.portion || 100) / 100)}</td></tr>) : <tr><td colSpan="5" className="tax-muted">No tax tags for this fiscal year.</td></tr>}</tbody></table></div></section>}
+        {activeTab === 'deductions' && (
+          <section className="tax-tab-panel glass">
+            <div className="tax-panel-header">
+              <div>
+                <h3>Deduction tracker</h3>
+                <p>Tag a transaction once; duplicate deduction claims are rejected.</p>
+              </div>
+              <span className="tax-total-badge">{money(estimate?.deductions?.total)}</span>
+            </div>
+            <form className="tax-inline-form" onSubmit={tagTransaction}>
+              <select aria-label="Transaction to tag" value={tagForm.transaction_id} onChange={(e) => setTagForm({ ...tagForm, transaction_id: e.target.value })}>
+                <option value="">Choose an expense…</option>
+                {taxTransactions.map((tx) => (
+                  <option key={getId(tx)} value={getId(tx)}>
+                    {tx.category} · {money(tx.amount)} · {formatTaxDate(tx.date, taxLocale)}
+                  </option>
+                ))}
+              </select>
+              <select aria-label="Tax treatment" value={tagForm.treatment} onChange={(e) => setTagForm({ ...tagForm, treatment: e.target.value })}>
+                {TREATMENTS.map((treatment) => (
+                  <option key={treatment} value={treatment}>
+                    {treatment.replaceAll('_', ' ')}
+                  </option>
+                ))}
+              </select>
+              <input aria-label="Deductible portion" type="number" min="0" max="100" value={tagForm.portion} onChange={(e) => setTagForm({ ...tagForm, portion: e.target.value })} />
+              <button className="btn-primary" type="submit">Tag transaction</button>
+            </form>
+            <div className="tax-table-wrap">
+              <table className="tax-data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Transaction</th>
+                    <th>Treatment</th>
+                    <th>Portion</th>
+                    <th>Amount</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tagged.length ? (
+                    tagged.map((row) => (
+                      <tr key={getId(row.tag)}>
+                        <td>{formatTaxDate(row.transaction.date, taxLocale)}</td>
+                        <td>{row.transaction.merchant || row.transaction.category}</td>
+                        <td>{row.tag.treatment.replaceAll('_', ' ')}</td>
+                        <td>{row.tag.portion}%</td>
+                        <td>{money((Number(row.transaction.amount) * Number(row.tag.portion || 100)) / 100)}</td>
+                        <td>
+                          <button
+                            className="icon-button"
+                            onClick={async () => {
+                              try {
+                                await api.removeTaxTag(getId(row.transaction));
+                                await loadProfileData(profile);
+                                showToast('success', 'Tax tag removed.');
+                              } catch (err) {
+                                showToast('error', err?.response?.data?.error || 'Unable to remove tax tag.');
+                              }
+                            }}
+                            title="Remove tax tag"
+                            aria-label="Remove tax tag"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="6" className="tax-muted">No tax tags for this fiscal year.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {/* ===================== Capital gains tab ===================== */}
         {activeTab === 'capital' && <section className="tax-tab-panel glass"><div className="tax-panel-header"><div><h3>Capital gains</h3><p>Sold Wealth items are classified by holding period. Losses are tracked separately.</p></div><a className="btn-secondary" href="/wealth">Manage assets</a></div>{capitalGains?.holdings?.length ? <><TaxEstimateCard estimate={{ totalLiability: capitalGains.total, balanceDue: capitalGains.total, effectiveRate: 0, marginalRate: 0, taxableIncome: capitalGains.shortTermGain + capitalGains.longTermGain, grossIncome: capitalGains.shortTermGain + capitalGains.longTermGain, hasTaxableActivity: true }} currency={profile.currency} fmt={money} /><div className="tax-table-wrap"><table className="tax-data-table"><thead><tr><th>Asset</th><th>Holding period</th><th>Classification</th><th>Gain / loss</th><th>Tax</th></tr></thead><tbody>{capitalGains.holdings.map((holding) => <tr key={holding.id}><td>{holding.name}</td><td>{holding.holdingDays} days</td><td>{holding.classification.replace('_', ' ')}</td><td className={holding.gain >= 0 ? 'text-success' : 'text-danger'}>{money(holding.gain)}</td><td>{money(holding.tax)}</td></tr>)}</tbody></table></div></> : <div className="tax-empty-panel">No sold assets have been recorded.</div>}</section>}
@@ -278,7 +357,128 @@ export default function Tax() {
         {activeTab === 'documents' && <section className="tax-tab-panel glass"><div className="tax-panel-header"><div><h3>Tax documents</h3><p>Indexed references are encrypted at rest. Files are not uploaded by this form.</p></div><span className="tax-muted">7-year retention reminder</span></div><form className="tax-inline-form tax-document-form" onSubmit={addDocument}><input aria-label="Document label" placeholder="Document label" value={documentForm.label} onChange={(e) => setDocumentForm({ ...documentForm, label: e.target.value })} required /><select aria-label="Document type" value={documentForm.document_type} onChange={(e) => setDocumentForm({ ...documentForm, document_type: e.target.value })}><option value="form16">Form 16</option><option value="w2">W-2</option><option value="1099">1099</option><option value="receipt">Receipt</option><option value="invoice">Invoice</option><option value="other">Other</option></select><input aria-label="Document URL" type="url" placeholder="Secure file URL" value={documentForm.file_url} onChange={(e) => setDocumentForm({ ...documentForm, file_url: e.target.value })} required /><input aria-label="File size in bytes" type="number" min="0" max={10 * 1024 * 1024} placeholder="File size (bytes)" value={documentForm.file_size} onChange={(e) => setDocumentForm({ ...documentForm, file_size: e.target.value })} required /><button className="btn-primary" type="submit">Index document</button></form><div className="tax-document-list">{documents.length ? documents.map((doc) => <article className="tax-document-row" key={getId(doc)}><FileText size={18} /><div><strong>{doc.label}</strong><span>{doc.document_type} · {formatTaxDate(doc.issue_date || doc.created_at, taxLocale)}</span></div><a href={doc.file_url || '#'} target="_blank" rel="noreferrer">Open</a><button className="icon-button" onClick={async () => { await api.deleteTaxDocument(getId(doc)); await loadProfileData(profile); }} aria-label="Delete document"><Trash2 size={15} /></button></article>) : <div className="tax-empty-panel">No documents indexed.</div>}</div></section>}
 
         {/* ===================== Reports tab ===================== */}
-        {activeTab === 'reports' && <section className="tax-tab-panel glass tax-report"><div className="tax-panel-header"><div><h3>Yearly report</h3><p>Export a data summary for your professional review. MyCoinwise does not file returns.</p></div><div className="tax-header-actions"><button className="btn-secondary" onClick={loadReport}>Preview</button><button className="btn-secondary" onClick={downloadCsv}><Download size={15} /> CSV</button><button className="btn-primary" onClick={() => window.print()}><FileText size={15} /> Print / PDF</button></div></div><TaxDisclaimer />{report ? <pre className="tax-report-preview">{JSON.stringify(report, null, 2)}</pre> : <div className="tax-empty-panel">Preview the report before exporting.</div>}</section>}
+        {activeTab === 'reports' && (
+          <section className="tax-tab-panel glass tax-report">
+            <div className="tax-panel-header">
+              <div>
+                <h3>Yearly report</h3>
+                <p>Export a data summary for your professional review. MyCoinwise does not file returns.</p>
+              </div>
+              <div className="tax-header-actions">
+                <button className="btn-secondary" onClick={loadReport}>Preview</button>
+                <button className="btn-secondary" onClick={downloadCsv}><Download size={15} /> CSV</button>
+                <button className="btn-primary" onClick={() => window.print()}><FileText size={15} /> Print / PDF</button>
+              </div>
+            </div>
+            <TaxDisclaimer />
+            {report ? (
+              <div className="tax-report-container" style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 16 }}>
+                <div className="tax-panel glass" style={{ padding: '16px 20px', borderRadius: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, borderBottom: '1px solid var(--glass-border)', paddingBottom: 12, marginBottom: 14 }}>
+                    <div>
+                      <span className="tax-kicker" style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--brand-primary)', textTransform: 'uppercase' }}>
+                        Official Tax Summary · {fiscalYearLabel(report.profile || profile)}
+                      </span>
+                      <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '2px 0 0' }}>{report.profile?.name || profileName}</h2>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span className="tax-badge" style={{ padding: '4px 10px', borderRadius: 8, background: 'var(--glass-2)', border: '1px solid var(--glass-border)', fontSize: '0.8rem', fontWeight: 600 }}>
+                        {report.profile?.jurisdiction === 'IN' ? '🇮🇳 India' : '🇺🇸 United States'}
+                      </span>
+                      <span className="tax-badge" style={{ padding: '4px 10px', borderRadius: 8, background: 'var(--glass-2)', border: '1px solid var(--glass-border)', fontSize: '0.8rem', fontWeight: 600 }}>
+                        {report.profile?.tax_regime === 'old' ? 'Old Regime' : report.profile?.tax_regime === 'new' ? 'New Regime' : 'Standard'}
+                      </span>
+                      {report.profile?.tax_id_last4 && (
+                        <span className="tax-badge" style={{ padding: '4px 10px', borderRadius: 8, background: 'var(--glass-2)', border: '1px solid var(--glass-border)', fontSize: '0.8rem', fontWeight: 600 }}>
+                          {report.profile?.jurisdiction === 'IN' ? 'PAN' : 'Tax ID'}: ····{report.profile.tax_id_last4}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+                    <div style={{ padding: '12px 14px', borderRadius: 10, background: 'var(--glass-1)', border: '1px solid var(--glass-border)' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Gross Income</span>
+                      <strong style={{ display: 'block', fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4 }}>
+                        {money(report.estimate?.grossIncome)}
+                      </strong>
+                    </div>
+
+                    <div style={{ padding: '12px 14px', borderRadius: 10, background: 'var(--glass-1)', border: '1px solid var(--glass-border)' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Total Deductions</span>
+                      <strong style={{ display: 'block', fontSize: '1.15rem', fontWeight: 800, color: '#10b981', marginTop: 4 }}>
+                        {money(Number(report.estimate?.standardDeductionApplied || 0) + Number(report.estimate?.itemizedDeductionsApplied || 0))}
+                      </strong>
+                    </div>
+
+                    <div style={{ padding: '12px 14px', borderRadius: 10, background: 'var(--glass-1)', border: '1px solid var(--glass-border)' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Computed Liability</span>
+                      <strong style={{ display: 'block', fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4 }}>
+                        {money(report.estimate?.totalLiability)}
+                        <small style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginLeft: 6 }}>
+                          ({report.estimate?.effectiveRate || 0}%)
+                        </small>
+                      </strong>
+                    </div>
+
+                    <div style={{ padding: '12px 14px', borderRadius: 10, background: 'var(--glass-1)', border: '1px solid var(--glass-border)' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Net Position</span>
+                      <strong style={{ display: 'block', fontSize: '1.15rem', fontWeight: 800, color: Number(report.estimate?.balanceDue || 0) > 0 ? '#ef4444' : '#10b981', marginTop: 4 }}>
+                        {Number(report.estimate?.balanceDue || 0) > 0
+                          ? `${money(report.estimate.balanceDue)} due`
+                          : Number(report.estimate?.paymentsMade || 0) >= Number(report.estimate?.totalLiability || 0) && Number(report.estimate?.paymentsMade || 0) > 0
+                          ? `${money(Number(report.estimate?.paymentsMade || 0) - Number(report.estimate?.totalLiability || 0))} refund`
+                          : 'Settled'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="tax-breakdown-list" style={{ marginTop: 8 }}>
+                    <div><span>Gross Total Income</span><strong>{money(report.estimate?.grossIncome)}</strong></div>
+                    <div><span>Pre-Tax Contributions</span><strong>− {money(report.estimate?.preTaxContributions)}</strong></div>
+                    <div><span>Standard Deduction Applied</span><strong>− {money(report.estimate?.standardDeductionApplied)}</strong></div>
+                    <div><span>Tagged / Itemized Deductions</span><strong>− {money(report.estimate?.itemizedDeductionsApplied)}</strong></div>
+                    <div><span>Taxable Net Income</span><strong>{money(report.estimate?.taxableIncome)}</strong></div>
+                    <div><span>Tax Before Credits</span><strong>{money(report.estimate?.taxBeforeCredits)}</strong></div>
+                    <div><span>Credits / Rebate Applied</span><strong>− {money(report.estimate?.creditsApplied)}</strong></div>
+                    <div style={{ fontWeight: 700 }}><span>Total Computed Tax</span><strong>{money(report.estimate?.totalLiability)}</strong></div>
+                    <div><span>Taxes Paid / TDS Credited</span><strong>− {money(report.estimate?.paymentsMade)}</strong></div>
+                    <div className="total" style={{ borderTop: '2px solid var(--glass-border-hover)', paddingTop: 10 }}>
+                      <span style={{ fontSize: '1rem', fontWeight: 800 }}>Final Net Settlement</span>
+                      <strong style={{ fontSize: '1.15rem', fontWeight: 800, color: Number(report.estimate?.balanceDue || 0) > 0 ? '#ef4444' : '#10b981' }}>
+                        {Number(report.estimate?.balanceDue || 0) > 0 ? `${money(report.estimate.balanceDue)} (Balance Payable)` : `${money(Math.max(0, Number(report.estimate?.paymentsMade || 0) - Number(report.estimate?.totalLiability || 0)))} (Refund / Zero Balance)`}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+                    onClick={() => setShowRawJson(!showRawJson)}
+                  >
+                    {showRawJson ? 'Hide Raw JSON Schema' : 'Inspect Raw JSON Data'}
+                  </button>
+                </div>
+
+                {showRawJson && (
+                  <pre className="tax-report-preview" style={{ maxHeight: 360, overflow: 'auto', background: 'var(--surface-0)', padding: 14, borderRadius: 8, fontSize: '0.8rem' }}>
+                    {JSON.stringify(report, null, 2)}
+                  </pre>
+                )}
+              </div>
+            ) : (
+              <div className="tax-empty-panel">
+                <p>Click "Preview" to generate your comprehensive yearly tax report.</p>
+                <button className="btn-primary" style={{ marginTop: 12 }} onClick={loadReport}>
+                  <RefreshCw size={14} /> Generate Preview
+                </button>
+              </div>
+            )}
+          </section>
+        )}
       </>}
 
       {/* ===================== Profile form modal ===================== */}

@@ -28,7 +28,7 @@ import { LANGUAGES } from '../services/i18n';
 import { openCookiePreferences } from '../services/clarity';
 import {
   User, Mail, KeyRound, AlertTriangle, Zap, Eye, EyeOff,
-  ArrowRight, CheckCircle2, Lock, Globe, X,
+  ArrowRight, Check, CheckCircle2, Lock, Globe, X,
   Loader2, RefreshCw, Smartphone, MailCheck,
 } from 'lucide-react';
 
@@ -977,18 +977,23 @@ export default function Register() {
 
           {/* ── Terms & Conditions agreement ── */}
           <div className={`form-group checkbox-group ${termsHasError ? 'has-error' : ''}`}>
-            <label className="checkbox-label">
+            <label className="checkbox-label" htmlFor="register-agreeTerms">
               <input
                 type="checkbox"
+                id="register-agreeTerms"
                 name="agreeTerms"
                 checked={formData.agreeTerms}
                 onChange={handleChange}
                 onBlur={handleBlur}
                 disabled={loading}
+                className="auth-checkbox-input"
                 aria-invalid={termsHasError}
                 aria-describedby={termsHasError ? 'terms-error' : undefined}
               />
-              <span>
+              <span className={`custom-checkbox ${formData.agreeTerms ? 'checked' : ''}`} aria-hidden="true">
+                {formData.agreeTerms && <Check size={12} className="custom-check-icon" />}
+              </span>
+              <span className="checkbox-text">
                 {tr('agree_to_terms_prefix', 'I agree to the')}{' '}
                 <Link to="/terms" className="auth-inline-link" target="_blank" rel="noopener noreferrer">
                   {tr('terms_and_conditions', 'Terms & Conditions')}
@@ -1008,15 +1013,20 @@ export default function Register() {
 
           {/* ── Marketing opt-in (optional) ── */}
           <div className="form-group checkbox-group">
-            <label className="checkbox-label">
+            <label className="checkbox-label" htmlFor="register-agreeMarketing">
               <input
                 type="checkbox"
+                id="register-agreeMarketing"
                 name="agreeMarketing"
                 checked={formData.agreeMarketing}
                 onChange={handleChange}
                 disabled={loading}
+                className="auth-checkbox-input"
               />
-              <span>{tr('agree_marketing', 'Send me product updates and tips (optional)')}</span>
+              <span className={`custom-checkbox ${formData.agreeMarketing ? 'checked' : ''}`} aria-hidden="true">
+                {formData.agreeMarketing && <Check size={12} className="custom-check-icon" />}
+              </span>
+              <span className="checkbox-text">{tr('agree_marketing', 'Send me product updates and tips (optional)')}</span>
             </label>
           </div>
 

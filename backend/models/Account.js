@@ -66,7 +66,7 @@ const accountSchema = new mongoose.Schema(
     currency: {
       type: String,
       required: true,
-      default: 'USD',
+      default: 'INR',
       uppercase: true,
       trim: true,
       validate: {

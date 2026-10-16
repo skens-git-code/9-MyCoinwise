@@ -1007,7 +1007,18 @@ $card-radius-uniform: 16px;
   font-weight: inherit !important;
 }
 
-.bh-label,
+.bh-label {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em !important;
+  color: #334155 !important;
+}
+
+[data-theme="dark"] .bh-label,
+[data-theme="amoled"] .bh-label {
+  color: #cbd5e1 !important;
+}
+
 .stat-label,
 .dqs-label,
 .stat-lbl,
@@ -1017,11 +1028,14 @@ $card-radius-uniform: 16px;
   color: #64748B !important;
 }
 
-[data-theme="dark"] .bh-label,
 [data-theme="dark"] .stat-label,
 [data-theme="dark"] .dqs-label,
 [data-theme="dark"] .stat-lbl,
-[data-theme="dark"] .apb-label {
+[data-theme="dark"] .apb-label,
+[data-theme="amoled"] .stat-label,
+[data-theme="amoled"] .dqs-label,
+[data-theme="amoled"] .stat-lbl,
+[data-theme="amoled"] .apb-label {
   color: #94A3B8 !important;
 }
 

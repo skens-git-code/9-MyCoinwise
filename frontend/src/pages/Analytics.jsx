@@ -41,10 +41,10 @@ import { dedupeTransactions } from '../utils/transactionIntegrity';
  * ============================================================ */
 
 // ── Color palettes for pie and line charts (light / dark variants) ──
-const PIE_COLORS_LIGHT = ['#059669', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#8b5cf6', '#3b82f6', '#f97316', '#14b8a6'];
-const PIE_COLORS_DARK  = ['#34d399', '#22d3ee', '#fbbf24', '#6ee7b7', '#f87171', '#f472b6', '#a78bfa', '#60a5fa', '#fb923c', '#5eead4'];
-const CATEGORY_COLORS_LIGHT = ['#10b981', '#06b6d4', '#f59e0b', '#8b5cf6', '#ec4899', '#3b82f6', '#ef4444', '#14b8a6'];
-const CATEGORY_COLORS_DARK  = ['#34d399', '#22d3ee', '#fbbf24', '#a78bfa', '#f472b6', '#60a5fa', '#f87171', '#5eead4'];
+const PIE_COLORS_LIGHT = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6', '#14b8a6', '#f97316', '#0ea5e9'];
+const PIE_COLORS_DARK  = ['#818cf8', '#22d3ee', '#34d399', '#fbbf24', '#f472b6', '#a78bfa', '#60a5fa', '#2dd4bf', '#fb923c', '#38bdf8'];
+const CATEGORY_COLORS_LIGHT = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6', '#14b8a6'];
+const CATEGORY_COLORS_DARK  = ['#818cf8', '#22d3ee', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#60a5fa', '#2dd4bf'];
 
 // ── localStorage key and chart/anomaly tuning constants ──
 const REVIEWED_KEY = 'mycoinwise-reviewed-anomalies';
@@ -1636,6 +1636,7 @@ export default function Analytics() {
                   cy="50%"
                   innerRadius={55}
                   outerRadius={90}
+                  cornerRadius={5}
                   paddingAngle={3}
                   dataKey="value"
                   nameKey="name"

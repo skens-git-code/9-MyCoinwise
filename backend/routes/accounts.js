@@ -235,7 +235,7 @@ router.post('/', async (req, res) => {
       user_id: req.userId,
       name: normalizedName,
       type: normalizeType(type) || 'bank',
-      currency: String(currency || 'USD').trim().toUpperCase(),
+      currency: String(currency || 'INR').trim().toUpperCase(),
       initial_balance: openingBalance,
       current_balance: openingBalance,
       color: color || '#3b82f6',

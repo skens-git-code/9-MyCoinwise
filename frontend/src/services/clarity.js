@@ -124,10 +124,11 @@ export function stopClarity() {
   clearClarityCookies();
 }
 
+export const DEFAULT_CLARITY_PROJECT_ID = 'y60svimjg2';
+
 /**
  * EXPLICITLY initialize Microsoft Clarity after user consent is verified.
- * This should ONLY be called from the UI after the user clicks "Accept".
- * Do NOT call on app startup — this would trigger Brave Shields/tracker blockers.
+ * This should ONLY be called from the UI after the user clicks "Accept" or on app startup when consent exists.
  * 
  * @param {Object} [options]
  * @param {boolean} [options.forceDev] - Allow loading in dev environment for testing
@@ -151,16 +152,15 @@ export function loadClarityAfterConsent(options = {}) {
     return false;
   }
 
-  // 3. Environment Gate: Clarity must not run in development unless explicitly forced for testing
-  const isProd = import.meta.env.PROD;
-  const allowDev = Boolean(options.forceDev || window.__FORCE_CLARITY__);
-  if (!isProd && !allowDev) {
+  // 3. Environment Gate: Skip during automated unit tests unless forceDev is provided
+  const isTest = import.meta.env.MODE === 'test';
+  if (isTest && !options.forceDev) {
     console.info('[Clarity] Skipping load: Clarity does not run in development by default.');
     return false;
   }
 
-  // 4. Project ID from environment variable
-  const projectId = (import.meta.env.VITE_CLARITY_PROJECT_ID || '').trim();
+  // 4. Project ID from environment variable or default fallback
+  const projectId = (import.meta.env.VITE_CLARITY_PROJECT_ID || DEFAULT_CLARITY_PROJECT_ID || '').trim();
   if (!projectId) {
     if (!hasWarnedMissingProjectId) {
       console.warn('[Clarity] VITE_CLARITY_PROJECT_ID is missing or empty. Microsoft Clarity will not be loaded.');
@@ -183,6 +183,9 @@ export function loadClarityAfterConsent(options = {}) {
     t.id = CLARITY_SCRIPT_ID;
     t.setAttribute('data-mcw-clarity', 'true');
     t.src = 'https://www.clarity.ms/tag/' + i;
+    t.onerror = function () {
+      console.info('[Clarity] Script blocked or unavailable (e.g. Brave Shields / tracker protection). Telemetry safely queued in memory.');
+    };
     y = l.getElementsByTagName(r)[0];
     if (y && y.parentNode) {
       y.parentNode.insertBefore(t, y);
@@ -200,6 +203,18 @@ export function loadClarityAfterConsent(options = {}) {
 
   console.info('[Clarity] Loaded after explicit user consent.');
   return true;
+}
+
+/**
+ * Initialize Clarity on initial app start if the user already gave consent previously.
+ */
+export function initClarityOnAppStart() {
+  if (typeof window === 'undefined') return false;
+  const consent = getCookieConsent();
+  if (consent === 'accepted' && !isDoNotTrack()) {
+    return loadClarityAfterConsent();
+  }
+  return false;
 }
 
 /**

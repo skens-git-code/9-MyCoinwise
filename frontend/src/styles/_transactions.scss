@@ -1,0 +1,1208 @@
+/* ================================================================
+   TRANSACTIONS PAGE — COMPREHENSIVE MODERN REDESIGN
+   Clean, fresh, responsive fintech styling with enhanced typography,
+   vibrant theme-aware colors, micro-animations, and seamless mobile layout.
+   ================================================================ */
+
+/* ── Page container ────────────────────────────────────────────── */
+.inbox-layout-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+
+  @media (max-width: 768px) {
+    gap: 12px;
+    padding-bottom: 85px !important;
+  }
+}
+
+/* ── Header ────────────────────────────────────────────────────── */
+.inbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+
+  .ih-titles {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    h2 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text-primary);
+      margin: 0;
+      line-height: 1.2;
+    }
+  }
+
+  .ih-badge {
+    font-size: 0.74rem;
+    font-weight: 700;
+    background: rgba(14, 165, 233, 0.12);
+    color: #0284c7;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    border: 1px solid rgba(14, 165, 233, 0.2);
+  }
+}
+
+.inbox-header-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  grid-template-columns: none !important;
+
+  .btn-primary,
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 15px;
+    border-radius: 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid var(--glass-border);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+    text-decoration: none;
+    box-sizing: border-box;
+  }
+
+  .btn-primary.tx-add-btn {
+    background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 4px 14px rgba(14, 165, 233, 0.32) !important;
+
+    &:hover {
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.42) !important;
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+
+    &:active {
+      transform: translateY(0) scale(0.98);
+    }
+  }
+
+  .btn-secondary {
+    background: var(--surface-1);
+    color: var(--text-primary);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+
+    &:hover {
+      background: var(--glass-2);
+      border-color: var(--glass-border-hover);
+      transform: translateY(-1px);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+  }
+
+  .dropdown-container {
+    position: relative;
+
+    .tx-export-btn {
+      width: auto;
+    }
+  }
+}
+
+/* ── Export dropdown ── */
+.tx-export-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--surface-1) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12) !important;
+  padding: 6px !important;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  .tx-export-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 12px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: var(--glass-2);
+      color: var(--brand-primary);
+    }
+  }
+}
+
+/* ── Quick Presets Strip ────────────────────────────────────────── */
+.tx-presets-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 1px;
+  margin-bottom: -2px;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.tx-preset-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 16px;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--glass-border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+  user-select: none;
+
+  &:hover {
+    border-color: var(--glass-border-hover);
+    background: var(--glass-2);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+  }
+
+  &.active {
+    background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%) !important;
+    color: #ffffff !important;
+    border-color: transparent !important;
+    box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35) !important;
+    font-weight: 700;
+  }
+}
+
+/* ── Flow Summary Strip (FRESH, OPTIMIZED REDESIGN) ─────────────── */
+.tx-summary-strip {
+  display: grid !important;
+  grid-template-columns: 1fr auto 1fr auto 1.25fr !important;
+  align-items: center;
+  padding: 16px 24px !important;
+  border-radius: 18px !important;
+  margin-bottom: 8px !important;
+  background: var(--surface-1) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05) !important;
+
+  .tss-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
+  }
+
+  .tss-label {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    font-size: 0.72rem !important;
+    font-weight: 800 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-muted) !important;
+
+    .tss-label-icon {
+      flex-shrink: 0;
+
+      &.income {
+        color: #059669;
+      }
+
+      &.expense {
+        color: #e11d48;
+      }
+
+      &.net {
+        color: #4f46e5;
+      }
+    }
+
+    /* FRESH COLOR FOR TOTAL BALANCE LABEL */
+    &.net-label {
+      color: #4f46e5 !important;
+      font-weight: 800 !important;
+      letter-spacing: 0.08em;
+    }
+  }
+
+  .tss-val {
+    font-size: 1.18rem !important;
+    font-weight: 800 !important;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+
+    &.income {
+      color: #059669 !important;
+    }
+
+    &.expense {
+      color: #e11d48 !important;
+    }
+
+    /* FRESH COLOR FOR TOTAL BALANCE NUMERIC */
+    &.net.positive {
+      color: #0d9488 !important; /* Luminous fresh emerald-teal */
+      font-weight: 850 !important;
+      font-size: 1.24rem !important;
+    }
+
+    &.net.negative {
+      color: #e11d48 !important;
+      font-weight: 850 !important;
+      font-size: 1.24rem !important;
+    }
+  }
+
+  .tss-divider {
+    width: 1px;
+    height: 34px;
+    background: var(--glass-border);
+    flex-shrink: 0;
+  }
+}
+
+/* Dark theme specific adjustments for Flow Summary */
+[data-theme="dark"],
+[data-theme="amoled"] {
+  .tx-summary-strip {
+    background: rgba(15, 23, 42, 0.75) !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35) !important;
+
+    .tss-label.net-label {
+      color: #818cf8 !important; /* Luminous soft indigo on dark */
+    }
+
+    .tss-val.income {
+      color: #10b981 !important;
+    }
+
+    .tss-val.expense {
+      color: #f43f5e !important;
+    }
+
+    .tss-val.net.positive {
+      color: #2dd4bf !important; /* Vivid mint/teal on dark */
+    }
+
+    .tss-val.net.negative {
+      color: #fb7185 !important;
+    }
+  }
+}
+
+/* ── Bulk Toolbar ──────────────────────────────────────────────── */
+.tx-bulk-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: var(--surface-1);
+  border: 1px solid rgba(14, 165, 233, 0.3);
+  box-shadow: 0 4px 16px rgba(14, 165, 233, 0.08);
+
+  .tbt-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tbt-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .tbt-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tbt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 14px;
+    border-radius: 10px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid var(--glass-border);
+    background: var(--surface-1);
+    color: var(--text-primary);
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: var(--glass-2);
+      border-color: var(--glass-border-hover);
+    }
+
+    &.danger {
+      color: #e11d48;
+      border-color: rgba(225, 29, 72, 0.3);
+      background: rgba(225, 29, 72, 0.06);
+
+      &:hover {
+        background: rgba(225, 29, 72, 0.12);
+      }
+    }
+  }
+
+  .tbt-btn-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: var(--glass-2);
+      color: var(--text-primary);
+    }
+  }
+}
+
+/* ── Split Pane ────────────────────────────────────────────────── */
+.inbox-split-pane {
+  display: flex !important;
+  gap: 16px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+
+  @media (max-width: 900px) {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+}
+
+/* ── Left List Pane ────────────────────────────────────────────── */
+.inbox-list-pane {
+  flex: 1 1 540px !important;
+  max-width: 600px;
+  background: var(--surface-1) !important;
+  border-radius: 18px !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04) !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+
+  @media (max-width: 900px) {
+    max-width: none !important;
+    flex: none !important;
+    width: 100% !important;
+  }
+}
+
+/* ── Filters Section ───────────────────────────────────────────── */
+.il-filters {
+  padding: 14px 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  border-bottom: 1px solid var(--glass-border) !important;
+  background: transparent !important;
+}
+
+.il-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--glass-2);
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--glass-border);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &:focus-within {
+    border-color: #0284c7;
+    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
+  }
+
+  .il-search-icon {
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  input {
+    background: none;
+    border: none;
+    outline: none;
+    flex: 1;
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    font-weight: 500;
+
+    &::placeholder {
+      color: var(--text-muted);
+      opacity: 0.7;
+    }
+  }
+
+  .il-search-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(225, 29, 72, 0.1);
+    color: #e11d48;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: rgba(225, 29, 72, 0.18);
+    }
+  }
+}
+
+.il-controls {
+  display: flex !important;
+  gap: 6px !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+
+  select {
+    flex: 1 1 0 !important;
+    min-width: 90px !important;
+    background: var(--glass-2) !important;
+    border: 1px solid var(--glass-border) !important;
+    color: var(--text-primary) !important;
+    padding: 7px 24px 7px 9px !important;
+    border-radius: 10px !important;
+    font-size: 0.8rem !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'12' height%3D'12' viewBox%3D'0 0 24 24' fill%3D'none' stroke%3D'%2394A3B8' stroke-width%3D'2.5' stroke-linecap%3D'round' stroke-linejoin%3D'round'%3E%3Cpolyline points%3D'6 9 12 15 18 9'%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 8px center !important;
+    background-size: 11px !important;
+    height: 36px !important;
+    transition: all 0.15s ease;
+
+    &:focus {
+      outline: none;
+      border-color: #0284c7;
+      box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+    }
+  }
+
+  .il-controls-actions {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    flex-shrink: 0 !important;
+
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid var(--glass-border);
+      background: var(--glass-2);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: var(--glass-border);
+        color: var(--text-primary);
+      }
+    }
+  }
+}
+
+/* ── Select All Bar ────────────────────────────────────────────── */
+.il-select-all-bar {
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, 0.01);
+
+  .il-select-all-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: var(--glass-2);
+      color: var(--text-primary);
+    }
+  }
+}
+
+/* ── Scrollable Transaction List ────────────────────────────────── */
+.il-scrollable {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  scrollbar-width: thin;
+}
+
+/* ── Transaction Item Cards (MODERNIZED) ────────────────────────── */
+.il-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 12px 14px !important;
+  border-radius: 14px !important;
+  border: 1px solid var(--glass-border) !important;
+  background: var(--surface-1) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+
+  &:hover {
+    background: var(--glass-2) !important;
+    border-color: var(--glass-border-hover) !important;
+    transform: translateY(-1.5px);
+    box-shadow: 0 6px 18px -4px rgba(0, 0, 0, 0.06);
+  }
+
+  &.active {
+    border-color: #0284c7 !important;
+    background: rgba(2, 132, 199, 0.05) !important;
+    box-shadow: 0 0 0 1px #0284c7, 0 4px 16px rgba(2, 132, 199, 0.12) !important;
+  }
+
+  &.selected {
+    border-color: #6366f1 !important;
+    background: rgba(99, 102, 241, 0.05) !important;
+  }
+
+  .il-checkbox-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    transition: color 0.15s ease;
+
+    &:hover {
+      color: #0284c7;
+    }
+  }
+
+  .ili-icon {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    border-radius: 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0;
+
+    &.income {
+      background: rgba(5, 150, 105, 0.12) !important;
+      color: #059669 !important;
+      border: 1px solid rgba(5, 150, 105, 0.2) !important;
+    }
+
+    &.expense {
+      background: rgba(225, 29, 72, 0.12) !important;
+      color: #e11d48 !important;
+      border: 1px solid rgba(225, 29, 72, 0.2) !important;
+    }
+  }
+
+  .ili-info {
+    flex: 1;
+    min-width: 0;
+
+    .ili-cat {
+      font-size: 0.94rem !important;
+      font-weight: 700 !important;
+      color: var(--text-primary) !important;
+      margin: 0 0 2px 0 !important;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ili-date {
+      font-size: 0.78rem !important;
+      color: var(--text-muted) !important;
+      font-weight: 500 !important;
+      margin: 0 !important;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+
+      .ili-note-snip {
+        color: var(--text-secondary);
+      }
+    }
+  }
+
+  .ili-amount {
+    margin-left: auto;
+    text-align: right;
+    flex-shrink: 0;
+
+    span {
+      font-size: 1.05rem !important;
+      font-weight: 800 !important;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+
+      &.income {
+        color: #059669 !important;
+      }
+
+      &.expense {
+        color: #e11d48 !important;
+      }
+    }
+  }
+}
+
+/* ── Right Details / Ticket Pane (DESKTOP) ──────────────────────── */
+.inbox-detail-pane {
+  flex: 1 1 auto !important;
+  min-width: 320px;
+  background: var(--surface-1) !important;
+  border-radius: 18px !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04) !important;
+  overflow: hidden !important;
+  padding: 16px !important;
+}
+
+/* ── Receipt Ticket Card ────────────────────────────────────────── */
+.tx-ticket-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--surface-1);
+  border-radius: 16px;
+  border: 1px solid var(--glass-border);
+  padding: 18px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.05);
+
+  .tx-ticket-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    .tx-ticket-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: #0284c7;
+      text-transform: uppercase;
+    }
+
+    .tx-ticket-close-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1px solid var(--glass-border);
+      background: var(--glass-2);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: rgba(225, 29, 72, 0.1);
+        color: #e11d48;
+      }
+    }
+  }
+
+  .tx-ticket-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+
+    .tx-ticket-hero-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      &.income {
+        background: rgba(5, 150, 105, 0.12);
+        color: #059669;
+        border: 1px solid rgba(5, 150, 105, 0.2);
+      }
+
+      &.expense {
+        background: rgba(225, 29, 72, 0.12);
+        color: #e11d48;
+        border: 1px solid rgba(225, 29, 72, 0.2);
+      }
+    }
+
+    .tx-ticket-amount {
+      font-size: 2rem;
+      font-weight: 850;
+      letter-spacing: -0.03em;
+      margin: 2px 0 0 0;
+      font-variant-numeric: tabular-nums;
+
+      &.income {
+        color: #059669;
+      }
+
+      &.expense {
+        color: #e11d48;
+      }
+    }
+
+    .tx-ticket-cat {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .tx-ticket-date {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin: 0;
+    }
+  }
+
+  .tx-ticket-divider {
+    height: 1px;
+    background: var(--glass-border);
+    margin: 4px 0;
+  }
+
+  .tx-ticket-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    .tx-ticket-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.84rem;
+
+      .ttr-label {
+        color: var(--text-muted);
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+
+      .ttr-val {
+        color: var(--text-primary);
+        font-weight: 700;
+      }
+
+      .ttr-pill {
+        padding: 2px 8px;
+        border-radius: 9999px;
+        font-size: 0.74rem;
+        font-weight: 700;
+        text-transform: capitalize;
+
+        &.income {
+          background: rgba(5, 150, 105, 0.12);
+          color: #059669;
+        }
+
+        &.expense {
+          background: rgba(225, 29, 72, 0.12);
+          color: #e11d48;
+        }
+      }
+    }
+  }
+
+  .tx-ticket-actions {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 8px !important;
+    margin-top: 10px !important;
+    padding-top: 12px !important;
+    border-top: 1px solid var(--glass-border) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+
+    .tx-ticket-btn {
+      min-height: 52px !important;
+      height: auto !important;
+      overflow: visible !important;
+      display: inline-flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 4px !important;
+      padding: 8px 4px !important;
+      border-radius: 12px !important;
+      border: 1px solid var(--glass-border) !important;
+      background: var(--surface-1) !important;
+      color: var(--text-secondary) !important;
+      font-size: 0.74rem !important;
+      font-weight: 700 !important;
+      line-height: 1.2 !important;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      box-sizing: border-box !important;
+
+      span {
+        overflow: visible !important;
+        text-overflow: clip !important;
+        white-space: nowrap !important;
+        font-size: 0.72rem !important;
+        line-height: 1.2 !important;
+        letter-spacing: -0.01em !important;
+      }
+
+      svg {
+        flex-shrink: 0 !important;
+      }
+
+      &:hover {
+        background: var(--glass-2) !important;
+        color: var(--text-primary) !important;
+        transform: translateY(-1px);
+      }
+
+      &.edit:hover {
+        background: rgba(79, 70, 229, 0.1) !important;
+        color: var(--brand-primary) !important;
+        border-color: rgba(79, 70, 229, 0.25) !important;
+      }
+
+      &.duplicate:hover {
+        background: rgba(13, 148, 136, 0.1) !important;
+        color: #0d9488 !important;
+        border-color: rgba(13, 148, 136, 0.25) !important;
+      }
+
+      &.share:hover {
+        background: rgba(59, 130, 246, 0.1) !important;
+        color: #3b82f6 !important;
+        border-color: rgba(59, 130, 246, 0.25) !important;
+      }
+
+      &.delete:hover {
+        background: rgba(225, 29, 72, 0.1) !important;
+        color: #e11d48 !important;
+        border-color: rgba(225, 29, 72, 0.3) !important;
+      }
+    }
+  }
+
+  @media (max-width: 360px) {
+    .tx-ticket-actions {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 6px !important;
+
+      .tx-ticket-btn {
+        flex-direction: row !important;
+        gap: 6px !important;
+        min-height: 42px !important;
+        padding: 6px 8px !important;
+      }
+    }
+  }
+}
+
+/* ── Mobile Responsive Rules (ULTRA-CLEAN FINTECH OPTIMIZATION) ─── */
+@media (max-width: 768px) {
+  .inbox-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+
+    .ih-titles {
+      width: 100% !important;
+      justify-content: space-between !important;
+    }
+  }
+
+  /* One clean unified row for the 3 actions on mobile */
+  .inbox-header-actions {
+    display: grid !important;
+    grid-template-columns: 1.25fr 1fr 1fr !important;
+    gap: 6px !important;
+    width: 100% !important;
+    margin: 0 !important;
+
+    .btn-primary.tx-add-btn {
+      width: 100% !important;
+      height: 38px !important;
+      padding: 0 8px !important;
+      font-size: 0.78rem !important;
+      border-radius: 10px !important;
+      justify-content: center !important;
+      grid-column: auto !important;
+    }
+
+    .btn-secondary.tx-import-btn {
+      width: 100% !important;
+      height: 38px !important;
+      padding: 0 8px !important;
+      font-size: 0.78rem !important;
+      border-radius: 10px !important;
+      justify-content: center !important;
+      grid-column: auto !important;
+    }
+
+    .dropdown-container {
+      width: 100% !important;
+      height: 38px !important;
+      grid-column: auto !important;
+
+      .tx-export-btn {
+        width: 100% !important;
+        height: 38px !important;
+        padding: 0 8px !important;
+        font-size: 0.78rem !important;
+        border-radius: 10px !important;
+        justify-content: center !important;
+      }
+    }
+  }
+
+  .tx-summary-strip {
+    padding: 12px 14px !important;
+    border-radius: 14px !important;
+    grid-template-columns: 1fr auto 1fr auto 1.15fr !important;
+
+    .tss-label {
+      font-size: 0.64rem !important;
+    }
+
+    .tss-val {
+      font-size: 0.98rem !important;
+
+      &.net.positive,
+      &.net.negative {
+        font-size: 1.02rem !important;
+      }
+    }
+
+    .tss-divider {
+      height: 24px !important;
+    }
+  }
+
+  .il-filters {
+    padding: 12px !important;
+    gap: 8px !important;
+  }
+
+  /* Compact 2x2 grid for filter controls instead of 3 full-width rows */
+  .il-controls {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px !important;
+    width: 100% !important;
+
+    select {
+      width: 100% !important;
+      min-width: 0 !important;
+      height: 36px !important;
+      min-height: 36px !important;
+      padding: 4px 20px 4px 8px !important;
+      font-size: 0.78rem !important;
+      border-radius: 10px !important;
+      background-size: 10px !important;
+      background-position: right 6px center !important;
+    }
+
+    .il-controls-actions {
+      grid-column: auto !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-end !important;
+      width: 100% !important;
+
+      .icon-btn {
+        width: 36px !important;
+        height: 36px !important;
+        min-width: 36px !important;
+      }
+    }
+  }
+
+  .inbox-split-pane {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .inbox-list-pane {
+    flex: none !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    border-radius: 16px !important;
+  }
+
+  .il-item {
+    padding: 10px 12px !important;
+    border-radius: 12px !important;
+    gap: 10px !important;
+
+    .ili-icon {
+      width: 38px !important;
+      height: 38px !important;
+      min-width: 38px !important;
+      border-radius: 10px !important;
+    }
+
+    .ili-info .ili-cat {
+      font-size: 0.88rem !important;
+    }
+
+    .ili-info .ili-date {
+      font-size: 0.74rem !important;
+    }
+
+    .ili-amount span {
+      font-size: 0.96rem !important;
+    }
+  }
+
+  /* ── Mobile View: Inbox detail pane is hidden in flow; portal handles receipt overlay ── */
+  .inbox-detail-pane {
+    display: none !important;
+  }
+}
+
+/* ── Mobile Receipt Portal Overlay (Mounted directly to document.body) ── */
+.tx-mobile-receipt-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  background: rgba(15, 23, 42, 0.72) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  padding: 0 12px calc(env(safe-area-inset-bottom, 0px) + 16px) 12px !important;
+  box-sizing: border-box !important;
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+
+  .tx-ticket-card {
+    width: 100% !important;
+    max-width: 440px !important;
+    max-height: 86dvh !important;
+    overflow-y: auto !important;
+    border-radius: 24px !important;
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45) !important;
+    background: var(--surface-1) !important;
+    padding: 20px 18px 24px !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    animation: slideUp 0.26s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

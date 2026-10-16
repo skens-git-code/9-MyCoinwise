@@ -4,7 +4,9 @@
  * items, splits, receipts, and recurring instances.
  *
  * Key behaviors:
- *   - Soft delete via `is_deleted` — records are never hard-deleted.
+ *   - Hard delete — records are permanently removed from the database.
+ *   - `is_deleted` field is retained for backward compatibility with
+ *     legacy documents but new deletes fully remove the document.
  *   - `import_fingerprint` deduplicates bank statement imports.
  *   - Recurring instances are uniquely identified per user via
  *     `recurrence_instance_key` (partial unique index).
@@ -270,10 +272,12 @@ const transactionSchema = new mongoose.Schema({
   },
 
   /* —————————————————————————————————————
-   * Soft Delete
+   * Legacy Soft Delete Flag
+   * Retained for backward compatibility with older documents.
+   * New deletes permanently remove the document from the database.
    * ————————————————————————————————————— */
 
-  // ── Soft-delete flag — records are never hard-deleted ──
+  // ── Legacy soft-delete flag (kept for backward compat) ──
   is_deleted: {
     type: Boolean,
     default: false

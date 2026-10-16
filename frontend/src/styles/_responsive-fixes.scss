@@ -113,3 +113,16 @@ img {
     animation: none;
   }
 }
+
+// 11. Mobile navigation dock clearance guarantee:
+// Ensures Settings, Profile, Transactions, Tax, Dashboard, etc., can scroll fully above the bottom dock.
+@media (max-width: 1024px) {
+  .island-content-wrapper,
+  .island-page,
+  .page-content,
+  .page-shell,
+  .settings-page,
+  .tax-page {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 16px)) !important;
+  }
+}

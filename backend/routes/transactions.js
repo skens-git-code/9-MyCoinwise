@@ -9,8 +9,8 @@
  *   POST   /process-recurring    Force-process recurring
  *   POST   /                     Create
  *   PUT    /:id                  Update
- *   DELETE /:id                  Soft delete
- *   POST   /bulk-delete          Soft delete many
+ *   DELETE /:id                  Hard delete (permanent)
+ *   POST   /bulk-delete          Hard delete many (permanent)
  *
  * Key behaviors:
  *   - Statement parsing supports CSV (comma or semicolon) up to 5 MB
@@ -172,7 +172,7 @@ const isFutureDate = (date) => {
 };
 
 // ── Normalize a currency code (uppercase, default fallback) ──
-const normalizeCurrency = (value, fallback = 'USD') => {
+const normalizeCurrency = (value, fallback = 'INR') => {
   const normalized = String(value || '').trim().toUpperCase();
   return normalized || fallback;
 };
@@ -1388,7 +1388,8 @@ router.put('/:id', async (req, res) => {
 
 /* —————————————————————————————————————
  * DELETE /:id
- * Soft delete a transaction owned by the authenticated user.
+ * Permanently delete a transaction owned by the authenticated user.
+ * The document is fully removed from the database.
  * ————————————————————————————————————— */
 router.delete('/:id', async (req, res) => {
   // ── Validate transaction ID ──
@@ -1405,23 +1406,23 @@ router.delete('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // ── Soft delete and refresh balances incrementally (O(1)) ──
+    // ── Adjust balances before permanent removal ──
     const oldSigned = await getTransactionSignedAmountForUser(req.userId, t);
-    t.is_deleted = true;
-    await t.save();
 
-    const balance = await adjustUserBalanceIncrementally(req.userId, -oldSigned);
     if (t.account_id) {
       const accDelta = t.type === 'income' ? -t.amount : t.amount;
-      // Scoped by user_id: `t.account_id` is attacker-influenceable via backup
-      // import, so an unscoped write could touch another tenant's account.
       await Account.updateOne(
         { _id: t.account_id, user_id: req.userId },
         { $inc: { current_balance: Math.round(accDelta * 100) / 100 } }
       );
     }
 
-    return res.json({ balance, message: 'Transaction deleted' });
+    // ── Permanently remove the document ──
+    await Transaction.deleteOne({ _id: t._id, user_id: req.userId });
+
+    const balance = await adjustUserBalanceIncrementally(req.userId, -oldSigned);
+
+    return res.json({ balance, message: 'Transaction permanently deleted' });
   } catch (error) {
     logger.error('[Transactions] delete error:', error);
     return res.status(500).json({ error: 'Unable to delete transaction.' });
@@ -1430,7 +1431,8 @@ router.delete('/:id', async (req, res) => {
 
 /* —————————————————————————————————————
  * POST /bulk-delete
- * Soft delete many transactions owned by the authenticated user.
+ * Permanently delete many transactions owned by the authenticated user.
+ * All matched documents are fully removed from the database.
  * ————————————————————————————————————— */
 router.post('/bulk-delete', async (req, res) => {
   const { ids } = req.body || {};
@@ -1447,17 +1449,15 @@ router.post('/bulk-delete', async (req, res) => {
       return res.status(400).json({ error: 'No valid transaction IDs provided' });
     }
 
-    // ── Snapshot affected accounts before updating ──
+    // ── Snapshot affected accounts before removal ──
     const affectedAccountIds = await Transaction.find({
       _id: { $in: validIds },
       user_id: req.userId,
-      is_deleted: { $ne: true },
     }).distinct('account_id');
 
-    // ── Soft delete in one updateMany ──
-    const result = await Transaction.updateMany(
-      { _id: { $in: validIds }, user_id: req.userId },
-      { $set: { is_deleted: true } }
+    // ── Permanently delete all matching documents ──
+    const result = await Transaction.deleteMany(
+      { _id: { $in: validIds }, user_id: req.userId }
     );
 
     // ── Refresh balances ──
@@ -1466,8 +1466,8 @@ router.post('/bulk-delete', async (req, res) => {
 
     return res.json({
       balance,
-      deletedCount: result.modifiedCount,
-      message: `${result.modifiedCount} transactions deleted`,
+      deletedCount: result.deletedCount,
+      message: `${result.deletedCount} transactions permanently deleted`,
     });
   } catch (error) {
     logger.error('[Transactions] bulk-delete error:', error);

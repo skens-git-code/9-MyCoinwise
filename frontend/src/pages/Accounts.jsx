@@ -93,7 +93,7 @@ const CUSTOM_TYPE_REGEX = /^[a-z][a-z0-9_]*$/;
  * Account cards use their own currency; the summary uses the user's base
  * currency. This prevents a EUR account from being rendered as INR.
  */
-const formatCurrency = (value, currencyCode = 'USD', locale) => {
+const formatCurrency = (value, currencyCode = 'INR', locale) => {
   const num = Number(value);
   if (!Number.isFinite(num)) return '—';
   try {
@@ -202,7 +202,7 @@ export default function Accounts() {
   const {
     accounts = [],
     transactions: rawTransactions = [],
-    currency: userCurrency = 'USD',
+    currency: userCurrency = 'INR',
     lang,
     loading,
     user,
@@ -428,7 +428,7 @@ export default function Accounts() {
   } = useMemo(() => {
     const totals = {};
     let totalBase = 0;
-    const base = userCurrency || 'USD';
+    const base = userCurrency || 'INR';
     const unknownRates = new Set();
 
     // ── Sum balances per currency and convert to base ──
