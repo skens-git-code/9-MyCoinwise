@@ -120,14 +120,21 @@ const userSchema = new mongoose.Schema({
   },
 
   /* —————————————————————————————————————
-   * Appearance
+   * Appearance & Localization
    * ————————————————————————————————————— */
 
   // ── UI theme preference ──
   theme: {
     type: String,
-    enum: ['light', 'amoled'],
+    enum: ['light', 'amoled', 'auto'],
     default: 'light'
+  },
+
+  // ── Preferred language code ──
+  language: {
+    type: String,
+    enum: ['en', 'hi', 'mr', 'bgc', 'kn'],
+    default: 'en'
   },
 
   // ── Emoji avatar ──

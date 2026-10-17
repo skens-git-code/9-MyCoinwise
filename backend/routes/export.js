@@ -196,8 +196,12 @@ router.get(
       if (format === 'csv') {
         const escapeCsv = (val) => {
           if (val === null || val === undefined) return '""';
-          const str = String(val).replace(/"/g, '""');
-          return `"${str}"`;
+          let str = String(val);
+          if (/^[=+\-@\t\r]/.test(str)) {
+            str = `'${str}`;
+          }
+          const escaped = str.replace(/"/g, '""');
+          return `"${escaped}"`;
         };
 
         const headers = ['ID', 'Date', 'Type', 'Category', 'Amount', 'Currency', 'Note'];

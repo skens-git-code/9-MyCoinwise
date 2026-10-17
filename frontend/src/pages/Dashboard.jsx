@@ -79,7 +79,11 @@ const resolveLocale = (lang) =>
 
 // ── Dark-theme detection ──
 const DARK_THEMES = new Set(['amoled', 'dark', 'midnight', 'black']);
-const isDarkTheme = (theme) => DARK_THEMES.has(String(theme || '').toLowerCase());
+const isDarkTheme = (theme, systemDark = false) => {
+  const norm = String(theme || '').toLowerCase();
+  if (norm === 'auto') return systemDark;
+  return DARK_THEMES.has(norm);
+};
 
 // ── localStorage key prefix for user-scoped filters ──
 const STORAGE_PREFIX = 'budgeta_dash_';
@@ -604,9 +608,29 @@ export default function Dashboard() {
   const { showToast } = useToast();
   const prefersReducedMotion = usePrefersReducedMotion();
 
+  const [systemDark, setSystemDark] = useState(() => {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e) => setSystemDark(e.matches);
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', onChange);
+      return () => media.removeEventListener('change', onChange);
+    } else if (typeof media.addListener === 'function') {
+      media.addListener(onChange);
+      return () => media.removeListener(onChange);
+    }
+  }, []);
+
   // ── Derived theme / locale / currency ──
   const locale = useMemo(() => resolveLocale(lang), [lang]);
-  const isDark = useMemo(() => isDarkTheme(theme), [theme]);
+  const isDark = useMemo(() => isDarkTheme(theme, systemDark), [theme, systemDark]);
   const displayCurrency = useMemo(() => resolveCurrency(currency, 'INR'), [currency]);
 
   // ── FX rates to INR (cache or bundled fallback) ──
@@ -832,7 +856,7 @@ export default function Dashboard() {
         return t === '' || liquidTypes.has(t);
       })
       .reduce((sum, a) => {
-        const bal = Number(a.initial_balance);
+        const bal = Number(a.initial_balance ?? a.starting_balance ?? 0);
         if (!Number.isFinite(bal)) return sum;
         const accountCurrency = resolveCurrency(a.currency, displayCurrency);
         const converted = convertCurrency(bal, accountCurrency, displayCurrency, fxRatesToInr);

@@ -218,6 +218,10 @@ const taxRuleSetSchema = new mongoose.Schema({
 // ── Canonical resolver: one ruleset per jurisdiction + year + regime ──
 taxRuleSetSchema.index({ jurisdiction: 1, fiscal_year: 1, regime: 1 }, { unique: true });
 
+// ── Standardize schema serialization and ObjectId validation ──
+const { standardizeSchema } = require('../utils/schemaStandardizer');
+standardizeSchema(taxRuleSetSchema);
+
 /* —————————————————————————————————————
  * Export
  * ————————————————————————————————————— */

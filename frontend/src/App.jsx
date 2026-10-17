@@ -86,8 +86,17 @@ function AppRoutes() {
   );
 }
 
-const AVAILABLE_THEMES = ['light', 'amoled'];
+const AVAILABLE_THEMES = ['light', 'amoled', 'auto'];
 const normalizeTheme = (value) => AVAILABLE_THEMES.includes(value) ? value : 'light';
+const resolveEffectiveTheme = (themeValue) => {
+  if (themeValue === 'auto') {
+    if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'amoled';
+    }
+    return 'light';
+  }
+  return themeValue === 'amoled' ? 'amoled' : 'light';
+};
 const DEFAULT_DOCUMENT_TITLE = 'MyCoinwise – Smart Budget Tracker';
 
 const getUserNameForBranding = (userData) => {
@@ -300,7 +309,7 @@ export default function App() {
         const idx = AVAILABLE_THEMES.indexOf(prev);
         const next = AVAILABLE_THEMES[(idx + 1) % AVAILABLE_THEMES.length];
         localStorage.setItem('mcw-theme', next);
-        document.documentElement.setAttribute('data-theme', next);
+        document.documentElement.setAttribute('data-theme', resolveEffectiveTheme(next));
         return next;
       });
     };
@@ -321,7 +330,7 @@ export default function App() {
     const applyNext = () => {
       setTheme(nextTheme);
       localStorage.setItem('mcw-theme', nextTheme);
-      document.documentElement.setAttribute('data-theme', nextTheme);
+      document.documentElement.setAttribute('data-theme', resolveEffectiveTheme(nextTheme));
     };
 
     if (
@@ -342,8 +351,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    const applyThemeToDOM = () => {
+      const effective = resolveEffectiveTheme(theme);
+      document.documentElement.setAttribute('data-theme', effective);
+    };
+
+    applyThemeToDOM();
     localStorage.setItem('mcw-theme', theme);
+
+    if (theme === 'auto' && typeof window !== 'undefined' && window.matchMedia) {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const listener = () => applyThemeToDOM();
+      if (typeof mediaQuery.addEventListener === 'function') {
+        mediaQuery.addEventListener('change', listener);
+        return () => mediaQuery.removeEventListener('change', listener);
+      } else if (typeof mediaQuery.addListener === 'function') {
+        mediaQuery.addListener(listener);
+        return () => mediaQuery.removeListener(listener);
+      }
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -588,7 +614,15 @@ export default function App() {
       ].filter(([, data]) => data === null).map(([name]) => name);
       const localTheme = localStorage.getItem('mcw-theme');
       const backendTheme = normalizeTheme(me?.theme);
-      const resolvedTheme = (localTheme && ['light', 'amoled'].includes(localTheme)) ? localTheme : backendTheme;
+      const resolvedTheme = (localTheme && AVAILABLE_THEMES.includes(localTheme)) ? localTheme : backendTheme;
+
+      if (me?.language && ['en', 'hi', 'mr', 'bgc', 'kn'].includes(me.language)) {
+        const localLang = localStorage.getItem('mcw-lang');
+        if (!localLang) {
+          setLang(me.language);
+          localStorage.setItem('mcw-lang', me.language);
+        }
+      }
 
       const resolvedUser = { ...me, theme: resolvedTheme };
       setUser(resolvedUser);
@@ -639,7 +673,7 @@ export default function App() {
         api.updateSettings(activeId, { theme: resolvedTheme }).catch(() => { });
       }
       setTheme(resolvedTheme);
-      document.documentElement.setAttribute('data-theme', resolvedTheme);
+      document.documentElement.setAttribute('data-theme', resolveEffectiveTheme(resolvedTheme));
       localStorage.setItem('mcw-theme', resolvedTheme);
     } catch (err) {
       console.error('Error loading data:', err);

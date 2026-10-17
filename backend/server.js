@@ -118,14 +118,16 @@ const isOriginAllowed = (origin) => {
   if (!origin) return true;
   if (allowedOrigins.includes(origin)) return true;
 
-  // Allow all Vercel production and preview deployments
-  if (/^https:\/\/[a-zA-Z0-9_.-]+\.vercel\.app$/.test(origin)) return true;
-
-  // Allow Render domains
-  if (/^https:\/\/[a-zA-Z0-9_.-]+\.onrender\.com$/.test(origin)) return true;
-
-  // Allow localhost & 127.0.0.1 on any port in development or preview testing
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  if (!isProduction) {
+    // In development and testing, allow preview deployments & localhost
+    if (/^https:\/\/[a-zA-Z0-9_.-]+\.vercel\.app$/.test(origin)) return true;
+    if (/^https:\/\/[a-zA-Z0-9_.-]+\.onrender\.com$/.test(origin)) return true;
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  } else {
+    // In production, only permit mycoinwise / coinwise preview subdomains if not explicitly listed
+    if (/^https:\/\/(?:my)?coinwise[a-zA-Z0-9_.-]*\.vercel\.app$/.test(origin)) return true;
+    if (/^https:\/\/(?:my)?coinwise[a-zA-Z0-9_.-]*\.onrender\.com$/.test(origin)) return true;
+  }
 
   return false;
 };

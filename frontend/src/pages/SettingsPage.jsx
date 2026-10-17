@@ -124,6 +124,7 @@ const buildResetPayload = (user) => {
     profession: user?.profession || user?.role || 'Trader',
     monthlyGoal: user?.monthly_goal != null ? String(user.monthly_goal) : '',
     currency: user?.currency || 'INR',
+    language: user?.language || localStorage.getItem('mcw-lang') || 'en',
     avatar: user?.profile_avatar || '😊',
     avatarColor: user?.profile_color || '#059669',
     notificationPrefs: user?.notification_prefs || { ...DEFAULT_NOTIFICATION_PREFS },
@@ -716,7 +717,7 @@ const NOTIFICATION_TOGGLES = [
 ];
 
 // ── Notification preferences panel with quiet-hours support ──
-const NotificationPreferences = ({ preferences, onChange }) => {
+const NotificationPreferences = ({ preferences, onChange, handleSave, saving, isDirty, t }) => {
   const prefs = preferences || DEFAULT_NOTIFICATION_PREFS;
 
   // ── Quiet hours validation: start and end must differ when enabled ──
@@ -871,6 +872,27 @@ const NotificationPreferences = ({ preferences, onChange }) => {
             </div>
           )}
         </div>
+
+        {/* ── Direct Save Notifications Button ── */}
+        {handleSave && (
+          <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleSave}
+              disabled={saving}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', borderRadius: 12, minHeight: 42 }}
+            >
+              {saving ? <div className="spinner-dots" /> : <Save size={16} aria-hidden="true" />}
+              <span>{saving ? 'Saving Notifications…' : (t?.('save_notifications') || 'Save Notifications')}</span>
+            </button>
+            {isDirty && (
+              <span style={{ fontSize: '0.82rem', color: 'var(--brand-secondary)' }}>
+                ● Unsaved changes
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </>
   );
@@ -1193,7 +1215,7 @@ const SessionManagement = ({ userId, showMessage }) => {
 /* ============================================================
  * Advanced preferences
  * ============================================================ */
-const AdvancedPreferences = ({ prefs, onChange }) => {
+const AdvancedPreferences = ({ prefs, onChange, handleSave, saving, isDirty, t }) => {
   const p = prefs || DEFAULT_ADVANCED_PREFS;
   const update = (patch) => onChange({ ...p, ...patch });
 
@@ -1292,6 +1314,27 @@ const AdvancedPreferences = ({ prefs, onChange }) => {
             </label>
           </div>
         ))}
+
+        {/* ── Direct Save Advanced Settings Button ── */}
+        {handleSave && (
+          <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleSave}
+              disabled={saving}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', borderRadius: 12, minHeight: 42 }}
+            >
+              {saving ? <div className="spinner-dots" /> : <Save size={16} aria-hidden="true" />}
+              <span>{saving ? 'Saving Advanced Settings…' : (t?.('save_advanced') || 'Save Advanced Settings')}</span>
+            </button>
+            {isDirty && (
+              <span style={{ fontSize: '0.82rem', color: 'var(--brand-secondary)' }}>
+                ● Unsaved changes
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </>
   );
@@ -1665,7 +1708,7 @@ ProfileTab.displayName = 'ProfileTab';
 /* ============================================================
  * Preferences tab
  * ============================================================ */
-const PreferencesTab = React.memo(({ formState, handleFieldChange, t }) => (
+const PreferencesTab = React.memo(({ formState, handleFieldChange, t, handleSave, saving }) => (
   <>
     {/* ── Header ── */}
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
@@ -1719,6 +1762,27 @@ const PreferencesTab = React.memo(({ formState, handleFieldChange, t }) => (
           inputMode="decimal"
         />
       </div>
+
+      {/* ── Direct Save Preferences Button ── */}
+      {handleSave && (
+        <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={saving}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', borderRadius: 12, minHeight: 42 }}
+          >
+            {saving ? <div className="spinner-dots" /> : <Save size={16} aria-hidden="true" />}
+            <span>{saving ? 'Saving Preferences…' : (t?.('save_preferences') || 'Save Preferences')}</span>
+          </button>
+          {formState.isDirty && (
+            <span style={{ fontSize: '0.82rem', color: 'var(--brand-secondary)' }}>
+              ● Unsaved changes
+            </span>
+          )}
+        </div>
+      )}
     </div>
   </>
 ));
@@ -1727,7 +1791,7 @@ PreferencesTab.displayName = 'PreferencesTab';
 /* ============================================================
  * Language tab
  * ============================================================ */
-const LanguageTab = React.memo(({ lang, setLanguage, showMessage, t }) => (
+const LanguageTab = React.memo(({ lang, setLanguage, showMessage, t, user, USER_ID }) => (
   <>
     {/* ── Header ── */}
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
@@ -1756,6 +1820,10 @@ const LanguageTab = React.memo(({ lang, setLanguage, showMessage, t }) => (
           type="button"
           onClick={() => {
             setLanguage(code);
+            const targetId = USER_ID || user?._id || user?.id;
+            if (targetId) {
+              api.updateSettings(targetId, { language: code }).catch(console.error);
+            }
             showMessage('success', t?.('language_updated') || 'Language updated successfully');
           }}
           whileHover={{ x: 4, scale: 1.01 }}
@@ -2856,6 +2924,7 @@ function SettingsInner({ context }) {
       last_name: user?.last_name,
       profession: user?.profession,
       theme: user?.theme,
+      language: user?.language,
       monthly_goal: user?.monthly_goal,
       currency: user?.currency,
       profile_avatar: user?.profile_avatar,
@@ -2871,6 +2940,7 @@ function SettingsInner({ context }) {
         profession: sanitizeInput(formState.profession),
         monthly_goal: isGoalValid ? goalValue : (user?.monthly_goal || 0),
         currency: formState.currency,
+        language: lang || formState.language || 'en',
         profile_avatar: formState.avatar,
         profile_color: formState.avatarColor,
         notification_prefs: formState.notificationPrefs,
@@ -2884,6 +2954,7 @@ function SettingsInner({ context }) {
         profession: sanitizeInput(formState.profession),
         monthly_goal: isGoalValid ? goalValue : (user?.monthly_goal || 0),
         currency: formState.currency,
+        language: lang || formState.language || 'en',
         profile_avatar: formState.avatar,
         profile_color: formState.avatarColor,
         notification_prefs: formState.notificationPrefs,
@@ -3184,6 +3255,7 @@ function SettingsInner({ context }) {
     handleFieldChange,
     t,
     user,
+    USER_ID,
     theme,
     handleThemeChange,
     lang,
@@ -3193,11 +3265,13 @@ function SettingsInner({ context }) {
     requestReAuth,
     handleSave,
     saving: loadingStates.save,
+    isDirty: formState.isDirty,
   }), [
     formState,
     handleFieldChange,
     t,
     user,
+    USER_ID,
     theme,
     handleThemeChange,
     lang,
@@ -3225,6 +3299,7 @@ function SettingsInner({ context }) {
       case 'notifications':
         return (
           <NotificationPreferences
+            {...commonProps}
             preferences={formState.notificationPrefs}
             onChange={(prefs) => handleFieldChange('notificationPrefs', prefs)}
           />
@@ -3291,6 +3366,7 @@ function SettingsInner({ context }) {
       case 'advanced':
         return (
           <AdvancedPreferences
+            {...commonProps}
             prefs={formState.advancedPrefs}
             onChange={(prefs) => handleFieldChange('advancedPrefs', prefs)}
           />

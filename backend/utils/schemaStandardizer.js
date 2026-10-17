@@ -71,6 +71,9 @@ const standardizeSchema = (schema) => {
         ret.id = ret._id.toString();
       }
       delete ret.__v;
+      delete ret.password;
+      delete ret.reset_password_token;
+      delete ret.email_verify_token;
       if (typeof existingToJSONTransform === 'function') {
         return existingToJSONTransform(doc, ret, options);
       }

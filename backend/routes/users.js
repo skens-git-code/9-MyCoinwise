@@ -91,23 +91,23 @@ const router = express.Router();
 // ── Settings / user-creation limiter ──
 const settingsLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 120,
+  max: 600,
   message: { error: 'Too many settings update requests. Please try again later.' },
 });
 
 // ── Destructive-action limiter ──
 const deleteLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 10,
+  max: 20,
   message: { error: 'Too many account deletion attempts. Please try again later.' },
 });
 
 // ── Household profile switching ──
 // A switch mints a full session token, so it is a credential operation and gets
-// its own throttle (it was previously unlimited).
+// its own throttle.
 const switchLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 120,
   skipSuccessfulRequests: false,
   message: { error: 'Too many profile switch attempts. Please try again later.' },
   standardHeaders: true,
@@ -127,8 +127,9 @@ const CURRENCY_CODES = new Set([
   'CHF', 'CNY', 'MXN', 'BRL', 'KRW', 'THB',
 ]);
 
-// ── Theme values and hex color pattern ──
-const THEME_VALUES = new Set(['light', 'amoled']);
+// ── Theme values, language codes, and hex color pattern ──
+const THEME_VALUES = new Set(['light', 'amoled', 'auto']);
+const LANGUAGE_CODES = new Set(['en', 'hi', 'mr', 'bgc', 'kn']);
 const HEX_COLOR = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{4}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/;
 
 // ── Default notification preferences ──
@@ -283,8 +284,15 @@ const buildSettingsUpdate = (payload = {}) => {
 
   // ── Theme ──
   if (payload.theme !== undefined) {
-    if (!THEME_VALUES.has(payload.theme)) return { error: 'Theme must be light or amoled.' };
+    if (!THEME_VALUES.has(payload.theme)) return { error: 'Theme must be light, amoled, or auto.' };
     updates.theme = payload.theme;
+  }
+
+  // ── Language ──
+  if (payload.language !== undefined || payload.lang !== undefined) {
+    const lang = String(payload.language || payload.lang).trim().toLowerCase();
+    if (!LANGUAGE_CODES.has(lang)) return { error: 'Unsupported language code.' };
+    updates.language = lang;
   }
 
   // ── Monthly goal ──
@@ -691,7 +699,9 @@ router.patch(
     body('last_name').optional().isString().trim().isLength({ max: 80 }),
     body('profession').optional().isString().trim().isLength({ max: 80 }),
     body('email').optional().isEmail().normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }),
-    body('theme').optional().isIn(['light', 'amoled']),
+    body('theme').optional().isIn(['light', 'amoled', 'auto']),
+    body('language').optional().isIn(['en', 'hi', 'mr', 'bgc', 'kn']),
+    body('lang').optional().isIn(['en', 'hi', 'mr', 'bgc', 'kn']),
     body('currency').optional().isString(),
     body('monthly_goal').optional().isFloat({ min: 0 }),
     body('profile_avatar').optional().isString(),
@@ -752,7 +762,9 @@ router.put(
     body('last_name').optional().isString().trim().isLength({ max: 80 }),
     body('profession').optional().isString().trim().isLength({ max: 80 }),
     body('email').optional().isEmail().normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }),
-    body('theme').optional().isIn(['light', 'amoled']),
+    body('theme').optional().isIn(['light', 'amoled', 'auto']),
+    body('language').optional().isIn(['en', 'hi', 'mr', 'bgc', 'kn']),
+    body('lang').optional().isIn(['en', 'hi', 'mr', 'bgc', 'kn']),
     body('currency').optional().isString(),
     body('monthly_goal').optional().isFloat({ min: 0 }),
     body('profile_avatar').optional().isString(),

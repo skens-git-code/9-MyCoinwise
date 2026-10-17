@@ -284,11 +284,33 @@ export default function Cashflow() {
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
   const displayCurrency = useMemo(() => resolveCurrency(currency, 'INR'), [currency]);
 
+  const [systemDark, setSystemDark] = useState(() => {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e) => setSystemDark(e.matches);
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', onChange);
+      return () => media.removeEventListener('change', onChange);
+    } else if (typeof media.addListener === 'function') {
+      media.addListener(onChange);
+      return () => media.removeListener(onChange);
+    }
+  }, []);
+
   // ── Dark-theme detection for chart stroke/fill colors ──
   const isDark = useMemo(() => {
+    const norm = String(theme || '').toLowerCase();
+    if (norm === 'auto') return systemDark;
     const themes = new Set(['amoled', 'dark', 'midnight', 'black']);
-    return themes.has(String(theme || '').toLowerCase());
-  }, [theme]);
+    return themes.has(norm);
+  }, [theme, systemDark]);
 
   // ── FX rates to INR (cache or bundled fallback) ──
   const [fxRatesToInr, setFxRatesToInr] = useState(() => (

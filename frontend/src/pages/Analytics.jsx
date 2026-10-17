@@ -35,6 +35,12 @@ import {
 import { useToast } from '../components/ToastProvider';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { dedupeTransactions } from '../utils/transactionIntegrity';
+import {
+  readCachedRatesToInr,
+  getFallbackRatesToInr,
+  convertCurrency,
+  resolveCurrency,
+} from '../utils/currencyRates';
 
 /* ============================================================
  * Constants
@@ -67,7 +73,11 @@ const resolveLocale = (lang) => LOCALE_MAP[lang] || 'en-IN';
 
 /** Robust dark-theme detection. */
 const DARK_THEMES = new Set(['amoled', 'dark', 'midnight', 'black']);
-const isDarkTheme = (theme) => DARK_THEMES.has(String(theme || '').toLowerCase());
+const isDarkTheme = (theme, systemDark = false) => {
+  const norm = String(theme || '').toLowerCase();
+  if (norm === 'auto') return systemDark;
+  return DARK_THEMES.has(norm);
+};
 
 // ── Hook: track the OS-level reduced-motion preference ──
 const usePrefersReducedMotion = () => {
@@ -100,6 +110,7 @@ const isValidDate = (value) => {
 // ── Structural validation for a transaction row ──
 const validateTransaction = (t) => {
   if (!t || typeof t !== 'object') return false;
+  if (t.is_deleted === true || t.is_deleted === 'true') return false;
   if (!isValidDate(t.date)) return false;
   const txType = String(t.type || '').trim().toLowerCase();
   if (txType !== 'income' && txType !== 'expense') return false;
@@ -290,7 +301,7 @@ const DrillDownModal = memo(({ isOpen, onClose, title, transactions, fmt, locale
   if (!isOpen) return null;
 
   // ── Total across all rows in the drill-down ──
-  const total = transactions.reduce((sum, t) => sum + safeParseAmount(t.amount), 0);
+  const total = transactions.reduce((sum, t) => sum + safeParseAmount(t.displayAmount ?? t.amount), 0);
 
   return (
     <div
@@ -379,7 +390,7 @@ const DrillDownModal = memo(({ isOpen, onClose, title, transactions, fmt, locale
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {t.type === 'income' ? '+' : '-'}{fmt(safeParseAmount(t.amount))}
+                    {t.type === 'income' ? '+' : '-'}{fmt(safeParseAmount(t.displayAmount ?? t.amount))}
                   </span>
                 </li>
               ))}
@@ -399,6 +410,7 @@ export default function Analytics() {
   // ── App context (loading added so the skeleton can render) ──
   const {
     transactions = [],
+    accounts = [],
     theme,
     user,
     lang,
@@ -411,11 +423,44 @@ export default function Analytics() {
   } = useAppActions();
   const { showToast } = useToast();
 
+  const [systemDark, setSystemDark] = useState(() => {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e) => setSystemDark(e.matches);
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', onChange);
+      return () => media.removeEventListener('change', onChange);
+    } else if (typeof media.addListener === 'function') {
+      media.addListener(onChange);
+      return () => media.removeListener(onChange);
+    }
+  }, []);
+
+  const [fxRatesToInr] = useState(() => readCachedRatesToInr() || getFallbackRatesToInr());
   const prefersReducedMotion = usePrefersReducedMotion();
-  const isDark = isDarkTheme(theme);
+  const isDark = useMemo(() => isDarkTheme(theme, systemDark), [theme, systemDark]);
   const locale = useMemo(() => resolveLocale(lang), [lang]);
   const activeCurrency = currency || user?.currency || 'INR';
   const symbol = currencyInfo?.symbol || '₹';
+
+  const accountCurrencies = useMemo(() => {
+    const map = new Map();
+    if (Array.isArray(accounts)) {
+      accounts.forEach((a) => {
+        if (a?._id || a?.id) {
+          map.set(String(a._id || a.id), resolveCurrency(a.currency, activeCurrency));
+        }
+      });
+    }
+    return map;
+  }, [accounts, activeCurrency]);
 
   // ── Currency formatter with contextFmt / Intl fallback ──
   const fmt = useCallback(
@@ -487,17 +532,30 @@ export default function Analytics() {
     } catch { /* storage may be full or disabled */ }
   }, [reviewedAnomalies, reviewedStorageKey]);
 
-  /* ---------------- Valid transactions ---------------- */
-  const validTransactions = useMemo(
-    () => dedupeTransactions(Array.isArray(transactions) ? transactions : [], { excludeFuture: false })
-      .filter(validateTransaction)
-      .map((transaction) => ({
+  /* ---------------- Valid transactions with FX normalization ---------------- */
+  const validTransactions = useMemo(() => {
+    const deduped = dedupeTransactions(Array.isArray(transactions) ? transactions : [], { excludeFuture: false })
+      .filter(validateTransaction);
+    return deduped.map((transaction) => {
+      const rawAmt = safeParseAmount(transaction.amount);
+      const transactionCurrency = resolveCurrency(
+        transaction.currency || accountCurrencies.get(String(transaction.account_id || '')) || activeCurrency,
+        activeCurrency
+      );
+      const displayAmount = convertCurrency(
+        rawAmt,
+        transactionCurrency,
+        activeCurrency,
+        fxRatesToInr
+      );
+      return {
         ...transaction,
         type: String(transaction.type || '').trim().toLowerCase(),
         category: canonicalCategoryName(transaction.category),
-      })),
-    [transactions]
-  );
+        displayAmount: displayAmount !== null && Number.isFinite(displayAmount) ? displayAmount : rawAmt,
+      };
+    });
+  }, [transactions, accountCurrencies, activeCurrency, fxRatesToInr]);
 
   /* ============================================================
    * Period Date Range
@@ -510,7 +568,7 @@ export default function Analytics() {
 
     if (periodFilter === 'all') {
       currentStart = new Date(0);
-      currentEnd = new Date();
+      currentEnd = new Date(8640000000000000);
     } else if (periodFilter === 'month') {
       currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
       currentEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
@@ -687,7 +745,7 @@ export default function Analytics() {
       const key = toMonthKey(t.date);
       if (!key) return;
       const row = monthData.get(key);
-      if (row) row[cat] += safeParseAmount(t.amount);
+      if (row) row[cat] += safeParseAmount(t.displayAmount ?? t.amount);
     });
 
     // Keep only the last MAX_MONTHS_EVOLUTION months
@@ -758,7 +816,7 @@ export default function Analytics() {
       .forEach((t) => {
         const cat = t.category || 'Other';
         if (!catStats.has(cat)) catStats.set(cat, []);
-        catStats.get(cat).push({ tx: t, amount: safeParseAmount(t.amount) });
+        catStats.get(cat).push({ tx: t, amount: safeParseAmount(t.displayAmount ?? t.amount) });
       });
 
     const flagged = [];
@@ -806,7 +864,7 @@ export default function Analytics() {
       })
       .forEach((t) => {
         const cat = t.category || 'Other';
-        map.set(cat, (map.get(cat) || 0) + safeParseAmount(t.amount));
+        map.set(cat, (map.get(cat) || 0) + safeParseAmount(t.displayAmount ?? t.amount));
       });
 
     // Fallback to all valid transactions if current window has no expenses
@@ -815,7 +873,7 @@ export default function Analytics() {
         .filter((t) => t.type === 'expense')
         .forEach((t) => {
           const cat = t.category || 'Other';
-          map.set(cat, (map.get(cat) || 0) + safeParseAmount(t.amount));
+          map.set(cat, (map.get(cat) || 0) + safeParseAmount(t.displayAmount ?? t.amount));
         });
     }
 
@@ -965,7 +1023,7 @@ export default function Analytics() {
       t.date,
       t.type,
       t.category || 'Other',
-      safeParseAmount(t.amount).toFixed(2),
+      safeParseAmount(t.displayAmount ?? t.amount).toFixed(2),
       t.note || '',
     ]);
     const csvContent = [
@@ -1475,7 +1533,7 @@ export default function Analytics() {
                   {a.tx.note && <span className="aab-note">· {a.tx.note}</span>}
                 </div>
                 <div className="aab-right">
-                  <span className="aab-amount text-danger">{fmt(a.tx.amount)}</span>
+                  <span className="aab-amount text-danger">{fmt(safeParseAmount(a.tx.displayAmount ?? a.tx.amount))}</span>
                   <span className="aab-ratio badge">({a.ratio}x avg)</span>
                   <button className="aab-action-btn" onClick={() => handleMarkAnomalyReviewed(a.id)}>
                     <CheckCircle2 size={14} /> Review
