@@ -157,7 +157,7 @@ app.options(/.*/, cors(corsOptions));
 
 // ─── 6. Cache-Control policy ────────────────────────────────────────────────
 app.use((req, res, next) => {
-  if (req.path === '/api/health') {
+  if (req.path === '/api/health' || req.path === '/health' || req.path === '/') {
     // Health must never be cached: it reports live DB state and is polled by
     // uptime monitors, and a cached 503/200 would be actively misleading.
     res.setHeader('Cache-Control', 'no-store');
