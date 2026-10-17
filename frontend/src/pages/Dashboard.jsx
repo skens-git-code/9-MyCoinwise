@@ -729,8 +729,9 @@ export default function Dashboard() {
     if (!Array.isArray(rawTransactions)) return [];
     const deduped = dedupeTransactions(rawTransactions, { excludeFuture: false });
     const out = [];
-    const endOfToday = getAppDate();
-    endOfToday.setHours(23, 59, 59, 999);
+    const endOfGracePeriod = getAppDate();
+    endOfGracePeriod.setDate(endOfGracePeriod.getDate() + 1);
+    endOfGracePeriod.setHours(23, 59, 59, 999);
     for (const tx of deduped) {
       if (!tx || typeof tx !== 'object') continue;
       if (tx.is_deleted === true || tx.is_deleted === 'true') continue;
@@ -738,7 +739,7 @@ export default function Dashboard() {
       if (txType !== 'income' && txType !== 'expense') continue;
       const parsedDate = safeParseDate(tx.date);
       if (!parsedDate) continue;
-      if (parsedDate > endOfToday) continue;
+      if (parsedDate > endOfGracePeriod) continue;
       const rawAmt = toNumber(tx.amount, NaN);
       if (!Number.isFinite(rawAmt) || rawAmt < 0) continue;
       const transactionCurrency = resolveCurrency(
@@ -823,9 +824,8 @@ export default function Dashboard() {
   // Missing/unknown account types are treated as liquid so the net-worth
   // chart still seeds correctly instead of flat-lining at net savings.
   const startingBalance = useMemo(() => {
-    if (!Array.isArray(accounts) || accounts.length === 0) return 0;
     const liquidTypes = new Set(['bank', 'wallet', 'cash', 'credit_card', 'other']);
-    return accounts
+    const accountsBalance = (Array.isArray(accounts) ? accounts : [])
       .filter((a) => {
         if (!a || a.is_active === false) return false;
         const t = String(a.type || '').trim().toLowerCase();
@@ -838,13 +838,23 @@ export default function Dashboard() {
         const converted = convertCurrency(bal, accountCurrency, displayCurrency, fxRatesToInr);
         return sum + (converted === null ? 0 : converted);
       }, 0);
-  }, [accounts, displayCurrency, fxRatesToInr]);
+
+    if (accountsBalance > 0 || (Array.isArray(accounts) && accounts.length > 0)) {
+      return accountsBalance;
+    }
+    return Number(user?.startingBalance ?? user?.initial_balance ?? 0);
+  }, [accounts, user, displayCurrency, fxRatesToInr]);
 
   // 6. Hero stats
   const rawIncome = unfilteredMetrics.income;
   const rawExpense = unfilteredMetrics.expense;
   const netSavings = unfilteredMetrics.netSavings;
-  const rawBalance = startingBalance + netSavings;
+  const rawBalance = useMemo(() => {
+    if (allParsed.length > 0 || (Array.isArray(accounts) && accounts.length > 0) || startingBalance !== 0) {
+      return startingBalance + netSavings;
+    }
+    return Number(user?.balance ?? 0);
+  }, [allParsed.length, accounts, startingBalance, netSavings, user?.balance]);
   const monthlyGoal = toNumber(user?.monthly_goal, 0);
 
   // Goal progress is monthly by definition. Using all-time net savings here

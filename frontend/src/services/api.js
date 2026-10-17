@@ -74,7 +74,8 @@ export const getStoredUser = () => {
 };
 
 // ── Dedicated instance (never mutates the shared axios defaults) ──
-const apiClient = axios.create({ timeout: 30000 });
+// Set to 50s to seamlessly accommodate free-tier Render container cold starts
+const apiClient = axios.create({ timeout: 50000 });
 
 // --- Axios Request Interceptor for JWT ---
 // ── Attaches the auth token unless the route is public ──
@@ -101,11 +102,23 @@ apiClient.interceptors.request.use((config) => {
   return Promise.reject(error);
 });
 
-// --- Axios Response Interceptor: clear token on 401 ---
-// ── Clears auth state and broadcasts an auth-expired event ──
+// --- Axios Response Interceptor: clear token on 401 & retry cold starts ---
+// ── Clears auth state, retries transient cold-start failures, and broadcasts auth-expired ──
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const config = error.config;
+    // Auto-retry transient network timeouts or container spin-ups on idempotent GET requests (up to 2 attempts)
+    if (config && config.method?.toLowerCase() === 'get' && (!config._retryCount || config._retryCount < 2)) {
+      const isTransient = error.code === 'ECONNABORTED' || !error.response || (error.response?.status >= 502 && error.response?.status <= 504);
+      if (isTransient) {
+        config._retryCount = (config._retryCount || 0) + 1;
+        const delayMs = config._retryCount * 1200;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        return apiClient(config);
+      }
+    }
+
     if (error.response?.status === 401) {
       const requestUrl = String(error.config?.url || '');
       if (!requestUrl.includes('/auth/')) {

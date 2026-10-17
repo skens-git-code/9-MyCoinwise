@@ -496,7 +496,7 @@ const getTransactionBalance = async (userId) => {
   const accountCurrencies = new Map(
     (accounts || []).map((account) => [String(account._id), normalizeCurrency(account.currency, displayCurrency)])
   );
-  const balance = dedupeTransactions(transactions).reduce((sum, transaction) => {
+  const balance = dedupeTransactions(transactions, { excludeFuture: true }).reduce((sum, transaction) => {
     const sourceCurrency = normalizeCurrency(
       transaction.currency || accountCurrencies.get(String(transaction.account_id || '')),
       displayCurrency
@@ -1069,7 +1069,7 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
         .skip(skip)
         .limit(limit);
 
-      return res.json(dedupeTransactions(transactions.map((transaction) => transaction.toObject())));
+      return res.json(dedupeTransactions(transactions.map((transaction) => transaction.toObject()), { excludeFuture: false }));
     } catch (error) {
       logger.error('[Transactions] legacy list error:', error);
       return res.status(500).json({ error: 'Unable to load transactions.' });
@@ -1121,7 +1121,7 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
 
     const hasMore = docs.length > limit;
     const rawItems = hasMore ? docs.slice(0, limit) : docs;
-    const items = dedupeTransactions(rawItems);
+    const items = dedupeTransactions(rawItems, { excludeFuture: false });
     const lastItem = items.length > 0 ? items[items.length - 1] : null;
     const nextCursor = (hasMore && lastItem) ? encodeCursor(lastItem) : null;
 

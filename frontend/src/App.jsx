@@ -191,6 +191,17 @@ export function formatCurrency(amount, currency = 'INR', localeOrLang = 'en-IN')
   return `${isNeg ? '-' : ''}${info.symbol}${numStr}`;
 }
 
+const getStoredCollection = (key) => {
+  try {
+    const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 export default function App() {
   const [theme, setTheme] = useState(() => normalizeTheme(localStorage.getItem('mcw-theme')));
   const [lang, setLang] = useState(() => localStorage.getItem('mcw-lang') || 'en');
@@ -198,16 +209,17 @@ export default function App() {
   const [token, setToken] = useState(() => getStoredToken());
   const [user, setUser] = useState(() => getStoredUser());
   const [allUsers, setAllUsers] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [goals, setGoals] = useState([]);
-  const [subscriptions, setSubscriptions] = useState([]);
-  const [budgets, setBudgets] = useState([]);
-  const [accounts, setAccounts] = useState([]);
-  const [events, setEvents] = useState([]);
+  const [transactions, setTransactions] = useState(() => getStoredCollection('mcw-transactions'));
+  const [goals, setGoals] = useState(() => getStoredCollection('mcw-goals'));
+  const [subscriptions, setSubscriptions] = useState(() => getStoredCollection('mcw-subscriptions'));
+  const [budgets, setBudgets] = useState(() => getStoredCollection('mcw-budgets'));
+  const [accounts, setAccounts] = useState(() => getStoredCollection('mcw-accounts'));
+  const [events, setEvents] = useState(() => getStoredCollection('mcw-events'));
   const [isInitialAuthLoad, setIsInitialAuthLoad] = useState(() => {
     const hasToken = Boolean(getStoredToken());
     const hasUser = Boolean(getStoredUser());
-    return hasToken && !hasUser;
+    const cachedTxs = getStoredCollection('mcw-transactions');
+    return hasToken && (!hasUser && cachedTxs.length === 0);
   });
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
   const [globalError, setGlobalError] = useState(null);
@@ -426,6 +438,18 @@ export default function App() {
     localStorage.removeItem('mcw-user');
     sessionStorage.removeItem('mcw-user');
     sessionStorage.removeItem('mcw-previous-session');
+    localStorage.removeItem('mcw-transactions');
+    localStorage.removeItem('mcw-goals');
+    localStorage.removeItem('mcw-budgets');
+    localStorage.removeItem('mcw-accounts');
+    localStorage.removeItem('mcw-subscriptions');
+    localStorage.removeItem('mcw-events');
+    sessionStorage.removeItem('mcw-transactions');
+    sessionStorage.removeItem('mcw-goals');
+    sessionStorage.removeItem('mcw-budgets');
+    sessionStorage.removeItem('mcw-accounts');
+    sessionStorage.removeItem('mcw-subscriptions');
+    sessionStorage.removeItem('mcw-events');
     setPreviousSession(null);
     setToken(null);
     setUser(null);
@@ -577,11 +601,27 @@ export default function App() {
       // a transient database/network failure as [] was erasing real data and
       // made the UI look like a successful empty state.
       if (usersData !== null) setAllUsers(usersData);
-      if (txData !== null) setTransactions(dedupeTransactions(txData));
-      if (goalsData !== null) setGoals(goalsData);
-      if (budgetsData !== null) setBudgets(budgetsData);
-      if (accountsData !== null) setAccounts(accountsData);
-      if (subsData !== null) setSubscriptions(subsData);
+      if (txData !== null) {
+        const cleanTxs = dedupeTransactions(txData, { excludeFuture: false });
+        setTransactions(cleanTxs);
+        try { localStorage.setItem('mcw-transactions', JSON.stringify(cleanTxs)); } catch {}
+      }
+      if (goalsData !== null) {
+        setGoals(goalsData);
+        try { localStorage.setItem('mcw-goals', JSON.stringify(goalsData)); } catch {}
+      }
+      if (budgetsData !== null) {
+        setBudgets(budgetsData);
+        try { localStorage.setItem('mcw-budgets', JSON.stringify(budgetsData)); } catch {}
+      }
+      if (accountsData !== null) {
+        setAccounts(accountsData);
+        try { localStorage.setItem('mcw-accounts', JSON.stringify(accountsData)); } catch {}
+      }
+      if (subsData !== null) {
+        setSubscriptions(subsData);
+        try { localStorage.setItem('mcw-subscriptions', JSON.stringify(subsData)); } catch {}
+      }
       if (eventsData !== null) setEvents(eventsData);
 
       if (failedResources.length >= 5) {
@@ -654,8 +694,15 @@ export default function App() {
 
   const addTransaction = useCallback(async (tx) => {
     const result = await api.addTransaction({ ...tx, user_id: userRef.current?.id || userRef.current?._id });
-    if (result?.transaction) setTransactions(prev => [result.transaction, ...prev]);
-    else await fetchData().catch(() => {});
+    if (result?.transaction) {
+      setTransactions(prev => {
+        const next = [result.transaction, ...prev];
+        try { localStorage.setItem('mcw-transactions', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    } else {
+      await fetchData().catch(() => {});
+    }
     applyBalance(result?.balance);
     syncAccountsSilently();
     return result;
@@ -663,7 +710,11 @@ export default function App() {
 
   const deleteTransaction = useCallback(async (id) => {
     const result = await api.deleteTransaction(id);
-    setTransactions(prev => prev.filter(tx => tx.id !== id && tx._id !== id));
+    setTransactions(prev => {
+      const next = prev.filter(tx => tx.id !== id && tx._id !== id);
+      try { localStorage.setItem('mcw-transactions', JSON.stringify(next)); } catch {}
+      return next;
+    });
     applyBalance(result?.balance);
     syncAccountsSilently();
     return result;
@@ -672,7 +723,11 @@ export default function App() {
   const editTransaction = useCallback(async (id, data) => {
     const result = await api.editTransaction(id, data);
     if (result?.transaction) {
-      setTransactions(prev => prev.map(tx => (tx.id === id || tx._id === id) ? result.transaction : tx));
+      setTransactions(prev => {
+        const next = prev.map(tx => (tx.id === id || tx._id === id) ? result.transaction : tx);
+        try { localStorage.setItem('mcw-transactions', JSON.stringify(next)); } catch {}
+        return next;
+      });
     } else {
       await fetchData().catch(() => {});
     }

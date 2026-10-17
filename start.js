@@ -153,7 +153,7 @@ function ensureBackendEnv() {
   const overrides = {
     NODE_ENV: 'development',
     JWT_SECRET: secret,
-    MONGO_URI: 'mongodb://127.0.0.1:27017/MyCoinwise',
+    MONGO_URI: 'mongodb+srv://skenscode_db_user:password_skens_tool@9-the-teenagers-budgett.843iayv.mongodb.net/ZenithSpend?retryWrites=true&w=majority&appName=9-The-teenagers-BudgetTool',
     CLIENT_URL: 'http://localhost:5173',
     FRONTEND_URL: 'http://localhost:5173',
   };

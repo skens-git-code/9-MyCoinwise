@@ -489,7 +489,7 @@ export default function Analytics() {
 
   /* ---------------- Valid transactions ---------------- */
   const validTransactions = useMemo(
-    () => dedupeTransactions(Array.isArray(transactions) ? transactions : [])
+    () => dedupeTransactions(Array.isArray(transactions) ? transactions : [], { excludeFuture: false })
       .filter(validateTransaction)
       .map((transaction) => ({
         ...transaction,

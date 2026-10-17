@@ -27,15 +27,17 @@ const dayKey = (value) => {
 };
 
 // ── True when the date is after the end of today ──
-// Invalid or missing dates are NOT treated as future (returns false) so that
-// unprojected date fields or pending rows are not silently zeroed/dropped.
+// Incorporates a 24-hour timezone grace period to prevent transactions submitted
+// by users east of UTC (e.g. IST UTC+5:30, JST UTC+9, Kiribati UTC+14) from being
+// falsely classified as "future" on UTC-hosted production servers (such as Render).
 export const isFutureTransaction = (value, now = new Date()) => {
   if (value === null || value === undefined || value === '') return false;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return false;
-  const endOfToday = new Date(now);
-  endOfToday.setHours(23, 59, 59, 999);
-  return date.getTime() > endOfToday.getTime();
+  const endOfGracePeriod = new Date(now);
+  endOfGracePeriod.setDate(endOfGracePeriod.getDate() + 1);
+  endOfGracePeriod.setHours(23, 59, 59, 999);
+  return date.getTime() > endOfGracePeriod.getTime();
 };
 
 /* —————————————————————————————————————
@@ -88,12 +90,12 @@ export const transactionIntegrityKey = (transaction) => {
  *
  * Behavior:
  *   - Rows with `is_deleted: true` are always excluded.
- *   - Future-dated rows are excluded when `excludeFuture` is true
- *     (the default).
+ *   - Future-dated rows are excluded when `excludeFuture` is true.
+ *     Default is false to ensure valid transactions are never dropped.
  *   - Duplicates are detected via identical database IDs and `transactionIntegrityKey`;
  *     the first occurrence in iteration order wins.
  * ————————————————————————————————————— */
-export const dedupeTransactions = (transactions = [], { excludeFuture = true } = {}) => {
+export const dedupeTransactions = (transactions = [], { excludeFuture = false } = {}) => {
   const seenKeys = new Set();
   const seenIds = new Set();
 

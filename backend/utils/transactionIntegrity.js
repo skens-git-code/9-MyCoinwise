@@ -31,16 +31,19 @@ const dayKey = (value) => {
 // balance came out 0. Because `syncUserBalance` PERSISTS that value, it actively
 // overwrote each user's stored balance with 0.
 //
-// The safe default is the opposite: only a date that is genuinely in the future
-// is excluded. A missing date is a projection bug, and silently zeroing a
-// balance is far worse than including a row whose date we failed to load.
+// ── Return true when the date is verifiably after the end of today ──
+//
+// Incorporates a 24-hour timezone grace period to prevent transactions submitted
+// by users east of UTC (e.g. IST UTC+5:30, JST UTC+9, Kiribati UTC+14) from being
+// falsely classified as "future" on UTC-hosted production servers (such as Render).
 const isFutureTransaction = (value, now = new Date()) => {
   if (value === null || value === undefined || value === '') return false;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return false;
-  const endOfToday = new Date(now);
-  endOfToday.setHours(23, 59, 59, 999);
-  return date.getTime() > endOfToday.getTime();
+  const endOfGracePeriod = new Date(now);
+  endOfGracePeriod.setDate(endOfGracePeriod.getDate() + 1);
+  endOfGracePeriod.setHours(23, 59, 59, 999);
+  return date.getTime() > endOfGracePeriod.getTime();
 };
 
 /* —————————————————————————————————————
@@ -100,7 +103,7 @@ const transactionIntegrityKey = (transaction) => {
  *   - Duplicates are detected via identical database IDs and `transactionIntegrityKey`;
  *     the first occurrence in iteration order wins.
  * ————————————————————————————————————— */
-const dedupeTransactions = (transactions = [], { excludeFuture = true } = {}) => {
+const dedupeTransactions = (transactions = [], { excludeFuture = false } = {}) => {
   const seenKeys = new Set();
   const seenIds = new Set();
 

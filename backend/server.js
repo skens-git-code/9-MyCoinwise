@@ -89,28 +89,61 @@ app.use(compression());
 app.set('etag', 'strong');
 
 // ─── 5. CORS ────────────────────────────────────────────────────────────────
-// Exact-match allowlist: no wildcards, no substring tests.
-const allowedOrigins = Array.from(new Set(
-  [config.FRONTEND_URL, config.CLIENT_URL]
-    .filter(Boolean)
-    .map((value) => {
-      try { return new URL(value).origin; } catch { return null; }
-    })
-    .filter(Boolean)
-));
+// Support comma-separated origins, Vercel deployments (*.vercel.app), Render (*.onrender.com),
+// and localhost for seamless local and production operations.
+const parseConfiguredOrigins = (...sources) => {
+  const result = new Set();
+  for (const source of sources) {
+    if (!source) continue;
+    const parts = String(source).split(',').map((s) => s.trim()).filter(Boolean);
+    for (const part of parts) {
+      try {
+        result.add(new URL(part).origin);
+      } catch {
+        // If not a full URL, add trimmed string
+        result.add(part);
+      }
+    }
+  }
+  return Array.from(result);
+};
+
+const allowedOrigins = parseConfiguredOrigins(
+  config.FRONTEND_URL,
+  config.CLIENT_URL,
+  process.env.ALLOWED_ORIGINS
+);
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+
+  // Allow all Vercel production and preview deployments
+  if (/^https:\/\/[a-zA-Z0-9_.-]+\.vercel\.app$/.test(origin)) return true;
+
+  // Allow Render domains
+  if (/^https:\/\/[a-zA-Z0-9_.-]+\.onrender\.com$/.test(origin)) return true;
+
+  // Allow localhost & 127.0.0.1 on any port in development or preview testing
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+
+  return false;
+};
 
 const corsOptions = {
   /**
-   * Allow non-browser callers (no Origin header) and exactly-listed origins.
+   * Allow non-browser callers (no Origin header) and verified origins.
    * Anything else is rejected with 403 — never 500.
    *
    * @param {string|undefined} origin Request Origin header.
    * @param {(err: Error|null, allow?: boolean) => void} callback CORS callback.
    */
   origin(origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new HttpError(403, 'Origin not allowed by CORS policy'));
+    if (isOriginAllowed(origin)) {
+      return callback(null, true);
+    }
+    logger.warn(`[CORS] Blocked request from unauthorized origin: ${origin}`);
+    callback(new HttpError(403, `Origin ${origin} not allowed by CORS policy`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -162,13 +195,24 @@ app.use(express.urlencoded({ extended: false, limit: DEFAULT_BODY_LIMIT }));
 app.use(sanitizeRequest);
 
 // ─── Health check ────────────────────────────────────────────────────────────
-app.get('/api/health', (req, res) => {
+const healthCheckHandler = (req, res) => {
   const databaseReady = mongoose.connection.readyState === 1;
   res.status(databaseReady ? 200 : 503).json({
     status: databaseReady ? 'OK' : 'DEGRADED',
     database: databaseReady ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString(),
     requestId: req.id,
+  });
+};
+
+app.get('/api/health', healthCheckHandler);
+app.get('/health', healthCheckHandler);
+app.get('/', (req, res) => {
+  res.status(200).json({
+    name: 'MyCoinwise API',
+    status: 'ONLINE',
+    version: '1.0.4',
+    health: '/api/health',
   });
 });
 

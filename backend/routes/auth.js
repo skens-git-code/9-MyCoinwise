@@ -233,7 +233,7 @@ const getTransactionBalance = async (userId) => {
   const accountCurrencies = new Map(
     (accounts || []).map((account) => [String(account._id), normalizeCurrency(account.currency, displayCurrency)])
   );
-  const balance = dedupeTransactions(transactions).reduce((sum, transaction) => {
+  const balance = dedupeTransactions(transactions, { excludeFuture: true }).reduce((sum, transaction) => {
     const sourceCurrency = normalizeCurrency(
       transaction.currency || accountCurrencies.get(String(transaction.account_id || '')),
       displayCurrency

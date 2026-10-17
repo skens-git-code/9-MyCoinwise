@@ -88,6 +88,7 @@ const config = cleanEnv(process.env, {
   // ── Frontend / CORS ───────────────────────────────────────────────────────
   FRONTEND_URL: str({ default: 'http://localhost:5173', desc: 'Primary frontend origin (added to the CORS allowlist).' }),
   CLIENT_URL: str({ default: '', desc: 'Additional allowed frontend origin.' }),
+  ALLOWED_ORIGINS: str({ default: '', desc: 'Comma-separated list of allowed CORS origins.' }),
 
   // ── Tax Center ────────────────────────────────────────────────────────────
   // Defaults to off in production and on elsewhere, preserving the previous
@@ -126,11 +127,17 @@ const config = cleanEnv(process.env, {
  * @returns {number|boolean|string} Hop count, boolean, or a named subnet.
  */
 function parseTrustProxy(raw) {
-  const value = String(raw).trim().toLowerCase();
-  if (value === '' || value === 'false' || value === '0') return false;
-  if (value === 'true') return true;
-  if (/^\d+$/.test(value)) return Number(value);
-  return raw;
+  if (raw && raw !== 'false' && raw !== '0') {
+    const value = String(raw).trim().toLowerCase();
+    if (value === 'true') return true;
+    if (/^\d+$/.test(value)) return Number(value);
+    return raw;
+  }
+  // Auto-detect reverse proxy in common cloud environments (Render sets RENDER=true, Vercel sets VERCEL=1)
+  if (process.env.RENDER === 'true' || process.env.VERCEL === '1') {
+    return 1;
+  }
+  return false;
 }
 
 module.exports = {
