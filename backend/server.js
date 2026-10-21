@@ -410,6 +410,37 @@ async function reconcileTaxIndexes() {
   ]);
 }
 
+/**
+ * Reconcile `users` collection indexes.
+ * In legacy databases, `username` may have had a unique index, which blocks
+ * updating display names / full names if duplicates exist.
+ * Drops legacy unique `username_1` index if it was unique, and synchronizes indexes.
+ *
+ * @returns {Promise<void>} Resolves when indexes are reconciled.
+ */
+async function reconcileUserIndexes() {
+  const User = require('./models/User');
+  try {
+    const indexes = await User.collection.indexes();
+    const usernameIndex = indexes.find((idx) => idx.name === 'username_1');
+    if (usernameIndex && usernameIndex.unique) {
+      logger.info('Dropping obsolete unique index on username_1 in users collection...');
+      await User.collection.dropIndex('username_1');
+    }
+  } catch (dropErr) {
+    const ignorable = [26, 27];
+    if (!ignorable.includes(dropErr?.code) && dropErr?.codeName !== 'IndexNotFound' && dropErr?.codeName !== 'NamespaceNotFound') {
+      logger.warn(`Could not reconcile username index: ${dropErr.message}`);
+    }
+  }
+
+  try {
+    await User.syncIndexes();
+  } catch (syncErr) {
+    logger.warn(`Could not sync user indexes: ${syncErr.message}`);
+  }
+}
+
 connectToMongo()
   .then(async () => {
     // ── One-time migrations (versioned, not every boot) ──
@@ -425,6 +456,13 @@ connectToMongo()
       await reconcileTaxIndexes();
     } catch (taxIndexErr) {
       logger.warn(`Could not reconcile tax indexes: ${taxIndexErr.message}`);
+    }
+
+    // ── User index reconciliation ──
+    try {
+      await reconcileUserIndexes();
+    } catch (userIndexErr) {
+      logger.warn(`Could not reconcile user indexes: ${userIndexErr.message}`);
     }
 
     // ── Development convenience: seed tax rule sets ──

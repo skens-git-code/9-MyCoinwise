@@ -1646,12 +1646,11 @@ const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMess
             value={formState.fullName ?? formState.firstName ?? ''}
             onChange={(e) => {
               handleFieldChange('fullName', e.target.value);
-              handleFieldChange('firstName', e.target.value);
             }}
             placeholder={t?.('full_name_placeholder') || 'Your name'}
             autoComplete="name"
             autoCapitalize="words"
-            maxLength={100}
+            maxLength={80}
           />
           <span className="form-help">
             {t?.('full_name_hint') || 'Display name used across transactions, reports, and greeting.'}
@@ -2684,7 +2683,7 @@ const CreateProfileModal = ({ isOpen, onClose, onConfirm, isLoading, defaultCurr
 const settingsReducer = (state, action) => {
   switch (action.type) {
     case 'SET_FIELD': {
-      if (action.field === 'fullName') {
+      if (action.field === 'fullName' || action.field === 'firstName') {
         return {
           ...state,
           fullName: action.value,
@@ -2731,6 +2730,7 @@ function SettingsInner({ context }) {
 
   const _navigate = useNavigate();
   const { showToast: showMessage } = useToast();
+  const activeUserId = USER_ID || user?._id || user?.id;
 
   /* ---------------- Form state ---------------- */
 
@@ -2900,7 +2900,7 @@ function SettingsInner({ context }) {
   const handleSave = useCallback(async (e) => {
     if (e?.preventDefault) e.preventDefault();
     if (loadingStates.save) return;
-    if (!USER_ID) {
+    if (!activeUserId) {
       showMessage('error', 'Session expired. Please log in again.');
       return;
     }
@@ -2934,7 +2934,7 @@ function SettingsInner({ context }) {
     };
 
     try {
-      const res = await api.updateSettings(USER_ID, {
+      const res = await api.updateSettings(activeUserId, {
         username: sanitizedName,
         last_name: '',
         profession: sanitizeInput(formState.profession),
@@ -2977,14 +2977,14 @@ function SettingsInner({ context }) {
         setLoadingStates((prev) => ({ ...prev, save: false }));
       }
     }
-  }, [formState, USER_ID, refetch, updateUser, showMessage, user, loadingStates.save]);
+  }, [formState, activeUserId, refetch, updateUser, showMessage, user, loadingStates.save, lang]);
 
   // ── Restore the last undo snapshot ──
   const handleUndo = useCallback(async () => {
-    if (!undoSnapshot || !USER_ID) return;
+    if (!undoSnapshot || !activeUserId) return;
     setLoadingStates((prev) => ({ ...prev, save: true }));
     try {
-      await api.updateSettings(USER_ID, undoSnapshot);
+      await api.updateSettings(activeUserId, undoSnapshot);
       setUndoSnapshot(null);
       showMessage('success', 'Changes reverted successfully.');
       if (refetch) await refetch();
@@ -2995,7 +2995,7 @@ function SettingsInner({ context }) {
         setLoadingStates((prev) => ({ ...prev, save: false }));
       }
     }
-  }, [undoSnapshot, USER_ID, refetch, showMessage]);
+  }, [undoSnapshot, activeUserId, refetch, showMessage]);
 
   // ── Discard unsaved changes ──
   const handleDiscard = useCallback(() => {
@@ -3129,7 +3129,7 @@ function SettingsInner({ context }) {
       if (formState.isDirty) {
         const { isValid: isGoalValid, value: goalValue } = validateGoal(formState.monthlyGoal);
         showMessage('info', 'Auto-saving changes before switching…');
-        await api.updateSettings(USER_ID, {
+        await api.updateSettings(activeUserId, {
           username: sanitizeInput(formState.fullName || formState.firstName || ''),
           last_name: '',
           profession: sanitizeInput(formState.profession || ''),
@@ -3141,7 +3141,7 @@ function SettingsInner({ context }) {
         dispatch({ type: 'CLEAR_DIRTY' });
       }
 
-      const isSelfSwitch = String(switchId) === String(USER_ID);
+      const isSelfSwitch = String(switchId) === String(activeUserId);
       await switchUser(switchId, isSelfSwitch ? undefined : switchPassword);
       const switchTargetName = userToSwitch ? getUserDisplayName(userToSwitch) : 'user';
       showMessage('success', `Switched to ${switchTargetName}`);
@@ -3155,7 +3155,7 @@ function SettingsInner({ context }) {
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, switch: null }));
     }
-  }, [modals.switchConfirm, allUsers, switchUser, showMessage, formState, USER_ID, user, switchPassword]);
+  }, [modals.switchConfirm, allUsers, switchUser, showMessage, formState, activeUserId, user, switchPassword]);
 
   /* ============================================================
    * Theme
@@ -3169,10 +3169,10 @@ function SettingsInner({ context }) {
 
     if (themeSaveTimerRef.current) clearTimeout(themeSaveTimerRef.current);
     themeSaveTimerRef.current = setTimeout(() => {
-      if (!USER_ID) return;
-      api.updateSettings(USER_ID, { theme: newTheme }).catch(console.error);
+      if (!activeUserId) return;
+      api.updateSettings(activeUserId, { theme: newTheme }).catch(console.error);
     }, 1000);
-  }, [setThemeDirect, USER_ID]);
+  }, [setThemeDirect, activeUserId]);
 
   /* ============================================================
    * Exports
@@ -3199,13 +3199,13 @@ function SettingsInner({ context }) {
 
   // ── Export data to Excel via the backend ──
   const handleExcelExport = useCallback(async () => {
-    if (!USER_ID) {
+    if (!activeUserId) {
       showMessage('error', 'Session expired. Please log in again.');
       return;
     }
     setLoadingStates((prev) => ({ ...prev, excel: true }));
     try {
-      await api.exportToExcel(USER_ID);
+      await api.exportToExcel(activeUserId);
       showMessage('success', 'Excel exported successfully.');
     } catch (err) {
       console.error('Excel Export Error:', err);
@@ -3213,7 +3213,7 @@ function SettingsInner({ context }) {
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, excel: false }));
     }
-  }, [USER_ID, showMessage]);
+  }, [activeUserId, showMessage]);
 
   /* ============================================================
    * Derived data
@@ -3328,12 +3328,12 @@ function SettingsInner({ context }) {
             </div>
             <div className="idp-body">
               <PasswordChange
-                userId={USER_ID}
+                userId={activeUserId}
                 showMessage={showMessage}
                 logout={logout}
               />
               <div style={{ height: 2, background: 'var(--glass-border)', margin: '32px 0' }} />
-              <SessionManagement userId={USER_ID} showMessage={showMessage} />
+              <SessionManagement userId={activeUserId} showMessage={showMessage} />
             </div>
           </>
         );
@@ -3342,7 +3342,7 @@ function SettingsInner({ context }) {
           <UsersTab
             {...commonProps}
             sortedUsers={sortedUsers}
-            USER_ID={USER_ID}
+            USER_ID={activeUserId}
             setModals={setModals}
             switchingUserId={loadingStates.switch}
             previousSession={previousSession}
@@ -3360,7 +3360,7 @@ function SettingsInner({ context }) {
               excelLoading={loadingStates.excel}
               pdfLoading={loadingStates.pdf}
             />
-            <BackupRestore userId={USER_ID} showMessage={showMessage} />
+            <BackupRestore userId={activeUserId} showMessage={showMessage} />
           </>
         );
       case 'advanced':

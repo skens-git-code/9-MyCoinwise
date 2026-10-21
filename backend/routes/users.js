@@ -251,11 +251,12 @@ const parseMoney = (value, { allowZero = true } = {}) => {
 const buildSettingsUpdate = (payload = {}) => {
   const updates = {};
 
-  // ── Username ──
-  if (payload.username !== undefined) {
-    const username = String(payload.username).trim();
+  // ── Username / Full Name ──
+  const candidateUsername = payload.username !== undefined ? payload.username : (payload.fullName !== undefined ? payload.fullName : payload.name);
+  if (candidateUsername !== undefined) {
+    const username = String(candidateUsername).trim();
     if (!username || username.length > 80) {
-      return { error: 'First name must be between 1 and 80 characters.' };
+      return { error: 'Full name must be between 1 and 80 characters.' };
     }
     updates.username = username;
   }
@@ -695,7 +696,9 @@ router.patch(
   [
     // ── Validate each optional settings field ──
     param('id').isMongoId().withMessage('Invalid user ID.'),
-    body('username').optional().notEmpty().trim(),
+    body('username').optional().notEmpty().trim().isLength({ min: 1, max: 80 }).withMessage('Name must be between 1 and 80 characters.'),
+    body('fullName').optional().notEmpty().trim().isLength({ min: 1, max: 80 }).withMessage('Name must be between 1 and 80 characters.'),
+    body('name').optional().notEmpty().trim().isLength({ min: 1, max: 80 }).withMessage('Name must be between 1 and 80 characters.'),
     body('last_name').optional().isString().trim().isLength({ max: 80 }),
     body('profession').optional().isString().trim().isLength({ max: 80 }),
     body('email').optional().isEmail().normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }),
@@ -737,11 +740,19 @@ router.patch(
       return res.json({ message: 'Settings updated successfully', user });
     } catch (error) {
       logger.error('[Users] patch settings error:', error);
-      return res
-        .status(error.code === 11000 ? 409 : 500)
-        .json({
-          error: error.code === 11000 ? 'Email is already in use.' : 'Unable to update settings.',
-        });
+      if (error.code === 11000) {
+        const keyPattern = error.keyPattern || {};
+        const keyField = Object.keys(keyPattern)[0] || '';
+        const msg = String(error.message || '');
+        if (keyField === 'email' || msg.includes('email')) {
+          return res.status(409).json({ error: 'Email is already in use.' });
+        }
+        if (keyField === 'username' || msg.includes('username')) {
+          return res.status(409).json({ error: 'This name/username is already taken.' });
+        }
+        return res.status(409).json({ error: 'A duplicate value already exists.' });
+      }
+      return res.status(500).json({ error: 'Unable to update settings.' });
     }
   }
 );
@@ -758,7 +769,9 @@ router.put(
   [
     // ── Validate each optional settings field ──
     param('id').isMongoId().withMessage('Invalid user ID.'),
-    body('username').optional().notEmpty().trim(),
+    body('username').optional().notEmpty().trim().isLength({ min: 1, max: 80 }).withMessage('Name must be between 1 and 80 characters.'),
+    body('fullName').optional().notEmpty().trim().isLength({ min: 1, max: 80 }).withMessage('Name must be between 1 and 80 characters.'),
+    body('name').optional().notEmpty().trim().isLength({ min: 1, max: 80 }).withMessage('Name must be between 1 and 80 characters.'),
     body('last_name').optional().isString().trim().isLength({ max: 80 }),
     body('profession').optional().isString().trim().isLength({ max: 80 }),
     body('email').optional().isEmail().normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }),
@@ -793,11 +806,19 @@ router.put(
       return res.json({ message: 'Settings updated successfully', user });
     } catch (error) {
       logger.error('[Users] put settings error:', error);
-      return res
-        .status(error.code === 11000 ? 409 : 500)
-        .json({
-          error: error.code === 11000 ? 'Email is already in use.' : 'Unable to update settings.',
-        });
+      if (error.code === 11000) {
+        const keyPattern = error.keyPattern || {};
+        const keyField = Object.keys(keyPattern)[0] || '';
+        const msg = String(error.message || '');
+        if (keyField === 'email' || msg.includes('email')) {
+          return res.status(409).json({ error: 'Email is already in use.' });
+        }
+        if (keyField === 'username' || msg.includes('username')) {
+          return res.status(409).json({ error: 'This name/username is already taken.' });
+        }
+        return res.status(409).json({ error: 'A duplicate value already exists.' });
+      }
+      return res.status(500).json({ error: 'Unable to update settings.' });
     }
   }
 );

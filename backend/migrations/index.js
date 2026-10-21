@@ -25,8 +25,9 @@ const SCHEMA_VERSION_KEY = 'schema_version';
  *
  *   1 — backfill household_id on legacy root accounts
  *   2 — repair balances zeroed by the missing-`date` projection bug
+ *   3 — drop obsolete unique index on username_1 to allow full name editing
  */
-const LATEST_VERSION = 2;
+const LATEST_VERSION = 3;
 
 /**
  * Tiny key/value collection holding migration bookkeeping.
@@ -86,6 +87,31 @@ async function runMigrations() {
     }
     if (changes.length > 20) logger.info(`  ...and ${changes.length - 20} more.`);
     applied.push(2);
+  }
+
+  if (from < 3) {
+    // ── v3: drop obsolete unique index on username_1 if present ──
+    const User = require('../models/User');
+    try {
+      const indexes = await User.collection.indexes();
+      const usernameIndex = indexes.find((idx) => idx.name === 'username_1');
+      if (usernameIndex && usernameIndex.unique) {
+        logger.info('Migration v3: dropping obsolete unique index on username_1...');
+        await User.collection.dropIndex('username_1');
+      }
+    } catch (dropErr) {
+      const ignorable = [26, 27];
+      if (!ignorable.includes(dropErr?.code) && dropErr?.codeName !== 'IndexNotFound' && dropErr?.codeName !== 'NamespaceNotFound') {
+        logger.warn(`Migration v3: Could not inspect/drop username index: ${dropErr.message}`);
+      }
+    }
+    try {
+      await User.syncIndexes();
+      logger.info('Migration v3: user indexes synchronized.');
+    } catch (syncErr) {
+      logger.warn(`Migration v3: Could not sync user indexes: ${syncErr.message}`);
+    }
+    applied.push(3);
   }
 
   await Meta.updateOne(
