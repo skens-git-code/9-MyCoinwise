@@ -130,30 +130,160 @@ export default function Tax() {
    * ============================================================ */
 
   // ── Load all tax profiles for the user ──
-  const loadProfiles = useCallback(async () => { setLoading(true); setError(''); try { const result = await api.getTaxProfiles(); const next = Array.isArray(result?.profiles) ? result.profiles : []; setProfiles(next); setSelectedId((current) => current && next.some((item) => getId(item) === current) ? current : getId(next[0])); } catch (err) { setError(err?.response?.data?.error || 'Tax Center is unavailable. Enable FEATURE_TAX_MODULE on the server.'); } finally { setLoading(false); } }, []);
+  const loadProfiles = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await api.getTaxProfiles();
+      const next = Array.isArray(result?.profiles) ? result.profiles : [];
+      setProfiles(next);
+      setSelectedId((current) => current && next.some((item) => getId(item) === current) ? current : getId(next[0]));
+    } catch (err) {
+      setError(err?.response?.data?.error || 'Tax Center is unavailable. Enable FEATURE_TAX_MODULE on the server.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // ── Load estimate, tags, payments, documents, and capital gains for a profile ──
   const loadProfileData = useCallback(async (selectedProfile) => {
-    if (!selectedProfile) { setEstimate(null); setRuleSet(null); setTagged([]); setPayments([]); setDocuments([]); setCapitalGains(null); return; }
-    setBusy(true); setError('');
+    if (!selectedProfile) {
+      setEstimate(null);
+      setRuleSet(null);
+      setTagged([]);
+      setPayments([]);
+      setDocuments([]);
+      setCapitalGains(null);
+      return;
+    }
+    setBusy(true);
+    setError('');
     try {
-      const [estimateResult, taggedResult, paymentsResult, documentsResult, gainsResult] = await Promise.all([api.estimateTax(getId(selectedProfile)), api.getTaxTaggedTransactions({ profile_id: getId(selectedProfile) }), api.getTaxPayments({ profile_id: getId(selectedProfile) }), api.getTaxDocuments({ profile_id: getId(selectedProfile) }), api.estimateCapitalGainsTax(getId(selectedProfile))]);
-      setEstimate(estimateResult?.estimate || null); setRuleSet(estimateResult?.ruleSet || null); setTagged(taggedResult?.transactions || []); setPayments(paymentsResult?.payments || []); setDocuments(documentsResult?.documents || []); setCapitalGains(gainsResult?.capital_gains || null); setRegimeCompare(null);
-    } catch (err) { setEstimate(null); setRuleSet(null); setCapitalGains(null); setError(err?.response?.data?.error || 'Tax rules or tax data are not available for this profile yet.'); } finally { setBusy(false); }
+      const [estimateRes, taggedRes, paymentsRes, docsRes, gainsRes] = await Promise.allSettled([
+        api.estimateTax(getId(selectedProfile)),
+        api.getTaxTaggedTransactions({ profile_id: getId(selectedProfile) }),
+        api.getTaxPayments({ profile_id: getId(selectedProfile) }),
+        api.getTaxDocuments({ profile_id: getId(selectedProfile) }),
+        api.estimateCapitalGainsTax(getId(selectedProfile)),
+      ]);
+
+      if (estimateRes.status === 'fulfilled') {
+        setEstimate(estimateRes.value?.estimate || null);
+        setRuleSet(estimateRes.value?.ruleSet || null);
+      } else {
+        setEstimate(null);
+        setRuleSet(null);
+        setError(estimateRes.reason?.response?.data?.error || 'Tax estimate could not be calculated.');
+      }
+
+      setTagged(taggedRes.status === 'fulfilled' ? taggedRes.value?.transactions || [] : []);
+      setPayments(paymentsRes.status === 'fulfilled' ? paymentsRes.value?.payments || [] : []);
+      setDocuments(docsRes.status === 'fulfilled' ? docsRes.value?.documents || [] : []);
+      setCapitalGains(gainsRes.status === 'fulfilled' ? gainsRes.value?.capital_gains || null : null);
+      setRegimeCompare(null);
+    } catch (err) {
+      setEstimate(null);
+      setRuleSet(null);
+      setCapitalGains(null);
+      setError(err?.response?.data?.error || 'Tax rules or tax data are not available for this profile yet.');
+    } finally {
+      setBusy(false);
+    }
   }, []);
 
   // ── Load profiles on mount ──
-  useEffect(() => { loadProfiles(); }, [loadProfiles]);
+  useEffect(() => {
+    let ignore = false;
+    const init = async () => {
+      try {
+        const result = await api.getTaxProfiles();
+        if (ignore) return;
+        const next = Array.isArray(result?.profiles) ? result.profiles : [];
+        setProfiles(next);
+        setSelectedId((current) => current && next.some((item) => getId(item) === current) ? current : getId(next[0]));
+      } catch (err) {
+        if (!ignore) {
+          setError(err?.response?.data?.error || 'Tax Center is unavailable. Enable FEATURE_TAX_MODULE on the server.');
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    };
+    init();
+    return () => { ignore = true; };
+  }, []);
 
   // ── Reload profile data whenever the selected profile changes ──
-  useEffect(() => { loadProfileData(profile); }, [profile, loadProfileData]);
+  useEffect(() => {
+    if (!profile) return;
+    let ignore = false;
+    const fetchProfileData = async () => {
+      setBusy(true);
+      setError('');
+      try {
+        const [estimateRes, taggedRes, paymentsRes, docsRes, gainsRes] = await Promise.allSettled([
+          api.estimateTax(getId(profile)),
+          api.getTaxTaggedTransactions({ profile_id: getId(profile) }),
+          api.getTaxPayments({ profile_id: getId(profile) }),
+          api.getTaxDocuments({ profile_id: getId(profile) }),
+          api.estimateCapitalGainsTax(getId(profile)),
+        ]);
+        if (ignore) return;
+
+        if (estimateRes.status === 'fulfilled') {
+          setEstimate(estimateRes.value?.estimate || null);
+          setRuleSet(estimateRes.value?.ruleSet || null);
+        } else {
+          setEstimate(null);
+          setRuleSet(null);
+          setError(estimateRes.reason?.response?.data?.error || 'Tax estimate could not be calculated.');
+        }
+
+        setTagged(taggedRes.status === 'fulfilled' ? taggedRes.value?.transactions || [] : []);
+        setPayments(paymentsRes.status === 'fulfilled' ? paymentsRes.value?.payments || [] : []);
+        setDocuments(docsRes.status === 'fulfilled' ? docsRes.value?.documents || [] : []);
+        setCapitalGains(gainsRes.status === 'fulfilled' ? gainsRes.value?.capital_gains || null : null);
+        setRegimeCompare(null);
+      } catch (err) {
+        if (!ignore) {
+          setEstimate(null);
+          setRuleSet(null);
+          setCapitalGains(null);
+          setError(err?.response?.data?.error || 'Tax rules or tax data are not available for this profile yet.');
+        }
+      } finally {
+        if (!ignore) setBusy(false);
+      }
+    };
+    fetchProfileData();
+    return () => { ignore = true; };
+  }, [profile]);
 
   /* ============================================================
    * Handlers
    * ============================================================ */
 
   // ── Create or update the current tax profile ──
-  const createOrUpdateProfile = async (form) => { setBusy(true); try { const result = editingProfile ? await api.updateTaxProfile(getId(editingProfile), { ...form, _version: editingProfile._version }) : await api.createTaxProfile(form); const nextProfile = result.profile; setProfiles((current) => editingProfile ? current.map((item) => getId(item) === getId(nextProfile) ? nextProfile : item) : [nextProfile, ...current]); setSelectedId(getId(nextProfile)); setEditingProfile(null); setShowProfileForm(false); if (result.warning) showToast('info', result.warning); else showToast('success', 'Tax profile saved.'); } catch (err) { showToast('error', err?.response?.data?.error || 'Unable to save tax profile.'); } finally { setBusy(false); } };
+  const createOrUpdateProfile = async (form) => {
+    setBusy(true);
+    try {
+      const result = editingProfile
+        ? await api.updateTaxProfile(getId(editingProfile), { ...form, _version: editingProfile._version })
+        : await api.createTaxProfile(form);
+      const nextProfile = result.profile;
+      setProfiles((current) => editingProfile ? current.map((item) => getId(item) === getId(nextProfile) ? nextProfile : item) : [nextProfile, ...current]);
+      setSelectedId(getId(nextProfile));
+      setEditingProfile(null);
+      setShowProfileForm(false);
+      setError('');
+      if (result.warning) showToast('info', result.warning);
+      else showToast('success', 'Tax profile saved.');
+    } catch (err) {
+      showToast('error', err?.response?.data?.error || 'Unable to save tax profile.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // ── Delete the current profile (with associated tags / payments / documents) ──
   const deleteProfile = async () => { if (!profile || !window.confirm('Delete this tax profile and its tags, payments, and documents?')) return; try { await api.deleteTaxProfile(getId(profile)); setProfiles((current) => current.filter((item) => getId(item) !== getId(profile))); setSelectedId(''); showToast('success', 'Tax profile deleted.'); } catch (err) { showToast('error', err?.response?.data?.error || 'Unable to delete profile.'); } };
@@ -219,7 +349,7 @@ export default function Tax() {
       <TaxDisclaimer />
 
       {/* ── Error banner with retry ── */}
-      {error && <div className="tax-error"><AlertTriangle size={17} /> <span>{error}</span><button type="button" onClick={() => loadProfileData(profile)} aria-label="Retry"><RefreshCw size={15} /></button></div>}
+      {error && <div className="tax-error"><AlertTriangle size={17} /> <span>{error}</span><button type="button" onClick={() => (profile ? loadProfileData(profile) : loadProfiles())} aria-label="Retry"><RefreshCw size={15} /></button></div>}
 
       {/* ── Empty state when no profile exists yet ── */}
       {!profile ? <section className="tax-empty-state glass"><div className="tax-empty-icon"><Wallet size={28} /></div><h2>No tax profile yet</h2><p>Create a profile to calculate an estimate. Your transactions remain unchanged until you explicitly tag them.</p><button className="btn-primary" onClick={() => setShowProfileForm(true)}><Plus size={16} /> Create first profile</button></section> : <>
@@ -349,13 +479,13 @@ export default function Tax() {
         )}
 
         {/* ===================== Capital gains tab ===================== */}
-        {activeTab === 'capital' && <section className="tax-tab-panel glass"><div className="tax-panel-header"><div><h3>Capital gains</h3><p>Sold Wealth items are classified by holding period. Losses are tracked separately.</p></div><a className="btn-secondary" href="/wealth">Manage assets</a></div>{capitalGains?.holdings?.length ? <><TaxEstimateCard estimate={{ totalLiability: capitalGains.total, balanceDue: capitalGains.total, effectiveRate: 0, marginalRate: 0, taxableIncome: capitalGains.shortTermGain + capitalGains.longTermGain, grossIncome: capitalGains.shortTermGain + capitalGains.longTermGain, hasTaxableActivity: true }} currency={profile.currency} fmt={money} /><div className="tax-table-wrap"><table className="tax-data-table"><thead><tr><th>Asset</th><th>Holding period</th><th>Classification</th><th>Gain / loss</th><th>Tax</th></tr></thead><tbody>{capitalGains.holdings.map((holding) => <tr key={holding.id}><td>{holding.name}</td><td>{holding.holdingDays} days</td><td>{holding.classification.replace('_', ' ')}</td><td className={holding.gain >= 0 ? 'text-success' : 'text-danger'}>{money(holding.gain)}</td><td>{money(holding.tax)}</td></tr>)}</tbody></table></div></> : <div className="tax-empty-panel">No sold assets have been recorded.</div>}</section>}
+        {activeTab === 'capital' && <section className="tax-tab-panel glass"><div className="tax-panel-header"><div><h3>Capital gains</h3><p>Sold Wealth items are classified by holding period. Losses are tracked separately.</p></div><button type="button" className="btn-secondary" onClick={() => navigate('/wealth')}>Manage assets</button></div>{capitalGains?.holdings?.length ? <><TaxEstimateCard estimate={{ totalLiability: capitalGains.total, balanceDue: capitalGains.total, effectiveRate: 0, marginalRate: 0, taxableIncome: capitalGains.shortTermGain + capitalGains.longTermGain, grossIncome: capitalGains.shortTermGain + capitalGains.longTermGain, hasTaxableActivity: true }} currency={profile.currency} fmt={money} /><div className="tax-table-wrap"><table className="tax-data-table"><thead><tr><th>Asset</th><th>Holding period</th><th>Classification</th><th>Gain / loss</th><th>Tax</th></tr></thead><tbody>{capitalGains.holdings.map((holding) => <tr key={holding.id}><td>{holding.name}</td><td>{holding.holdingDays} days</td><td>{holding.classification.replace('_', ' ')}</td><td className={holding.gain >= 0 ? 'text-success' : 'text-danger'}>{money(holding.gain)}</td><td>{money(holding.tax)}</td></tr>)}</tbody></table></div></> : <div className="tax-empty-panel">No sold assets have been recorded.</div>}</section>}
 
         {/* ===================== Payments tab ===================== */}
-        {activeTab === 'payments' && <section className="tax-tab-panel glass"><div className="tax-panel-header"><div><h3>Payments and TDS</h3><p>Record-keeping only; no payment is initiated by MyCoinwise.</p></div><button className="btn-primary" onClick={() => setShowPaymentForm(true)}><Plus size={16} /> Add payment</button></div><div className="tax-payment-summary"><strong>{money(estimate?.paymentsMade)}</strong><span>recorded against {money(estimate?.totalLiability)} estimated liability · TDS: {money(tdsTotal)}</span></div><div className="tax-table-wrap"><table className="tax-data-table"><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Amount</th><th /></tr></thead><tbody>{payments.length ? payments.map((payment) => <tr key={getId(payment)}><td>{formatTaxDate(payment.payment_date, taxLocale)}</td><td>{payment.payment_type}</td><td>{payment.reference || '—'}</td><td>{money(payment.amount)}</td><td><button className="icon-button" onClick={async () => { await api.deleteTaxPayment(getId(payment)); await loadProfileData(profile); }} aria-label="Delete payment"><Trash2 size={15} /></button></td></tr>) : <tr><td colSpan="5" className="tax-muted">No payments recorded.</td></tr>}</tbody></table></div></section>}
+        {activeTab === 'payments' && <section className="tax-tab-panel glass"><div className="tax-panel-header"><div><h3>Payments and TDS</h3><p>Record-keeping only; no payment is initiated by MyCoinwise.</p></div><button className="btn-primary" onClick={() => setShowPaymentForm(true)}><Plus size={16} /> Add payment</button></div><div className="tax-payment-summary"><strong>{money(estimate?.paymentsMade)}</strong><span>recorded against {money(estimate?.totalLiability)} estimated liability · TDS: {money(tdsTotal)}</span></div><div className="tax-table-wrap"><table className="tax-data-table"><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Amount</th><th /></tr></thead><tbody>{payments.length ? payments.map((payment) => <tr key={getId(payment)}><td>{formatTaxDate(payment.payment_date, taxLocale)}</td><td>{payment.payment_type}</td><td>{payment.reference || '—'}</td><td>{money(payment.amount)}</td><td><button className="icon-button" onClick={async () => { try { await api.deleteTaxPayment(getId(payment)); await loadProfileData(profile); showToast('success', 'Tax payment removed.'); } catch (err) { showToast('error', err?.response?.data?.error || 'Unable to remove payment.'); } }} aria-label="Delete payment"><Trash2 size={15} /></button></td></tr>) : <tr><td colSpan="5" className="tax-muted">No payments recorded.</td></tr>}</tbody></table></div></section>}
 
         {/* ===================== Documents tab ===================== */}
-        {activeTab === 'documents' && <section className="tax-tab-panel glass"><div className="tax-panel-header"><div><h3>Tax documents</h3><p>Indexed references are encrypted at rest. Files are not uploaded by this form.</p></div><span className="tax-muted">7-year retention reminder</span></div><form className="tax-inline-form tax-document-form" onSubmit={addDocument}><input aria-label="Document label" placeholder="Document label" value={documentForm.label} onChange={(e) => setDocumentForm({ ...documentForm, label: e.target.value })} required /><select aria-label="Document type" value={documentForm.document_type} onChange={(e) => setDocumentForm({ ...documentForm, document_type: e.target.value })}><option value="form16">Form 16</option><option value="w2">W-2</option><option value="1099">1099</option><option value="receipt">Receipt</option><option value="invoice">Invoice</option><option value="other">Other</option></select><input aria-label="Document URL" type="url" placeholder="Secure file URL" value={documentForm.file_url} onChange={(e) => setDocumentForm({ ...documentForm, file_url: e.target.value })} required /><input aria-label="File size in bytes" type="number" min="0" max={10 * 1024 * 1024} placeholder="File size (bytes)" value={documentForm.file_size} onChange={(e) => setDocumentForm({ ...documentForm, file_size: e.target.value })} required /><button className="btn-primary" type="submit">Index document</button></form><div className="tax-document-list">{documents.length ? documents.map((doc) => <article className="tax-document-row" key={getId(doc)}><FileText size={18} /><div><strong>{doc.label}</strong><span>{doc.document_type} · {formatTaxDate(doc.issue_date || doc.created_at, taxLocale)}</span></div><a href={doc.file_url || '#'} target="_blank" rel="noreferrer">Open</a><button className="icon-button" onClick={async () => { await api.deleteTaxDocument(getId(doc)); await loadProfileData(profile); }} aria-label="Delete document"><Trash2 size={15} /></button></article>) : <div className="tax-empty-panel">No documents indexed.</div>}</div></section>}
+        {activeTab === 'documents' && <section className="tax-tab-panel glass"><div className="tax-panel-header"><div><h3>Tax documents</h3><p>Indexed references are encrypted at rest. Files are not uploaded by this form.</p></div><span className="tax-muted">7-year retention reminder</span></div><form className="tax-inline-form tax-document-form" onSubmit={addDocument}><input aria-label="Document label" placeholder="Document label" value={documentForm.label} onChange={(e) => setDocumentForm({ ...documentForm, label: e.target.value })} required /><select aria-label="Document type" value={documentForm.document_type} onChange={(e) => setDocumentForm({ ...documentForm, document_type: e.target.value })}><option value="form16">Form 16</option><option value="w2">W-2</option><option value="1099">1099</option><option value="receipt">Receipt</option><option value="invoice">Invoice</option><option value="other">Other</option></select><input aria-label="Document URL" type="url" placeholder="Secure file URL" value={documentForm.file_url} onChange={(e) => setDocumentForm({ ...documentForm, file_url: e.target.value })} required /><input aria-label="File size in bytes" type="number" min="0" max={10 * 1024 * 1024} placeholder="File size (bytes)" value={documentForm.file_size} onChange={(e) => setDocumentForm({ ...documentForm, file_size: e.target.value })} required /><button className="btn-primary" type="submit">Index document</button></form><div className="tax-document-list">{documents.length ? documents.map((doc) => <article className="tax-document-row" key={getId(doc)}><FileText size={18} /><div><strong>{doc.label}</strong><span>{doc.document_type} · {formatTaxDate(doc.issue_date || doc.created_at, taxLocale)}</span></div><a href={doc.file_url || '#'} target="_blank" rel="noreferrer">Open</a><button className="icon-button" onClick={async () => { try { await api.deleteTaxDocument(getId(doc)); await loadProfileData(profile); showToast('success', 'Tax document removed.'); } catch (err) { showToast('error', err?.response?.data?.error || 'Unable to remove document.'); } }} aria-label="Delete document"><Trash2 size={15} /></button></article>) : <div className="tax-empty-panel">No documents indexed.</div>}</div></section>}
 
         {/* ===================== Reports tab ===================== */}
         {activeTab === 'reports' && (
@@ -508,7 +638,7 @@ export default function Tax() {
                 <X size={18} />
               </button>
             </div>
-            <TaxPaymentForm currency={profile.currency} onSubmit={addPayment} onCancel={() => setShowPaymentForm(false)} isSaving={busy} />
+            <TaxPaymentForm currency={profile?.currency || currency} onSubmit={addPayment} onCancel={() => setShowPaymentForm(false)} isSaving={busy} />
           </div>
         </div>,
         document.body

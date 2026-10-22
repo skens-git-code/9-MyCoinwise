@@ -36,6 +36,9 @@ const {
   calculateCapitalGains,
   calculateSalesTaxSummary,
 } = require('../services/taxEngine');
+const indiaRules = require('../services/taxRules/india-2024');
+const usRules = require('../services/taxRules/us-federal-2024');
+const builtInRules = [...indiaRules, ...usRules];
 
 // ── Create router ──
 const router = express.Router();
@@ -159,12 +162,64 @@ const audit = (req, action, profileId = null, extra = {}) => {
 const findOwnedProfile = async (req, id) =>
   TaxProfile.findOne({ _id: id, user_id: userIdOf(req) });
 
-// ── Load the rule set matching a profile's jurisdiction/year/regime ──
-const getRuleSet = async (profile) => TaxRuleSet.findOne({
-  jurisdiction: profile.jurisdiction,
-  fiscal_year: profile.fiscal_year,
-  regime: profile.tax_regime,
-}).lean();
+// ── Load the rule set matching a profile's jurisdiction/year/regime with auto-seed fallback ──
+const getRuleSet = async (profile) => {
+  if (!profile) return null;
+  const fiscalYear = Number(profile.fiscal_year);
+  let ruleSet = await TaxRuleSet.findOne({
+    jurisdiction: profile.jurisdiction,
+    fiscal_year: fiscalYear,
+    regime: profile.tax_regime,
+  }).lean();
+
+  if (!ruleSet) {
+    // 1. Check built-in rules for exact match
+    const exactMatch = builtInRules.find(
+      (r) => r.jurisdiction === profile.jurisdiction &&
+             r.fiscal_year === fiscalYear &&
+             r.regime === profile.tax_regime
+    );
+    if (exactMatch) {
+      try {
+        await TaxRuleSet.updateOne(
+          { rule_key: exactMatch.rule_key },
+          { $set: exactMatch },
+          { upsert: true, runValidators: true }
+        );
+      } catch (err) {
+        logger.warn(`Could not seed matched tax rule set: ${err.message}`);
+      }
+      return exactMatch;
+    }
+
+    // 2. Check built-in rules for baseline match by jurisdiction & regime
+    const baseline = builtInRules.find(
+      (r) => r.jurisdiction === profile.jurisdiction && r.regime === profile.tax_regime
+    ) || builtInRules.find((r) => r.jurisdiction === profile.jurisdiction);
+
+    if (baseline) {
+      const adaptedKey = `${profile.jurisdiction.toUpperCase()}-${fiscalYear}-${(profile.tax_regime || baseline.regime).toUpperCase()}`;
+      const adapted = {
+        ...baseline,
+        rule_key: adaptedKey,
+        fiscal_year: fiscalYear,
+        regime: profile.tax_regime || baseline.regime,
+      };
+      try {
+        await TaxRuleSet.updateOne(
+          { rule_key: adaptedKey },
+          { $set: adapted },
+          { upsert: true, runValidators: true }
+        );
+      } catch (err) {
+        logger.warn(`Could not seed adapted tax rule set: ${err.message}`);
+      }
+      return adapted;
+    }
+  }
+
+  return ruleSet;
+};
 
 // ── Respond with a clear error when no matching rule set exists ──
 const missingRules = (res, profile) => res.status(400).json({
@@ -216,7 +271,13 @@ const getTaggedTransactions = async (req, profileId, start, end) => {
 
 // ── Derive the AES-256-GCM key from the env-provided secret ──
 const getCryptoKey = () => {
-  const raw = String(process.env.TAX_FIELD_ENCRYPTION_KEY || process.env.JWT_SECRET || 'mcw-default-tax-encryption-secret-key-32').trim();
+  const raw = String(
+    config.TAX_FIELD_ENCRYPTION_KEY ||
+    config.JWT_SECRET ||
+    process.env.TAX_FIELD_ENCRYPTION_KEY ||
+    process.env.JWT_SECRET ||
+    'mcw-default-tax-encryption-secret-key-32'
+  ).trim();
   return crypto.createHash('sha256').update(raw).digest();
 };
 
@@ -562,11 +623,11 @@ router.post('/estimate/compare', estimateLimiter, [profileIdBody], async (req, r
   // ── Run the estimate under each regime ──
   const comparison = {};
   for (const regime of ['new', 'old']) {
-    const ruleSet = await TaxRuleSet.findOne({
+    const ruleSet = await getRuleSet({
       jurisdiction: 'IN',
       fiscal_year: profile.fiscal_year,
-      regime,
-    }).lean();
+      tax_regime: regime,
+    });
     if (!ruleSet) return missingRules(res, { ...profile.toObject(), jurisdiction: 'IN' });
     comparison[regime] = estimateAnnualTax({
       profile: { ...profile.toObject(), tax_regime: regime },

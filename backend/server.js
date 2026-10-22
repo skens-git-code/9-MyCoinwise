@@ -465,26 +465,22 @@ connectToMongo()
       logger.warn(`Could not reconcile user indexes: ${userIndexErr.message}`);
     }
 
-    // ── Development convenience: seed tax rule sets ──
-    // Production uses the protected seed script/admin endpoint so rule changes
-    // stay an explicit release step. Guarded by NODE_ENV, so it can never run
-    // in production.
-    if (!isProduction) {
-      try {
-        const TaxRuleSet = require('./models/TaxRuleSet');
-        const indiaRules = require('./services/taxRules/india-2024');
-        const usRules = require('./services/taxRules/us-federal-2024');
-        for (const rule of [...indiaRules, ...usRules]) {
-          await TaxRuleSet.updateOne(
-            { rule_key: rule.rule_key },
-            { $set: rule },
-            { upsert: true, runValidators: true }
-          );
-        }
-        logger.info('Tax rule sets are available for local development.');
-      } catch (seedErr) {
-        logger.warn(`Could not seed development tax rules: ${seedErr.message}`);
+    // ── Seed tax rule sets ──
+    // Idempotent upsert ensures rule sets are available in all environments.
+    try {
+      const TaxRuleSet = require('./models/TaxRuleSet');
+      const indiaRules = require('./services/taxRules/india-2024');
+      const usRules = require('./services/taxRules/us-federal-2024');
+      for (const rule of [...indiaRules, ...usRules]) {
+        await TaxRuleSet.updateOne(
+          { rule_key: rule.rule_key },
+          { $set: rule },
+          { upsert: true, runValidators: true }
+        );
       }
+      logger.info('Tax rule sets are available.');
+    } catch (seedErr) {
+      logger.warn(`Could not seed tax rules: ${seedErr.message}`);
     }
 
     server = app.listen(PORT, () => {

@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { openCookiePreferences } from '../services/clarity';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -43,6 +44,21 @@ export default function Footer() {
           <Link to="/privacy" className="footer-link footer-nav-link">
             Privacy Policy
           </Link>
+          <span className="footer-dot footer-separator" aria-hidden="true">•</span>
+          <button
+            type="button"
+            onClick={openCookiePreferences}
+            className="footer-link footer-nav-link"
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              font: 'inherit',
+              cursor: 'pointer',
+            }}
+          >
+            Cookie Preferences
+          </button>
         </nav>
 
         {/* ── Status Indicator ── */}

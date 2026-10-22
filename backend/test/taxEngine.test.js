@@ -106,5 +106,23 @@ assert.strictEqual(annual.hasTaxableActivity, true);
 assert.strictEqual(annual.paymentsMade, 1000);
 assert.strictEqual(annual.balanceDue, 42680);
 
+// ── India Old Regime verification ──
+const indiaOld = profile('IN', 2024, 'old');
+const indiaOldRule = indiaRules.find((rule) => rule.regime === 'old');
+const indiaOldResult = calculateIncomeTax({ grossIncome: 1000000, ruleSet: indiaOldRule, profile: indiaOld });
+assert.strictEqual(indiaOldResult.taxableIncome, 950000);
+assert.strictEqual(indiaOldResult.total, 106600);
+
+// ── Sales tax summary calculation ──
+const { calculateSalesTaxSummary } = require('../services/taxEngine');
+const salesTax = calculateSalesTaxSummary({
+  transactions: [
+    { type: 'expense', category: 'Shopping', amount: 1000 },
+    { type: 'expense', category: 'Dining', amount: 500 },
+  ],
+  defaultRate: 0.18,
+});
+assert.strictEqual(salesTax.totalTaxPaid, 270);
+
 // ── All assertions passed ──
 console.log('taxEngine tests passed');

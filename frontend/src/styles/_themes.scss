@@ -9,6 +9,10 @@
   --surface-1: #ffffff;
   --surface-2: #f1f5f9;
   --surface-3: #e2e8f0;
+  --bg-primary: var(--surface-0);
+  --glass-card: var(--surface-1);
+  --glass-card-hover: var(--surface-2);
+  --border-color: var(--glass-border);
 
   // ── Glass ──
   --glass-1: rgba(255, 255, 255, 0.65);
@@ -89,6 +93,10 @@
   --surface-1: #050505;
   --surface-2: #0a0a0a;
   --surface-3: #121212;
+  --bg-primary: var(--surface-0);
+  --glass-card: var(--surface-1);
+  --glass-card-hover: var(--surface-2);
+  --border-color: var(--glass-border);
 
   // ── Glass ──
   --glass-1: rgba(255, 255, 255, 0.015);

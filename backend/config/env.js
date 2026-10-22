@@ -91,10 +91,8 @@ const config = cleanEnv(process.env, {
   ALLOWED_ORIGINS: str({ default: '', desc: 'Comma-separated list of allowed CORS origins.' }),
 
   // ── Tax Center ────────────────────────────────────────────────────────────
-  // Defaults to off in production and on elsewhere, preserving the previous
-  // `FEATURE_TAX_MODULE == null && NODE_ENV !== 'production'` behaviour.
   FEATURE_TAX_MODULE: bool({
-    default: process.env.NODE_ENV === 'production' ? false : true,
+    default: true,
     desc: 'Enable the Tax Center module.',
   }),
   TAX_FIELD_ENCRYPTION_KEY: str({ default: '', desc: '32-byte key encrypting tax document references at rest.' }),

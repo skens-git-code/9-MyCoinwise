@@ -111,6 +111,10 @@
    --surface-1: #0f1010;
    --surface-2: #161818;
    --surface-3: #1e2020;
+   --bg-primary: var(--surface-0);
+   --glass-card: var(--surface-1);
+   --glass-card-hover: var(--surface-2);
+   --border-color: var(--glass-border);
 
    /* ► Glassmorphism Tokens */
    --glass-1: rgba(255, 255, 255, 0.028);
