@@ -167,6 +167,30 @@ const transactionSchema = new mongoose.Schema({
     trim: true
   },
 
+  // ── Bank or payment platform name (e.g., HDFC Bank, PhonePe, Paytm, Google Pay) ──
+  bank_name: {
+    type: String,
+    default: null,
+    maxlength: 100,
+    trim: true
+  },
+
+  // ── Sender name / VPA / account ──
+  sender_name: {
+    type: String,
+    default: null,
+    maxlength: 150,
+    trim: true
+  },
+
+  // ── Receiver / Beneficiary name ──
+  receiver_name: {
+    type: String,
+    default: null,
+    maxlength: 150,
+    trim: true
+  },
+
   /* —————————————————————————————————————
    * Split Details
    * ————————————————————————————————————— */

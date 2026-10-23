@@ -13,7 +13,7 @@
  *   POST   /bulk-delete          Hard delete many (permanent)
  *
  * Key behaviors:
- *   - Statement parsing supports CSV (comma or semicolon) up to 5 MB
+ *   - Statement parsing supports CSV, Excel (.xlsx), and PDF up to 10 MB
  *     and 1000 rows per request.
  *   - Recurring instances are created via an atomic upsert keyed on
  *     `recurrence_instance_key`, so concurrent requests cannot
@@ -68,9 +68,13 @@ const checkOwnership = require('../middleware/ownership');
 const auth = require('../middleware/auth');
 const { logger } = require('../utils/logger');
 const { dedupeTransactions } = require('../utils/transactionIntegrity');
+const { parseStatement, IMPORT_LIMIT } = require('../services/statementParser');
 
 // ── Create router ──
 const router = express.Router();
+
+// ── Per-user maximum transaction cap ──
+const USER_TRANSACTION_LIMIT = 1000;
 
 /* —————————————————————————————————————
  * Constants
@@ -85,8 +89,7 @@ const TRANSACTION_TYPES = new Set(['income', 'expense']);
 const PAYMENT_METHODS = new Set(['cash', 'card', 'upi', 'bank_transfer', 'wallet', 'cheque', 'other']);
 const RECURRENCE_INTERVALS = new Set(['daily', 'weekly', 'monthly', 'yearly']);
 
-// ── Statement import limits ──
-const IMPORT_LIMIT = 1000;
+// ── Amount bounds ──
 const MAX_AMOUNT = 999_999_999.99;
 
 // ── Safety cap on recurring instances generated per template ──
@@ -123,7 +126,7 @@ const parseStatementAmount = (value) => {
 
 // ── Validate and normalize a transaction amount ──
 // Enforces at most two decimals using an epsilon tolerance (see the
-// CRITICAL fix note in the header).
+// CRITICAL fix note in the header). Rejects sub-paisa amounts (e.g. 1e-8).
 const parseTransactionAmount = (value) => {
   const amount =
     typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
@@ -131,11 +134,12 @@ const parseTransactionAmount = (value) => {
 
   // Reject values with more than two decimal places using an epsilon
   // tolerance so legitimate amounts like 12.34 are accepted.
+  // Also reject sub-paisa amounts (e.g. 1e-8) where rounded <= 0.
   const scaled = amount * 100;
   const rounded = Math.round(scaled);
-  if (Math.abs(scaled - rounded) > 1e-6) return null;
+  if (Math.abs(scaled - rounded) > 1e-6 || rounded <= 0) return null;
 
-  return Math.round(scaled) / 100;
+  return rounded / 100;
 };
 
 // ── Parse a transaction date (defaults to now when absent) ──
@@ -395,6 +399,7 @@ const validateTransactionPayload = (payload) => {
     type, category, amount, date, note, merchant, tags, payment_method,
     account_id, is_recurring, recurrence_interval, recurrence_ends_at,
     is_split, split_details, transaction_number, currency,
+    bank_name, sender_name, receiver_name,
   } = payload;
 
   const numericAmount = parseTransactionAmount(amount);
@@ -442,6 +447,15 @@ const validateTransactionPayload = (payload) => {
   if (account_id !== undefined) parsed.account_id = account_id || null;
   if (transaction_number !== undefined) {
     parsed.transaction_number = transaction_number ? String(transaction_number).trim() : null;
+  }
+  if (bank_name !== undefined) {
+    parsed.bank_name = bank_name ? String(bank_name).trim().slice(0, 100) : null;
+  }
+  if (sender_name !== undefined) {
+    parsed.sender_name = sender_name ? String(sender_name).trim().slice(0, 150) : null;
+  }
+  if (receiver_name !== undefined) {
+    parsed.receiver_name = receiver_name ? String(receiver_name).trim().slice(0, 150) : null;
   }
   if (is_recurring !== undefined) parsed.is_recurring = Boolean(is_recurring);
   if (recurrence_interval !== undefined) {
@@ -509,19 +523,35 @@ const getTransactionBalance = async (userId) => {
 };
 
 // ── Calculate signed amount in user's display currency ──
-const getTransactionSignedAmountForUser = async (userId, transaction) => {
+const getTransactionSignedAmountForUser = async (
+  userId,
+  transaction,
+  displayCurrency = null
+) => {
   if (!transaction || !Number.isFinite(transaction.amount)) return 0;
-  const user = await User.findById(userId).select('currency').lean();
-  const displayCurrency = normalizeCurrency(user?.currency);
-  const sourceCurrency = normalizeCurrency(transaction.currency, displayCurrency);
-  const convertedAmount = convertToCurrency(transaction.amount, sourceCurrency, displayCurrency);
+  let currency = displayCurrency;
+  if (!currency) {
+    const user = await User.findById(userId).select('currency').lean();
+    currency = normalizeCurrency(user?.currency);
+  }
+  const sourceCurrency = normalizeCurrency(transaction.currency, currency);
+  const convertedAmount = convertToCurrency(transaction.amount, sourceCurrency, currency);
   const type = String(transaction.type || '').trim().toLowerCase();
   return type === 'income' ? convertedAmount : type === 'expense' ? -convertedAmount : 0;
 };
 
 // ── Incremental balance update for a user (O(1)) ──
-const adjustUserBalanceIncrementally = async (userId, signedDelta) => {
+// signedDelta is only applied if the transaction date is today or earlier.
+// Future-dated transactions (allowed up to the 1-day grace window) are not
+// counted until their day arrives — matching getTransactionBalance,
+// which uses excludeFuture: true.
+const adjustUserBalanceIncrementally = async (userId, signedDelta, txnDate = null) => {
   if (!mongoose.isValidObjectId(userId)) return 0;
+  if (txnDate && txnDate.getTime() > Date.now()) {
+    // Do not adjust the cached balance for future transactions yet.
+    const user = await User.findById(userId).select('balance').lean();
+    return Number((user?.balance || 0).toFixed(2));
+  }
   if (!Number.isFinite(signedDelta) || Math.abs(signedDelta) < 1e-4) {
     const user = await User.findById(userId).select('balance').lean();
     return Number((user?.balance || 0).toFixed(2));
@@ -566,6 +596,7 @@ const syncAccountBalances = async (userId, accountIds = []) => {
             account_id: new mongoose.Types.ObjectId(accountId),
             user_id: new mongoose.Types.ObjectId(String(userId)),
             is_deleted: { $ne: true },
+            date: { $lte: new Date() }, // keep account balance consistent with user balance
           },
         },
         {
@@ -623,14 +654,20 @@ const processRecurringForUser = async (userId) => {
 
   let created = 0;
   const affectedAccountIds = new Set();
+  let userTxCount = await Transaction.countDocuments({
+    user_id: userId,
+    is_deleted: { $ne: true },
+  });
 
   for (const template of templates) {
+    if (userTxCount >= USER_TRANSACTION_LIMIT) break;
     if (template.account_id) affectedAccountIds.add(String(template.account_id));
 
     let occurrence = nextOccurrence(template.date, template.recurrence_interval);
     let safety = 0;
 
     while (occurrence && occurrence <= now && safety < RECURRING_SAFETY_CAP) {
+      if (userTxCount >= USER_TRANSACTION_LIMIT) break;
       if (template.recurrence_ends_at && occurrence > template.recurrence_ends_at) break;
 
       const instanceKey = `${template._id.toString()}:${occurrence
@@ -669,7 +706,10 @@ const processRecurringForUser = async (userId) => {
           { upsert: true }
         );
 
-        if (result.upsertedCount > 0) created += 1;
+        if (result.upsertedCount > 0) {
+          created += 1;
+          userTxCount += 1;
+        }
       } catch (err) {
         // Duplicate key on recurrence_instance_key: another request
         // won the race. Not an error.
@@ -731,125 +771,86 @@ router.use((req, res, next) => {
 
 /* —————————————————————————————————————
  * POST /statement/preview
- * Parse and classify a bank statement CSV.
+ * Parse and classify bank statement files (CSV, Excel, PDF).
+ * Automatically extracts credited/debited amounts, transaction IDs,
+ * bank names, sender names, and receiver names.
  * ————————————————————————————————————— */
 router.post('/statement/preview', async (req, res) => {
   try {
-    // ── Guard size and shape of the uploaded content ──
-    const content = typeof req.body?.content === 'string' ? req.body.content : '';
-    if (!content || Buffer.byteLength(content, 'utf8') > 5 * 1024 * 1024) {
-      return res.status(400).json({ error: 'Upload a CSV statement smaller than 5 MB.' });
-    }
+    const content = req.body?.content;
+    const fileData = req.body?.fileData;
+    const filename = req.body?.filename || 'statement.csv';
+    const password = req.body?.password || null;
 
-    // ── Parse rows and enforce the import cap ──
-    const csvRows = parseCsv(content);
-    if (csvRows.length < 2 || csvRows.length > IMPORT_LIMIT + 1) {
-      return res.status(400).json({
-        error: `Statement must contain between 1 and ${IMPORT_LIMIT} transactions.`,
-      });
-    }
-
-    // ── Resolve column indexes ──
-    const headers = csvRows[0].map(headerKey);
-    const columns = {
-      date: findColumn(headers, ['date', 'transactiondate', 'txndate']),
-      valueDate: findColumn(headers, ['valuedate', 'valuedt']),
-      description: findColumn(headers, ['description', 'transactiondetails', 'details']),
-      narration: findColumn(headers, ['narration']),
-      particulars: findColumn(headers, ['particulars']),
-      debit: findColumn(headers, ['debit', 'debitamount', 'withdrawal', 'withdrawalamt']),
-      credit: findColumn(headers, ['credit', 'creditamount', 'deposit', 'depositamt']),
-      amount: findColumn(headers, ['amount', 'transactionamount']),
-      type: findColumn(headers, ['type', 'transactiontype', 'drcr']),
-      reference: findColumn(headers, ['referenceno', 'reference', 'transactionid', 'utr', 'chqrefno']),
-      ref: findColumn(headers, ['refno', 'ref']),
-    };
-    if (
-      (columns.date < 0 && columns.valueDate < 0) ||
-      (columns.description < 0 && columns.narration < 0 && columns.particulars < 0)
-    ) {
-      return res.status(400).json({
-        error: 'Could not find date and description columns. Export the statement as CSV from your bank.',
-      });
+    if (!content && !fileData) {
+      return res.status(400).json({ error: 'Upload a statement file.' });
     }
 
     // ── Load user history to inform classification and dedup ──
-    const historical = await Transaction.find({
+    const userTransactions = await Transaction.find({
       user_id: req.userId,
       is_deleted: { $ne: true },
     })
-      .select('merchant category note date type amount import_fingerprint')
+      .select('merchant receiver_name sender_name bank_name category note date type amount import_fingerprint')
       .sort({ date: -1 })
       .limit(5000)
       .lean();
 
-    const merchantCategories = new Map();
-    const existingFingerprints = new Set();
-    const existingKeys = new Set();
+    const currentTxCount = await Transaction.countDocuments({
+      user_id: req.userId,
+      is_deleted: { $ne: true },
+    });
 
-    for (const tx of historical) {
-      const merchant = normalizeForMatch(tx.merchant || tx.note);
-      if (
-        merchant &&
-        tx.category &&
-        tx.category !== 'Other' &&
-        !merchantCategories.has(merchant)
-      ) {
-        merchantCategories.set(merchant, tx.category);
-      }
-      if (tx.import_fingerprint) existingFingerprints.add(tx.import_fingerprint);
-      const day = new Date(tx.date).toISOString().slice(0, 10);
-      existingKeys.add(
-        [day, tx.type, Number(tx.amount).toFixed(2), merchant].join('|')
-      );
-    }
-
-    // ── Classify each row and flag duplicates ──
-    const seen = new Set();
-    const transactions = csvRows
-      .slice(1)
-      .map((row, index) => {
-        const transaction = classifyStatementRow(row, columns, merchantCategories);
-        if (!transaction) return null;
-        const fallbackKey = [
-          transaction.date,
-          transaction.type,
-          transaction.amount.toFixed(2),
-          normalizeForMatch(transaction.merchant),
-        ].join('|');
-        const duplicate =
-          seen.has(transaction.import_fingerprint) ||
-          existingFingerprints.has(transaction.import_fingerprint) ||
-          existingKeys.has(fallbackKey);
-        seen.add(transaction.import_fingerprint);
-        return { id: `row-${index + 1}`, ...transaction, duplicate };
-      })
-      .filter(Boolean);
-
-    if (!transactions.length) {
-      return res.status(400).json({ error: 'No valid transactions were found in this statement.' });
-    }
+    const parsed = await parseStatement({
+      content,
+      fileData,
+      filename,
+      userTransactions,
+      password,
+    });
 
     return res.json({
-      transactions,
+      transactions: parsed.transactions,
       summary: {
-        detected: transactions.length,
-        duplicates: transactions.filter((t) => t.duplicate).length,
-        categorized: transactions.filter((t) => t.category !== 'Other').length,
+        ...parsed.summary,
+        warnings: parsed.summary?.warnings || [],
+        truncated: parsed.summary?.truncated || false,
+        currentTxCount,
+        maxLimit: USER_TRANSACTION_LIMIT,
+        remainingSlots: Math.max(0, USER_TRANSACTION_LIMIT - currentTxCount),
       },
     });
   } catch (error) {
     logger.error('Statement preview failed:', error);
-    return res.status(500).json({ error: 'Could not analyze this statement.' });
+    return res.status(400).json({
+      error: error.message || 'Could not analyze this statement.',
+      code: error.code || undefined,
+      ocr_required: error.ocr_required || false,
+    });
   }
 });
 
 /* —————————————————————————————————————
  * POST /statement/import
  * Import selected statement rows into the user's wallet.
+ * Enforces the strict 1,000 transactions limit per user.
  * ————————————————————————————————————— */
 router.post('/statement/import', async (req, res) => {
   try {
+    // ── Enforce 1,000 transactions limit per user ──
+    const currentCount = await Transaction.countDocuments({
+      user_id: req.userId,
+      is_deleted: { $ne: true },
+    });
+
+    if (currentCount >= USER_TRANSACTION_LIMIT) {
+      return res.status(400).json({
+        error: `You have reached the maximum limit of ${USER_TRANSACTION_LIMIT} transactions per user. Please delete older transactions to import more.`,
+      });
+    }
+
+    const remainingSlots = Math.max(0, USER_TRANSACTION_LIMIT - currentCount);
+
     // ── Validate the request payload ──
     const requested = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
     if (!requested.length || requested.length > IMPORT_LIMIT) {
@@ -883,7 +884,7 @@ router.post('/statement/import', async (req, res) => {
 
     for (const item of requested) {
       const validation = validateTransactionPayload(item);
-      const merchant = cleanText(item.merchant).slice(0, 150) || null;
+      const merchant = cleanText(item.merchant || item.receiver_name).slice(0, 150) || null;
       const fingerprint = String(item.import_fingerprint || '').slice(0, 64);
       const key = [
         validation.parsedDate?.toISOString().slice(0, 10),
@@ -902,6 +903,11 @@ router.post('/statement/import', async (req, res) => {
         continue;
       }
 
+      if (accepted.length >= remainingSlots) {
+        skipped += 1;
+        continue;
+      }
+
       batchKeys.add(key);
       accepted.push({
         user_id: req.userId,
@@ -912,15 +918,19 @@ router.post('/statement/import', async (req, res) => {
         date: validation.parsedDate,
         note: cleanText(item.note).slice(0, 500) || null,
         merchant,
+        bank_name: cleanText(item.bank_name).slice(0, 100) || null,
+        sender_name: cleanText(item.sender_name).slice(0, 150) || null,
+        receiver_name: cleanText(item.receiver_name).slice(0, 150) || null,
         payment_method: ['cash', 'card', 'upi', 'bank_transfer', 'wallet', 'cheque', 'other'].includes(
           item.payment_method
         )
           ? item.payment_method
           : 'bank_transfer',
         counterparty_bank: cleanText(item.counterparty_bank).slice(0, 200) || null,
-        external_reference: cleanText(item.external_reference).slice(0, 150) || null,
+        transaction_number: cleanText(item.transaction_number || item.external_reference).slice(0, 100) || null,
+        external_reference: cleanText(item.external_reference || item.transaction_number).slice(0, 150) || null,
         import_fingerprint: fingerprint,
-        import_source: 'bank_statement',
+        import_source: cleanText(item.import_source || 'bank_statement').slice(0, 40),
         audit_logs: [{ action: 'Imported from bank statement', timestamp: new Date() }],
       });
     }
@@ -929,7 +939,9 @@ router.post('/statement/import', async (req, res) => {
       return res.json({
         created: 0,
         skipped,
-        message: 'All selected transactions were already imported or invalid.',
+        message: currentCount >= USER_TRANSACTION_LIMIT
+          ? `Reached the ${USER_TRANSACTION_LIMIT} transaction limit.`
+          : 'All selected transactions were already imported or invalid.',
       });
     }
 
@@ -980,13 +992,34 @@ router.post('/statement/import', async (req, res) => {
     }
 
     // ── Insert and refresh balances ──
-    const created = await Transaction.insertMany(newTransactions, { ordered: false });
+    let created = [];
+    try {
+      created = await Transaction.insertMany(newTransactions, { ordered: false });
+    } catch (insertError) {
+      if (Array.isArray(insertError.insertedDocs)) {
+        created = insertError.insertedDocs;
+      }
+      logger.warn(
+        { userId: req.userId, err: insertError.message },
+        'Statement import: insertMany encountered partial failure'
+      );
+    }
+
+    const insertFailures = newTransactions.length - created.length;
+    if (insertFailures > 0) {
+      skipped += insertFailures;
+      logger.warn(
+        { userId: req.userId, insertFailures },
+        'Statement import: insertMany partially failed'
+      );
+    }
+
     const balance = await syncUserBalance(req.userId);
     return res.status(201).json({
       created: created.length,
       skipped,
       balance,
-      message: `${created.length} transaction(s) added to wallet.`,
+      message: `${created.length} transaction(s) added to wallet.${skipped ? ` (${skipped} skipped)` : ''}`,
     });
   } catch (error) {
     logger.error('Statement import failed:', error);
@@ -1179,6 +1212,17 @@ router.post('/', async (req, res) => {
     const validation = validateTransactionPayload(req.body);
     if (validation.error) return res.status(400).json({ error: validation.error });
 
+    // ── Enforce 1,000 transactions limit per user ──
+    const userTxCount = await Transaction.countDocuments({
+      user_id: req.userId,
+      is_deleted: { $ne: true },
+    });
+    if (userTxCount >= USER_TRANSACTION_LIMIT) {
+      return res.status(400).json({
+        error: `Maximum limit of ${USER_TRANSACTION_LIMIT} transactions per user reached. Please delete older transactions to create new ones.`,
+      });
+    }
+
     // ── Resolve the account (when provided) ──
     let selectedAccount = null;
     if (validation.account_id) {
@@ -1198,7 +1242,7 @@ router.post('/', async (req, res) => {
     );
 
     const generatedTxNumber = validation.transaction_number ||
-      `CW-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      `CW-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
     // ── Persist the transaction ──
     const transaction = await Transaction.create({
@@ -1210,6 +1254,9 @@ router.post('/', async (req, res) => {
       date: validation.parsedDate,
       note: req.body.note ? String(req.body.note).trim() : null,
       merchant: validation.merchant,
+      bank_name: validation.bank_name || null,
+      sender_name: validation.sender_name || null,
+      receiver_name: validation.receiver_name || null,
       tags: validation.tags,
       payment_method: validation.payment_method,
       transaction_number: generatedTxNumber,
@@ -1223,9 +1270,13 @@ router.post('/', async (req, res) => {
     });
 
     // ── Refresh cached balances incrementally (O(1)) ──
-    const signedAmount = await getTransactionSignedAmountForUser(req.userId, transaction);
-    const balance = await adjustUserBalanceIncrementally(req.userId, signedAmount);
-    if (transaction.account_id) {
+    const signedAmount = await getTransactionSignedAmountForUser(
+      req.userId,
+      transaction,
+      transactionCurrency
+    );
+    const balance = await adjustUserBalanceIncrementally(req.userId, signedAmount, transaction.date);
+    if (transaction.account_id && transaction.date.getTime() <= Date.now()) {
       const accountDelta = transaction.type === 'income' ? transaction.amount : -transaction.amount;
       // Scoped by user_id: `account_id` is ownership-verified above, but the
       // filter keeps the write safe even if that check ever regresses.
@@ -1318,6 +1369,9 @@ router.put('/:id', async (req, res) => {
     t.account_id = validation.account_id || null;
 
     if (validation.merchant !== undefined) t.merchant = validation.merchant;
+    if (validation.bank_name !== undefined) t.bank_name = validation.bank_name;
+    if (validation.sender_name !== undefined) t.sender_name = validation.sender_name;
+    if (validation.receiver_name !== undefined) t.receiver_name = validation.receiver_name;
     if (validation.tags !== undefined) t.tags = validation.tags;
     if (validation.payment_method !== undefined) t.payment_method = validation.payment_method;
     if (validation.transaction_number !== undefined) t.transaction_number = validation.transaction_number;
@@ -1334,27 +1388,39 @@ router.put('/:id', async (req, res) => {
     await t.save();
 
     // ── Refresh cached balances incrementally (O(1)) ──
-    const oldSigned = await getTransactionSignedAmountForUser(req.userId, {
-      type: oldType,
-      amount: oldAmount,
-      currency: oldCurrency,
-    });
-    const newSigned = await getTransactionSignedAmountForUser(req.userId, t);
+    const oldSigned = await getTransactionSignedAmountForUser(
+      req.userId,
+      {
+        type: oldType,
+        amount: oldAmount,
+        currency: oldCurrency,
+      },
+      transactionCurrency
+    );
+    const newSigned = await getTransactionSignedAmountForUser(
+      req.userId,
+      t,
+      transactionCurrency
+    );
     const delta = newSigned - oldSigned;
-    const balance = await adjustUserBalanceIncrementally(req.userId, delta);
+    const balance = await adjustUserBalanceIncrementally(req.userId, delta, t.date);
 
     // Update account balances incrementally
     const oldAccId = previousAccountId ? String(previousAccountId) : null;
     const newAccId = t.account_id ? String(t.account_id) : null;
+    const isPast = t.date.getTime() <= Date.now();
+
     if (oldAccId === newAccId && oldAccId) {
-      const oldAccSigned = oldType === 'income' ? oldAmount : -oldAmount;
-      const newAccSigned = t.type === 'income' ? t.amount : -t.amount;
-      const accDelta = Math.round((newAccSigned - oldAccSigned) * 100) / 100;
-      if (accDelta !== 0) {
-        await Account.updateOne(
-          { _id: oldAccId, user_id: req.userId },
-          { $inc: { current_balance: accDelta } }
-        );
+      if (isPast) {
+        const oldAccSigned = oldType === 'income' ? oldAmount : -oldAmount;
+        const newAccSigned = t.type === 'income' ? t.amount : -t.amount;
+        const accDelta = Math.round((newAccSigned - oldAccSigned) * 100) / 100;
+        if (accDelta !== 0) {
+          await Account.updateOne(
+            { _id: oldAccId, user_id: req.userId },
+            { $inc: { current_balance: accDelta } }
+          );
+        }
       }
     } else {
       if (oldAccId) {
@@ -1366,7 +1432,7 @@ router.put('/:id', async (req, res) => {
           { $inc: { current_balance: Math.round(-oldAccSigned * 100) / 100 } }
         );
       }
-      if (newAccId) {
+      if (newAccId && isPast) {
         const newAccSigned = t.type === 'income' ? t.amount : -t.amount;
         await Account.updateOne(
           { _id: newAccId, user_id: req.userId },
@@ -1412,7 +1478,7 @@ router.delete('/:id', async (req, res) => {
     // ── Adjust balances before permanent removal ──
     const oldSigned = await getTransactionSignedAmountForUser(req.userId, t);
 
-    if (t.account_id) {
+    if (t.account_id && t.date.getTime() <= Date.now()) {
       const accDelta = t.type === 'income' ? -t.amount : t.amount;
       await Account.updateOne(
         { _id: t.account_id, user_id: req.userId },
@@ -1423,7 +1489,7 @@ router.delete('/:id', async (req, res) => {
     // ── Permanently remove the document ──
     await Transaction.deleteOne({ _id: t._id, user_id: req.userId });
 
-    const balance = await adjustUserBalanceIncrementally(req.userId, -oldSigned);
+    const balance = await adjustUserBalanceIncrementally(req.userId, -oldSigned, t.date);
 
     return res.json({ balance, message: 'Transaction permanently deleted' });
   } catch (error) {
@@ -1489,4 +1555,6 @@ router.encodeCursor = encodeCursor;
 router.decodeCursor = decodeCursor;
 router.isFutureDate = isFutureDate;
 router.validateTransactionPayload = validateTransactionPayload;
+router.parseTransactionAmount = parseTransactionAmount;
+router.getTransactionSignedAmountForUser = getTransactionSignedAmountForUser;
 module.exports = router;

@@ -30,6 +30,7 @@ import {
   Landmark,
   Clock,
   Sparkles,
+  User,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -139,6 +140,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 
   // ── Enhanced Fields ──
   const [merchant, setMerchant] = useState(initialData?.merchant || '');
+  const [bankName, setBankName] = useState(initialData?.bank_name || '');
+  const [senderName, setSenderName] = useState(initialData?.sender_name || '');
+  const [receiverName, setReceiverName] = useState(initialData?.receiver_name || '');
   const [tags, setTags] = useState(() =>
     Array.isArray(initialData?.tags) ? initialData.tags.join(', ') : initialData?.tags || ''
   );
@@ -152,6 +156,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   const [isMoreOpen, setIsMoreOpen] = useState(() => {
     return Boolean(
       initialData?.merchant ||
+        initialData?.bank_name ||
+        initialData?.sender_name ||
+        initialData?.receiver_name ||
         initialData?.account_id ||
         (Array.isArray(initialData?.tags) && initialData.tags.length > 0) ||
         (typeof initialData?.tags === 'string' && initialData.tags.trim()) ||
@@ -187,6 +194,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       setNote(initialData?.note || '');
       setDate(initialData?.date ? formatDateForInput(initialData.date) : formatDateForInput(new Date()));
       setMerchant(initialData?.merchant || '');
+      setBankName(initialData?.bank_name || '');
+      setSenderName(initialData?.sender_name || '');
+      setReceiverName(initialData?.receiver_name || '');
       setTags(Array.isArray(initialData?.tags) ? initialData.tags.join(', ') : initialData?.tags || '');
       setPaymentMethod(initialData?.payment_method || 'other');
       setAccountId(initialData?.account_id || '');
@@ -197,6 +207,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       setShowUnsavedModal(false);
       const shouldOpenMore = Boolean(
         initialData?.merchant ||
+        initialData?.bank_name ||
+        initialData?.sender_name ||
+        initialData?.receiver_name ||
         initialData?.account_id ||
         (Array.isArray(initialData?.tags) && initialData.tags.length > 0) ||
         (typeof initialData?.tags === 'string' && initialData.tags.trim()) ||
@@ -459,6 +472,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
           note: note.trim(),
           date,
           merchant: merchant.trim(),
+          bank_name: bankName.trim() || null,
+          sender_name: senderName.trim() || null,
+          receiver_name: receiverName.trim() || null,
           tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
           payment_method: paymentMethod,
           transaction_number: transactionNumber.trim() ||
@@ -504,6 +520,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       tags,
       paymentMethod,
       transactionNumber,
+      bankName,
+      senderName,
+      receiverName,
       accountId,
       isRecurring,
       recurrenceInterval,
@@ -933,6 +952,51 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                                   placeholder="Enter transaction number"
                                   disabled={isSubmitting}
                                 />
+                              </div>
+
+                              {/* Bank / App Platform */}
+                              <div className="form-field">
+                                <label htmlFor="tx-bank-name">
+                                  <Landmark size={14} /> {t?.('bank_or_app') || 'Bank / Payment App'}
+                                </label>
+                                <input
+                                  id="tx-bank-name"
+                                  value={bankName}
+                                  onChange={(e) => setBankName(e.target.value)}
+                                  placeholder="e.g. HDFC, Google Pay, PhonePe, Paytm, SBI"
+                                  disabled={isSubmitting}
+                                  maxLength={100}
+                                />
+                              </div>
+
+                              {/* Sender & Receiver (From / To) */}
+                              <div className="tx-form-row">
+                                <div className="form-field">
+                                  <label htmlFor="tx-sender-name">
+                                    <User size={14} /> {t?.('sender_name') || 'Sender (From)'}
+                                  </label>
+                                  <input
+                                    id="tx-sender-name"
+                                    value={senderName}
+                                    onChange={(e) => setSenderName(e.target.value)}
+                                    placeholder="e.g. Employer, Client, Alice"
+                                    disabled={isSubmitting}
+                                    maxLength={150}
+                                  />
+                                </div>
+                                <div className="form-field">
+                                  <label htmlFor="tx-receiver-name">
+                                    <User size={14} /> {t?.('receiver_name') || 'Receiver (To)'}
+                                  </label>
+                                  <input
+                                    id="tx-receiver-name"
+                                    value={receiverName}
+                                    onChange={(e) => setReceiverName(e.target.value)}
+                                    placeholder="e.g. Merchant, Bob, Landlord"
+                                    disabled={isSubmitting}
+                                    maxLength={150}
+                                  />
+                                </div>
                               </div>
 
                               {/* Recurring Toggle */}

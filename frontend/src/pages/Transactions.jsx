@@ -33,7 +33,7 @@ import {
   Download, Upload, Copy, CheckSquare, Square,
   FileSpreadsheet, FileCode, CheckCircle2, ChevronDown,
   Layers, RefreshCw, Undo2, AlertTriangle, Loader2, Tag,
-  Calendar, DollarSign, Keyboard, Receipt, Share2,
+  Calendar, DollarSign, Keyboard, Receipt, Share2, Landmark, User,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
@@ -79,7 +79,8 @@ const UNDO_TIMEOUT_MS = 6000;
 const STATEMENT_COLUMNS = [
   { key: 'wallet', i18nKey: 'import_wallet_col', fallback: 'Wallet' },
   { key: 'date', i18nKey: 'import_date_col', fallback: 'Date' },
-  { key: 'merchant', i18nKey: 'import_merchant_col', fallback: 'Merchant & payment' },
+  { key: 'merchant', i18nKey: 'import_merchant_col', fallback: 'Bank & Details' },
+  { key: 'parties', i18nKey: 'import_parties_col', fallback: 'Sender / Receiver' },
   { key: 'category', i18nKey: 'import_category_col', fallback: 'Category' },
   { key: 'amount', i18nKey: 'import_amount_col', fallback: 'Amount' },
   { key: 'status', i18nKey: 'import_status_col', fallback: 'Status' },
@@ -277,6 +278,8 @@ export default function Transactions() {
   // ── Bank statement import workflow ──
   const [showImportModal, setShowImportModal] = useState(false);
   const [statementRows, setStatementRows] = useState([]);
+  const [importSummary, setImportSummary] = useState(null);
+  const [walletUsage, setWalletUsage] = useState({ current: 0, limit: 1000, available: 1000 });
   const [isImporting, setIsImporting] = useState(false);
   const [isAnalyzingStatement, setIsAnalyzingStatement] = useState(false);
   const fileInputRef = useRef(null);
@@ -395,7 +398,7 @@ export default function Transactions() {
       if (filterTag !== 'all' && !(Array.isArray(tx.tags) && tx.tags.includes(filterTag))) return false;
 
       if (search) {
-        const hay = `${tx.category || ''} ${tx.note || ''} ${tx.merchant || ''} ${tx.amount || ''}`.toLowerCase();
+        const hay = `${tx.category || ''} ${tx.note || ''} ${tx.merchant || ''} ${tx.amount || ''} ${tx.bank_name || ''} ${tx.sender_name || ''} ${tx.receiver_name || ''} ${tx.transaction_number || ''}`.toLowerCase();
         if (!hay.includes(search)) return false;
       }
 
@@ -559,8 +562,11 @@ export default function Transactions() {
             <p className="ili-cat">{highlight(tx.category || '', deferredSearchTerm)}</p>
             <p className="ili-date">
               {new Date(tx.date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })}
+              {tx.bank_name && <span className="ili-note-snip" style={{ color: 'var(--brand-primary)', fontWeight: 600 }}> · {highlight(tx.bank_name, deferredSearchTerm)}</span>}
               {tx.merchant && <span className="ili-note-snip"> · {highlight(tx.merchant, deferredSearchTerm)}</span>}
               {!tx.merchant && tx.note && <span className="ili-note-snip"> · {highlight(tx.note, deferredSearchTerm)}</span>}
+              {tx.sender_name && <span className="ili-note-snip"> · From: {highlight(tx.sender_name, deferredSearchTerm)}</span>}
+              {tx.receiver_name && <span className="ili-note-snip"> · To: {highlight(tx.receiver_name, deferredSearchTerm)}</span>}
             </p>
           </div>
 
@@ -760,12 +766,16 @@ export default function Transactions() {
     }
 
     try {
-      const headers = ['Date', 'Type', 'Category', 'Merchant', 'Note', 'Tags', 'Amount'];
+      const headers = ['Date', 'Type', 'Category', 'Merchant', 'Bank', 'Sender', 'Receiver', 'Txn ID', 'Note', 'Tags', 'Amount'];
       const rows = listToExport.map((t) => [
         toLocalDateKey(t.date),
         t.type,
         t.category || '',
         t.merchant || '',
+        t.bank_name || '',
+        t.sender_name || '',
+        t.receiver_name || '',
+        t.transaction_number || '',
         t.note || '',
         Array.isArray(t.tags) ? t.tags.join(',') : '',
         safeNumber(t.amount, 0).toFixed(2),
@@ -845,24 +855,44 @@ export default function Transactions() {
   }, [user, filtered, currencyInfo, locale, showToast, tr, isExporting]);
 
   /* ============================================================
-   * Bank Statement Import
+   * Bank Statement Import (CSV, Excel, PDF)
    * ============================================================ */
   const handleFileUpload = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('error', tr('file_too_large', 'Please choose a CSV smaller than 5 MB.'));
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('error', tr('file_too_large', 'Please choose a file smaller than 10 MB.'));
       e.target.value = '';
       return;
     }
     setIsAnalyzingStatement(true);
     try {
-      const analysis = await api.previewBankStatement(await file.text(), file.name);
+      const fileData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const analysis = await api.previewBankStatement({
+        fileData,
+        filename: file.name,
+        fileType: file.type || '',
+      });
+
       const rows = (analysis.transactions || []).map((row) => ({
         ...row,
         selected: !row.duplicate,
         id: row.id || `${row.date}-${row.merchant}-${row.amount}-${Math.random().toString(36).slice(2, 8)}`,
       }));
+
+      setImportSummary(analysis.summary || null);
+      setWalletUsage({
+        current: analysis.currentCount ?? transactions.length,
+        limit: analysis.userLimit ?? 1000,
+        available: analysis.availableSlots ?? Math.max(0, 1000 - transactions.length),
+      });
+
       setStatementRows(rows);
       setShowImportModal(true);
       showToast('success', tr(
@@ -872,13 +902,13 @@ export default function Transactions() {
     } catch (error) {
       showToast('error', error?.response?.data?.error || tr(
         'statement_failed',
-        'Could not analyze this statement. Please export it as CSV from your bank.'
+        'Could not analyze this statement. Supported formats: CSV, Excel (.xlsx, .xls), and PDF (Paytm, GPay, PhonePe, BharatPe, Banks).'
       ));
     } finally {
       setIsAnalyzingStatement(false);
       e.target.value = '';
     }
-  }, [showToast, tr]);
+  }, [showToast, tr, transactions.length]);
 
   // ── Update a single statement row during review ──
   const updateStatementRow = useCallback((id, patch) => {
@@ -895,22 +925,32 @@ export default function Transactions() {
   const handleConfirmImport = useCallback(async () => {
     const selections = statementRows.filter((row) => row.selected);
     if (selections.length === 0 || isImporting) return;
+
+    if ((walletUsage.current + selections.length) > walletUsage.limit) {
+      showToast('error', tr(
+        'limit_exceeded',
+        `Cannot import ${selections.length} transactions. User limit is ${walletUsage.limit} transactions (${Math.max(0, walletUsage.limit - walletUsage.current)} slots available).`
+      ));
+      return;
+    }
+
     setIsImporting(true);
     try {
       const result = await api.importBankStatement(selections);
       showToast('success', tr(
         'import_success',
-        `${result.created} transaction${result.created === 1 ? '' : 's'} added${result.skipped ? `; ${result.skipped} skipped.` : '.'}`
+        `${result.created} transaction${result.created === 1 ? '' : 's'} added${result.skipped ? `; ${result.skipped} skipped.` : ''}${result.userLimitReached ? ` (Reached maximum limit of 1,000 transactions)` : '.'}`
       ));
       setShowImportModal(false);
       setStatementRows([]);
+      setImportSummary(null);
       await refetch();
     } catch (error) {
       showToast('error', error?.response?.data?.error || tr('import_failed', 'Could not add the selected transactions.'));
     } finally {
       setIsImporting(false);
     }
-  }, [statementRows, isImporting, showToast, tr, refetch]);
+  }, [statementRows, isImporting, showToast, tr, refetch, walletUsage]);
 
   /* ============================================================
    * Share Ticket Picture
@@ -1086,7 +1126,7 @@ export default function Transactions() {
       <input
         type="file"
         ref={fileInputRef}
-        accept=".csv,.txt,text/csv"
+        accept=".csv,.xlsx,.xls,.pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/pdf"
         style={{ display: 'none' }}
         onChange={handleFileUpload}
         aria-hidden="true"
@@ -1122,7 +1162,7 @@ export default function Transactions() {
             whileTap={{ scale: 0.98 }}
             className="btn-secondary tx-import-btn"
             onClick={() => fileInputRef.current?.click()}
-            title={tr('import_title', 'Import and review a bank statement CSV')}
+            title={tr('import_title', 'Import bank statements or PDF receipts (CSV, Excel, PDF from Paytm, GPay, PhonePe, BharatPe, Banks)')}
             disabled={isAnalyzingStatement}
           >
             {isAnalyzingStatement ? <Loader2 size={14} className="spin" /> : <Upload size={14} />}
@@ -1531,8 +1571,11 @@ export default function Transactions() {
                         <p className="ili-cat">{highlight(tx.category || '', deferredSearchTerm)}</p>
                         <p className="ili-date">
                           {new Date(tx.date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {tx.bank_name && <span className="ili-note-snip" style={{ color: 'var(--brand-primary)', fontWeight: 600 }}> · {highlight(tx.bank_name, deferredSearchTerm)}</span>}
                           {tx.merchant && <span className="ili-note-snip"> · {highlight(tx.merchant, deferredSearchTerm)}</span>}
                           {!tx.merchant && tx.note && <span className="ili-note-snip"> · {highlight(tx.note, deferredSearchTerm)}</span>}
+                          {tx.sender_name && <span className="ili-note-snip"> · From: {highlight(tx.sender_name, deferredSearchTerm)}</span>}
+                          {tx.receiver_name && <span className="ili-note-snip"> · To: {highlight(tx.receiver_name, deferredSearchTerm)}</span>}
                         </p>
                       </div>
 
@@ -1653,6 +1696,30 @@ export default function Transactions() {
                       <div className="tx-ticket-row">
                         <span className="ttr-label">{tr('merchant', 'Merchant / Payee')}</span>
                         <span className="ttr-val bold">{tx.merchant}</span>
+                      </div>
+                    )}
+
+                    {/* Bank / App Platform */}
+                    {tx.bank_name && (
+                      <div className="tx-ticket-row">
+                        <span className="ttr-label"><Landmark size={12} aria-hidden /> {tr('bank_or_app', 'Bank / App')}</span>
+                        <span className="ttr-val bold">{tx.bank_name}</span>
+                      </div>
+                    )}
+
+                    {/* Sender Name */}
+                    {tx.sender_name && (
+                      <div className="tx-ticket-row">
+                        <span className="ttr-label"><User size={12} aria-hidden /> {tr('sender_name', 'Sender (From)')}</span>
+                        <span className="ttr-val">{tx.sender_name}</span>
+                      </div>
+                    )}
+
+                    {/* Receiver Name */}
+                    {tx.receiver_name && (
+                      <div className="tx-ticket-row">
+                        <span className="ttr-label"><User size={12} aria-hidden /> {tr('receiver_name', 'Receiver (To)')}</span>
+                        <span className="ttr-val">{tx.receiver_name}</span>
                       </div>
                     )}
 
@@ -1937,17 +2004,85 @@ export default function Transactions() {
           if (!isImporting) {
             setShowImportModal(false);
             setStatementRows([]);
+            setImportSummary(null);
           }
         }}
         title={tr('import_review_title', `Review ${statementRows.length} detected transactions`)}
         confirmText={tr('import_confirm', `Add ${selectedStatementCount} to Wallet`)}
         onConfirm={handleConfirmImport}
         isLoading={isImporting}
-        confirmDisabled={selectedStatementCount === 0}
+        confirmDisabled={selectedStatementCount === 0 || (walletUsage.current + selectedStatementCount) > walletUsage.limit}
       >
         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
-          {tr('import_review_hint', 'We identify payment type, merchant, and likely category. Duplicates are ignored by default.')}
+          {tr('import_review_hint', 'We automatically identify credit/debit direction, transaction IDs, banks, and sender/receiver names. Duplicates are ignored by default.')}
         </p>
+
+        {/* Capacity & Platform Banner */}
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 10,
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '10px 14px',
+            background: 'var(--glass-2)',
+            border: '1px solid var(--glass-border)',
+            borderRadius: 10,
+            marginBottom: 12,
+            fontSize: '0.82rem',
+          }}
+        >
+          <div>
+            <strong>{tr('source', 'Platform')}:</strong>{' '}
+            <span style={{ color: 'var(--brand-primary)', fontWeight: 600 }}>
+              {importSummary?.detectedBank || importSummary?.detectedFormat?.toUpperCase() || 'Bank Statement'}
+            </span>
+            {importSummary && (
+              <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
+                ({importSummary.credits || 0} Credits: +{fmt(importSummary.totalCreditAmount || 0)} · {importSummary.debits || 0} Debits: -{fmt(importSummary.totalDebitAmount || 0)})
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>{tr('wallet_capacity', 'Wallet Capacity')}:</span>
+            <span
+              style={{
+                fontWeight: 700,
+                color: (walletUsage.current + selectedStatementCount) > walletUsage.limit ? 'var(--danger)' : 'var(--text-primary)',
+              }}
+            >
+              {walletUsage.current} / {walletUsage.limit} used ({Math.max(0, walletUsage.limit - walletUsage.current)} slots left)
+            </span>
+          </div>
+        </div>
+
+        {/* Warning if selections exceed 1,000 user limit */}
+        {(walletUsage.current + selectedStatementCount) > walletUsage.limit && (
+          <div
+            style={{
+              padding: '8px 12px',
+              marginBottom: 10,
+              borderRadius: 8,
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: 'var(--danger)',
+              fontSize: '0.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <AlertTriangle size={16} />
+            <span>
+              {tr(
+                'limit_exceeded_warning',
+                `Adding ${selectedStatementCount} transactions exceeds your remaining capacity (${Math.max(0, walletUsage.limit - walletUsage.current)} slots). Maximum 1,000 transactions allowed per user.`
+              )}
+            </span>
+          </div>
+        )}
+
         <div className="statement-review-summary">
           <span>{selectedStatementCount} {tr('selected', 'selected')}</span>
           <button
@@ -1989,11 +2124,26 @@ export default function Transactions() {
                   <td data-label={tr(STATEMENT_COLUMNS[2].i18nKey, STATEMENT_COLUMNS[2].fallback)}>
                     <strong>{row.merchant || tr('bank_transaction', 'Bank transaction')}</strong>
                     <small>
-                      {(row.payment_method || 'bank_transfer').replace('_', ' ')}
-                      {row.counterparty_bank ? ` · ${row.counterparty_bank}` : ''}
+                      {row.bank_name ? `🏦 ${row.bank_name}` : (row.payment_method || 'bank_transfer').replace('_', ' ')}
+                      {row.transaction_number ? ` · ID: ${row.transaction_number}` : ''}
                     </small>
                   </td>
                   <td data-label={tr(STATEMENT_COLUMNS[3].i18nKey, STATEMENT_COLUMNS[3].fallback)}>
+                    {row.sender_name && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>From:</span> <strong>{row.sender_name}</strong>
+                      </div>
+                    )}
+                    {row.receiver_name && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>To:</span> <strong>{row.receiver_name}</strong>
+                      </div>
+                    )}
+                    {!row.sender_name && !row.receiver_name && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
+                    )}
+                  </td>
+                  <td data-label={tr(STATEMENT_COLUMNS[4].i18nKey, STATEMENT_COLUMNS[4].fallback)}>
                     <select
                       aria-label={`${tr('category_for', 'Category for')} ${row.merchant || ''}`.trim()}
                       value={row.category}
@@ -2002,10 +2152,13 @@ export default function Transactions() {
                       {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </td>
-                  <td data-label={tr(STATEMENT_COLUMNS[4].i18nKey, STATEMENT_COLUMNS[4].fallback)} style={{ whiteSpace: 'nowrap', color: row.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
-                    {row.type === 'income' ? '+' : '-'}{fmt(row.amount)}
+                  <td data-label={tr(STATEMENT_COLUMNS[5].i18nKey, STATEMENT_COLUMNS[5].fallback)} style={{ whiteSpace: 'nowrap', color: row.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
+                    <div style={{ fontWeight: 600 }}>{row.type === 'income' ? '+' : '-'}{fmt(row.amount)}</div>
+                    <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', opacity: 0.8 }}>
+                      {row.type === 'income' ? 'Credit' : 'Debit'}
+                    </div>
                   </td>
-                  <td data-label={tr(STATEMENT_COLUMNS[5].i18nKey, STATEMENT_COLUMNS[5].fallback)}>
+                  <td data-label={tr(STATEMENT_COLUMNS[6].i18nKey, STATEMENT_COLUMNS[6].fallback)}>
                     {row.duplicate ? (
                       <span className="statement-status duplicate">{tr('possible_duplicate', 'Possible duplicate')}</span>
                     ) : (

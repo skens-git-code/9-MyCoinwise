@@ -182,6 +182,7 @@ const DEFAULT_BODY_LIMIT = '100kb';
 const BULK_BODY_LIMIT = '10mb';
 const isBulkJsonRoute = (req) =>
   req.path === '/api/transactions/statement/import' ||
+  req.path === '/api/transactions/statement/preview' ||
   /^\/api\/users\/[^/]+\/import$/.test(req.path);
 app.use((req, res, next) => {
   const limit = isBulkJsonRoute(req) ? BULK_BODY_LIMIT : DEFAULT_BODY_LIMIT;

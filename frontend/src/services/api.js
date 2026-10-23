@@ -399,9 +399,15 @@ export const api = {
     return res.data;
   },
 
-  // ── Analyze a bank statement CSV and return classified rows ──
-  previewBankStatement: async (content, filename = 'statement.csv') => {
-    const res = await apiClient.post(`${API_URL}/transactions/statement/preview`, { content, filename });
+  // ── Analyze a bank statement (CSV, Excel, or PDF) and return classified rows ──
+  previewBankStatement: async (payload, fallbackFilename = 'statement.csv') => {
+    let body = {};
+    if (typeof payload === 'string') {
+      body = { content: payload, filename: fallbackFilename };
+    } else if (payload && typeof payload === 'object') {
+      body = payload;
+    }
+    const res = await apiClient.post(`${API_URL}/transactions/statement/preview`, body);
     return res.data;
   },
 

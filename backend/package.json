@@ -35,6 +35,7 @@
     "mongoose": "^8.24.5",
     "morgan": "^1.12.1",
     "nodemailer": "^10.1.1",
+    "pdf-parse": "^2.4.5",
     "winston": "^3.19.0"
   },
   "devDependencies": {
