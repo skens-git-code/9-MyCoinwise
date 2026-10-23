@@ -33,7 +33,7 @@ import {
   Download, Upload, Copy, CheckSquare, Square,
   FileSpreadsheet, FileCode, CheckCircle2, ChevronDown,
   Layers, RefreshCw, Undo2, AlertTriangle, Loader2, Tag,
-  Calendar, DollarSign, Keyboard, Receipt, Share2, Landmark, User,
+  Calendar, DollarSign, Keyboard, Receipt, Share2, Landmark, User, Lock,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
@@ -282,6 +282,9 @@ export default function Transactions() {
   const [walletUsage, setWalletUsage] = useState({ current: 0, limit: 1000, available: 1000 });
   const [isImporting, setIsImporting] = useState(false);
   const [isAnalyzingStatement, setIsAnalyzingStatement] = useState(false);
+  const [pdfPasswordPrompt, setPdfPasswordPrompt] = useState(null);
+  const [pdfPasswordInput, setPdfPasswordInput] = useState('');
+  const [pdfPasswordError, setPdfPasswordError] = useState('');
   const fileInputRef = useRef(null);
 
   /* ---------------- Export State ---------------- */
@@ -900,6 +903,21 @@ export default function Transactions() {
         `${analysis.summary?.detected || rows.length} transactions detected. Review before adding.`
       ));
     } catch (error) {
+      if (error?.response?.data?.code === 'PDF_PASSWORD_REQUIRED') {
+        const fileData = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(file);
+        });
+        setPdfPasswordPrompt({
+          fileData,
+          filename: file.name,
+          fileType: file.type || '',
+        });
+        setPdfPasswordError('');
+        setPdfPasswordInput('');
+        return;
+      }
       showToast('error', error?.response?.data?.error || tr(
         'statement_failed',
         'Could not analyze this statement. Supported formats: CSV, Excel (.xlsx, .xls), and PDF (Paytm, GPay, PhonePe, BharatPe, Banks).'
@@ -909,6 +927,51 @@ export default function Transactions() {
       e.target.value = '';
     }
   }, [showToast, tr, transactions.length]);
+
+  // ── Unlock and analyze password-protected PDF statement ──
+  const handleUnlockPdf = useCallback(async (e) => {
+    if (e) e.preventDefault();
+    if (!pdfPasswordInput.trim() || !pdfPasswordPrompt) return;
+    setIsAnalyzingStatement(true);
+    setPdfPasswordError('');
+    try {
+      const analysis = await api.previewBankStatement({
+        fileData: pdfPasswordPrompt.fileData,
+        filename: pdfPasswordPrompt.filename,
+        fileType: pdfPasswordPrompt.fileType,
+        password: pdfPasswordInput.trim(),
+      });
+
+      const rows = (analysis.transactions || []).map((row) => ({
+        ...row,
+        selected: !row.duplicate,
+        id: row.id || `${row.date}-${row.merchant}-${row.amount}-${Math.random().toString(36).slice(2, 8)}`,
+      }));
+
+      setImportSummary(analysis.summary || null);
+      setWalletUsage({
+        current: analysis.currentCount ?? transactions.length,
+        limit: analysis.userLimit ?? 1000,
+        available: analysis.availableSlots ?? Math.max(0, 1000 - transactions.length),
+      });
+
+      setStatementRows(rows);
+      setPdfPasswordPrompt(null);
+      setPdfPasswordInput('');
+      setShowImportModal(true);
+      showToast('success', tr(
+        'statement_detected',
+        `${analysis.summary?.detected || rows.length} transactions detected. Review before adding.`
+      ));
+    } catch (error) {
+      setPdfPasswordError(
+        error?.response?.data?.error ||
+        tr('pdf_password_incorrect', 'Incorrect password for this protected PDF statement.')
+      );
+    } finally {
+      setIsAnalyzingStatement(false);
+    }
+  }, [pdfPasswordInput, pdfPasswordPrompt, showToast, tr, transactions.length]);
 
   // ── Update a single statement row during review ──
   const updateStatementRow = useCallback((id, patch) => {
@@ -1994,6 +2057,68 @@ export default function Transactions() {
             value={bulkEdit.date}
             onChange={(e) => setBulkEdit((p) => ({ ...p, date: e.target.value }))}
           />
+        </div>
+      </Modal>
+
+      {/* ===================== PDF Password Unlock Modal ===================== */}
+      <Modal
+        isOpen={Boolean(pdfPasswordPrompt)}
+        onClose={() => {
+          if (!isAnalyzingStatement) {
+            setPdfPasswordPrompt(null);
+            setPdfPasswordInput('');
+            setPdfPasswordError('');
+          }
+        }}
+        title={tr('unlock_pdf_title', 'Unlock Protected Statement PDF')}
+        confirmText={isAnalyzingStatement ? tr('unlocking', 'Unlocking...') : tr('unlock_and_analyze', 'Unlock & Analyze')}
+        onConfirm={handleUnlockPdf}
+        isLoading={isAnalyzingStatement}
+        confirmDisabled={!pdfPasswordInput.trim() || isAnalyzingStatement}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--glass-2)', border: '1px solid var(--glass-border)', borderRadius: 10 }}>
+            <Lock size={22} style={{ color: '#FC0100', flexShrink: 0 }} />
+            <div>
+              <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {pdfPasswordPrompt?.filename}
+              </p>
+              <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                {tr('pdf_password_hint', 'Bank statements are commonly locked with your PAN in UPPERCASE (e.g. ABCDE1234F) or Date of Birth (DDMMYYYY).')}
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleUnlockPdf} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {tr('statement_password', 'Statement Password')}
+            </label>
+            <input
+              type="password"
+              className="text-input"
+              value={pdfPasswordInput}
+              onChange={(e) => {
+                setPdfPasswordInput(e.target.value);
+                if (pdfPasswordError) setPdfPasswordError('');
+              }}
+              placeholder={tr('enter_pdf_password', 'Enter password to unlock...')}
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: pdfPasswordError ? '1px solid #ef4444' : '1px solid var(--glass-border)',
+                background: 'var(--glass-1)',
+                color: 'var(--text-primary)',
+                fontSize: '0.9rem',
+              }}
+            />
+            {pdfPasswordError && (
+              <p style={{ margin: 0, fontSize: '0.78rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <AlertTriangle size={13} /> {pdfPasswordError}
+              </p>
+            )}
+          </form>
         </div>
       </Modal>
 

@@ -7250,13 +7250,13 @@ select {
     box-sizing: border-box !important;
   }
 
-  /* Toast — full width on small screens */
-  .notification-toast,
-  [class*="toast"] {
-    right: 16px !important;
-    left: 16px !important;
-    width: calc(100vw - 32px) !important;
-    max-width: 100% !important;
+  /* Toast notification — cleanly centered and sized on mobile without breaking inner elements */
+  .notification-toast {
+    width: min(420px, calc(100vw - 32px)) !important;
+    max-width: min(420px, calc(100vw - 32px)) !important;
+    margin: 0 auto !important;
+    left: auto !important;
+    right: auto !important;
   }
 
   /* Bento grid — single column forced */

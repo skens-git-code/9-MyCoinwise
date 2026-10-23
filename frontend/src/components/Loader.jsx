@@ -21,6 +21,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpRight, Check, Zap } from 'lucide-react';
 import { useAppActions } from '../contexts/AppContext';
+import { CoinwiseMark } from './CoinwiseBrand';
 
 // ── Style object for visually-hidden screen reader text ──
 const visuallyHidden = {
@@ -85,7 +86,7 @@ export default function Loader({ fullScreen = false, mode = 'inline', text }) {
       >
         {/* ── Pulsing icon badge ── */}
         <div className="loader-badge" aria-hidden="true">
-          <Zap size={22} strokeWidth={2.4} />
+          <CoinwiseMark size={24} color="#ffffff" />
         </div>
 
         {/* ── Status text ── */}
@@ -124,7 +125,7 @@ export default function Loader({ fullScreen = false, mode = 'inline', text }) {
         {/* ── Brand badge with pulsing icon and checkmark ── */}
         <div className="loader-brand-badge">
           <div className="loader-brand-icon" aria-hidden="true">
-            <Zap size={32} strokeWidth={2.4} />
+            <CoinwiseMark size={36} color="#ffffff" />
           </div>
           <div className="loader-check-badge" aria-hidden="true">
             <Check size={13} strokeWidth={3} />

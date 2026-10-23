@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { CheckCircle2, AlertTriangle, Zap, ArrowRight, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { useToast } from '../components/ToastProvider';
+import { CoinwiseMark } from '../components/CoinwiseBrand';
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
@@ -64,7 +65,7 @@ export default function VerifyEmail() {
       >
         <div className="auth-logo" style={{ justifyContent: 'center', marginBottom: 24 }}>
           <div className="auth-logo-icon">
-            <Zap size={26} />
+            <CoinwiseMark size={24} />
           </div>
           <span className="auth-logo-text">MyCoinwise</span>
         </div>

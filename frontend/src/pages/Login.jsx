@@ -28,6 +28,7 @@ import {
   ArrowRight, Globe, Lock, X,
   Info, CheckCircle2, RefreshCw, Check,
 } from 'lucide-react';
+import { CoinwiseMark } from '../components/CoinwiseBrand';
 
 /* ============================================================
  * Constants
@@ -515,11 +516,11 @@ export default function Login() {
           <div className="auth-logo" style={{ margin: 0 }}>
             <motion.div
               className="auth-logo-icon"
-              whileHover={{ rotate: 20, scale: 1.1 }}
+              whileHover={{ rotate: 12, scale: 1.06 }}
               transition={{ type: 'spring', stiffness: 300 }}
               aria-hidden="true"
             >
-              <Zap size={26} />
+              <CoinwiseMark size={24} />
             </motion.div>
             <span className="auth-logo-text">MyCoinwise</span>
           </div>

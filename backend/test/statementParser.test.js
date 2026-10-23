@@ -1,6 +1,5 @@
 const assert = require('assert');
 const ExcelJS = require('exceljs');
-const { jsPDF } = require('../../frontend/node_modules/jspdf');
 const {
   parseStatement,
   extractTransactionId,
@@ -12,6 +11,52 @@ const {
   parseSignedAmount,
   isBalanceOrSummary,
 } = require('../services/statementParser');
+
+/**
+ * Creates a valid standalone PDF 1.4 binary buffer without external node_modules.
+ */
+function createPdfBuffer(lines) {
+  const lineArray = Array.isArray(lines) ? lines : String(lines).split('\n');
+  const content = lineArray
+    .map((line, idx) => `1 0 0 1 50 ${750 - idx * 20} Tm (${String(line).replace(/[()\\]/g, '\\$&')}) Tj`)
+    .join('\n');
+  const stream = `BT\n/F1 12 Tf\n${content}\nET`;
+  const streamLen = Buffer.byteLength(stream);
+
+  const pdf = `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length ${streamLen} >>
+stream
+${stream}
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000244 00000 n 
+0000000300 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+370
+%%EOF`;
+  return Buffer.from(pdf);
+}
 
 async function runTests() {
   console.log('🧪 Running Statement Parser Unit Tests...');
@@ -166,8 +211,7 @@ async function runTests() {
   console.log('  ✅ parseStatement parses Excel .xlsx statements successfully and ignores balance row');
 
   // 11. PDF Statement Ingestion (PhonePe)
-  const phonePeDoc = new jsPDF();
-  phonePeDoc.text([
+  const phonePeBuf = createPdfBuffer([
     'PhonePe Transaction Statement',
     'Date: 2025-02-10',
     'Paid to Zepto Groceries',
@@ -182,9 +226,8 @@ async function runTests() {
     'Credited to State Bank of India - 9876',
     'Amount: Rs. 1500.00',
     'Status: Successful',
-  ].join('\n'), 10, 10);
+  ]);
 
-  const phonePeBuf = Buffer.from(phonePeDoc.output('arraybuffer'));
   const phonePeResult = await parseStatement({
     content: phonePeBuf,
     filename: 'PhonePe_Statement.pdf',
@@ -200,14 +243,12 @@ async function runTests() {
   assert.strictEqual(zeptoTx.transaction_number, 'T2402101234567890123456');
 
   // 12. PDF Statement Ingestion (Paytm)
-  const paytmDoc = new jsPDF();
-  paytmDoc.text([
+  const paytmBuf = createPdfBuffer([
     'Paytm Payments Bank Passbook',
     '2025-01-20  Paid to Uber India  Order ID: PTM9876543210  - Rs. 350.00',
     '2025-01-22  Cashback received from Paytm  + Rs. 50.00',
     'Closing Balance: Rs. 5,000.00',
-  ].join('\n'), 10, 10);
-  const paytmBuf = Buffer.from(paytmDoc.output('arraybuffer'));
+  ]);
   const paytmResult = await parseStatement({
     content: paytmBuf,
     filename: 'Paytm_Passbook.pdf',
@@ -221,8 +262,7 @@ async function runTests() {
   console.log('  ✅ parseStatement parses Paytm PDF passbook statement');
 
   // 13. PDF Statement Ingestion (Google Pay)
-  const gpayDoc = new jsPDF();
-  gpayDoc.text([
+  const gpayBuf = createPdfBuffer([
     'Google Pay Transaction History',
     'Date: 2025-01-28',
     'Paid to Swiggy Eats',
@@ -231,8 +271,7 @@ async function runTests() {
     'Amount: Rs. 420.00',
     'Status: Completed',
     'Total Amount: ₹420.00',
-  ].join('\n'), 10, 10);
-  const gpayBuf = Buffer.from(gpayDoc.output('arraybuffer'));
+  ]);
   const gpayResult = await parseStatement({
     content: gpayBuf,
     filename: 'GooglePay_Statement.pdf',
@@ -245,16 +284,13 @@ async function runTests() {
   console.log('  ✅ parseStatement parses Google Pay PDF statement');
 
   // 14. PDF Statement Ingestion (BharatPe)
-  const bharatPeDoc = new jsPDF();
-  bharatPeDoc.setFontSize(10);
-  bharatPeDoc.text([
+  const bharatPeBuf = createPdfBuffer([
     'BharatPe Account Statement',
     '2025-02-05',
     'Customer Payment from Rajesh Verma',
     'Txn ID: BP876543210987',
     'Rs. 1200.00',
-  ].join('\n'), 10, 10);
-  const bharatPeBuf = Buffer.from(bharatPeDoc.output('arraybuffer'));
+  ]);
   const bharatPeResult = await parseStatement({
     content: bharatPeBuf,
     filename: 'BharatPe_Settlement.pdf',
@@ -286,7 +322,44 @@ async function runTests() {
   assert.strictEqual(parseTransactionAmount(0.001), null, 'Sub-cent amount must be rejected');
   assert.strictEqual(parseTransactionAmount(0), null, '0 amount must be rejected');
   assert.strictEqual(parseTransactionAmount(-50), null, 'Negative amount must be rejected');
-  console.log('  ✅ parseTransactionAmount correctly rejects sub-paisa and sub-cent amounts');
+  // 17. Multi-Line PDF Statement (SBI / Bank statement layout)
+  const multiLinePdfBuf = createPdfBuffer([
+    'State Bank of India Statement',
+    'Date Particulars Debit Credit Balance',
+    '23/10/2026',
+    'TO TRANSFER-UPI/DR/629700123456/SWIGGY',
+    '450.00',
+    '12,345.67',
+    '24/10/2026',
+    'BY TRANSFER-SALARY ACME CORP',
+    '75,000.00',
+    '87,345.67',
+    'Closing Balance: 87,345.67',
+  ]);
+  const multiLinePdfResult = await parseStatement({
+    content: multiLinePdfBuf,
+    filename: 'sbi_statement.pdf',
+    userTransactions: [],
+  });
+  assert.strictEqual(multiLinePdfResult.transactions.length, 2, 'Multi-line bank PDF parsed both transactions');
+  assert.strictEqual(multiLinePdfResult.transactions[0].type, 'expense');
+  assert.strictEqual(multiLinePdfResult.transactions[0].amount, 450);
+  assert.strictEqual(multiLinePdfResult.transactions[0].transaction_number, '629700123456');
+  assert.strictEqual(multiLinePdfResult.transactions[1].type, 'income');
+  assert.strictEqual(multiLinePdfResult.transactions[1].amount, 75000);
+  console.log('  ✅ parseStatement parses multi-line PDF bank statements (SBI / HDFC / Axis layout)');
+
+  // 18. CSV with Merchant header instead of Description
+  const merchantCsv = 'Date,Merchant,Category,Amount\n2026-10-23,Swiggy,Food,450.00\n2026-10-24,Amazon,Shopping,1200.00';
+  const merchantCsvResult = await parseStatement({
+    content: merchantCsv,
+    filename: 'statement.csv',
+    userTransactions: [],
+  });
+  assert.strictEqual(merchantCsvResult.transactions.length, 2, 'CSV with Merchant header parsed cleanly');
+  assert.strictEqual(merchantCsvResult.transactions[0].merchant, 'Swiggy');
+  assert.strictEqual(merchantCsvResult.transactions[0].amount, 450);
+  console.log('  ✅ parseStatement parses CSV with Merchant / Payee headers cleanly');
 
   console.log('\n🎉 ALL STATEMENT PARSER UNIT TESTS PASSED!');
 }

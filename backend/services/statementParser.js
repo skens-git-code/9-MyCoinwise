@@ -389,14 +389,18 @@ const extractPdfText = async (buffer, { password = null } = {}) => {
     throw new Error('PDF parsing library is not available.');
   }
 
+  const pdfLib = pdfModule?.default || pdfModule;
   let text = '';
   try {
-    if (typeof pdfModule === 'function') {
+    if (typeof pdfLib === 'function') {
       const options = password ? { password } : {};
-      const data = await pdfModule(buffer, options);
+      const data = await pdfLib(buffer, options);
       text = data?.text || '';
-    } else if (pdfModule.PDFParse) {
-      const parser = new pdfModule.PDFParse({ data: buffer, password: password || undefined });
+    } else if (pdfLib.PDFParse) {
+      const parser = new pdfLib.PDFParse({
+        data: buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer),
+        password: password || undefined,
+      });
       try {
         const res = await parser.getText();
         text = res?.text || '';
@@ -546,9 +550,13 @@ const parsePdfBuffer = async (buffer, filename = '', { password = null } = {}) =
       if (isBalanceOrSummary(line)) continue;
 
       const date = toIsoDay(line);
-      const amtMatch = line.match(/(?:[+-]\s*)?(?:₹|rs\.?|inr)?\s*([0-9,]+\.[0-9]{2})/i);
+      if (!date) continue;
 
-      if (date && amtMatch) {
+      const lineWithoutDate = line.replace(date, ' ').replace(/\b\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}\b|\b\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}\b/, ' ');
+      const amtMatch = lineWithoutDate.match(/(?:[+-]\s*)?(?:₹|rs\.?|inr)\s*([0-9,]+(?:\.[0-9]{2})?)/i) ||
+                       lineWithoutDate.match(/(?:[+-]\s*)?([0-9,]+\.[0-9]{2})/i);
+
+      if (amtMatch) {
         const isCredit = line.includes('+') || /received|cashback|refund|credit/i.test(line);
         const amount = parseStatementAmount(amtMatch[1]);
         if (amount && amount > 0) {
@@ -668,61 +676,102 @@ const parsePdfBuffer = async (buffer, filename = '', { password = null } = {}) =
     }
   }
 
-  // 5. General Bank Statement PDF Multi-Line Parser (SBI, HDFC, ICICI, Axis, PNB, etc.)
+  // 5. General Bank Statement PDF Multi-Line & Tabular Parser (SBI, HDFC, ICICI, Axis, Kotak, PNB, etc.)
   if (transactions.length === 0) {
     const DATE_REGEX = /\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{1,2}[-\s.]?[A-Za-z]{3,9}[-\s.]?\d{2,4}|[A-Za-z]{3,9}[-\s.]?\d{1,2}[-\s.,]*\d{2,4}|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2})\b/;
+
+    // Accumulate lines into logical transaction blocks starting at each date line
+    const blocks = [];
+    let currentBlock = null;
 
     for (let i = 0; i < rawLines.length; i += 1) {
       const line = rawLines[i];
       if (isBalanceOrSummary(line)) continue;
 
       const dateMatch = line.match(DATE_REGEX);
-      if (!dateMatch) continue;
+      const isHeader = /\b(date|particulars|narration|chq|cheque|withdrawal|deposit|balance|debit|credit|dr|cr)\b/i.test(line) &&
+                       !line.match(/\d{4}/);
 
-      const date = toIsoDay(dateMatch[1]);
+      if (dateMatch && !isHeader) {
+        if (currentBlock) blocks.push(currentBlock);
+        currentBlock = {
+          dateStr: dateMatch[1],
+          lines: [line],
+        };
+      } else if (currentBlock) {
+        currentBlock.lines.push(line);
+      }
+    }
+    if (currentBlock) blocks.push(currentBlock);
+
+    for (const block of blocks) {
+      const date = toIsoDay(block.dateStr);
       if (!date) continue;
 
-      // Extract description and look ahead up to 2 lines for wrapped details or amounts
-      let combinedLine = line;
-      let amounts = [...line.matchAll(/\b([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{2}))\b/g)]
-        .map((m) => parseStatementAmount(m[1]))
-        .filter((a) => a && a > 0 && a < MAX_AMOUNT);
+      const blockText = block.lines.join(' ');
+      const textWithoutDate = blockText.replace(block.dateStr, ' ');
+      const txnId = extractTransactionId(blockText);
+      const textForAmounts = textWithoutDate
+        .replace(txnId || '', ' ')
+        .replace(/\b\d{10,}\b/g, ' ');
 
-      // Multi-line row support: check next line if no amount found on date line
-      if (amounts.length === 0 && i + 1 < rawLines.length && !isBalanceOrSummary(rawLines[i + 1])) {
-        const nextLine = rawLines[i + 1];
-        if (!nextLine.match(DATE_REGEX)) {
-          combinedLine += ` ${nextLine}`;
-          amounts = [...nextLine.matchAll(/\b([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{2}))\b/g)]
-            .map((m) => parseStatementAmount(m[1]))
-            .filter((a) => a && a > 0 && a < MAX_AMOUNT);
+      let candidateAmounts = [];
+      // Priority 1: Currency-preceded amounts
+      const currencyMatches = textForAmounts.matchAll(/(?:₹|rs\.?|inr|\$|€|£)\s*([0-9,]+(?:\.[0-9]{2})?)/gi);
+      for (const m of currencyMatches) {
+        const amt = parseStatementAmount(m[1]);
+        if (amt && amt > 0 && amt <= MAX_AMOUNT) candidateAmounts.push(amt);
+      }
+      // Priority 2: Standard 2-decimal numbers (e.g. 450.00, 1,234.56)
+      if (candidateAmounts.length === 0) {
+        const decimalMatches = textForAmounts.matchAll(/\b([0-9]{1,3}(?:,[0-9]{2,3})*|\d+)\.(\d{2})\b/g);
+        for (const m of decimalMatches) {
+          const amt = parseStatementAmount(m[0]);
+          if (amt && amt > 0 && amt <= MAX_AMOUNT) candidateAmounts.push(amt);
+        }
+      }
+      // Priority 3: Formatted thousands or integer amounts (e.g. 1,500 or 500)
+      if (candidateAmounts.length === 0) {
+        const intMatches = textForAmounts.matchAll(/\b([0-9]{1,3}(?:,[0-9]{2,3})+|\d{2,8})\b/g);
+        for (const m of intMatches) {
+          const amt = parseStatementAmount(m[0]);
+          if (amt && amt > 0 && amt <= MAX_AMOUNT) candidateAmounts.push(amt);
         }
       }
 
-      if (amounts.length === 0) continue;
+      if (candidateAmounts.length === 0) continue;
 
-      // Handle multi-currency: if line has USD/EUR conversion (@ 83.50 etc.), pick the INR amount
-      let txnAmount = amounts[0];
-      if (amounts.length >= 2 && /\b(usd|eur|gbp|aed)\b/i.test(combinedLine)) {
-        // Find amount preceded by INR or ₹
-        const inrMatch = combinedLine.match(/(?:inr|rs\.?|₹)\s*([0-9,]+\.[0-9]{2})/i);
+      let txnAmount = candidateAmounts[0];
+      // Multi-currency override if explicit foreign currency noted
+      if (candidateAmounts.length >= 2 && /\b(usd|eur|gbp|aed)\b/i.test(blockText)) {
+        const inrMatch = blockText.match(/(?:inr|rs\.?|₹)\s*([0-9,]+(?:\.[0-9]{2})?)/i);
         if (inrMatch) {
           const parsedInr = parseStatementAmount(inrMatch[1]);
           if (parsedInr) txnAmount = parsedInr;
         }
       }
 
-      const isCredit = /\b(cr|credit|deposit)\b/i.test(combinedLine);
-      const isDebit = /\b(dr|debit|withdrawal)\b/i.test(combinedLine);
-      const type = isCredit ? 'income' : isDebit ? 'expense' : (combinedLine.includes('+') ? 'income' : 'expense');
+      // Direction detection
+      const isCredit = /\b(cr|credit|deposit|by transfer|received|refund|cashback|interest)\b/i.test(blockText);
+      const isDebit = /\b(dr|debit|withdrawal|to transfer|paid|charge|fee)\b/i.test(blockText);
+      let type = 'expense';
+      if (isCredit && !isDebit) {
+        type = 'income';
+      } else if (isDebit) {
+        type = 'expense';
+      } else if (blockText.includes('+') && !blockText.includes('-')) {
+        type = 'income';
+      } else {
+        type = 'expense';
+      }
 
       transactions.push({
         date,
         type,
         amount: txnAmount,
-        desc: combinedLine,
-        raw: [combinedLine],
-        txnId: extractTransactionId(combinedLine),
+        desc: blockText,
+        raw: block.lines,
+        txnId,
       });
     }
   }
@@ -873,13 +922,26 @@ const processTabularRows = ({ rows, defaultBank = null, merchantCategories = new
 
   for (let r = 0; r < Math.min(15, rows.length); r += 1) {
     const candidateHeaders = rows[r].map(headerKey);
-    const dateCol = findColumn(candidateHeaders, ['date', 'txndate', 'trandate', 'transactiondate', 'valuedate', 'postdate', 'txndatetime']);
-    const descCol = findColumn(candidateHeaders, ['description', 'transactiondetails', 'details', 'narration', 'particulars', 'remarks', 'memo']);
-    const debitCol = findColumn(candidateHeaders, ['debit', 'debitamount', 'withdrawal', 'withdrawalamount', 'withdraw', 'dr', 'paidout']);
-    const creditCol = findColumn(candidateHeaders, ['credit', 'creditamount', 'deposit', 'depositamount', 'cr', 'paidin']);
-    const amtCol = findColumn(candidateHeaders, ['amount', 'txnamount', 'transactionamount', 'netamount', 'total']);
+    const dateCol = findColumn(candidateHeaders, ['date', 'txndate', 'trandate', 'transactiondate', 'valuedate', 'postdate', 'txndatetime', 'bookingdate', 'posted', 'time', 'timestamp', 'dt']);
+    let descCol = findColumn(candidateHeaders, [
+      'description', 'transactiondetails', 'details', 'narration', 'particulars', 'remarks', 'memo',
+      'merchant', 'payee', 'note', 'name', 'title', 'party', 'partyname', 'beneficiary',
+      'trans', 'transaction', 'activity', 'reason', 'purpose', 'item', 'comment', 'store'
+    ]);
+    const debitCol = findColumn(candidateHeaders, ['debit', 'debitamount', 'withdrawal', 'withdrawalamount', 'withdraw', 'dr', 'paidout', 'outflow', 'debitinr', 'debitrs', 'expense', 'spent', 'spend']);
+    const creditCol = findColumn(candidateHeaders, ['credit', 'creditamount', 'deposit', 'depositamount', 'cr', 'paidin', 'inflow', 'creditinr', 'creditrs', 'income', 'received']);
+    const amtCol = findColumn(candidateHeaders, ['amount', 'txnamount', 'transactionamount', 'netamount', 'total', 'amountinr', 'amountrs', 'value', 'price', 'cost']);
 
-    if ((dateCol >= 0) && (descCol >= 0 || candidateHeaders.some((h) => h.includes('desc') || h.includes('detail') || h.includes('narr'))) &&
+    if (descCol < 0 && dateCol >= 0 && (debitCol >= 0 || creditCol >= 0 || amtCol >= 0)) {
+      for (let c = 0; c < candidateHeaders.length; c += 1) {
+        if (c !== dateCol && c !== debitCol && c !== creditCol && c !== amtCol) {
+          descCol = c;
+          break;
+        }
+      }
+    }
+
+    if ((dateCol >= 0) && (descCol >= 0 || candidateHeaders.some((h) => h.includes('desc') || h.includes('detail') || h.includes('narr') || h.includes('merchant'))) &&
         (debitCol >= 0 || creditCol >= 0 || amtCol >= 0)) {
       headerIndex = r;
       columns = {
@@ -891,7 +953,7 @@ const processTabularRows = ({ rows, defaultBank = null, merchantCategories = new
         debit: debitCol,
         credit: creditCol,
         amount: amtCol,
-        type: findColumn(candidateHeaders, ['type', 'transactiontype', 'drcr', 'crdr']),
+        type: findColumn(candidateHeaders, ['type', 'transactiontype', 'drcr', 'crdr', 'direction', 'flow']),
         reference: findColumn(candidateHeaders, ['referenceno', 'referencenumber', 'reference', 'chequeno', 'chqno', 'transactionid', 'txnid', 'utr', 'orderid']),
         ref: findColumn(candidateHeaders, ['refno', 'ref']),
         bank: findColumn(candidateHeaders, ['bank', 'bankname']),
@@ -948,10 +1010,10 @@ const processTabularRows = ({ rows, defaultBank = null, merchantCategories = new
       isIncome = true;
     } else if (/(^|\b)(dr|debit)\b|withdrawal/i.test(typeCell)) {
       isIncome = false;
-    } else if (signedAmount !== null && signedAmount > 0) {
-      isIncome = true;
     } else if (signedAmount !== null && signedAmount < 0) {
       isIncome = false;
+    } else if (String(row[columns.amount] || '').includes('+') || /(cr|credit)$/i.test(String(row[columns.amount] || ''))) {
+      isIncome = true;
     } else if (/received from|money received/i.test(desc) && !/credit card|reversal/i.test(desc)) {
       isIncome = true;
     } else {
@@ -959,10 +1021,11 @@ const processTabularRows = ({ rows, defaultBank = null, merchantCategories = new
     }
 
     const amount = debit ?? credit ?? genericAmount;
-    if (!desc || !amount || amount <= 0 || amount > MAX_AMOUNT) continue;
+    if (!amount || amount <= 0 || amount > MAX_AMOUNT) continue;
+    const finalDesc = desc || 'Transaction Entry';
 
     const entities = parseNarrationEntities({
-      narration: desc,
+      narration: finalDesc,
       isIncome,
       defaultBank: detectedBank,
     });
@@ -978,8 +1041,8 @@ const processTabularRows = ({ rows, defaultBank = null, merchantCategories = new
     const receiver = explicitReceiver || entities.receiver;
     const txnNumber = explicitRef || entities.transaction_number || extractTransactionId(desc);
     const merchant = isIncome
-      ? (sender && sender !== 'You' ? sender : 'Deposit')
-      : (receiver && receiver !== 'You' ? receiver : entities.merchant);
+      ? (sender && sender !== 'You' ? sender : (entities.merchant || 'Deposit'))
+      : (receiver && receiver !== 'You' ? receiver : (entities.merchant || 'Merchant'));
 
     const normalizedMerchant = normalizeForMatch(merchant);
     const savedCategory = merchantCategories.get(normalizedMerchant);

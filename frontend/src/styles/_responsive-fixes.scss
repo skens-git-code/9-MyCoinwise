@@ -4,7 +4,8 @@
 
 // 1. Toasts / cookie banner never overflow tiny viewports.
 .toast-stack,
-[class*='toast'] {
+.toast-stack-container,
+.notification-toast {
   max-width: min(420px, calc(100vw - 32px));
 }
 

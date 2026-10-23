@@ -401,22 +401,23 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: center;
   text-decoration: none;
   padding: 0;
-  border-radius: 50%;
-  background: rgba(0, 212, 255, 0.08);
-  border: 1px solid rgba(0, 212, 255, 0.35);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.20), 0 0 12px rgba(0, 212, 255, 0.15);
+  border-radius: 11px;
+  background: rgba(252, 1, 0, 0.08);
+  border: 1px solid rgba(252, 1, 0, 0.22);
+  box-shadow: 0 2px 8px rgba(252, 1, 0, 0.12);
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 
-  .brand-logo-svg {
-    filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.65));
+  .brand-logo-svg,
+  .coinwise-mark {
     flex-shrink: 0;
     transition: transform 0.2s ease;
+    filter: drop-shadow(0 1px 3px rgba(252, 1, 0, 0.35));
   }
 
   &:hover {
     transform: scale(1.05);
-    border-color: rgba(0, 212, 255, 0.60);
-    box-shadow: 0 0 16px rgba(0, 212, 255, 0.35);
+    border-color: rgba(252, 1, 0, 0.55);
+    box-shadow: 0 0 16px rgba(252, 1, 0, 0.28);
   }
 }
 

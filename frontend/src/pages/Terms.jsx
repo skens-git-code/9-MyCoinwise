@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import Footer from '../components/Footer';
 import { AppStateContext, AppActionsContext, AppContext } from '../contexts/AppContext';
+import { CoinwiseBadge } from '../components/CoinwiseBrand';
 
 export default function Terms() {
   const navigate = useNavigate();
@@ -151,22 +152,7 @@ export default function Terms() {
               color: 'inherit',
             }}
           >
-            <div
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 12,
-                background: 'var(--brand-gradient, linear-gradient(135deg, #10b981 0%, #059669 100%))',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                boxShadow: 'var(--shadow-brand, 0 4px 14px rgba(16, 185, 129, 0.35))',
-                flexShrink: 0,
-              }}
-            >
-              <Zap size={20} />
-            </div>
+            <CoinwiseBadge size={38} radius={11} variant="surface" />
             <span
               style={{
                 fontWeight: 800,

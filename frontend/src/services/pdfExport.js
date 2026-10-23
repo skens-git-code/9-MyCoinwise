@@ -18,13 +18,14 @@
 /* ─────────────────────────── Brand & Theme ─────────────────────────── */
 
 const BRAND = Object.freeze({
-  name: 'MYCOINWISE',
-  tagline: 'AI-POWERED FINANCIAL INTELLIGENCE',
-  product: 'MyCoinwise AI Financial System',
+  name: 'COINWISE',
+  tagline: 'SMART FINANCIAL INTELLIGENCE & AUDIT SUITE',
+  product: 'Coinwise Financial Intelligence System',
 });
 
 const THEME = Object.freeze({
   navy:       [15, 23, 42],
+  crimson:    [252, 1, 0],
   emerald:    [5, 150, 105],
   slate:      [71, 85, 105],
   lightSlate: [241, 245, 249],
@@ -120,6 +121,41 @@ function resolveSign(tx) {
   return amt < 0 ? -1 : 1;
 }
 
+/**
+ * Draw official Coinwise vector chevron mark at (ox, oy) with scale s.
+ * Designed for 100% crisp vector fidelity in PDF exports.
+ */
+function drawCoinwiseMark(doc, ox, oy, s = 0.021, color = THEME.crimson) {
+  doc.setFillColor(...color);
+  // Left chevron
+  doc.lines([
+    [177 * s, 0],
+    [-186 * s, 186 * s],
+    [0, 146 * s],
+    [186 * s, 186 * s],
+    [-177 * s, 0],
+    [-186 * s, -186 * s],
+    [0, -146 * s],
+    [186 * s, -186 * s],
+  ], ox + 186 * s, oy, [1, 1], 'F', true);
+
+  // Top right slanted bar
+  doc.lines([
+    [176 * s, 0],
+    [-127 * s, 127 * s],
+    [-176 * s, 0],
+    [127 * s, -127 * s],
+  ], ox + 427 * s, oy, [1, 1], 'F', true);
+
+  // Bottom right slanted bar
+  doc.lines([
+    [176 * s, 0],
+    [127 * s, 127 * s],
+    [-176 * s, 0],
+    [-127 * s, -127 * s],
+  ], ox + 300 * s, oy + 391 * s, [1, 1], 'F', true);
+}
+
 /* ─────────────────────────── Main export ─────────────────────────── */
 
 /**
@@ -164,23 +200,38 @@ export async function exportToPDF(user, transactions = [], currencyInfo, localeO
     doc.setFillColor(...C.navy);
     doc.rect(0, 0, pageWidth, PAGE.headerH, 'F');
 
-    doc.setFillColor(...C.emerald);
+    doc.setFillColor(...C.crimson);
     doc.rect(0, PAGE.headerH, pageWidth, PAGE.accentH, 'F');
 
+    // Official Coinwise vector chevron mark
+    const ox = marginX;
+    const oy = 7.5;
+    drawCoinwiseMark(doc, ox, oy, 0.021, C.crimson);
+
+    const brandTextX = ox + 16.5;
     doc.setTextColor(...C.white);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.text(BRAND.name, marginX, 16);
+    doc.setFontSize(18);
+    doc.text(BRAND.name, brandTextX, 15.5);
+
+    // Official Certified Badge pill beside brand name
+    const certifiedX = brandTextX + doc.getTextWidth(BRAND.name) + 3.5;
+    doc.setFillColor(...C.crimson);
+    doc.roundedRect(certifiedX, 9.8, 18, 5.2, 1.2, 1.2, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...C.white);
+    doc.text('CERTIFIED', certifiedX + 9, 13.5, { align: 'center' });
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setTextColor(203, 213, 225);
-    doc.text(`${BRAND.tagline} · ${subtitle.toUpperCase()}`, marginX, 23);
+    doc.text(`${BRAND.tagline} · ${subtitle.toUpperCase()}`, brandTextX, 22.5);
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
+    doc.setFontSize(10.5);
     doc.setTextColor(...C.white);
-    doc.text(title.toUpperCase(), marginX, 31);
+    doc.text(title.toUpperCase(), brandTextX, 30.5);
 
     /* ── Reference & generation metadata ── */
     const now       = new Date();
@@ -446,10 +497,15 @@ export async function exportToPDF(user, transactions = [], currencyInfo, localeO
       if (i > 1) {
         doc.setFillColor(...C.navy);
         doc.rect(0, 0, pageWidth, 12, 'F');
+        doc.setFillColor(...C.crimson);
+        doc.rect(0, 12, pageWidth, 0.6, 'F');
+
+        drawCoinwiseMark(doc, marginX, 2.5, 0.013, C.crimson);
+
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
         doc.setTextColor(...C.white);
-        doc.text(`${BRAND.name} STATEMENT · ${statementRef}`, marginX, 8);
+        doc.text(`${BRAND.name} STATEMENT · ${statementRef}`, marginX + 10, 8);
         doc.setFont('helvetica', 'normal');
         doc.text(`Page ${i} of ${totalPages}`, pageWidth - marginX, 8, { align: 'right' });
       }

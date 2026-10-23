@@ -176,15 +176,16 @@ body.auth-viewport-scrollable #root {
   text-decoration: none;
 
   .auth-logo-icon {
-    width: clamp(34px, 8vw, 40px);
-    height: clamp(34px, 8vw, 40px);
-    background: var(--brand-gradient);
+    width: clamp(36px, 8vw, 42px);
+    height: clamp(36px, 8vw, 42px);
+    background: rgba(252, 1, 0, 0.08);
+    border: 1px solid rgba(252, 1, 0, 0.22);
     border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #ffffff;
-    box-shadow: var(--shadow-brand);
+    color: #fc0100;
+    box-shadow: 0 4px 14px rgba(252, 1, 0, 0.12);
     flex-shrink: 0;
   }
 

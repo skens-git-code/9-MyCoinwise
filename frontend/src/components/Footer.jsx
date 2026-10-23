@@ -7,6 +7,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { openCookiePreferences } from '../services/clarity';
+import { CoinwiseMark } from './CoinwiseBrand';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -18,11 +19,7 @@ export default function Footer() {
         <div className="footer-brand">
           <div className="footer-logo">
             <span className="footer-logo-icon" aria-hidden="true">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 7v10" />
-                <path d="M15 9.5a2.5 2.5 0 0 0-5 0c0 1.5 1 2 2.5 2.5s2.5 1 2.5 2.5a2.5 2.5 0 0 1-5 0" />
-              </svg>
+              <CoinwiseMark size={16} />
             </span>
             <span className="footer-brand-name">MyCoinwise</span>
           </div>

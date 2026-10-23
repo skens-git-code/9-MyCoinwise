@@ -27,14 +27,15 @@ import { useAppState, useAppActions } from '../contexts/AppContext';
 import { useToast } from '../components/ToastProvider';
 import { exportToPDF } from '../services/pdfExport';
 import { api } from '../services/api';
+import { CoinwiseMark } from '../components/CoinwiseBrand';
 
 /* ============================================================
  * Constants
  * ============================================================ */
 
 const BRAND = Object.freeze({
-  name: 'MYCOINWISE',
-  product: 'MyCoinwise AI Financial System',
+  name: 'COINWISE',
+  product: 'Coinwise Financial Intelligence System',
 });
 
 const STATEMENT_TYPES = [
@@ -663,14 +664,15 @@ export default function Reports() {
               className="a4-document-sheet"
               style={sheetStyle}
             >
-              {/* Top emerald accent */}
-              <div style={{ height: '4px', background: 'linear-gradient(90deg,#059669 0%,#10b981 100%)', margin: '-16mm -14mm 16mm -14mm' }} />
+              {/* Top Coinwise red accent */}
+              <div style={{ height: '4px', background: 'linear-gradient(90deg, #FC0100 0%, #DC2626 100%)', margin: '-16mm -14mm 16mm -14mm' }} />
 
               {/* === Header block === */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #0f172a', paddingBottom: '16px', marginBottom: '18px' }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '-0.03em', color: '#0f172a' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                    <CoinwiseMark size={24} />
+                    <span style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '-0.02em', color: '#0f172a' }}>
                       {BRAND.name}
                     </span>
                     <span style={badgeStyle}>CERTIFIED</span>
@@ -912,8 +914,9 @@ const selectStyle = {
 };
 const dateInputStyle = { padding: '4px 10px', fontSize: '0.8rem', borderRadius: 6 };
 const badgeStyle = {
-  fontSize: '9px', fontWeight: 700, background: '#ecfdf5', color: '#059669',
-  padding: '2px 6px', borderRadius: '4px', border: '1px solid #a7f3d0',
+  fontSize: '9px', fontWeight: 700, background: 'rgba(252, 1, 0, 0.08)', color: '#FC0100',
+  padding: '2px 7px', borderRadius: '4px', border: '1px solid rgba(252, 1, 0, 0.25)',
+  letterSpacing: '0.04em',
 };
 const sheetStyle = {
   width: '210mm',

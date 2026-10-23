@@ -263,8 +263,9 @@
 
   // ── Brand ──
   .brand-icon {
-    background: var(--brand-gradient-vibrant);
-    box-shadow: 0 0 20px var(--brand-glow);
+    background: rgba(252, 1, 0, 0.12);
+    border: 1px solid rgba(252, 1, 0, 0.3);
+    box-shadow: 0 0 16px rgba(252, 1, 0, 0.2);
   }
 
   // ── Navigation ──
@@ -459,8 +460,9 @@
   }
 
   .auth-logo-icon {
-    background: var(--brand-gradient-vibrant);
-    box-shadow: none;
+    background: rgba(252, 1, 0, 0.12);
+    border-color: rgba(252, 1, 0, 0.35);
+    box-shadow: 0 4px 14px rgba(252, 1, 0, 0.16);
   }
 
   .auth-submit {

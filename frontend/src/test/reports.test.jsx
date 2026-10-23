@@ -89,7 +89,7 @@ describe('Reports & Statements Download Center (A4 Executive Edition)', () => {
 
   it('renders the live A4 document sheet with institutional particulars and financial matrix', () => {
     renderReports();
-    expect(screen.getByText('MYCOINWISE')).toBeInTheDocument();
+    expect(screen.getByText('COINWISE')).toBeInTheDocument();
     expect(screen.getByText('CERTIFIED')).toBeInTheDocument();
     expect(screen.getByText('Alex Mercer')).toBeInTheDocument();
     expect(screen.getByText(/Itemized Transaction Ledger/i)).toBeInTheDocument();

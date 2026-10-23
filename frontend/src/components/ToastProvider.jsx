@@ -113,27 +113,14 @@ export const ToastProvider = ({ children }) => {
     <ToastContext.Provider value={{ showToast, hideToast }}>
       {children}
 
-      {/* ── Toast stack: top-right with notch-aware safe-area padding (Glitch #12) ── */}
+      {/* ── Toast stack: centered on mobile, top-right on desktop (Glitch #12) ── */}
       <div
         role="status"
         aria-live="polite"
         aria-atomic="true"
+        className="toast-stack-container"
         style={{
-          position: 'fixed',
-          top: 0,
-          right: 0,
-          zIndex: 'var(--z-toast, 1200)',
-          pointerEvents: 'none',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'flex-end',
-          gap: 12,
-          width: '100%',
-          maxWidth: 'min(420px, calc(100vw - 32px))',
-          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 20px)',
-          paddingRight: 'max(20px, env(safe-area-inset-right, 20px))',
-          paddingBottom: '20px',
-          paddingLeft: '20px',
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)',
         }}
       >
         <AnimatePresence>
@@ -143,8 +130,8 @@ export const ToastProvider = ({ children }) => {
               role="alert"
               aria-live="assertive"
               className={`notification-toast toast-${toast.type}`}
-              initial={{ opacity: 0, y: -10, x: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, x: 0, scale: 1 }}
+              initial={{ opacity: 0, y: -12, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.93, transition: { duration: 0.18, ease: 'easeOut' } }}
               layout
               transition={{ type: 'spring', damping: 25, stiffness: 320 }}
@@ -173,9 +160,13 @@ export const ToastProvider = ({ children }) => {
                   left: 0,
                   top: 0,
                   bottom: 0,
+                  right: 'auto',
                   width: 4,
+                  maxWidth: 4,
+                  minWidth: 4,
                   background: getIconColor(toast.type),
-                  borderRadius: '14px 0 0 14px'
+                  borderRadius: '14px 0 0 14px',
+                  zIndex: 1,
                 }}
                 aria-hidden="true"
               />
@@ -191,6 +182,8 @@ export const ToastProvider = ({ children }) => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
+                  position: 'relative',
+                  zIndex: 2,
                   background: getIconBg(toast.type),
                   color: getIconColor(toast.type)
                 }}
@@ -202,7 +195,7 @@ export const ToastProvider = ({ children }) => {
               </div>
 
               {/* ── Message text ── */}
-              <div className="toast-message-wrap" style={{ flex: 1, minWidth: 0 }}>
+              <div className="toast-message-wrap" style={{ flex: 1, minWidth: 0, position: 'relative', zIndex: 2 }}>
                 <p
                   className="toast-message"
                   style={{
@@ -251,13 +244,14 @@ export const ToastProvider = ({ children }) => {
                   border: 'none',
                   color: 'var(--toast-text-muted, var(--text-muted))',
                   cursor: 'pointer',
-                  width: 28,
-                  height: 28,
+                  width: 32,
+                  height: 32,
                   borderRadius: 8,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  flexShrink: 0
+                  flexShrink: 0,
+                  marginLeft: 8
                 }}
                 aria-label="Close notification"
               >

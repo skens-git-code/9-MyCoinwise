@@ -40,6 +40,7 @@ import Breadcrumbs from './Breadcrumbs';
 import Footer from './Footer';
 import DOMPurify from 'dompurify';
 import QuantumRuntime from '../services/quantumRuntime';
+import { CoinwiseMark } from './CoinwiseBrand';
 
 const CurrencyConverter = lazy(() => import('./CurrencyConverter'));
 const AlertsCenter = lazy(() => import('./AlertsCenter'));
@@ -545,8 +546,12 @@ export default function AppLayout({ children }) {
   const navigate = useNavigate();
 
   // Close the mobile drawer whenever the route changes.
+  const prevPathRef = useRef(location.pathname);
   useEffect(() => {
-    setDrawerOpen((open) => (open ? false : open));
+    if (prevPathRef.current !== location.pathname) {
+      prevPathRef.current = location.pathname;
+      setDrawerOpen(false);
+    }
   }, [location.pathname]);
 
   // Lock body scroll while the mobile drawer is open.
@@ -1060,7 +1065,7 @@ const DesktopSidebar = React.memo(({
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <Zap size={18} />
+          <CoinwiseMark size={20} />
         </motion.div>
         <AnimatePresence>
           {isOpen && (
@@ -1219,32 +1224,9 @@ const DesktopSidebar = React.memo(({
 });
 DesktopSidebar.displayName = 'DesktopSidebar';
 
-// ── Inline hexagon logo used in the header brand link ──
-const BrandLogo = ({ size = 20, className = 'brand-logo-svg' }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-    style={{ display: 'inline-block', verticalAlign: 'middle' }}
-    aria-hidden="true"
-  >
-    <defs>
-      <linearGradient id="brandLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#00d4ff" />
-        <stop offset="100%" stopColor="#6f00ff" />
-      </linearGradient>
-    </defs>
-    <polygon
-      points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5"
-      stroke="url(#brandLogoGrad)"
-      strokeWidth="2"
-      fill="rgba(0, 212, 255, 0.12)"
-    />
-    <circle cx="12" cy="12" r="3.5" fill="url(#brandLogoGrad)" />
-  </svg>
+// ── Official Coinwise brand mark used in the header brand link ──
+const BrandLogo = ({ size = 22, className = 'brand-logo-svg' }) => (
+  <CoinwiseMark size={size} className={className} />
 );
 
 // ── Header: brand, nav links, actions (search, converter, AI, theme,
@@ -1846,7 +1828,7 @@ const MobileDrawer = React.memo(({
       <div className="mobile-drawer-header">
         <div className="drawer-brand">
           <div className="brand-icon" aria-hidden="true">
-            <Zap size={18} />
+            <CoinwiseMark size={20} />
           </div>
           <span className="brand-name">MyCoinwise</span>
         </div>

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { KeyRound, Eye, EyeOff, AlertTriangle, Zap, CheckCircle2, Shield, ArrowRight } from 'lucide-react';
 import { api } from '../services/api';
 import { useToast } from '../components/ToastProvider';
+import { CoinwiseMark } from '../components/CoinwiseBrand';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -113,10 +114,10 @@ export default function ResetPassword() {
         <div className="auth-logo">
           <motion.div
             className="auth-logo-icon"
-            whileHover={{ rotate: 20, scale: 1.1 }}
+            whileHover={{ rotate: 12, scale: 1.06 }}
             transition={{ type: 'spring', stiffness: 300 }}
           >
-            <Zap size={26} />
+            <CoinwiseMark size={24} />
           </motion.div>
           <span className="auth-logo-text">MyCoinwise</span>
         </div>

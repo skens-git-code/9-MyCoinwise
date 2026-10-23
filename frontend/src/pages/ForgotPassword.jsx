@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, ArrowLeft, CheckCircle2, AlertTriangle, Zap, Send } from 'lucide-react';
 import { api } from '../services/api';
+import { CoinwiseMark } from '../components/CoinwiseBrand';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -66,10 +67,10 @@ export default function ForgotPassword() {
         <div className="auth-logo">
           <motion.div
             className="auth-logo-icon"
-            whileHover={{ rotate: 20, scale: 1.1 }}
+            whileHover={{ rotate: 12, scale: 1.06 }}
             transition={{ type: 'spring', stiffness: 300 }}
           >
-            <Zap size={26} />
+            <CoinwiseMark size={24} />
           </motion.div>
           <span className="auth-logo-text">MyCoinwise</span>
         </div>
