@@ -23,7 +23,7 @@ export default function Footer() {
             </span>
             <span className="footer-brand-name">MyCoinwise</span>
           </div>
-          <span className="footer-copy">
+          <span className="footer-copy allow-copy" data-allow-copy="true">
             &copy; {currentYear} MyCoinwise. All rights reserved.
           </span>
         </div>

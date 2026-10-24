@@ -35,6 +35,7 @@ import {
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import Modal from './Modal';
+import { rafThrottle } from '../utils/performanceOptimizer';
 
 /* —————————————————————————————————————
  * Category Options & Emojis
@@ -257,13 +258,13 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') return undefined;
 
-    const updateViewportBounds = () => {
+    const updateViewportBounds = rafThrottle(() => {
       const vv = window.visualViewport;
       const height = vv ? vv.height : window.innerHeight;
       const offsetTop = vv ? vv.offsetTop : 0;
       document.documentElement.style.setProperty('--tx-modal-viewport-height', `${height}px`);
       document.documentElement.style.setProperty('--tx-modal-viewport-offset-top', `${offsetTop}px`);
-    };
+    });
 
     updateViewportBounds();
 
@@ -275,6 +276,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     window.addEventListener('resize', updateViewportBounds);
 
     return () => {
+      updateViewportBounds.cancel();
       if (vv) {
         vv.removeEventListener('resize', updateViewportBounds);
         vv.removeEventListener('scroll', updateViewportBounds);

@@ -37,6 +37,7 @@ import { api } from '../services/api';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
 import { convertCurrency, getFallbackRatesToInr } from '../utils/currencyRates';
+import { rafThrottle } from '../utils/performanceOptimizer';
 
 /* ============================================================
  * Constants
@@ -334,13 +335,13 @@ export default function Subscriptions() {
   useEffect(() => {
     if (!isFormModalOpen || typeof window === 'undefined') return undefined;
 
-    const updateViewportBounds = () => {
+    const updateViewportBounds = rafThrottle(() => {
       const vv = window.visualViewport;
       const height = vv ? vv.height : window.innerHeight;
       const offsetTop = vv ? vv.offsetTop : 0;
       document.documentElement.style.setProperty('--tx-modal-viewport-height', `${height}px`);
       document.documentElement.style.setProperty('--tx-modal-viewport-offset-top', `${offsetTop}px`);
-    };
+    });
 
     updateViewportBounds();
 
@@ -350,6 +351,7 @@ export default function Subscriptions() {
       vv.addEventListener('scroll', updateViewportBounds);
     }
     return () => {
+      updateViewportBounds.cancel();
       if (vv) {
         vv.removeEventListener('resize', updateViewportBounds);
         vv.removeEventListener('scroll', updateViewportBounds);

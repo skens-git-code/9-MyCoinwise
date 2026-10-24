@@ -302,6 +302,10 @@ function fireConfetti(canvas) {
   // ── Per-frame render loop ──
   const render = () => {
     if (cancelled) return;
+    if (typeof document !== 'undefined' && document.hidden) {
+      frameId = null;
+      return;
+    }
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     let alive = false;
 
@@ -331,11 +335,29 @@ function fireConfetti(canvas) {
     }
   };
 
+  const handleVisibility = () => {
+    if (document.hidden) {
+      if (frameId != null) {
+        cancelAnimationFrame(frameId);
+        frameId = null;
+      }
+    } else if (!cancelled && frameId == null) {
+      frameId = requestAnimationFrame(render);
+    }
+  };
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibility, { passive: true });
+  }
+
   frameId = requestAnimationFrame(render);
 
   // ── Cancel handle ──
   return () => {
     cancelled = true;
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    }
     if (frameId != null) cancelAnimationFrame(frameId);
     try { ctx.clearRect(0, 0, cssWidth, cssHeight); } catch { /* ignore */ }
   };
@@ -1930,7 +1952,6 @@ export default function Goals() {
             onChange={(e) => setTarget(e.target.value)}
             placeholder="0.00"
             inputMode="decimal"
-            inputMode="decimal"
           />
         </div>
 
@@ -1945,7 +1966,6 @@ export default function Goals() {
             value={saved}
             onChange={(e) => setSaved(e.target.value)}
             placeholder="0"
-            inputMode="decimal"
             inputMode="decimal"
           />
         </div>
@@ -2032,7 +2052,6 @@ export default function Goals() {
             onChange={(e) => setContributeAmount(e.target.value)}
             placeholder="e.g. 25.00 or -10.00"
             autoFocus
-            inputMode="decimal"
             inputMode="decimal"
           />
         </div>

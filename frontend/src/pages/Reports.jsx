@@ -824,14 +824,14 @@ export default function Reports() {
                       This official statement reflects verified transaction activity stored under {BRAND.product} encryption protocol.
                       No physical signature is required under section 65B of the Electronic Records Act.
                     </p>
-                    <div style={{ fontFamily: 'monospace', color: '#475569', fontSize: '7.5px' }}>
+                    <div className="allow-copy" data-allow-copy="true" style={{ fontFamily: 'monospace', color: '#475569', fontSize: '7.5px' }}>
                       {checksum}
                     </div>
                   </div>
 
                   <div style={{ textAlign: 'right' }}>
                     <span style={{ display: 'block', fontWeight: 800, color: '#0f172a', fontSize: '9px' }}>Audit Ready</span>
-                    <span style={{ fontSize: '7.5px', color: '#64748b' }}>{statementMeta.referenceId}</span>
+                    <span className="allow-copy" data-allow-copy="true" style={{ fontSize: '7.5px', color: '#64748b' }}>{statementMeta.referenceId}</span>
                   </div>
                 </div>
               )}

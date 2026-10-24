@@ -7,6 +7,7 @@ import {
   setCookieConsent,
   isDoNotTrack,
 } from '../services/clarity';
+import { rafThrottle } from '../utils/performanceOptimizer';
 
 /**
  * Cookie Preferences Modal
@@ -174,19 +175,18 @@ export default function CookieBanner() {
 
   // Check whether the mobile dock is rendered in the DOM to avoid overlapping it
   useEffect(() => {
-    const checkDock = () => {
+    const checkDock = rafThrottle(() => {
       if (typeof document === 'undefined') return;
       const dock = document.querySelector('.mobile-bottom-dock');
       const isVisible = dock && window.getComputedStyle(dock).display !== 'none';
       setHasMobileDock(Boolean(isVisible));
-    };
+    });
 
     checkDock();
-    const timer = setInterval(checkDock, 1000);
-    window.addEventListener('resize', checkDock);
+    window.addEventListener('resize', checkDock, { passive: true });
 
     return () => {
-      clearInterval(timer);
+      checkDock.cancel();
       window.removeEventListener('resize', checkDock);
     };
   }, []);

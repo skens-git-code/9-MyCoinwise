@@ -1810,8 +1810,8 @@ export default function Transactions() {
                     {tx.transaction_number && (
                       <div className="tx-ticket-row ref-row">
                         <span className="ttr-label">{tr('txn_id', 'Txn Ref ID')}</span>
-                        <div className="ttr-copy-val">
-                          <code>{tx.transaction_number}</code>
+                        <div className="ttr-copy-val allow-copy" data-allow-copy="true">
+                          <code className="allow-copy" data-allow-copy="true">{tx.transaction_number}</code>
                           <button
                             type="button"
                             className="ttr-copy-btn"

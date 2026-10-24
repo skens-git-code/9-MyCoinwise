@@ -1,0 +1,146 @@
+/* ================================================================
+   CONTENT PROTECTION & ANTI-COPY SYSTEM + PERFORMANCE ENFORCEMENT
+   ================================================================ */
+
+/* ── 1. Global Text Selection Prevention ── */
+*,
+*::before,
+*::after {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+html,
+body {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+
+/* ── 2. Media & Element Drag Prevention ── */
+img,
+svg,
+video,
+canvas,
+picture,
+[data-draggable="false"] {
+  -webkit-user-drag: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+/* ── 3. Strict Print-Blocking Rule ── */
+@media print {
+  html,
+  body {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
+}
+
+/* ── 4. Allowlist Exceptions (Form Controls, Explicit .allow-copy, data-allow-copy) ── */
+
+/* Form controls must always allow standard text selection, editing, and copying */
+input,
+textarea,
+select,
+[contenteditable="true"],
+[contenteditable="true"] * {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+/* Dedicated allowlist classes and attributes for code snippets, quotes, share links, contact info */
+.allow-copy,
+.allow-copy *,
+[data-allow-copy],
+[data-allow-copy] *,
+[data-allow-copy="true"],
+[data-allow-copy="true"] * {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+/* Keep proper cursor states on allowlisted text vs interactive buttons */
+.allow-copy:not(button):not(a):not([role="button"]),
+[data-allow-copy="true"]:not(button):not(a):not([role="button"]) {
+  cursor: text;
+}
+
+button.allow-copy,
+a.allow-copy,
+button[data-allow-copy="true"],
+a[data-allow-copy="true"] {
+  cursor: pointer;
+}
+
+/* ── 5. Page Visibility Inactive Tab Animation Freezing (CPU & GPU Dropped to 0) ── */
+html.page-hidden *,
+html.page-hidden *::before,
+html.page-hidden *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+/* ── 6. Offscreen Background & Visual Effect Pausing ── */
+.is-offscreen,
+.is-offscreen *,
+.is-offscreen::before,
+.is-offscreen::after {
+  animation-play-state: paused !important;
+  will-change: auto !important;
+}
+
+/* ── 7. Hardware Acceleration & Micro-stutter Elimination ── */
+.app-island-layout,
+.page-content,
+.bento-hero,
+.stat-card,
+.auth-card {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* ── 8. Low-End Device and Battery-Saver Fallback ── */
+html[data-perf="low"] {
+  *,
+  *::before,
+  *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .glass,
+  .glass-sm,
+  .bento-tile,
+  .bento-hero,
+  .stat-card,
+  .app-header,
+  .auth-card,
+  [class*="glass"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--surface-1) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+  }
+
+  .ambient-orb,
+  .auth-orb,
+  .d3-ambient,
+  .d3-ambient__grid,
+  .d3-ambient__shard,
+  .particles {
+    display: none !important;
+    animation: none !important;
+  }
+}

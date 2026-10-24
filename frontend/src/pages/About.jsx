@@ -1454,7 +1454,8 @@ export default function About({ stats = DEFAULT_STATS }) {
               >
                 <a
                   href={`mailto:${PROFILE.email}`}
-                  className="btn-primary"
+                  className="btn-primary allow-copy"
+                  data-allow-copy="true"
                   style={{
                     padding: '11px 20px',
                     borderRadius: 12,
@@ -1470,7 +1471,8 @@ export default function About({ stats = DEFAULT_STATS }) {
                 </a>
                 <a
                   href={`tel:${PROFILE.phone.replace(/\s/g, '')}`}
-                  className="btn-secondary"
+                  className="btn-secondary allow-copy"
+                  data-allow-copy="true"
                   style={{
                     padding: '11px 20px',
                     borderRadius: 12,

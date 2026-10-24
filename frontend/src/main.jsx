@@ -6,8 +6,12 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient.js';
 import { initWebVitals } from './reportWebVitals.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import { initContentProtection } from './utils/contentProtection.js';
+import { initPerformanceOptimizer } from './utils/performanceOptimizer.js';
 
 initWebVitals();
+initContentProtection();
+initPerformanceOptimizer();
 
 // Tilt interactions are desktop-only eye candy: load them lazily on devices
 // with a fine pointer so mobile pays zero main-thread cost.

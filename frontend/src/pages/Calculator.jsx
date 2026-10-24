@@ -944,11 +944,11 @@ export default function ScientificCalculator() {
                   </span>
                   <span><Keyboard size={13} /> {translate?.('keyboard_ready') || 'Keyboard ready'}</span>
                 </div>
-                <div className="calculator-expression" aria-label="Current expression">
+                <div className="calculator-expression allow-copy" data-allow-copy="true" aria-label="Current expression">
                   {currentExpression || '0'}
                 </div>
-                <div className="calculator-result-row">
-                  <strong aria-live="polite" aria-atomic="true">{displayResult}</strong>
+                <div className="calculator-result-row allow-copy" data-allow-copy="true">
+                  <strong className="allow-copy" data-allow-copy="true" aria-live="polite" aria-atomic="true">{displayResult}</strong>
                   <button
                     type="button"
                     className="calculator-copy"
