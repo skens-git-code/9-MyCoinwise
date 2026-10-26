@@ -31,6 +31,7 @@ import {
   Clock,
   Sparkles,
   User,
+  Target,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -109,7 +110,7 @@ const formatDateForInput = (dateInput) => {
 
 export default function TransactionForm({ isOpen = true, onClose, onSubmit, initialData = null }) {
   // ── Context: currency, accounts, i18n ──
-  const { currency, currencyInfo, accounts = [] } = useAppState();
+  const { currency, currencyInfo, accounts = [], budgets = [] } = useAppState();
   const { t } = useAppActions();
   const currSymbol = currencyInfo?.symbol || '₹';
 
@@ -129,6 +130,10 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     if (initialData?.category) return initialData.category;
     return CATEGORIES[initialData?.type || 'expense'][0];
   });
+
+  // ── Budget Linkage State (Wealth, Subscription, None, or Custom) ──
+  const [budgetCategory, setBudgetCategory] = useState(() => initialData?.budget_category || 'auto');
+  const [budgetId, setBudgetId] = useState(() => initialData?.budget_id || '');
 
   const [note, setNote] = useState(initialData?.note || '');
 
@@ -204,6 +209,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       setTransactionNumber(initialData?.transaction_number || '');
       setIsRecurring(Boolean(initialData?.is_recurring));
       setRecurrenceInterval(initialData?.recurrence_interval || 'monthly');
+      setBudgetCategory(initialData?.budget_category || 'auto');
+      setBudgetId(initialData?.budget_id || '');
       setError('');
       setShowUnsavedModal(false);
       const shouldOpenMore = Boolean(
@@ -452,6 +459,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     setTransactionNumber('');
     setIsRecurring(false);
     setRecurrenceInterval('monthly');
+    setBudgetCategory('auto');
+    setBudgetId('');
     setError('');
   }, []);
 
@@ -471,6 +480,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
           type,
           amount: amt,
           category,
+          budget_category: budgetCategory && budgetCategory !== 'auto' ? budgetCategory : null,
+          budget_id: budgetId || null,
           note: note.trim(),
           date,
           merchant: merchant.trim(),
@@ -516,6 +527,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       initialData,
       type,
       category,
+      budgetCategory,
+      budgetId,
       note,
       date,
       merchant,
@@ -769,6 +782,138 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                         </select>
                       </div>
                     </div>
+
+                    {/* ── Budget Linkage Section (Expense only) ── */}
+                    {isExpense && (
+                      <div className="form-field tx-budget-link-section">
+                        <div className="tx-field-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <label htmlFor="tx-budget-link-select" style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+                            <Target size={15} style={{ color: 'var(--brand-primary)' }} />
+                            <span>{t?.('link_to_budget') || 'Link to Budget'}</span>
+                            <span className="tx-label-hint" style={{ fontWeight: 400, opacity: 0.75, fontSize: '0.75rem' }}>
+                              (Assign to Wealth, Subscription, or custom)
+                            </span>
+                          </label>
+                          {budgetCategory && budgetCategory !== 'auto' && (
+                            <span
+                              className="tx-current-cat-badge"
+                              style={{
+                                fontSize: '0.72rem',
+                                padding: '2px 8px',
+                                borderRadius: 6,
+                                background: budgetCategory === 'none' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(var(--brand-primary-rgb), 0.12)',
+                                color: budgetCategory === 'none' ? 'var(--danger-color, #ef4444)' : 'var(--brand-primary)',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {budgetCategory === 'none' ? '🚫 Unlinked' : `🎯 Linked: ${budgetCategory}`}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Quick preset chips */}
+                        <div className="tx-cat-chips-scroll" role="radiogroup" aria-label="Budget Link presets" style={{ marginBottom: 8 }}>
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={!budgetCategory || budgetCategory === 'auto'}
+                            className={`tx-cat-chip ${(!budgetCategory || budgetCategory === 'auto') ? 'active' : ''} expense`}
+                            onClick={() => { setBudgetCategory('auto'); setBudgetId(''); }}
+                            disabled={isSubmitting}
+                            title="Automatically assign to this transaction's category"
+                          >
+                            <span className="tx-cat-text">Auto ({category})</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={budgetCategory === 'Wealth'}
+                            className={`tx-cat-chip ${budgetCategory === 'Wealth' ? 'active' : ''} expense`}
+                            onClick={() => { setBudgetCategory('Wealth'); setBudgetId(''); }}
+                            disabled={isSubmitting}
+                            title="Link this expense to Wealth & Assets budget"
+                          >
+                            <span className="tx-cat-emoji" aria-hidden="true">💎</span>
+                            <span className="tx-cat-text">Wealth</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={budgetCategory === 'Subscription' || budgetCategory === 'Subscriptions'}
+                            className={`tx-cat-chip ${budgetCategory === 'Subscription' || budgetCategory === 'Subscriptions' ? 'active' : ''} expense`}
+                            onClick={() => { setBudgetCategory('Subscriptions'); setBudgetId(''); }}
+                            disabled={isSubmitting}
+                            title="Link this expense to Subscriptions budget"
+                          >
+                            <span className="tx-cat-emoji" aria-hidden="true">🔁</span>
+                            <span className="tx-cat-text">Subscription</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={budgetCategory === 'none'}
+                            className={`tx-cat-chip ${budgetCategory === 'none' ? 'active' : ''} expense`}
+                            onClick={() => { setBudgetCategory('none'); setBudgetId(''); }}
+                            disabled={isSubmitting}
+                            title="Do not count this transaction against any budget"
+                          >
+                            <span className="tx-cat-emoji" aria-hidden="true">🚫</span>
+                            <span className="tx-cat-text">Don't Link</span>
+                          </button>
+                        </div>
+
+                        {/* Full Budget / Custom Category Selector Dropdown */}
+                        <div className="tx-select-wrapper">
+                          <select
+                            id="tx-budget-link-select"
+                            value={budgetId ? `id:${budgetId}` : (budgetCategory || 'auto')}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val.startsWith('id:')) {
+                                const id = val.slice(3);
+                                const match = (budgets || []).find((b) => String(b._id || b.id) === id);
+                                setBudgetId(id);
+                                setBudgetCategory(match?.category || match?.name || 'custom');
+                              } else {
+                                setBudgetId('');
+                                setBudgetCategory(val);
+                              }
+                            }}
+                            disabled={isSubmitting}
+                            className="tx-select-input"
+                          >
+                            <option value="auto">Auto: Link to "{category}" Budget</option>
+                            <option value="Wealth">💎 Wealth (Assets / Liabilities / Investments)</option>
+                            <option value="Subscriptions">🔁 Subscription (Recurring Services)</option>
+                            <option value="none">🚫 Don't link to any budget</option>
+                            {Array.isArray(budgets) && budgets.length > 0 && (
+                              <optgroup label="Active User Budgets">
+                                {budgets.map((b) => {
+                                  const bId = String(b._id || b.id);
+                                  return (
+                                    <option key={bId} value={`id:${bId}`}>
+                                      📊 {b.name} ({b.category || 'General'})
+                                    </option>
+                                  );
+                                })}
+                              </optgroup>
+                            )}
+                            <optgroup label="Other Categories">
+                              {CATEGORIES.expense
+                                .filter((c) => c !== category && c !== 'Subscriptions')
+                                .map((c) => (
+                                  <option key={c} value={c}>
+                                    {(CATEGORY_EMOJIS[c] ? `${CATEGORY_EMOJIS[c]}  ` : '') + c}
+                                  </option>
+                                ))}
+                            </optgroup>
+                          </select>
+                        </div>
+                      </div>
+                    )}
 
                     {/* ── Date & Description 2-Column Row ── */}
                     <div className="transaction-form-grid">

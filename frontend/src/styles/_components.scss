@@ -3264,7 +3264,7 @@
     border-color: rgba(var(--brand-primary-rgb), 0.35);
 
     .preset-emoji {
-      transform: scale(1.15) rotate(-8deg);
+      transform: scale(1.08);
     }
   }
 
@@ -3310,7 +3310,7 @@
   transition: transform var(--transition-spring);
 
   .sub-item:hover & {
-    transform: scale(1.1) rotate(-8deg);
+    transform: scale(1.06);
   }
 }
 
@@ -4409,7 +4409,7 @@
   &:hover {
     background: rgba(248, 113, 113, 0.14);
     color: var(--danger);
-    transform: scale(1.1) rotate(5deg);
+    transform: scale(1.05);
     box-shadow: 0 0 12px rgba(248, 113, 113, 0.3);
   }
 }
@@ -4431,7 +4431,6 @@
 
   svg {
     opacity: 0.2;
-    animation: float 6s ease-in-out infinite;
   }
 
   .primary-msg {

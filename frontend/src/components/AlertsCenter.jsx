@@ -202,8 +202,8 @@ export default function AlertsCenter({
             ref={closeBtnRef}
             className="ibtn ac-close-btn"
             onClick={onClose}
-            whileHover={{ rotate: 90, scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             aria-label="Close alerts"
           >
             <X size={16} />

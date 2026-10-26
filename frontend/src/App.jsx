@@ -493,6 +493,7 @@ export default function App() {
   }, [t]);
 
   const lastAuthRedirectRef = useRef(0);
+  const inFlightFetchRef = useRef(null);
 
   useEffect(() => {
     const handleAuthExpired = (event) => {
@@ -526,22 +527,29 @@ export default function App() {
     return () => window.removeEventListener('mcw:auth-expired', handleAuthExpired);
   }, []);
 
-  const fetchData = useCallback(async (overrideToken, overrideUser) => {
+  const fetchData = useCallback((overrideToken, overrideUser) => {
     const activeToken = overrideToken || token;
     if (!activeToken) {
       setIsInitialAuthLoad(false);
-      return;
+      return Promise.resolve();
+    }
+
+    // Deduplicate concurrent in-flight fetch calls for the same token to prevent redundant bursts on login
+    if (inFlightFetchRef.current && inFlightFetchRef.current.token === activeToken) {
+      return inFlightFetchRef.current.promise;
     }
 
     const activeUser = overrideUser || userRef.current || getStoredUser();
     const hasExistingUser = Boolean(activeUser && (activeUser._id || activeUser.id));
 
-    try {
-      if (!hasExistingUser) setIsInitialAuthLoad(true);
-      else setIsBackgroundSyncing(true);
-      setGlobalError(null);
+    let currentPromise;
+    const executeFetch = async () => {
+      try {
+        if (!hasExistingUser) setIsInitialAuthLoad(true);
+        else setIsBackgroundSyncing(true);
+        setGlobalError(null);
 
-      const knownUserId = activeUser?._id || activeUser?.id;
+        const knownUserId = activeUser?._id || activeUser?.id;
       let me;
       let txResult, goalsResult, subsResult, eventsResult, budgetsResult, accountsResult, usersResult;
 
@@ -638,23 +646,23 @@ export default function App() {
       if (txData !== null) {
         const cleanTxs = dedupeTransactions(txData, { excludeFuture: false });
         setTransactions(cleanTxs);
-        try { localStorage.setItem('mcw-transactions', JSON.stringify(cleanTxs)); } catch {}
+        try { localStorage.setItem('mcw-transactions', JSON.stringify(cleanTxs)); } catch { /* ignore storage error */ }
       }
       if (goalsData !== null) {
         setGoals(goalsData);
-        try { localStorage.setItem('mcw-goals', JSON.stringify(goalsData)); } catch {}
+        try { localStorage.setItem('mcw-goals', JSON.stringify(goalsData)); } catch { /* ignore storage error */ }
       }
       if (budgetsData !== null) {
         setBudgets(budgetsData);
-        try { localStorage.setItem('mcw-budgets', JSON.stringify(budgetsData)); } catch {}
+        try { localStorage.setItem('mcw-budgets', JSON.stringify(budgetsData)); } catch { /* ignore storage error */ }
       }
       if (accountsData !== null) {
         setAccounts(accountsData);
-        try { localStorage.setItem('mcw-accounts', JSON.stringify(accountsData)); } catch {}
+        try { localStorage.setItem('mcw-accounts', JSON.stringify(accountsData)); } catch { /* ignore storage error */ }
       }
       if (subsData !== null) {
         setSubscriptions(subsData);
-        try { localStorage.setItem('mcw-subscriptions', JSON.stringify(subsData)); } catch {}
+        try { localStorage.setItem('mcw-subscriptions', JSON.stringify(subsData)); } catch { /* ignore storage error */ }
       }
       if (eventsData !== null) setEvents(eventsData);
 
@@ -687,10 +695,18 @@ export default function App() {
           console.warn('Background sync failed to refresh data:', err?.message || err);
         }
       }
-    } finally {
-      setIsInitialAuthLoad(false);
-      setIsBackgroundSyncing(false);
-    }
+      } finally {
+        setIsInitialAuthLoad(false);
+        setIsBackgroundSyncing(false);
+        if (inFlightFetchRef.current?.promise === currentPromise) {
+          inFlightFetchRef.current = null;
+        }
+      }
+    };
+
+    currentPromise = executeFetch();
+    inFlightFetchRef.current = { token: activeToken, promise: currentPromise };
+    return currentPromise;
   }, [token, logout]);
 
   const login = useCallback(async (newToken, userData, rememberMe = true) => {
@@ -731,7 +747,7 @@ export default function App() {
     if (result?.transaction) {
       setTransactions(prev => {
         const next = [result.transaction, ...prev];
-        try { localStorage.setItem('mcw-transactions', JSON.stringify(next)); } catch {}
+        try { localStorage.setItem('mcw-transactions', JSON.stringify(next)); } catch { /* ignore storage error */ }
         return next;
       });
     } else {
@@ -746,7 +762,7 @@ export default function App() {
     const result = await api.deleteTransaction(id);
     setTransactions(prev => {
       const next = prev.filter(tx => tx.id !== id && tx._id !== id);
-      try { localStorage.setItem('mcw-transactions', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('mcw-transactions', JSON.stringify(next)); } catch { /* ignore storage error */ }
       return next;
     });
     applyBalance(result?.balance);
@@ -759,7 +775,7 @@ export default function App() {
     if (result?.transaction) {
       setTransactions(prev => {
         const next = prev.map(tx => (tx.id === id || tx._id === id) ? result.transaction : tx);
-        try { localStorage.setItem('mcw-transactions', JSON.stringify(next)); } catch {}
+        try { localStorage.setItem('mcw-transactions', JSON.stringify(next)); } catch { /* ignore storage error */ }
         return next;
       });
     } else {

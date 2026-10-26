@@ -413,6 +413,8 @@ body.auth-viewport-scrollable #root {
     .input-suffix-btn {
       position: absolute;
       right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
       background: transparent;
       border: none;
       color: var(--text-muted);
@@ -484,7 +486,7 @@ body.auth-viewport-scrollable #root {
 // ── Checkbox pattern used in Remember Me and Register terms ──
 .checkbox-label {
   display: inline-flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   cursor: pointer;
   user-select: none;
@@ -505,7 +507,7 @@ body.auth-viewport-scrollable #root {
     height: 18px;
     min-width: 18px;
     min-height: 18px;
-    margin-top: 2px;
+    margin-top: 0;
     border-radius: 6px;
     border: 1.5px solid var(--glass-border);
     background: var(--glass-1);
@@ -567,7 +569,8 @@ body.auth-viewport-scrollable #root {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: -2px 0 4px;
+  margin: 4px 0 6px;
+  min-height: 24px;
   flex-wrap: wrap;
 
   .auth-forgot-link {

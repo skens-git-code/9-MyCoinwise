@@ -149,7 +149,7 @@ const computeRollover = async (budget, presuppliedExpenses = null) => {
       is_deleted: { $ne: true },
       date: { $gte: budget.period_start, $lte: budget.period_end },
     })
-      .select('date amount category')
+      .select('date amount category budget_category budget_id')
       .lean();
   } else {
     const start = new Date(budget.period_start).getTime();
@@ -164,14 +164,31 @@ const computeRollover = async (budget, presuppliedExpenses = null) => {
   const subcatSet = Array.isArray(budget.categories) && budget.categories.length > 0
     ? new Set(budget.categories.map((c) => String(c.name || '').trim().toLowerCase()))
     : null;
+  const budgetIdStr = String(budget._id || budget.id || '');
 
   // ── Compute leftover within budget scope and store it as the new rollover ──
   const totalSpent = expenses.reduce((sum, exp) => {
-    const key = String(exp.category || '').trim().toLowerCase();
+    // If explicitly marked as 'none' or 'unlinked', this expense does NOT deduct from any budget
+    const linkCategory = exp.budget_category ? String(exp.budget_category).trim() : null;
+    const linkCategoryKey = linkCategory ? linkCategory.toLowerCase() : null;
+    if (linkCategoryKey === 'none' || linkCategoryKey === 'unlinked') return sum;
+
+    // If directly linked to a specific budget ID:
+    const txBudgetIdStr = exp.budget_id ? String(exp.budget_id) : null;
+    if (txBudgetIdStr) {
+      if (txBudgetIdStr === budgetIdStr) return sum + (Number(exp.amount) || 0);
+      return sum;
+    }
+
+    // Effective category for budget assignment:
+    const effectiveCategory = linkCategoryKey && linkCategoryKey !== 'auto'
+      ? linkCategoryKey
+      : String(exp.category || '').trim().toLowerCase();
+
     if (targetCategoryKey) {
-      if (key !== targetCategoryKey) return sum;
+      if (effectiveCategory !== targetCategoryKey) return sum;
     } else if (subcatSet) {
-      if (!subcatSet.has(key)) return sum;
+      if (!subcatSet.has(effectiveCategory)) return sum;
     }
     return sum + (Number(exp.amount) || 0);
   }, 0);
@@ -192,6 +209,7 @@ const getBudgetProgress = (budget, expenses) => {
   const subcatSet = Array.isArray(budget.categories) && budget.categories.length > 0
     ? new Set(budget.categories.map((c) => String(c.name || '').trim().toLowerCase()))
     : null;
+  const budgetIdStr = String(budget._id || budget.id || '');
 
   // ── Aggregate spend per category and overall ──
   const categorySpent = new Map();
@@ -200,14 +218,34 @@ const getBudgetProgress = (budget, expenses) => {
   for (const expense of expenses) {
     const time = new Date(expense.date).getTime();
     if (time < start || time > end) continue;
+
+    // If explicitly marked as 'none' or 'unlinked', this expense does NOT deduct from any budget
+    const linkCategory = expense.budget_category ? String(expense.budget_category).trim() : null;
+    const linkCategoryKey = linkCategory ? linkCategory.toLowerCase() : null;
+    if (linkCategoryKey === 'none' || linkCategoryKey === 'unlinked') continue;
+
     const amount = Number(expense.amount) || 0;
-    const key = String(expense.category || '').trim().toLowerCase();
-    categorySpent.set(key, (categorySpent.get(key) || 0) + amount);
+
+    // If directly linked to a specific budget ID:
+    const txBudgetIdStr = expense.budget_id ? String(expense.budget_id) : null;
+    if (txBudgetIdStr) {
+      if (txBudgetIdStr === budgetIdStr) {
+        totalSpent += amount;
+      }
+      continue;
+    }
+
+    // Effective category for budget assignment:
+    const effectiveCategory = linkCategoryKey && linkCategoryKey !== 'auto'
+      ? linkCategoryKey
+      : String(expense.category || '').trim().toLowerCase();
+
+    categorySpent.set(effectiveCategory, (categorySpent.get(effectiveCategory) || 0) + amount);
 
     if (targetCategoryKey) {
-      if (key === targetCategoryKey) totalSpent += amount;
+      if (effectiveCategory === targetCategoryKey) totalSpent += amount;
     } else if (subcatSet) {
-      if (subcatSet.has(key)) totalSpent += amount;
+      if (!subcatSet.has(effectiveCategory)) totalSpent += amount;
     } else {
       totalSpent += amount;
     }
@@ -256,7 +294,7 @@ const loadProgressData = async (userId, budgets) => {
     is_deleted: { $ne: true },
     date: { $gte: new Date(minStart), $lte: new Date(maxEnd) },
   })
-    .select('date amount category')
+    .select('date amount category budget_category budget_id')
     .lean();
 };
 
@@ -397,17 +435,17 @@ router.post('/', async (req, res) => {
     // ── Reject overlapping active budgets with the same category or name ──
     if (active) {
       const trimmedCategory = category ? String(category).trim().slice(0, 80) : null;
-      const scopeFilter = trimmedCategory
-        ? { category: trimmedCategory }
-        : { $or: [{ category: null }, { category: { $exists: false } }, { category: '' }] };
+      const overlapConditions = [
+        { name: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+      ];
+      if (trimmedCategory) {
+        overlapConditions.push({ category: trimmedCategory });
+      }
 
       const overlap = await Budget.findOne({
         user_id: req.userId,
         is_active: true,
-        $or: [
-          scopeFilter,
-          { name: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
-        ],
+        $or: overlapConditions,
         period_start: { $lte: periodEnd },
         period_end: { $gte: periodStart },
       })
@@ -415,8 +453,11 @@ router.post('/', async (req, res) => {
         .lean();
 
       if (overlap) {
+        const isSameName = String(overlap.name).toLowerCase() === trimmedName.toLowerCase();
         return res.status(409).json({
-          error: `An active budget "${overlap.name}" already covers this ${trimmedCategory ? `category (${trimmedCategory})` : 'period'}.`,
+          error: isSameName
+            ? `An active budget "${overlap.name}" already covers this period.`
+            : `An active budget "${overlap.name}" already covers this category (${trimmedCategory}).`,
         });
       }
     }
@@ -525,35 +566,54 @@ router.put('/:id', async (req, res) => {
       budget.total_limit = limitNum;
     }
 
-    // ── Update period (rejects overlap with other active budgets) ──
-    if (period_start !== undefined || period_end !== undefined) {
-      const nextStart = period_start === undefined
-        ? budget.period_start
-        : parseDateBoundary(period_start);
-      const nextEnd = period_end === undefined
-        ? budget.period_end
-        : parseDateBoundary(period_end, true);
+    // ── Update period ──
+    const nextStart = period_start === undefined
+      ? budget.period_start
+      : parseDateBoundary(period_start);
+    const nextEnd = period_end === undefined
+      ? budget.period_end
+      : parseDateBoundary(period_end, true);
 
+    if (period_start !== undefined || period_end !== undefined) {
       if (!nextStart || !nextEnd || nextEnd < nextStart) {
         return res.status(400).json({ error: 'Budget period dates are invalid.' });
+      }
+      budget.period_start = nextStart;
+      budget.period_end = nextEnd;
+    }
+
+    const nextActive = is_active !== undefined ? parseBoolean(is_active) : budget.is_active;
+    const nextName = name !== undefined ? String(name).trim() : budget.name;
+    const nextCategory = category !== undefined
+      ? (category ? String(category).trim().slice(0, 80) : null)
+      : budget.category;
+
+    // Check overlap if active and any defining fields (dates, name, category, or active status) are being modified
+    if (nextActive && (period_start !== undefined || period_end !== undefined || name !== undefined || category !== undefined || is_active !== undefined)) {
+      const overlapConditions = [
+        { name: { $regex: new RegExp(`^${nextName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+      ];
+      if (nextCategory) {
+        overlapConditions.push({ category: nextCategory });
       }
 
       const overlap = await Budget.findOne({
         _id: { $ne: budget._id },
         user_id: req.userId,
         is_active: true,
+        $or: overlapConditions,
         period_start: { $lte: nextEnd },
         period_end: { $gte: nextStart },
-      }).select('_id').lean();
+      }).select('_id name category').lean();
 
       if (overlap) {
+        const isSameName = String(overlap.name).toLowerCase() === nextName.toLowerCase();
         return res.status(409).json({
-          error: 'Another active budget overlaps with this period.',
+          error: isSameName
+            ? `Another active budget "${overlap.name}" already covers this period.`
+            : `Another active budget "${overlap.name}" already covers this category (${nextCategory}).`,
         });
       }
-
-      budget.period_start = nextStart;
-      budget.period_end = nextEnd;
     }
 
     // ── Update rollover toggle; clear amount when disabled ──

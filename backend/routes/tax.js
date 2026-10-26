@@ -198,12 +198,26 @@ const getRuleSet = async (profile) => {
     ) || builtInRules.find((r) => r.jurisdiction === profile.jurisdiction);
 
     if (baseline) {
+      const yearDiff = fiscalYear - Number(baseline.fiscal_year || 2024);
+      const shiftDate = (d) => {
+        if (!d) return d;
+        const copy = new Date(d);
+        copy.setFullYear(copy.getFullYear() + yearDiff);
+        return copy;
+      };
+
       const adaptedKey = `${profile.jurisdiction.toUpperCase()}-${fiscalYear}-${(profile.tax_regime || baseline.regime).toUpperCase()}`;
       const adapted = {
         ...baseline,
         rule_key: adaptedKey,
         fiscal_year: fiscalYear,
         regime: profile.tax_regime || baseline.regime,
+        advance_tax_dates: Array.isArray(baseline.advance_tax_dates)
+          ? baseline.advance_tax_dates.map(shiftDate)
+          : [],
+        advance_tax_schedule: Array.isArray(baseline.advance_tax_schedule)
+          ? baseline.advance_tax_schedule.map((item) => ({ ...item, date: shiftDate(item.date) }))
+          : [],
       };
       try {
         await TaxRuleSet.updateOne(

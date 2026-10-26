@@ -115,9 +115,8 @@ const getDefaultDatesForType = (type) => {
   if (type === 'weekly') {
     const day = now.getDay();
     const diffToMonday = now.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(now.setDate(diffToMonday));
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
+    const monday = new Date(now.getFullYear(), now.getMonth(), diffToMonday);
+    const sunday = new Date(now.getFullYear(), now.getMonth(), diffToMonday + 6);
     return {
       start: formatToLocalDateString(monday),
       end: formatToLocalDateString(sunday),
@@ -231,10 +230,8 @@ const ActionIconButton = React.memo(({
 }) => {
   const isDangerVariant = variant === 'danger';
   return (
-    <motion.button
+    <button
       type="button"
-      whileHover={{ scale: isDisabled ? 1 : 1.1 }}
-      whileTap={{ scale: isDisabled ? 1 : 0.95 }}
       onClick={onClick}
       disabled={isDisabled}
       aria-label={accessibilityLabel}
@@ -250,12 +247,12 @@ const ActionIconButton = React.memo(({
         alignItems: 'center',
         justifyContent: 'center',
         opacity: isDisabled ? 0.4 : 1,
-        transition: 'color 0.15s ease, background 0.15s ease',
+        transition: 'color 0.15s ease, background 0.15s ease, opacity 0.15s ease',
       }}
       className="budget-action-btn"
     >
       {children}
-    </motion.button>
+    </button>
   );
 });
 
@@ -362,10 +359,16 @@ export default function Budgets() {
       if (timestamp == null) continue;
       
       const amount = Number(tx.displayAmount ?? tx.amount);
+      const linkCategory = tx.budget_category ? String(tx.budget_category).trim() : null;
+      const linkCategoryKey = linkCategory ? linkCategory.toLowerCase() : null;
+      const budgetId = tx.budget_id ? String(tx.budget_id) : null;
+
       processedExpenses.push({
         timestamp,
         amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
         normalizedCategory: (tx.category || '').trim().toLowerCase(),
+        linkCategoryKey,
+        budgetId,
       });
     }
     
@@ -386,16 +389,34 @@ export default function Budgets() {
       const subcatSet = Array.isArray(budget.categories) && budget.categories.length > 0
         ? new Set(budget.categories.map((c) => (typeof c === 'string' ? c : c?.name || '').trim().toLowerCase()).filter(Boolean))
         : null;
+      const budgetIdStr = String(budget._id || budget.id || '');
       let clientCalculatedSpent = 0;
 
       if (isPeriodValid) {
         for (const tx of normalizedExpenses) {
           if (tx.timestamp < periodStartMs) continue;
           if (tx.timestamp > periodEndMs) break;
+
+          // If explicitly unlinked, exclude from all budgets
+          if (tx.linkCategoryKey === 'none' || tx.linkCategoryKey === 'unlinked') continue;
+
+          // If directly linked to a specific budget ID
+          if (tx.budgetId) {
+            if (tx.budgetId === budgetIdStr) {
+              clientCalculatedSpent += tx.amount;
+            }
+            continue;
+          }
+
+          // Effective category for budget assignment
+          const effectiveCat = tx.linkCategoryKey && tx.linkCategoryKey !== 'auto'
+            ? tx.linkCategoryKey
+            : tx.normalizedCategory;
+
           if (targetCategoryKey) {
-            if (tx.normalizedCategory !== targetCategoryKey) continue;
+            if (effectiveCat !== targetCategoryKey) continue;
           } else if (subcatSet && subcatSet.size > 0) {
-            if (!subcatSet.has(tx.normalizedCategory)) continue;
+            if (!subcatSet.has(effectiveCat)) continue;
           }
           clientCalculatedSpent += tx.amount;
         }
@@ -403,7 +424,9 @@ export default function Budgets() {
 
       const serverSpent = Number(budget.spent);
       const finalSpentAmount = isPeriodValid
-        ? clientCalculatedSpent
+        ? (clientCalculatedSpent === 0 && normalizedExpenses.length === 0 && Number.isFinite(serverSpent)
+            ? serverSpent
+            : clientCalculatedSpent)
         : (Number.isFinite(serverSpent) ? serverSpent : 0);
 
       const baseLimitValue = Number(budget.total_limit) || 0;
@@ -424,7 +447,7 @@ export default function Budgets() {
         remaining: remainingBalance,
         progress: usagePercentage,
         isPeriodValid,
-        assignedColor: selectBudgetColor(extractBudgetId(budget) ?? budget.name, index),
+        assignedColor: budget.color || selectBudgetColor(extractBudgetId(budget) ?? budget.name, index),
       };
     });
   }, [budgets, normalizedExpenses]);
@@ -512,14 +535,25 @@ export default function Budgets() {
 
   const handleAddPreset = useCallback((presetVal) => {
     const current = parseFloat(formLimit) || 0;
-    setFormLimit(String(current + presetVal));
+    const next = Math.round((current + presetVal) * 100) / 100;
+    setFormLimit(String(next));
     clearFormError();
   }, [formLimit, clearFormError]);
 
   const handleAmountChange = useCallback((e) => {
-    const clean = e.target.value.replace(/,/g, '.');
-    if (clean === '' || /^\d*\.?\d{0,2}$/.test(clean)) {
-      setFormLimit(clean);
+    let raw = e.target.value;
+    if (raw.includes(',') && raw.includes('.')) {
+      raw = raw.replace(/,/g, '');
+    } else if (raw.includes(',')) {
+      const parts = raw.split(',');
+      if (parts.length === 2 && parts[1].length <= 2) {
+        raw = raw.replace(',', '.');
+      } else {
+        raw = raw.replace(/,/g, '');
+      }
+    }
+    if (raw === '' || /^\d*\.?\d{0,2}$/.test(raw)) {
+      setFormLimit(raw);
       clearFormError();
     }
   }, [clearFormError]);
@@ -567,13 +601,34 @@ export default function Budgets() {
       return { isValid: false, errorMessage: `Name must be ${MAX_TITLE_LENGTH} characters or fewer.` };
     }
 
+    if (!formStartDate || !formEndDate) {
+      return { isValid: false, errorMessage: 'Start and end dates are required.' };
+    }
+    const parsedStart = parseLocalDateObject(formStartDate);
+    const parsedEnd = parseLocalDateObject(formEndDate);
+    
+    if (!parsedStart) return { isValid: false, errorMessage: 'Start date is invalid.' };
+    if (!parsedEnd) return { isValid: false, errorMessage: 'End date is invalid.' };
+    if (parsedStart > parsedEnd) return { isValid: false, errorMessage: 'Start date cannot be after end date.' };
+
     const currentEditingId = extractBudgetId(budgetToEdit);
-    const nameExists = budgets.some(
-      (existingBudget) =>
-        String(existingBudget.name || '').toLowerCase() === trimmedName.toLowerCase() &&
-        extractBudgetId(existingBudget) !== currentEditingId
-    );
-    if (nameExists) return { isValid: false, errorMessage: 'A budget with that name already exists.' };
+    const formStartMs = getStartOfDayTimestamp(formStartDate);
+    const formEndMs = getEndOfDayTimestamp(formEndDate);
+
+    const conflictingBudget = budgets.find((existingBudget) => {
+      if (extractBudgetId(existingBudget) === currentEditingId) return false;
+      if (existingBudget.is_active === false || !isBudgetActive) return false;
+      if (String(existingBudget.name || '').trim().toLowerCase() !== trimmedName.toLowerCase()) return false;
+      
+      const exStart = getStartOfDayTimestamp(existingBudget.period_start);
+      const exEnd = getEndOfDayTimestamp(existingBudget.period_end);
+      if (exStart == null || exEnd == null) return false;
+      return exStart <= formEndMs && exEnd >= formStartMs;
+    });
+
+    if (conflictingBudget) {
+      return { isValid: false, errorMessage: 'An active budget with that name already exists for an overlapping time period.' };
+    }
 
     if (!VALID_DECIMAL_REGEX.test(String(formLimit))) {
       return { isValid: false, errorMessage: 'Limit must be a positive number with at most two decimal places.' };
@@ -585,16 +640,6 @@ export default function Budgets() {
     if (numericLimit > MAX_FINANCIAL_LIMIT) {
       return { isValid: false, errorMessage: `Limit cannot exceed ${MAX_FINANCIAL_LIMIT}.` };
     }
-
-    if (!formStartDate || !formEndDate) {
-      return { isValid: false, errorMessage: 'Start and end dates are required.' };
-    }
-    const parsedStart = parseLocalDateObject(formStartDate);
-    const parsedEnd = parseLocalDateObject(formEndDate);
-    
-    if (!parsedStart) return { isValid: false, errorMessage: 'Start date is invalid.' };
-    if (!parsedEnd) return { isValid: false, errorMessage: 'End date is invalid.' };
-    if (parsedStart > parsedEnd) return { isValid: false, errorMessage: 'Start date cannot be after end date.' };
 
     return {
       isValid: true,
@@ -610,8 +655,16 @@ export default function Budgets() {
       },
     };
   }, [
-    formName, budgets, budgetToEdit, formLimit, formStartDate, formEndDate,
-    formType, formCategory, isRolloverEnabled, isBudgetActive,
+    formName,
+    formStartDate,
+    formEndDate,
+    budgetToEdit,
+    isBudgetActive,
+    budgets,
+    formLimit,
+    formType,
+    formCategory,
+    isRolloverEnabled,
   ]);
 
   const handleFormSubmission = useCallback(async (event) => {
@@ -703,7 +756,7 @@ export default function Budgets() {
    * ————————————————————————————————————————————
    */
   return (
-    <div className="budget-page" style={{ maxWidth: 1400, margin: '0 auto', padding: 'clamp(1rem, 2.5vw, 2rem)' }}>
+    <div className="budget-page">
       {/* ===================== Header ===================== */}
       <header className="island-header glass-sm" style={{ marginBottom: '1.25rem' }}>
         <div className="ih-left">
@@ -1111,25 +1164,20 @@ export default function Budgets() {
        * MODAL: CREATE / EDIT BUDGET (BEST-IN-CLASS FORM)
        * ————————————————————————————————————————————
        */}
-      <AnimatePresence>
-        {isCreateModalOpen && (
-          <Modal
-            isOpen={isCreateModalOpen}
-            title={budgetToEdit ? 'Edit Budget' : 'Create Budget'}
-            onClose={() => {
-              if (isSubmittingForm) return;
-              setIsCreateModalOpen(false);
-              resetFormFields();
-            }}
-          >
-            <form
-              onSubmit={handleFormSubmission}
-              className="budget-form"
-              noValidate
-              onFocusCapture={() => {
-                if (typeof window !== 'undefined' && window.scrollY !== 0) window.scrollTo(0, 0);
-              }}
-            >
+      <Modal
+        isOpen={isCreateModalOpen}
+        title={budgetToEdit ? 'Edit Budget' : 'Create Budget'}
+        onClose={() => {
+          if (isSubmittingForm) return;
+          setIsCreateModalOpen(false);
+          resetFormFields();
+        }}
+      >
+        <form
+          onSubmit={handleFormSubmission}
+          className="budget-form"
+          noValidate
+        >
               <div className="modal-form-scrollable">
                 {/* ── Error Banner ── */}
                 <AnimatePresence>
@@ -1479,54 +1527,48 @@ export default function Budgets() {
               </div>
             </form>
           </Modal>
-        )}
-      </AnimatePresence>
 
       {/* 
        * ————————————————————————————————————————————
        * MODAL: CONFIRM DELETE
        * ————————————————————————————————————————————
        */}
-      <AnimatePresence>
-        {budgetToDelete && (
-          <Modal
-            isOpen={Boolean(budgetToDelete)}
-            title="Delete Budget"
-            onClose={() => { if (!isDeletingBudget) setBudgetToDelete(null); }}
-          >
-            <div style={{ padding: '0.75rem 0' }}>
-              <p style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                Are you sure you want to delete the budget{' '}
-                <strong>{budgetToDelete.name}</strong>?
-              </p>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem', lineHeight: 1.45 }}>
-                This action cannot be undone. Your recorded transactions will <strong>not</strong> be
-                deleted. You can also deactivate this budget instead of deleting it.
-              </p>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.75rem' }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  disabled={isDeletingBudget}
-                  onClick={() => setBudgetToDelete(null)}
-                  style={{ padding: '8px 16px', borderRadius: 10 }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  style={{ background: 'var(--danger-color, #ef4444)', padding: '8px 18px', borderRadius: 10 }}
-                  disabled={isDeletingBudget}
-                  onClick={confirmDeletion}
-                >
-                  {isDeletingBudget ? 'Deleting…' : 'Delete Budget'}
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
-      </AnimatePresence>
+      <Modal
+        isOpen={Boolean(budgetToDelete)}
+        title="Delete Budget"
+        onClose={() => { if (!isDeletingBudget) setBudgetToDelete(null); }}
+      >
+        <div style={{ padding: '0.75rem 0' }}>
+          <p style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+            Are you sure you want to delete the budget{' '}
+            <strong>{budgetToDelete?.name}</strong>?
+          </p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem', lineHeight: 1.45 }}>
+            This action cannot be undone. Your recorded transactions will <strong>not</strong> be
+            deleted. You can also deactivate this budget instead of deleting it.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.75rem' }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={isDeletingBudget}
+              onClick={() => setBudgetToDelete(null)}
+              style={{ padding: '8px 16px', borderRadius: 10 }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ background: 'var(--danger-color, #ef4444)', padding: '8px 18px', borderRadius: 10 }}
+              disabled={isDeletingBudget}
+              onClick={confirmDeletion}
+            >
+              {isDeletingBudget ? 'Deleting…' : 'Delete Budget'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

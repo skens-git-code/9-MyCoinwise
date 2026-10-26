@@ -438,14 +438,22 @@ router.post(
     const { device_type, browser, os } = LoginLog.parseUserAgent(ua);
 
     try {
-      const escapeRegExp = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const isEmail = rawIdentifier.includes('@');
+      let userQuery;
+      if (isEmail) {
+        userQuery = { email };
+      } else {
+        const escapeRegExp = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        userQuery = {
+          $or: [
+            { email },
+            { username: new RegExp(`^${escapeRegExp(rawIdentifier)}$`, 'i') },
+          ],
+        };
+      }
+
       // ── Load the user (password field is select: false by default) ──
-      const user = await User.findOne({
-        $or: [
-          { email },
-          { username: new RegExp(`^${escapeRegExp(rawIdentifier)}$`, 'i') },
-        ],
-      }).select('+password');
+      const user = await User.findOne(userQuery).select('+password');
 
       const loginEmail = user?.email || email;
 
@@ -546,16 +554,16 @@ router.post(
         });
       }
 
-      // ── Clear lock state and record the successful login ──
-      await user.resetLoginAttempts(ipAddr);
-
-      // ── Issue a session token ──
-      const token = await createSessionToken(user, req, {
-        rememberMe: req.body.rememberMe !== false,
-        browser,
-        os,
-        device_type,
-      });
+      // ── Clear lock state and issue session token concurrently to reduce DB roundtrips ──
+      const [token] = await Promise.all([
+        createSessionToken(user, req, {
+          rememberMe: req.body.rememberMe !== false,
+          browser,
+          os,
+          device_type,
+        }),
+        user.resetLoginAttempts(ipAddr),
+      ]);
 
       // ── Write audit log (non-blocking) ──
       LoginLog.create({

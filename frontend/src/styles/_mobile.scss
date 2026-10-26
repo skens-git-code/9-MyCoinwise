@@ -54,12 +54,18 @@
   .wealth-page-wrap,
   .calendar-page-content,
   .analytics-page-wrap,
-  .budget-page,
   .account-page,
   .tax-page,
   .settings-page,
   .reports-page-wrap {
     padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .budget-page {
+    padding: 12px 14px calc(115px + env(safe-area-inset-bottom, 24px)) 14px !important;
     margin: 0 !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
@@ -2030,7 +2036,6 @@
   .wealth-page-wrap,
   .calendar-page-content,
   .analytics-page-wrap,
-  .budget-page,
   .account-page,
   .tax-page,
   .settings-page {
@@ -2093,7 +2098,6 @@
   .wealth-page-wrap,
   .calendar-page-content,
   .analytics-page-wrap,
-  .budget-page,
   .account-page,
   .tax-page,
   .settings-page {

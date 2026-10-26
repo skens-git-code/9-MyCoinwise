@@ -390,18 +390,13 @@ a:focus:not(:focus-visible),
 }
 
 @keyframes float {
-
   0%,
   100% {
-    transform: translateY(0) rotate(0deg);
+    transform: translateY(0);
   }
 
-  33% {
-    transform: translateY(-7px) rotate(0.8deg);
-  }
-
-  66% {
-    transform: translateY(-3px) rotate(-0.8deg);
+  50% {
+    transform: translateY(-5px);
   }
 }
 
@@ -510,14 +505,13 @@ a:focus:not(:focus-visible),
 }
 
 @keyframes emptyBob {
-
   0%,
   100% {
-    transform: translateY(0) rotate(-2deg);
+    transform: translateY(0);
   }
 
   50% {
-    transform: translateY(-10px) rotate(2deg);
+    transform: translateY(-4px);
   }
 }
 

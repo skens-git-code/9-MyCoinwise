@@ -81,6 +81,26 @@ const transactionSchema = new mongoose.Schema({
     index: true
   },
 
+  // ── Budget Linkage ──
+  // Controls how this transaction is attributed to budgets:
+  // - null or 'auto': Automatically matches using transaction category
+  // - 'none': Do not count towards any budget
+  // - 'Wealth', 'Subscriptions', or custom category: Attributes to that budget category
+  budget_category: {
+    type: String,
+    default: null,
+    maxlength: 80,
+    trim: true,
+  },
+
+  // ── Direct link to a specific Budget ──
+  budget_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Budget',
+    default: null,
+    index: true,
+  },
+
   /* —————————————————————————————————————
    * Financial Details
    * ————————————————————————————————————— */

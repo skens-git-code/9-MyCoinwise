@@ -400,6 +400,7 @@ const validateTransactionPayload = (payload) => {
     account_id, is_recurring, recurrence_interval, recurrence_ends_at,
     is_split, split_details, transaction_number, currency,
     bank_name, sender_name, receiver_name,
+    budget_category, budget_id,
   } = payload;
 
   const numericAmount = parseTransactionAmount(amount);
@@ -456,6 +457,15 @@ const validateTransactionPayload = (payload) => {
   }
   if (receiver_name !== undefined) {
     parsed.receiver_name = receiver_name ? String(receiver_name).trim().slice(0, 150) : null;
+  }
+  if (budget_category !== undefined) {
+    parsed.budget_category = budget_category ? String(budget_category).trim().slice(0, 80) : null;
+  }
+  if (budget_id !== undefined) {
+    if (budget_id && !mongoose.isValidObjectId(budget_id)) {
+      return { error: 'Budget ID is invalid.' };
+    }
+    parsed.budget_id = budget_id || null;
   }
   if (is_recurring !== undefined) parsed.is_recurring = Boolean(is_recurring);
   if (recurrence_interval !== undefined) {
@@ -1261,6 +1271,8 @@ router.post('/', async (req, res) => {
       payment_method: validation.payment_method,
       transaction_number: generatedTxNumber,
       account_id: validation.account_id || null,
+      budget_category: validation.budget_category !== undefined ? validation.budget_category : (req.body.budget_category ? String(req.body.budget_category).trim().slice(0, 80) : null),
+      budget_id: validation.budget_id || null,
       is_recurring: validation.is_recurring,
       recurrence_interval: validation.recurrence_interval,
       recurrence_ends_at: validation.recurrence_ends_at,
@@ -1380,6 +1392,8 @@ router.put('/:id', async (req, res) => {
     if (validation.recurrence_ends_at !== undefined) t.recurrence_ends_at = validation.recurrence_ends_at;
     if (validation.is_split !== undefined) t.is_split = validation.is_split;
     if (validation.split_details !== undefined) t.split_details = validation.split_details;
+    if (validation.budget_category !== undefined) t.budget_category = validation.budget_category;
+    if (validation.budget_id !== undefined) t.budget_id = validation.budget_id;
 
     // Defensive: legacy documents may not have audit_logs yet.
     if (!Array.isArray(t.audit_logs)) t.audit_logs = [];

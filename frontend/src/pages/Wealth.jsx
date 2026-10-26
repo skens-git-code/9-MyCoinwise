@@ -1157,9 +1157,9 @@ export default function Wealth() {
         {/* ── Net worth trajectory ── */}
         <motion.div className="glass bento-tile" style={{ padding: 20 }}>
           <h3 className="heading-accent" style={{ fontSize: '0.95rem', marginBottom: 12 }}>{tr('net_worth_trajectory', 'Net Worth Trajectory')}</h3>
-          <div style={{ height: 220 }}>
+          <div style={{ height: 220, minHeight: 220 }}>
             {historyData.length > 1 ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200} debounce={50} initialDimension={{ width: 320, height: 240 }}>
                 <AreaChart data={historyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="nwGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1185,9 +1185,9 @@ export default function Wealth() {
         {/* ── Asset allocation pie ── */}
         <motion.div className="glass bento-tile" style={{ padding: 20 }}>
           <h3 className="heading-accent" style={{ fontSize: '0.95rem', marginBottom: 12 }}>{tr('asset_allocation', 'Asset Allocation')}</h3>
-          <div style={{ height: 220, position: 'relative' }}>
+          <div style={{ height: 220, minHeight: 220, position: 'relative' }}>
             {metrics.assetAllocationData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200} debounce={50} initialDimension={{ width: 320, height: 240 }}>
                 <PieChart>
                   <Pie isAnimationActive={!prefersReducedMotion} data={metrics.assetAllocationData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
                     {metrics.assetAllocationData.map((e, idx) => (

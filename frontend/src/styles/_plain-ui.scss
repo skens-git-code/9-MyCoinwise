@@ -620,6 +620,23 @@ a,
 }
 
 /* ── Budget page spacing ────────────────────────────────────── */
+.budget-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: clamp(1rem, 2.5vw, 2rem);
+  box-sizing: border-box;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.budget-action-btn {
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease !important;
+
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08) !important;
+  }
+}
+
 .budget-page > header {
   gap: 16px;
   margin-bottom: 28px !important;
@@ -737,6 +754,7 @@ a,
 
   .budget-page .budgets-grid {
     gap: 16px;
+    grid-template-columns: 1fr;
   }
 
   .inbox-list-pane .il-filters {

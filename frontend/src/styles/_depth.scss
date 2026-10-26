@@ -326,7 +326,7 @@
 }
 
 .stat-card:hover .stat-icon {
-  transform: translateZ(50px) rotate(-6deg) scale(1.06) !important;
+  transform: translateZ(28px) !important;
 }
 
 /* ── 5. Buttons — Strict 8px Border Radius System & Flex Alignment ─── */
@@ -463,7 +463,7 @@
   transition: transform 0.22s var(--d3-ease), background 0.22s ease !important;
 
   &:hover {
-    transform: translateZ(12px) translateY(-2px) !important;
+    transform: translateY(-1px) !important;
   }
 
   &.active {

@@ -33,7 +33,7 @@ import {
   Download, Upload, Copy, CheckSquare, Square,
   FileSpreadsheet, FileCode, CheckCircle2, ChevronDown,
   Layers, RefreshCw, Undo2, AlertTriangle, Loader2, Tag,
-  Calendar, DollarSign, Keyboard, Receipt, Share2, Landmark, User, Lock,
+  Calendar, DollarSign, Keyboard, Receipt, Share2, Landmark, User, Lock, Target,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
@@ -562,7 +562,24 @@ export default function Transactions() {
 
           {/* ── Category, date, snippet ── */}
           <div className="ili-info">
-            <p className="ili-cat">{highlight(tx.category || '', deferredSearchTerm)}</p>
+            <p className="ili-cat">
+              {highlight(tx.category || '', deferredSearchTerm)}
+              {tx.budget_category && tx.budget_category !== 'auto' && (
+                <span
+                  style={{
+                    marginLeft: 6,
+                    fontSize: '0.70rem',
+                    padding: '1px 6px',
+                    borderRadius: 4,
+                    background: tx.budget_category === 'none' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(var(--brand-primary-rgb), 0.12)',
+                    color: tx.budget_category === 'none' ? 'var(--danger-color, #ef4444)' : 'var(--brand-primary)',
+                    fontWeight: 600,
+                  }}
+                >
+                  {tx.budget_category === 'none' ? 'No Budget' : `Budget: ${tx.budget_category}`}
+                </span>
+              )}
+            </p>
             <p className="ili-date">
               {new Date(tx.date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })}
               {tx.bank_name && <span className="ili-note-snip" style={{ color: 'var(--brand-primary)', fontWeight: 600 }}> · {highlight(tx.bank_name, deferredSearchTerm)}</span>}
@@ -1631,7 +1648,24 @@ export default function Transactions() {
 
                       {/* ── Category, date, snippet ── */}
                       <div className="ili-info">
-                        <p className="ili-cat">{highlight(tx.category || '', deferredSearchTerm)}</p>
+                        <p className="ili-cat">
+                          {highlight(tx.category || '', deferredSearchTerm)}
+                          {tx.budget_category && tx.budget_category !== 'auto' && (
+                            <span
+                              style={{
+                                marginLeft: 6,
+                                fontSize: '0.70rem',
+                                padding: '1px 6px',
+                                borderRadius: 4,
+                                background: tx.budget_category === 'none' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(var(--brand-primary-rgb), 0.12)',
+                                color: tx.budget_category === 'none' ? 'var(--danger-color, #ef4444)' : 'var(--brand-primary)',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {tx.budget_category === 'none' ? 'No Budget' : `Budget: ${tx.budget_category}`}
+                            </span>
+                          )}
+                        </p>
                         <p className="ili-date">
                           {new Date(tx.date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })}
                           {tx.bank_name && <span className="ili-note-snip" style={{ color: 'var(--brand-primary)', fontWeight: 600 }}> · {highlight(tx.bank_name, deferredSearchTerm)}</span>}
@@ -1753,6 +1787,25 @@ export default function Transactions() {
                       <span className="ttr-label">{tr('category', 'Category')}</span>
                       <span className="ttr-val">{tx.category || tr('uncategorized', 'Uncategorized')}</span>
                     </div>
+
+                    {/* Budget Link */}
+                    {tx.type === 'expense' && (
+                      <div className="tx-ticket-row">
+                        <span className="ttr-label"><Target size={12} aria-hidden /> {tr('budget_link', 'Budget Link')}</span>
+                        <span
+                          className="ttr-val bold"
+                          style={{
+                            color: tx.budget_category === 'none' ? 'var(--text-muted)' : 'var(--brand-primary)',
+                          }}
+                        >
+                          {tx.budget_category === 'none'
+                            ? tr('unlinked', 'None (Unlinked)')
+                            : (tx.budget_category && tx.budget_category !== 'auto'
+                                ? tx.budget_category
+                                : `${tx.category || 'General'} (Auto)`)}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Merchant */}
                     {tx.merchant && (

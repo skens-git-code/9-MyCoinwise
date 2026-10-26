@@ -460,8 +460,8 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
                     <motion.button
                       className="icon-btn"
                       onClick={handleRefresh}
-                      whileHover={{ rotate: 180, scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
                       disabled={loading}
                       style={{ opacity: loading ? 0.5 : 1 }}
                       aria-label="Refresh rates"
@@ -471,7 +471,8 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
                     <motion.button
                       className="icon-btn"
                       onClick={onClose}
-                      whileHover={{ rotate: 90, scale: 1.1 }}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
                       aria-label="Close"
                     >
                       <X size={18} />
@@ -539,8 +540,8 @@ export default function CurrencyConverter({ isOpen = true, onClose, initialFrom 
 
                   <motion.button
                     onClick={handleSwap}
-                    whileHover={{ rotate: 180, scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     style={{
                       width: 40,
                       height: 40,

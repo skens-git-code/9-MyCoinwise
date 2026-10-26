@@ -649,7 +649,7 @@ export default function Register() {
           <div className="auth-logo" style={{ margin: 0 }}>
             <motion.div
               className="auth-logo-icon"
-              whileHover={{ rotate: 12, scale: 1.06 }}
+              whileHover={{ scale: 1.05 }}
               transition={{ type: 'spring', stiffness: 300 }}
               aria-hidden="true"
             >

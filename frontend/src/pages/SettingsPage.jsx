@@ -1439,7 +1439,7 @@ const EmailChangeSection = ({ user, showMessage, logout, t }) => {
 /* ============================================================
  * Profile tab
  * ============================================================ */
-const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMessage, logout, requestReAuth, handleSave, saving }) => {
+const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMessage, logout, _requestReAuth, handleSave, saving }) => {
   // ── File input + emoji tray visibility ──
   const fileInputRef = useRef(null);
   const [showEmojiTray, setShowEmojiTray] = useState(false);
