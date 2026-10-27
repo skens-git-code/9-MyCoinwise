@@ -991,6 +991,7 @@ const processTabularRows = ({
   defaultBank = null,
   merchantCategories = new Map(),
   preferredFormat = 'DMY',
+  accountId = null,
 }) => {
   if (rows.length < 2) {
     throw new Error('Statement must contain a header row and at least one transaction row.');
@@ -1137,6 +1138,7 @@ const processTabularRows = ({
       .createHash('sha256')
       .update(
         [
+          accountId || '',
           date,
           isIncome ? 'income' : 'expense',
           amount.toFixed(2),
@@ -1182,6 +1184,7 @@ const parseStatement = async ({
   userTransactions = [],
   password = null,
   dateFormat = null,
+  accountId = null,
 }) => {
   let buffer = null;
   const isBase64 = typeof fileData === 'string' && fileData.trim() !== '';
@@ -1234,17 +1237,20 @@ const parseStatement = async ({
     if (merchant && tx.category && !merchantCategories.has(merchant)) {
       merchantCategories.set(merchant, tx.category);
     }
-    if (tx.import_fingerprint) existingFingerprints.add(tx.import_fingerprint);
-    const day = toIsoDay(tx.date, preferredFormat) || '';
-    if (day && tx.amount) {
-      existingKeys.add(
-        [
-          day,
-          tx.type,
-          Number(tx.amount || 0).toFixed(2),
-          merchant,
-        ].join('|')
-      );
+    const matchesAccount = !accountId || !tx.account_id || String(tx.account_id) === String(accountId);
+    if (matchesAccount) {
+      if (tx.import_fingerprint) existingFingerprints.add(tx.import_fingerprint);
+      const day = toIsoDay(tx.date, preferredFormat) || '';
+      if (day && tx.amount) {
+        existingKeys.add(
+          [
+            day,
+            tx.type,
+            Number(tx.amount || 0).toFixed(2),
+            merchant,
+          ].join('|')
+        );
+      }
     }
   }
 
@@ -1279,6 +1285,7 @@ const parseStatement = async ({
         .createHash('sha256')
         .update(
           [
+            accountId || '',
             tx.date,
             tx.type,
             tx.amount.toFixed(2),
@@ -1316,6 +1323,7 @@ const parseStatement = async ({
       defaultBank,
       merchantCategories,
       preferredFormat,
+      accountId,
     });
   } else {
     detectedFormat = 'CSV';
@@ -1326,6 +1334,7 @@ const parseStatement = async ({
       defaultBank,
       merchantCategories,
       preferredFormat,
+      accountId,
     });
   }
 

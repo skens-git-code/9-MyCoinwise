@@ -19,7 +19,7 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useState, useEffect, useCallback, useMemo, useRef,
+  useState, useEffect, useCallback, useMemo, useRef, useId,
 } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FixedSizeList } from '../components/FixedSizeList';
@@ -33,13 +33,19 @@ import {
   Briefcase, AlertOctagon, Sparkles, RefreshCw, Plus, X, Trash2,
   Edit3, ShieldAlert, Calculator, DollarSign, Download, FileText,
   Search, ArrowUpDown, Undo2, Copy, Keyboard, TrendingUp, TrendingDown,
-  Loader2, Filter, ChevronDown, CheckCircle2,
+  Loader2, Filter, ChevronDown, CheckCircle2, Sliders, Target, RotateCcw,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
 import { api } from '../services/api';
 import { rafThrottle } from '../utils/performanceOptimizer';
+import {
+  convertCurrency,
+  readCachedRatesToInr,
+  getFallbackRatesToInr,
+  resolveCurrency,
+} from '../utils/currencyRates';
 
 /* ============================================================
  * Constants
@@ -136,8 +142,32 @@ const getId = (item) => {
   return id == null ? '' : String(id);
 };
 
+// ── Clean and parse number input with support for Indian (1,00,000) and European (1.234,56) formatting ──
+const cleanNumberInput = (raw) => {
+  let val = String(raw || '').trim();
+  if (!val) return '';
+  // Indian or standard comma thousands separators: e.g. 1,00,000 or 100,000.50
+  if (/^\d{1,3}(,\d{2,3})+(\.\d+)?$/.test(val)) {
+    return val.replace(/,/g, '');
+  }
+  // European format: 1.234,56
+  if (/^\d{1,3}(\.\d{3})+,\d+$/.test(val)) {
+    return val.replace(/\./g, '').replace(',', '.');
+  }
+  // Single comma used as decimal separator: 100,50
+  if (/^\d+,\d+$/.test(val)) {
+    return val.replace(',', '.');
+  }
+  return val.replace(/,/g, '');
+};
+
 // ── True when the item is not soft-deleted and not sold ──
-const isLiveItem = (item) => item && typeof item === 'object' && item.is_deleted !== true && !item.sold_at;
+const isLiveItem = (item) =>
+  item &&
+  typeof item === 'object' &&
+  item.is_deleted !== true &&
+  item.is_deleted !== 'true' &&
+  !item.sold_at;
 
 // ── Normalize history payloads into { month, netWorth } rows ──
 const formatHistoryData = (rawData) => {
@@ -156,13 +186,33 @@ const formatHistoryData = (rawData) => {
  * Main Component
  * ============================================================ */
 export default function Wealth() {
-  // ── App context: formatter, auth token, i18n, theme, logout ──
-  const { token, theme } = useAppState();
+  // ── App context: formatter, auth token, i18n, theme, logout, user, currency ──
+  const { token, theme, user, currency: userCurrency, currencyInfo } = useAppState();
   const { fmt, t, logout } = useAppActions();
   const { showToast } = useToast();
 
+  const [fxRatesToInr] = useState(() => readCachedRatesToInr() || getFallbackRatesToInr());
+  const activeCurrency = resolveCurrency(userCurrency || user?.currency || 'INR');
+
+  const uniqueId = useId().replace(/:/g, '');
+  const nwGradId = `nwGrad-${uniqueId}`;
+
   // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
+
+  // ── Convert an item's current/base valuation to active display currency ──
+  const getItemDisplayValue = useCallback((item) => {
+    const rawVal = safeNumber(item?.current_value ?? item?.base_value, 0);
+    const itemCurrency = resolveCurrency(item?.currency || user?.currency || activeCurrency || 'INR');
+    return convertCurrency(rawVal, itemCurrency, activeCurrency, fxRatesToInr) ?? rawVal;
+  }, [user?.currency, activeCurrency, fxRatesToInr]);
+
+  // ── Convert an item's acquisition cost basis to active display currency ──
+  const getItemCostBasis = useCallback((item) => {
+    const rawVal = safeNumber(item?.base_value, 0);
+    const itemCurrency = resolveCurrency(item?.currency || user?.currency || activeCurrency || 'INR');
+    return convertCurrency(rawVal, itemCurrency, activeCurrency, fxRatesToInr) ?? rawVal;
+  }, [user?.currency, activeCurrency, fxRatesToInr]);
 
   const [systemDark, setSystemDark] = useState(() => {
     if (typeof window !== 'undefined' && window.matchMedia) {
@@ -191,6 +241,9 @@ export default function Wealth() {
     const themes = new Set(['amoled', 'dark', 'midnight', 'black']);
     return themes.has(norm);
   }, [theme, systemDark]);
+
+  // ── Stable timestamp for holding period calculations ──
+  const [nowTimestamp] = useState(() => Date.now());
 
   /* ---------------- Data State ---------------- */
 
@@ -277,6 +330,19 @@ export default function Wealth() {
   const [classFilter, setClassFilter] = useState('all');
   const [sortBy, setSortBy] = useState('value_desc');
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportDropdownRef = useRef(null);
+
+  // ── Close export dropdown on outside click ──
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const handleOutsideClick = (e) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [showExportMenu]);
 
 
   /* ---------------- Debt Simulator State ---------------- */
@@ -286,6 +352,61 @@ export default function Wealth() {
   const [extraPayment, setExtraPayment] = useState(2000);
   const [monthlyBasePayment, setMonthlyBasePayment] = useState(5000);
 
+  /* ---------------- Scenario Simulator State ("What If") ---------------- */
+  const [marketShockPct, setMarketShockPct] = useState(0);
+  const [fxShiftPct, setFxShiftPct] = useState(0);
+  const [simMonthlySip, setSimMonthlySip] = useState(0);
+  const [simSipYears, setSimSipYears] = useState(5);
+  const [simZeroDebt, setSimZeroDebt] = useState(false);
+  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
+
+  const handleResetScenario = useCallback(() => {
+    setMarketShockPct(0);
+    setFxShiftPct(0);
+    setSimMonthlySip(0);
+    setSimSipYears(5);
+    setSimZeroDebt(false);
+  }, []);
+
+  /* ---------------- Target Allocation & Drift State ---------------- */
+  const [allocationView, setAllocationView] = useState('chart'); // 'chart' | 'drift'
+  const [isEditingTargets, setIsEditingTargets] = useState(false);
+  const [targetAllocation, setTargetAllocation] = useState(() => {
+    try {
+      const saved = localStorage.getItem('mycoinwise_target_allocation');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null) return parsed;
+      }
+    } catch {
+      // ignore JSON parse error and fallback
+    }
+    return { liquid_asset: 40, illiquid_asset: 30, business_equity: 15, retirement: 15 };
+  });
+
+  const handleUpdateTarget = useCallback((cls, raw) => {
+    const val = Math.max(0, Math.min(100, safeNumber(raw, 0)));
+    setTargetAllocation((prev) => {
+      const updated = { ...prev, [cls]: val };
+      try {
+        localStorage.setItem('mycoinwise_target_allocation', JSON.stringify(updated));
+      } catch {
+        // ignore storage error
+      }
+      return updated;
+    });
+  }, []);
+
+  const handleResetTargets = useCallback(() => {
+    const defaults = { liquid_asset: 40, illiquid_asset: 30, business_equity: 15, retirement: 15 };
+    setTargetAllocation(defaults);
+    try {
+      localStorage.setItem('mycoinwise_target_allocation', JSON.stringify(defaults));
+    } catch {
+      // ignore storage error
+    }
+  }, []);
+
   /* ---------------- Undo State ---------------- */
 
   // ── Undo toast + auto-dismiss timer ──
@@ -294,14 +415,19 @@ export default function Wealth() {
 
   /* ---------------- Refs ---------------- */
 
-  // ── AI throttle refs + search input ref ──
+  // ── AI throttle refs + search input ref + mounted ref ──
   const aiTriggerKey = useRef('');
   const aiCooldown = useRef(0);
   const searchRef = useRef(null);
+  const isMountedRef = useRef(true);
 
-  // ── Clear pending undo timer on unmount ──
-  useEffect(() => () => {
-    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+  // ── Track mounted state and clear pending undo timer on unmount ──
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    };
   }, []);
 
   /* ============================================================
@@ -337,9 +463,12 @@ export default function Wealth() {
           : Promise.reject(new Error('getWealthItems missing')),
         api.getWealthHistory ? api.getWealthHistory().catch(() => []) : Promise.resolve([]),
       ]);
-      setWealthItems(Array.isArray(itemsRes) ? itemsRes : (itemsRes?.data || []));
-      setHistoryData(formatHistoryData(Array.isArray(histRes) ? histRes : (histRes?.data || [])));
+      if (isMountedRef.current) {
+        setWealthItems(Array.isArray(itemsRes) ? itemsRes : (itemsRes?.data || []));
+        setHistoryData(formatHistoryData(Array.isArray(histRes) ? histRes : (histRes?.data || [])));
+      }
     } catch (err) {
+      if (!isMountedRef.current) return;
       const status = err?.response?.status;
       if (status === 401) {
         setFetchError(tr('session_expired', 'Session expired. Please log in again.'));
@@ -350,7 +479,9 @@ export default function Wealth() {
         showToast('error', tr('fetch_failed', 'Failed to load portfolio.'));
       }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [token, showToast, tr, logout]);
 
@@ -379,6 +510,7 @@ export default function Wealth() {
   const metrics = useMemo(() => {
     let totalAssets = 0;
     let totalLiabilities = 0;
+    let totalCostBasis = 0;
     let liquid = 0;
     let physical = 0;
     const toxic = [];
@@ -386,7 +518,7 @@ export default function Wealth() {
     const classTotals = {};
 
     for (const item of liveItems) {
-      const val = safeNumber(item.current_value ?? item.base_value, 0);
+      const val = getItemDisplayValue(item);
       const absVal = Math.abs(val);
       if (item.asset_class === 'liability') {
         totalLiabilities += absVal;
@@ -395,6 +527,7 @@ export default function Wealth() {
         if (safeNumber(item.interest_rate, 0) > 12) toxic.push(debt);
       } else {
         totalAssets += val;
+        totalCostBasis += getItemCostBasis(item);
         classTotals[item.asset_class] = (classTotals[item.asset_class] || 0) + val;
         if (item.asset_class === 'liquid_asset') liquid += val;
         if (item.asset_class === 'illiquid_asset') physical += val;
@@ -410,20 +543,123 @@ export default function Wealth() {
       }));
 
     const dta = totalAssets > 0 ? totalLiabilities / totalAssets : 0;
+    const totalUnrealizedGain = totalAssets - totalCostBasis;
+    const totalReturnPct = totalCostBasis > 0 ? (totalUnrealizedGain / totalCostBasis) * 100 : 0;
 
     return {
       totalAssets,
       totalLiabilities,
+      totalCostBasis,
+      totalUnrealizedGain,
+      totalReturnPct,
       netWorth: totalAssets - totalLiabilities,
       liquidAssets: liquid,
       physicalAssets: physical,
+      classTotals,
       assetAllocationData: allocation,
       liabilitiesList: liabList,
       toxicDebts: toxic,
       hasHighInterestDebts: toxic.length > 0,
       debtToAssetRatio: dta,
     };
-  }, [liveItems]);
+  }, [liveItems, getItemDisplayValue, getItemCostBasis]);
+
+  /* ---------------- Scenario Simulator Math ("What If") ---------------- */
+  const scenarioResults = useMemo(() => {
+    let simAssets = 0;
+    let simLiabilities = 0;
+
+    for (const item of liveItems) {
+      const val = getItemDisplayValue(item);
+      const absVal = Math.abs(val);
+      if (item.asset_class === 'liability') {
+        if (!simZeroDebt) {
+          simLiabilities += absVal;
+        }
+      } else {
+        let adjVal = val;
+        // Market shock affects liquid assets & business equity
+        if (item.asset_class === 'liquid_asset' || item.asset_class === 'business_equity') {
+          adjVal *= (1 + marketShockPct / 100);
+        }
+        // FX shift affects foreign currency items
+        const itemCurrency = resolveCurrency(item?.currency || user?.currency || activeCurrency || 'INR');
+        if (itemCurrency !== activeCurrency) {
+          adjVal *= (1 + fxShiftPct / 100);
+        }
+        simAssets += Math.max(0, adjVal);
+      }
+    }
+
+    // Future SIP compound value (historical ~8% CAGR compounded monthly)
+    const pmt = Math.max(0, safeNumber(simMonthlySip, 0));
+    const r = 0.08 / 12;
+    const n = Math.max(1, safeNumber(simSipYears, 5)) * 12;
+    const futureSipVal = pmt > 0 ? pmt * ((Math.pow(1 + r, n) - 1) / r) : 0;
+    const totalContributed = pmt * n;
+    const sipInterestEarned = Math.max(0, futureSipVal - totalContributed);
+
+    simAssets += futureSipVal;
+    const simNetWorth = simAssets - simLiabilities;
+    const currentNetWorth = metrics.netWorth;
+    const delta = simNetWorth - currentNetWorth;
+    const deltaPct = currentNetWorth !== 0 ? (delta / Math.abs(currentNetWorth)) * 100 : 0;
+    const hasActiveScenario = marketShockPct !== 0 || fxShiftPct !== 0 || simMonthlySip > 0 || simZeroDebt;
+
+    return {
+      simAssets,
+      simLiabilities,
+      simNetWorth,
+      delta,
+      deltaPct,
+      futureSipVal,
+      totalContributed,
+      sipInterestEarned,
+      hasActiveScenario,
+    };
+  }, [
+    liveItems, getItemDisplayValue, simZeroDebt, marketShockPct, fxShiftPct,
+    user?.currency, activeCurrency, simMonthlySip, simSipYears, metrics.netWorth,
+  ]);
+
+  /* ---------------- Target Allocation & Drift Math ---------------- */
+  const allocationDriftData = useMemo(() => {
+    const totalAssets = metrics.totalAssets;
+    const classes = ['liquid_asset', 'illiquid_asset', 'business_equity', 'retirement'];
+
+    return classes.map((cls) => {
+      const actualVal = metrics.classTotals?.[cls] || 0;
+      const actualPct = totalAssets > 0 ? (actualVal / totalAssets) * 100 : 0;
+      const targetPct = safeNumber(targetAllocation?.[cls], 0);
+      const driftPct = actualPct - targetPct;
+      const targetVal = totalAssets > 0 ? (targetPct / 100) * totalAssets : 0;
+      const diffVal = actualVal - targetVal;
+
+      let action = tr('balanced', 'Balanced (—)');
+      let actionType = 'neutral';
+      if (driftPct > 0.5) {
+        action = `${tr('trim', 'Trim')} ${fmt(diffVal)}`;
+        actionType = 'trim';
+      } else if (driftPct < -0.5) {
+        action = `${tr('allocate', 'Allocate')} ${fmt(Math.abs(diffVal))}`;
+        actionType = 'buy';
+      }
+
+      return {
+        cls,
+        name: CLASS_SHORT[cls] || cls,
+        fullName: CLASS_LABELS[cls] || cls,
+        color: CLASS_COLORS[cls] || '#64748b',
+        actualVal,
+        actualPct,
+        targetPct,
+        driftPct,
+        diffVal,
+        action,
+        actionType,
+      };
+    });
+  }, [metrics.totalAssets, metrics.classTotals, targetAllocation, fmt, tr]);
 
   // ── Color for the net worth hero (positive/negative) ──
   const nwColor = metrics.netWorth >= 0 ? 'var(--brand-primary)' : 'var(--danger)';
@@ -444,11 +680,13 @@ export default function Wealth() {
     }
 
     const copy = [...list];
-    const value = (i) => safeNumber(i.current_value ?? i.base_value, 0);
+    const value = (i) => getItemDisplayValue(i);
+    const CLASS_ORDER = { liquid_asset: 0, illiquid_asset: 1, business_equity: 2, retirement: 3, liability: 4 };
+
     switch (sortBy) {
       case 'value_asc': copy.sort((a, b) => value(a) - value(b)); break;
       case 'name_asc': copy.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))); break;
-      case 'class_asc': copy.sort((a, b) => String(a.asset_class || '').localeCompare(String(b.asset_class || ''))); break;
+      case 'class_asc': copy.sort((a, b) => (CLASS_ORDER[a.asset_class] ?? 99) - (CLASS_ORDER[b.asset_class] ?? 99)); break;
       case 'newest': copy.sort((a, b) => {
         const ta = parseLocalDate(a.acquisition_date)?.getTime() || 0;
         const tb = parseLocalDate(b.acquisition_date)?.getTime() || 0;
@@ -463,7 +701,7 @@ export default function Wealth() {
       default: copy.sort((a, b) => value(b) - value(a));
     }
     return copy;
-  }, [liveItems, classFilter, search, sortBy]);
+  }, [liveItems, classFilter, search, sortBy, getItemDisplayValue]);
 
   // ── Derived AI strategy string ──
   const displayedAiInsight = useMemo(() => {
@@ -492,16 +730,21 @@ export default function Wealth() {
     const now = Date.now();
     if (newKey === aiTriggerKey.current && now - aiCooldown.current < 30000) return undefined;
 
+    // Set synchronously to prevent burst races
+    aiTriggerKey.current = newKey;
+    aiCooldown.current = now;
+
     let cancelled = false;
     const timeoutId = setTimeout(async () => {
-      aiTriggerKey.current = newKey;
-      aiCooldown.current = Date.now();
       setIsAiLoading(true);
       try {
-        const insight = await api.getWealthAiInsights
+        const resData = api.getWealthAiInsights
           ? await api.getWealthAiInsights(payload)
           : null;
-        if (!cancelled) setAiInsight(insight || tr('ai_default', 'Portfolio strategy active.'));
+        const insightText =
+          (typeof resData === 'string' ? resData : resData?.insight) ||
+          tr('ai_default', 'Portfolio strategy active.');
+        if (!cancelled) setAiInsight(insightText);
       } catch {
         if (!cancelled) {
           setAiInsight(tr(
@@ -522,7 +765,8 @@ export default function Wealth() {
 
   /* ============================================================
    * Debt Payoff Simulator
-   * Enforces a payment that covers monthly interest.
+   * Accurately simulates payoff with user's chosen payment without
+   * artificially overriding inputs, and surfaces low payment alerts.
    * ============================================================ */
   const debtPayoff = useMemo(() => {
     const list = metrics.liabilitiesList;
@@ -535,16 +779,19 @@ export default function Wealth() {
     const monthlyRate = annualRate / 12;
     const monthlyInterestAtStart = principal * monthlyRate;
 
-    // Enforce a minimum payment that exceeds interest
-    const minRequired = monthlyInterestAtStart + Math.max(principal * 0.005, 50);
-    const basePay = Math.max(monthlyBasePayment, minRequired);
-    const acceleratedPay = basePay + Math.max(0, safeNumber(extraPayment, 0));
+    // The user's actual base payment
+    const userBasePay = safeNumber(monthlyBasePayment, 0);
+    const baseCoversInterest = userBasePay > monthlyInterestAtStart;
 
-    // If base payment doesn't cover interest, warn
-    const baseCoversInterest = basePay > monthlyInterestAtStart;
-
-    // ── Month-by-month simulation with a hard cap ──
+    // ── Month-by-month simulation with safety cap ──
     const simulate = (payment) => {
+      if (payment <= monthlyInterestAtStart) {
+        return {
+          months: MAX_DEBT_MONTHS,
+          interest: principal * monthlyRate * MAX_DEBT_MONTHS,
+          payoffReached: false,
+        };
+      }
       let balance = principal;
       let months = 0;
       let interest = 0;
@@ -557,6 +804,9 @@ export default function Wealth() {
       return { months, interest, payoffReached: balance <= 0 };
     };
 
+    const basePay = userBasePay;
+    const acceleratedPay = basePay + Math.max(0, safeNumber(extraPayment, 0));
+
     const base = simulate(basePay);
     const acc = simulate(acceleratedPay);
 
@@ -564,6 +814,7 @@ export default function Wealth() {
       debt,
       debtName: debt.name,
       principal,
+      monthlyInterestAtStart,
       monthsBase: base.months,
       monthsAcc: acc.months,
       totalInterestBase: base.interest,
@@ -572,6 +823,7 @@ export default function Wealth() {
       savedInterest: Math.max(0, base.interest - acc.interest),
       baseCoversInterest,
       baseReachedZero: base.payoffReached,
+      accReachedZero: acc.payoffReached,
     };
   }, [metrics.liabilitiesList, selectedDebtId, extraPayment, monthlyBasePayment]);
 
@@ -603,7 +855,7 @@ export default function Wealth() {
       symbol: item.symbol || '',
       quantity: item.quantity != null ? String(item.quantity) : '',
       interest_rate: item.interest_rate != null ? String(item.interest_rate) : '',
-      acquisition_date: toLocalDateKey(item.acquisition_date) || toLocalDateKey(new Date()),
+      acquisition_date: toLocalDateKey(item.acquisition_date) || '',
       note: item.note || '',
     });
     setFormError('');
@@ -621,8 +873,22 @@ export default function Wealth() {
     const item = filteredSortedItems[index];
     if (!item) return null;
     const id = getId(item);
-    const val = safeNumber(item.current_value ?? item.base_value, 0);
+    const val = getItemDisplayValue(item);
     const isLiability = item.asset_class === 'liability';
+    const costBasis = !isLiability ? getItemCostBasis(item) : 0;
+    const gain = !isLiability ? val - costBasis : 0;
+    const gainPct = costBasis > 0 ? (gain / costBasis) * 100 : 0;
+    const isGain = gain >= 0;
+    const gainPrefix = isGain ? '+' : '';
+
+    let holdingBadge = null;
+    if (!isLiability && item.acquisition_date) {
+      const acq = parseLocalDate(item.acquisition_date);
+      if (acq) {
+        const diffYears = (nowTimestamp - acq.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+        holdingBadge = diffYears >= 1 ? tr('ltcg_badge', 'LTCG (>1y)') : tr('stcg_badge', 'STCG (<1y)');
+      }
+    }
 
     return (
       <div style={style}>
@@ -631,7 +897,7 @@ export default function Wealth() {
           role="listitem"
           style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '12px 0', borderBottom: '1px solid var(--glass-border)',
+            padding: '10px 0', borderBottom: '1px solid var(--glass-border)',
             flexWrap: 'wrap', gap: 8, height: '100%', boxSizing: 'border-box',
           }}
         >
@@ -654,6 +920,20 @@ export default function Wealth() {
                   {item.interest_rate}% {tr('interest', 'interest')}
                 </span>
               )}
+              {holdingBadge && (
+                <span
+                  className="badge"
+                  style={{
+                    background: holdingBadge.includes('LTCG') ? 'rgba(16,185,129,0.12)' : 'rgba(59,130,246,0.12)',
+                    color: holdingBadge.includes('LTCG') ? 'var(--brand-primary)' : '#3b82f6',
+                    fontSize: '0.68rem',
+                    fontWeight: 600,
+                    padding: '1px 6px',
+                  }}
+                >
+                  {holdingBadge}
+                </span>
+              )}
               {item.note && (
                 <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
                   · {item.note}
@@ -664,13 +944,41 @@ export default function Wealth() {
 
           {/* ── Value + actions column ── */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div
-              style={{
-                fontWeight: 800, fontSize: '1.05rem',
-                color: isLiability ? 'var(--danger)' : 'var(--brand-primary)',
-              }}
-            >
-              {isLiability ? '-' : ''}{fmt(val)}
+            <div style={{ textAlign: 'right' }}>
+              <div
+                style={{
+                  fontWeight: 800, fontSize: '1.05rem',
+                  color: isLiability ? 'var(--danger)' : 'var(--brand-primary)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {isLiability ? '-' : ''}{fmt(val)}
+              </div>
+              {!isLiability && costBasis > 0 && (
+                <div
+                  style={{
+                    fontSize: '0.72rem',
+                    fontVariantNumeric: 'tabular-nums',
+                    marginTop: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: 6,
+                  }}
+                >
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    {tr('basis', 'Cost')}: {fmt(costBasis)}
+                  </span>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      color: isGain ? 'var(--brand-primary)' : 'var(--danger)',
+                    }}
+                  >
+                    {gainPrefix}{fmt(gain)} ({gainPrefix}{gainPct.toFixed(1)}%)
+                  </span>
+                </div>
+              )}
             </div>
             {/* ── Edit ── */}
             <button
@@ -696,7 +1004,7 @@ export default function Wealth() {
         </div>
       </div>
     );
-  }, [filteredSortedItems, fmt, tr, openEdit]);
+  }, [filteredSortedItems, fmt, tr, openEdit, getItemDisplayValue, getItemCostBasis, nowTimestamp]);
 
 
   // ── Clear the form error when the user edits any field ──
@@ -728,7 +1036,7 @@ export default function Wealth() {
     if (formData.quantity) {
       const q = parseFloat(formData.quantity);
       if (!Number.isFinite(q) || q < 0) {
-        setFormError(tr('quantity_invalid', 'Quantity must be a positive number.')); return;
+        setFormError(tr('quantity_invalid', 'Quantity must be zero or more.')); return;
       }
     }
 
@@ -756,6 +1064,9 @@ export default function Wealth() {
         if (!id) {
           setFormError(tr('invalid_item', 'Invalid item reference.'));
           return;
+        }
+        if (editingItem.current_value_override != null) {
+          payload.current_value_override = editingItem.current_value_override;
         }
         await api.updateWealthItem(id, payload);
         showToast('success', tr('item_updated', 'Entry updated successfully'));
@@ -813,14 +1124,13 @@ export default function Wealth() {
     setIsDeleting(true);
     try {
       await api.deleteWealthItem(getId(item));
-      setItemToDelete(null);
-      await fetchWealthData();
-      showToast('success', tr('item_deleted', 'Entry deleted'));
 
+      // Arm undo before awaiting refetch so that undo is preserved even if network hiccups
       const snapshot = {
         name: item.name,
         asset_class: item.asset_class,
         base_value: item.base_value,
+        current_value_override: item.current_value_override ?? (item.current_value !== item.base_value ? item.current_value : undefined),
         symbol: item.symbol,
         quantity: item.quantity,
         interest_rate: item.interest_rate,
@@ -830,6 +1140,10 @@ export default function Wealth() {
       armUndo(tr('item_deleted', 'Entry deleted'), async () => {
         await api.createWealthItem(snapshot);
       });
+
+      setItemToDelete(null);
+      showToast('success', tr('item_deleted', 'Entry deleted'));
+      await fetchWealthData();
     } catch (err) {
       showToast('error', err?.response?.data?.error || tr('delete_failed', 'Failed to delete entry.'));
     } finally {
@@ -867,7 +1181,7 @@ export default function Wealth() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       showToast('success', tr('exported_json', 'Portfolio exported as JSON.'));
       setShowExportMenu(false);
     } catch (err) {
@@ -888,15 +1202,15 @@ export default function Wealth() {
       const { exportToPDF } = await import('../services/pdfExport');
       if (typeof exportToPDF === 'function') {
         await exportToPDF(
-          { name: 'Wealth Portfolio' },
+          user || { username: 'Wealth Portfolio', name: 'Wealth Portfolio' },
           liveItems.map((i) => ({
             date: i.acquisition_date,
             category: CLASS_SHORT[i.asset_class] || i.asset_class,
             type: i.asset_class === 'liability' ? 'expense' : 'income',
-            amount: safeNumber(i.current_value ?? i.base_value, 0),
+            amount: getItemDisplayValue(i),
             note: i.name,
           })),
-          null,
+          currencyInfo || null,
         );
         showToast('success', tr('exported_pdf', 'PDF generated.'));
       } else {
@@ -908,7 +1222,7 @@ export default function Wealth() {
     } finally {
       setIsExportingPDF(false);
     }
-  }, [liveItems, isExportingPDF, showToast, tr]);
+  }, [liveItems, isExportingPDF, showToast, tr, user, currencyInfo, getItemDisplayValue]);
 
   // ── Copy a plain-text portfolio summary to the clipboard ──
   const copyPortfolioSummary = useCallback(async () => {
@@ -916,10 +1230,12 @@ export default function Wealth() {
       `${tr('net_worth', 'Net Worth')}: ${fmt(metrics.netWorth)}`,
       `${tr('assets', 'Assets')}: ${fmt(metrics.totalAssets)}`,
       `${tr('liabilities', 'Liabilities')}: ${fmt(metrics.totalLiabilities)}`,
+      `${tr('unrealized_pnl', 'Unrealized P&L')}: ${metrics.totalUnrealizedGain >= 0 ? '+' : ''}${fmt(metrics.totalUnrealizedGain)} (${metrics.totalReturnPct >= 0 ? '+' : ''}${metrics.totalReturnPct.toFixed(1)}%)`,
       `${tr('debt_to_asset', 'Debt-to-Asset')}: ${(metrics.debtToAssetRatio * 100).toFixed(1)}%`,
       `${tr('items_count', 'Items')}: ${liveItems.length}`,
     ].join('\n');
     try {
+      setShowExportMenu(false);
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(summary);
         showToast('success', tr('copied', 'Copied to clipboard'));
@@ -952,13 +1268,13 @@ export default function Wealth() {
       } else if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         openAdd();
-      } else if (e.key === 'Escape' && search) {
-        setSearch('');
+      } else if (e.key === 'Escape' && (searchInput || search)) {
+        handleClearSearch();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [openAdd, search]);
+  }, [openAdd, searchInput, search, handleClearSearch]);
 
   /* ============================================================
    * Loading State
@@ -1008,7 +1324,7 @@ export default function Wealth() {
           </button>
 
           {/* ── Export dropdown ── */}
-          <div className="dropdown-container" style={{ position: 'relative' }}>
+          <div ref={exportDropdownRef} className="dropdown-container" style={{ position: 'relative' }}>
             <button
               type="button"
               className="btn-secondary"
@@ -1094,7 +1410,7 @@ export default function Wealth() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         role="region"
-        aria-label={`${tr('net_worth', 'Total Net Worth')}: ${fmt(metrics.netWorth)}`}
+        aria-label={`${tr('net_worth', 'Total Net Worth')}: ${fmt(metrics.netWorth)}, ${tr('unrealized_pnl', 'Unrealized P&L')}: ${metrics.totalUnrealizedGain >= 0 ? '+' : ''}${fmt(metrics.totalUnrealizedGain)}`}
         aria-live="polite"
       >
         <h3 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 2, fontSize: '0.8rem', marginBottom: 8 }}>
@@ -1103,8 +1419,8 @@ export default function Wealth() {
         <div style={{ fontSize: 'clamp(2.4rem, 5vw, 3.4rem)', fontWeight: 900, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: nwColor }}>
           {fmt(metrics.netWorth)}
         </div>
-        {/* ── Sub-stats: assets, liabilities, debt-to-asset ── */}
-        <div className="wealth-substats" style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 32, flexWrap: 'wrap' }}>
+        {/* ── Sub-stats: assets, liabilities, unrealized P&L, debt-to-asset ── */}
+        <div className="wealth-substats" style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 28, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>{tr('assets', 'Assets')}</div>
             <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--brand-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1115,6 +1431,22 @@ export default function Wealth() {
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>{tr('liabilities', 'Liabilities')}</div>
             <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <TrendingDown size={14} aria-hidden /> -{fmt(metrics.totalLiabilities)}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>{tr('unrealized_pnl', 'Unrealized P&L')}</div>
+            <div
+              style={{
+                fontWeight: 700,
+                fontVariantNumeric: 'tabular-nums',
+                color: metrics.totalUnrealizedGain >= 0 ? 'var(--brand-primary)' : 'var(--danger)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              {metrics.totalUnrealizedGain >= 0 ? <TrendingUp size={14} aria-hidden /> : <TrendingDown size={14} aria-hidden />}
+              {metrics.totalUnrealizedGain >= 0 ? '+' : ''}{fmt(metrics.totalUnrealizedGain)} ({metrics.totalReturnPct >= 0 ? '+' : ''}{metrics.totalReturnPct.toFixed(1)}%)
             </div>
           </div>
           <div>
@@ -1175,7 +1507,7 @@ export default function Wealth() {
               <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200} debounce={50} initialDimension={{ width: 320, height: 240 }}>
                 <AreaChart data={historyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="nwGrad" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id={nwGradId} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#10b981" stopOpacity={0.7} />
                       <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
                     </linearGradient>
@@ -1184,7 +1516,7 @@ export default function Wealth() {
                   <XAxis dataKey="month" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} tickFormatter={(v) => fmt(v)} />
                   <Tooltip contentStyle={{ background: 'var(--surface-1)', borderRadius: 10 }} formatter={(v) => fmt(v)} />
-                  <Area isAnimationActive={!prefersReducedMotion} type="monotone" dataKey="netWorth" stroke="#10b981" fill="url(#nwGrad)" strokeWidth={2} name={tr('net_worth', 'Net Worth')} />
+                  <Area isAnimationActive={!prefersReducedMotion} type="monotone" dataKey="netWorth" stroke="#10b981" fill={`url(#${nwGradId})`} strokeWidth={2} name={tr('net_worth', 'Net Worth')} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -1195,30 +1527,380 @@ export default function Wealth() {
           </div>
         </motion.div>
 
-        {/* ── Asset allocation pie ── */}
+        {/* ── Asset allocation pie & target drift ── */}
         <motion.div className="glass bento-tile" style={{ padding: 20 }}>
-          <h3 className="heading-accent" style={{ fontSize: '0.95rem', marginBottom: 12 }}>{tr('asset_allocation', 'Asset Allocation')}</h3>
-          <div style={{ height: 220, minHeight: 220, position: 'relative' }}>
-            {metrics.assetAllocationData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200} debounce={50} initialDimension={{ width: 320, height: 240 }}>
-                <PieChart>
-                  <Pie isAnimationActive={!prefersReducedMotion} data={metrics.assetAllocationData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
-                    {metrics.assetAllocationData.map((e, idx) => (
-                      <Cell key={`cell-${e.name}-${idx}`} fill={e.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: 'var(--surface-1)', borderRadius: 10 }} formatter={(v) => fmt(v)} />
-                  <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex-center" style={{ height: '100%', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                {tr('no_assets', 'No assets logged yet.')}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <h3 className="heading-accent" style={{ fontSize: '0.95rem', margin: 0 }}>
+              {allocationView === 'chart' ? tr('asset_allocation', 'Asset Allocation') : tr('target_allocation_drift', 'Target Allocation & Drift')}
+            </h3>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <div style={{ display: 'inline-flex', background: 'var(--glass-2)', borderRadius: 8, padding: 2 }}>
+                <button
+                  type="button"
+                  onClick={() => setAllocationView('chart')}
+                  style={{
+                    padding: '3px 8px', fontSize: '0.72rem', border: 'none', borderRadius: 6, cursor: 'pointer',
+                    background: allocationView === 'chart' ? 'var(--brand-primary)' : 'transparent',
+                    color: allocationView === 'chart' ? '#fff' : 'var(--text-secondary)',
+                    fontWeight: 600,
+                  }}
+                  title={tr('pie_view', 'Pie View')}
+                >
+                  {tr('chart', 'Chart')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAllocationView('drift')}
+                  style={{
+                    padding: '3px 8px', fontSize: '0.72rem', border: 'none', borderRadius: 6, cursor: 'pointer',
+                    background: allocationView === 'drift' ? 'var(--brand-primary)' : 'transparent',
+                    color: allocationView === 'drift' ? '#fff' : 'var(--text-secondary)',
+                    fontWeight: 600,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                  title={tr('drift_view', 'Target & Drift')}
+                >
+                  <Target size={12} aria-hidden />
+                  {tr('drift', 'Drift')}
+                </button>
               </div>
-            )}
+
+              {allocationView === 'drift' && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingTargets((prev) => !prev)}
+                  className="btn-secondary"
+                  style={{ padding: '3px 8px', fontSize: '0.7rem', height: 'auto', borderRadius: 6 }}
+                  title={tr('configure_targets', 'Configure Targets')}
+                >
+                  {isEditingTargets ? tr('done', 'Done') : tr('targets_btn', 'Targets')}
+                </button>
+              )}
+            </div>
           </div>
+
+          {allocationView === 'chart' ? (
+            <div style={{ height: 220, minHeight: 220, position: 'relative' }}>
+              {metrics.assetAllocationData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200} debounce={50} initialDimension={{ width: 320, height: 240 }}>
+                  <PieChart>
+                    <Pie isAnimationActive={!prefersReducedMotion} data={metrics.assetAllocationData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
+                      {metrics.assetAllocationData.map((e, idx) => (
+                        <Cell key={`cell-${e.name}-${idx}`} fill={e.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: 'var(--surface-1)', borderRadius: 10 }} formatter={(v) => fmt(v)} />
+                    <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex-center" style={{ height: '100%', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  {tr('no_assets', 'No assets logged yet.')}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ minHeight: 220, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {isEditingTargets && (
+                <div style={{ padding: '8px 10px', background: 'var(--glass-2)', borderRadius: 8, fontSize: '0.75rem', marginBottom: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{tr('set_target_allocations', 'Target Allocations (%)')}</span>
+                      <span
+                        style={{
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          color: allocationDriftData.reduce((s, r) => s + r.targetPct, 0) === 100 ? 'var(--brand-primary)' : 'var(--warning)',
+                        }}
+                      >
+                        Total: {allocationDriftData.reduce((s, r) => s + r.targetPct, 0)}%
+                      </span>
+                    </div>
+                    <button type="button" onClick={handleResetTargets} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.7rem' }}>
+                      {tr('reset_defaults', 'Reset Defaults')}
+                    </button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 6 }}>
+                    {allocationDriftData.map((row) => (
+                      <div key={`target-input-${row.cls}`}>
+                        <label htmlFor={`target_input_${row.cls}`} style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 2 }}>{row.name}</label>
+                        <input
+                          id={`target_input_${row.cls}`}
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={targetAllocation[row.cls] ?? 0}
+                          onChange={(e) => handleUpdateTarget(row.cls, e.target.value)}
+                          style={{ width: '100%', padding: '2px 6px', fontSize: '0.75rem', borderRadius: 6 }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', fontSize: '0.74rem', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--glass-border)', textAlign: 'left' }}>
+                      <th style={{ padding: '4px 6px' }}>{tr('class', 'Class')}</th>
+                      <th style={{ padding: '4px 6px', textAlign: 'right' }}>{tr('actual', 'Actual')}</th>
+                      <th style={{ padding: '4px 6px', textAlign: 'right' }}>{tr('target', 'Target')}</th>
+                      <th style={{ padding: '4px 6px', textAlign: 'right' }}>{tr('drift', 'Drift')}</th>
+                      <th style={{ padding: '4px 6px', textAlign: 'right' }}>{tr('rebalance_action', 'Action')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allocationDriftData.map((row) => {
+                      const isOverweight = row.driftPct > 0.5;
+                      const isUnderweight = row.driftPct < -0.5;
+                      const driftColor = isOverweight ? 'var(--warning)' : isUnderweight ? '#3b82f6' : 'var(--text-muted)';
+                      return (
+                        <tr key={row.cls} style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                          <td style={{ padding: '5px 6px', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: row.color, display: 'inline-block' }} />
+                            {row.name}
+                          </td>
+                          <td style={{ padding: '5px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            {row.actualPct.toFixed(1)}%
+                          </td>
+                          <td style={{ padding: '5px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
+                            {row.targetPct.toFixed(0)}%
+                          </td>
+                          <td style={{ padding: '5px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: driftColor }}>
+                            {row.driftPct >= 0 ? `+${row.driftPct.toFixed(1)}%` : `${row.driftPct.toFixed(1)}%`}
+                          </td>
+                          <td style={{ padding: '5px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            <span
+                              style={{
+                                padding: '2px 6px',
+                                borderRadius: 4,
+                                fontSize: '0.68rem',
+                                fontWeight: 600,
+                                background: isOverweight ? 'rgba(245,158,11,0.1)' : isUnderweight ? 'rgba(59,130,246,0.1)' : 'transparent',
+                                color: isOverweight ? 'var(--warning)' : isUnderweight ? '#3b82f6' : 'var(--text-muted)',
+                              }}
+                            >
+                              {row.action}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </motion.div>
       </div>
+
+      {/* ===================== Scenario Simulator ("What-If") ===================== */}
+      <motion.div className="glass bento-tile" style={{ padding: 22, marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+          <h3 className="heading-accent" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.95rem', margin: 0 }}>
+            <Sliders size={18} style={{ color: 'var(--brand-primary)' }} aria-hidden />
+            {tr('scenario_simulator', 'Portfolio Scenario Simulator ("What-If")')}
+          </h3>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {scenarioResults.hasActiveScenario && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleResetScenario}
+                style={{ padding: '4px 10px', fontSize: '0.72rem', height: 'auto', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}
+                title={tr('reset_scenario', 'Reset scenario to current baseline')}
+              >
+                <RotateCcw size={12} aria-hidden /> {tr('reset', 'Reset')}
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setIsSimulatorOpen((prev) => !prev)}
+              style={{ padding: '4px 10px', fontSize: '0.72rem', height: 'auto', borderRadius: 6 }}
+            >
+              {isSimulatorOpen ? tr('collapse', 'Collapse') : tr('expand_simulator', 'Simulate Scenarios')}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Summary Comparison Bar (Always visible) ── */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 12,
+            padding: '12px 16px',
+            background: 'var(--glass-2)',
+            borderRadius: 10,
+            marginBottom: isSimulatorOpen ? 16 : 0,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{tr('baseline_net_worth', 'Current Net Worth')}</div>
+            <div style={{ fontWeight: 700, fontSize: '1.05rem', fontVariantNumeric: 'tabular-nums', color: nwColor }}>
+              {fmt(metrics.netWorth)}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{tr('projected_net_worth', 'Projected Net Worth')}</div>
+            <div
+              style={{
+                fontWeight: 800, fontSize: '1.05rem', fontVariantNumeric: 'tabular-nums',
+                color: scenarioResults.simNetWorth >= metrics.netWorth ? 'var(--brand-primary)' : 'var(--danger)',
+              }}
+            >
+              {fmt(scenarioResults.simNetWorth)}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{tr('scenario_variance', 'Variance / Impact')}</div>
+            <div
+              style={{
+                fontWeight: 800, fontSize: '1.05rem', fontVariantNumeric: 'tabular-nums',
+                color: scenarioResults.delta >= 0 ? 'var(--brand-primary)' : 'var(--danger)',
+                display: 'flex', alignItems: 'center', gap: 4,
+              }}
+            >
+              {scenarioResults.delta >= 0 ? <TrendingUp size={14} aria-hidden /> : <TrendingDown size={14} aria-hidden />}
+              {scenarioResults.delta >= 0 ? '+' : ''}{fmt(scenarioResults.delta)} ({scenarioResults.deltaPct >= 0 ? '+' : ''}{scenarioResults.deltaPct.toFixed(1)}%)
+            </div>
+          </div>
+        </div>
+
+        {/* ── Expanded Controls ── */}
+        <AnimatePresence>
+          {isSimulatorOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginTop: 16 }}>
+                {/* 1. Market Shock */}
+                <div style={{ padding: 12, background: 'var(--surface-1)', borderRadius: 10, border: '1px solid var(--glass-border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <label htmlFor="sim_market_shock" style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {tr('market_shock', 'Market Shock / Rally')}
+                    </label>
+                    <span
+                      style={{
+                        fontSize: '0.75rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                        color: marketShockPct > 0 ? 'var(--brand-primary)' : marketShockPct < 0 ? 'var(--danger)' : 'var(--text-muted)',
+                      }}
+                    >
+                      {marketShockPct > 0 ? `+${marketShockPct}%` : `${marketShockPct}%`}
+                    </span>
+                  </div>
+                  <input
+                    id="sim_market_shock"
+                    type="range"
+                    min="-50"
+                    max="50"
+                    step="5"
+                    value={marketShockPct}
+                    onChange={(e) => setMarketShockPct(Number(e.target.value))}
+                    style={{ width: '100%', accentColor: 'var(--brand-primary)' }}
+                  />
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                    {tr('market_shock_desc', 'Simulates equities & liquid assets price drop or rally.')}
+                  </div>
+                </div>
+
+                {/* 2. FX Shift */}
+                <div style={{ padding: 12, background: 'var(--surface-1)', borderRadius: 10, border: '1px solid var(--glass-border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <label htmlFor="sim_fx_shift" style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {tr('fx_shift', 'Foreign Currency Shift')}
+                    </label>
+                    <span
+                      style={{
+                        fontSize: '0.75rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                        color: fxShiftPct > 0 ? 'var(--brand-primary)' : fxShiftPct < 0 ? 'var(--danger)' : 'var(--text-muted)',
+                      }}
+                    >
+                      {fxShiftPct > 0 ? `+${fxShiftPct}%` : `${fxShiftPct}%`}
+                    </span>
+                  </div>
+                  <input
+                    id="sim_fx_shift"
+                    type="range"
+                    min="-20"
+                    max="20"
+                    step="2"
+                    value={fxShiftPct}
+                    onChange={(e) => setFxShiftPct(Number(e.target.value))}
+                    style={{ width: '100%', accentColor: '#3b82f6' }}
+                  />
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                    {tr('fx_shift_desc', 'Simulates exchange rate strengthening or devaluation.')}
+                  </div>
+                </div>
+
+                {/* 3. Monthly SIP Addition */}
+                <div style={{ padding: 12, background: 'var(--surface-1)', borderRadius: 10, border: '1px solid var(--glass-border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <label htmlFor="sim_sip_amount" style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {tr('systematic_investment', 'Monthly Investment')}
+                    </label>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--brand-primary)' }}>
+                      {fmt(simMonthlySip)} / mo
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      id="sim_sip_amount"
+                      type="number"
+                      min="0"
+                      step="1000"
+                      value={simMonthlySip}
+                      onChange={(e) => setSimMonthlySip(Math.max(0, safeNumber(e.target.value, 0)))}
+                      style={{ flex: 1, padding: '4px 8px', fontSize: '0.8rem', borderRadius: 6 }}
+                      placeholder="e.g. 10000"
+                    />
+                    <select
+                      id="sim_sip_years"
+                      value={simSipYears}
+                      onChange={(e) => setSimSipYears(Number(e.target.value))}
+                      style={{ padding: '4px 8px', fontSize: '0.8rem', borderRadius: 6 }}
+                      aria-label={tr('sim_sip_years_label', 'Investment Horizon')}
+                    >
+                      <option value="1">1 yr</option>
+                      <option value="3">3 yrs</option>
+                      <option value="5">5 yrs</option>
+                      <option value="10">10 yrs</option>
+                    </select>
+                  </div>
+                  {simMonthlySip > 0 && (
+                    <div style={{ fontSize: '0.7rem', color: 'var(--brand-primary)', marginTop: 4 }}>
+                      +{fmt(scenarioResults.futureSipVal)} in {simSipYears} yrs ({fmt(scenarioResults.sipInterestEarned)} interest @ 8% CAGR)
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Zero Debt Option */}
+                <div style={{ padding: 12, background: 'var(--surface-1)', borderRadius: 10, border: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={simZeroDebt}
+                      onChange={(e) => setSimZeroDebt(e.target.checked)}
+                      style={{ accentColor: 'var(--brand-primary)', width: 16, height: 16 }}
+                    />
+                    {tr('sim_zero_debt', '100% Debt-Free Simulation')}
+                  </label>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4, paddingLeft: 24 }}>
+                    {tr('sim_zero_debt_desc', 'Eliminates all outstanding liabilities to preview pure net asset value.')}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
 
       {/* ===================== Debt Payoff Simulator ===================== */}
       {metrics.liabilitiesList.length > 0 && debtPayoff && (
@@ -1301,6 +1983,22 @@ export default function Wealth() {
             </div>
           )}
 
+          {/* ── Unreachable 50-year payoff warning ── */}
+          {debtPayoff.baseCoversInterest && !debtPayoff.baseReachedZero && (
+            <div
+              role="alert"
+              style={{
+                padding: '10px 14px', borderRadius: 8, background: 'rgba(245,158,11,0.08)',
+                border: '1px solid rgba(245,158,11,0.3)', color: 'var(--warning)',
+                fontSize: '0.82rem', marginBottom: 14,
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <AlertOctagon size={16} aria-hidden />
+              {tr('payoff_unreachable', 'At this payment rate, the debt amortizes too slowly to be cleared within 50 years. Consider a higher monthly payment.')}
+            </div>
+          )}
+
           {/* ── Result summary ── */}
           <div
             className="glass"
@@ -1371,6 +2069,11 @@ export default function Wealth() {
               type="search"
               value={searchInput}
               onChange={handleSearchChange}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  handleClearSearch();
+                }
+              }}
               placeholder={tr('search_portfolio_placeholder', 'Search name, symbol, note…')}
               aria-label={tr('search_portfolio', 'Search portfolio')}
               style={{
@@ -1488,9 +2191,9 @@ export default function Wealth() {
           </div>
         ) : filteredSortedItems.length > 20 ? (
           <FixedSizeList
-            height={Math.min(filteredSortedItems.length * 68, 550)}
+            height={Math.min(filteredSortedItems.length * 76, 550)}
             itemCount={filteredSortedItems.length}
-            itemSize={68}
+            itemSize={76}
             width="100%"
           >
             {VirtualizedWealthRow}
@@ -1499,15 +2202,30 @@ export default function Wealth() {
           <div role="list">
             {filteredSortedItems.map((item) => {
               const id = getId(item);
-              const val = safeNumber(item.current_value ?? item.base_value, 0);
+              const val = getItemDisplayValue(item);
               const isLiability = item.asset_class === 'liability';
+              const costBasis = !isLiability ? getItemCostBasis(item) : 0;
+              const gain = !isLiability ? val - costBasis : 0;
+              const gainPct = costBasis > 0 ? (gain / costBasis) * 100 : 0;
+              const isGain = gain >= 0;
+              const gainPrefix = isGain ? '+' : '';
+
+              let holdingBadge = null;
+              if (!isLiability && item.acquisition_date) {
+                const acq = parseLocalDate(item.acquisition_date);
+                if (acq) {
+                  const diffYears = (nowTimestamp - acq.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+                  holdingBadge = diffYears >= 1 ? tr('ltcg_badge', 'LTCG (>1y)') : tr('stcg_badge', 'STCG (<1y)');
+                }
+              }
+
               return (
                 <div
                   key={id}
                   role="listitem"
                   style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '12px 0', borderBottom: '1px solid var(--glass-border)',
+                    padding: '10px 0', borderBottom: '1px solid var(--glass-border)',
                     flexWrap: 'wrap', gap: 8,
                   }}
                 >
@@ -1530,6 +2248,20 @@ export default function Wealth() {
                           {item.interest_rate}% {tr('interest', 'interest')}
                         </span>
                       )}
+                      {holdingBadge && (
+                        <span
+                          className="badge"
+                          style={{
+                            background: holdingBadge.includes('LTCG') ? 'rgba(16,185,129,0.12)' : 'rgba(59,130,246,0.12)',
+                            color: holdingBadge.includes('LTCG') ? 'var(--brand-primary)' : '#3b82f6',
+                            fontSize: '0.68rem',
+                            fontWeight: 600,
+                            padding: '1px 6px',
+                          }}
+                        >
+                          {holdingBadge}
+                        </span>
+                      )}
                       {item.note && (
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
                           · {item.note}
@@ -1540,13 +2272,41 @@ export default function Wealth() {
 
                   {/* ── Value + actions column ── */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div
-                      style={{
-                        fontWeight: 800, fontSize: '1.05rem',
-                        color: isLiability ? 'var(--danger)' : 'var(--brand-primary)',
-                      }}
-                    >
-                      {isLiability ? '-' : ''}{fmt(val)}
+                    <div style={{ textAlign: 'right' }}>
+                      <div
+                        style={{
+                          fontWeight: 800, fontSize: '1.05rem',
+                          color: isLiability ? 'var(--danger)' : 'var(--brand-primary)',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {isLiability ? '-' : ''}{fmt(val)}
+                      </div>
+                      {!isLiability && costBasis > 0 && (
+                        <div
+                          style={{
+                            fontSize: '0.72rem',
+                            fontVariantNumeric: 'tabular-nums',
+                            marginTop: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            gap: 6,
+                          }}
+                        >
+                          <span style={{ color: 'var(--text-muted)' }}>
+                            {tr('basis', 'Cost')}: {fmt(costBasis)}
+                          </span>
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              color: isGain ? 'var(--brand-primary)' : 'var(--danger)',
+                            }}
+                          >
+                            {gainPrefix}{fmt(gain)} ({gainPrefix}{gainPct.toFixed(1)}%)
+                          </span>
+                        </div>
+                      )}
                     </div>
                     {/* ── Edit ── */}
                     <button
@@ -1633,13 +2393,11 @@ export default function Wealth() {
               </label>
               <input
                 id="wealth_value"
-                type="number"
-                min="0.01"
-                step="0.01"
+                type="text"
                 value={formData.base_value}
                 onChange={(e) => {
-                  const clean = e.target.value.replace(/,/g, '.');
-                  setFormData({ ...formData, base_value: clean });
+                  const clean = cleanNumberInput(e.target.value);
+                  setFormData((prev) => ({ ...prev, base_value: clean }));
                   clearError();
                 }}
                 placeholder="0.00"
@@ -1666,13 +2424,11 @@ export default function Wealth() {
                 <label htmlFor="wealth_qty">{tr('quantity', 'Quantity / Units')}</label>
                 <input
                   id="wealth_qty"
-                  type="number"
-                  min="0"
-                  step="0.0001"
+                  type="text"
                   value={formData.quantity}
                   onChange={(e) => {
-                    const clean = e.target.value.replace(/,/g, '.');
-                    setFormData({ ...formData, quantity: clean });
+                    const clean = cleanNumberInput(e.target.value);
+                    setFormData((prev) => ({ ...prev, quantity: clean }));
                     clearError();
                   }}
                   placeholder="e.g. 10"
@@ -1688,14 +2444,11 @@ export default function Wealth() {
               <label htmlFor="wealth_rate">{tr('interest_rate', 'Annual Interest Rate (%)')}</label>
               <input
                 id="wealth_rate"
-                type="number"
-                min="0"
-                max="100"
-                step="0.01"
+                type="text"
                 value={formData.interest_rate}
                 onChange={(e) => {
-                  const clean = e.target.value.replace(/,/g, '.');
-                  setFormData({ ...formData, interest_rate: clean });
+                  const clean = cleanNumberInput(e.target.value);
+                  setFormData((prev) => ({ ...prev, interest_rate: clean }));
                   clearError();
                 }}
                 placeholder="e.g. 8.5"

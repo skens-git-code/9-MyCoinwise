@@ -377,6 +377,7 @@ async function main() {
         name: 'Harness stock',
         asset_class: 'liquid_asset',
         base_value: 1000,
+        acquisition_date: new Date('2026-01-01T00:00:00.000Z').toISOString(),
       }, { token: user.token });
       assert.ok([200, 201].includes(created.status), `setup failed: ${created.raw}`);
 

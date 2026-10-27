@@ -77,6 +77,8 @@ describe('ForgotPassword Page', () => {
   });
 });
 
+const valid64Token = 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+
 describe('ResetPassword Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -91,11 +93,23 @@ describe('ResetPassword Page', () => {
       </MemoryRouter>
     );
     expect(screen.getByText(/this reset link is invalid or incomplete/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /request a new link/i })).toBeInTheDocument();
   });
 
-  it('renders password input fields when token is provided', () => {
+  it('rejects structurally invalid tokens (e.g. 32 chars instead of 64 hex)', () => {
     render(
       <MemoryRouter initialEntries={['/reset-password?token=abcdef1234567890abcdef1234567890']}>
+        <ToastProvider>
+          <ResetPassword />
+        </ToastProvider>
+      </MemoryRouter>
+    );
+    expect(screen.getByText(/this reset link is invalid or incomplete/i)).toBeInTheDocument();
+  });
+
+  it('renders password input fields when valid 64-hex token is provided', () => {
+    render(
+      <MemoryRouter initialEntries={[`/reset-password?token=${valid64Token}`]}>
         <ToastProvider>
           <ResetPassword />
         </ToastProvider>
@@ -107,7 +121,7 @@ describe('ResetPassword Page', () => {
 
   it('validates password complexity client-side', async () => {
     render(
-      <MemoryRouter initialEntries={['/reset-password?token=abcdef1234567890abcdef1234567890']}>
+      <MemoryRouter initialEntries={[`/reset-password?token=${valid64Token}`]}>
         <ToastProvider>
           <ResetPassword />
         </ToastProvider>
@@ -125,22 +139,28 @@ describe('ResetPassword Page', () => {
     expect(await screen.findByText(/at least 8 characters/i)).toBeInTheDocument();
 
     // Test missing uppercase
-    fireEvent.change(pwdInput, { target: { value: 'password123!' } });
-    fireEvent.change(confirmInput, { target: { value: 'password123!' } });
+    fireEvent.change(pwdInput, { target: { value: 'mycustompass123!' } });
+    fireEvent.change(confirmInput, { target: { value: 'mycustompass123!' } });
     fireEvent.click(submitBtn);
     expect(await screen.findByText(/uppercase letter/i)).toBeInTheDocument();
 
     // Test missing special character
-    fireEvent.change(pwdInput, { target: { value: 'Password123' } });
-    fireEvent.change(confirmInput, { target: { value: 'Password123' } });
+    fireEvent.change(pwdInput, { target: { value: 'MyCustomPass123' } });
+    fireEvent.change(confirmInput, { target: { value: 'MyCustomPass123' } });
     fireEvent.click(submitBtn);
     expect(await screen.findByText(/special character/i)).toBeInTheDocument();
 
-    // Test password mismatch
+    // Test common password blocklist
     fireEvent.change(pwdInput, { target: { value: 'Password123!' } });
-    fireEvent.change(confirmInput, { target: { value: 'DifferentPass123!' } });
+    fireEvent.change(confirmInput, { target: { value: 'Password123!' } });
     fireEvent.click(submitBtn);
-    expect(await screen.findByRole('alert')).toHaveTextContent(/passwords do not match/i);
+    expect(await screen.findByText(/too common or easily guessed/i)).toBeInTheDocument();
+
+    // Test password mismatch
+    fireEvent.change(pwdInput, { target: { value: 'ValidUniquePass123!' } });
+    fireEvent.change(confirmInput, { target: { value: 'DifferentUniquePass123!' } });
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText(/passwords do not match/i)).toBeInTheDocument();
   });
 
   it('handles backend error messages correctly without falling back to expired token message', async () => {
@@ -153,7 +173,7 @@ describe('ResetPassword Page', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/reset-password?token=abcdef1234567890abcdef1234567890']}>
+      <MemoryRouter initialEntries={[`/reset-password?token=${valid64Token}`]}>
         <ToastProvider>
           <ResetPassword />
         </ToastProvider>
@@ -171,11 +191,11 @@ describe('ResetPassword Page', () => {
     expect(await screen.findByText('New password must be different from your current password.')).toBeInTheDocument();
   });
 
-  it('submits successfully and shows success state', async () => {
+  it('submits successfully and shows success state with manual continue link', async () => {
     api.resetPassword.mockResolvedValueOnce({ message: 'Password has been reset.' });
 
     render(
-      <MemoryRouter initialEntries={['/reset-password?token=abcdef1234567890abcdef1234567890']}>
+      <MemoryRouter initialEntries={[`/reset-password?token=${valid64Token}`]}>
         <ToastProvider>
           <ResetPassword />
         </ToastProvider>
@@ -192,11 +212,13 @@ describe('ResetPassword Page', () => {
 
     await waitFor(() => {
       expect(api.resetPassword).toHaveBeenCalledWith({
-        token: 'abcdef1234567890abcdef1234567890',
+        token: valid64Token,
         newPassword: 'NewStrongPass123!',
       });
     });
 
     expect(await screen.findByText(/password updated/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /continue to login/i })).toBeInTheDocument();
   });
 });
+

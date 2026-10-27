@@ -610,6 +610,8 @@ const syncUserBalance = async (userId) => {
 
 // ── Recalculate current_balance for the given accounts ──
 // Runs in parallel; skips invalid ids instead of throwing.
+// Converts each transaction's amount into the account's currency so mixed-currency
+// accounts reconcile with accurate balances matching incremental adjustments.
 const syncAccountBalances = async (userId, accountIds = []) => {
   if (!userId) throw new Error('syncAccountBalances requires a userId.');
   if (!mongoose.isValidObjectId(userId)) return;
@@ -623,32 +625,37 @@ const syncAccountBalances = async (userId, accountIds = []) => {
       const account = await Account.findOne({
         _id: accountId,
         user_id: userId,
-      }).select('initial_balance');
+      }).select('initial_balance currency');
       if (!account) return;
 
-      const [result] = await Transaction.aggregate([
-        {
-          $match: {
-            account_id: new mongoose.Types.ObjectId(accountId),
-            user_id: new mongoose.Types.ObjectId(String(userId)),
-            is_deleted: { $ne: true },
-            date: { $lte: new Date() }, // keep account balance consistent with user balance
-          },
-        },
-        {
-          $group: {
-            _id: '$account_id',
-            income: { $sum: { $cond: [{ $eq: [{ $toLower: '$type' }, 'income'] }, '$amount', 0] } },
-            expense: { $sum: { $cond: [{ $eq: [{ $toLower: '$type' }, 'expense'] }, '$amount', 0] } },
-          },
-        },
-      ]);
+      const accountCurrency = normalizeCurrency(account.currency);
+
+      const transactions = await Transaction.find({
+        account_id: accountId,
+        user_id: userId,
+        is_deleted: { $ne: true },
+        date: { $lte: new Date() }, // keep account balance consistent with user balance
+      }).select('type amount currency').lean();
+
+      let income = 0;
+      let expense = 0;
+
+      for (const t of transactions) {
+        const txCurrency = normalizeCurrency(t.currency, accountCurrency);
+        const amt = convertToCurrency(Number(t.amount) || 0, txCurrency, accountCurrency);
+        const lowerType = String(t.type || '').toLowerCase();
+        if (lowerType === 'income') {
+          income += amt;
+        } else if (lowerType === 'expense') {
+          expense += amt;
+        }
+      }
 
       const balance = Number(
         (
           Number(account.initial_balance || 0) +
-          (result?.income || 0) -
-          (result?.expense || 0)
+          income -
+          expense
         ).toFixed(2)
       );
       await Account.updateOne(
@@ -848,7 +855,7 @@ router.post('/statement/preview', async (req, res) => {
       user_id: req.userId,
       is_deleted: { $ne: true },
     })
-      .select('merchant receiver_name sender_name bank_name category note date type amount import_fingerprint')
+      .select('merchant receiver_name sender_name bank_name category note date type amount import_fingerprint account_id')
       .sort({ date: -1 })
       .limit(5000)
       .lean();
@@ -858,6 +865,8 @@ router.post('/statement/preview', async (req, res) => {
       is_deleted: { $ne: true },
     });
 
+    const accountId = req.body?.account_id || req.query?.account_id || req.body?.accountId || req.query?.accountId || null;
+
     const parsed = await parseStatement({
       content,
       fileData,
@@ -865,6 +874,7 @@ router.post('/statement/preview', async (req, res) => {
       userTransactions,
       password,
       dateFormat: req.body?.dateFormat || req.query?.dateFormat,
+      accountId,
     });
 
     return res.json({
@@ -974,8 +984,10 @@ router.post('/statement/import', async (req, res) => {
       }
 
       batchKeys.add(key);
+      const itemAccountId = validation.account_id || (mongoose.isValidObjectId(item.account_id) ? item.account_id : null);
       accepted.push({
         user_id: req.userId,
+        account_id: itemAccountId,
         type: item.type,
         category: cleanText(item.category).slice(0, 80),
         amount: validation.numericAmount,
@@ -1006,7 +1018,7 @@ router.post('/statement/import', async (req, res) => {
       });
     }
 
-    // ── Second-pass dedup against existing rows in the same window ──
+    // ── Second-pass dedup against existing rows in the same window (scoped to account) ──
     const dates = accepted.map((tx) => tx.date.getTime());
     const existingTransactions = await Transaction.find({
       user_id: req.userId,
@@ -1016,12 +1028,13 @@ router.post('/statement/import', async (req, res) => {
         $lte: new Date(Math.max(...dates) + 24 * 60 * 60 * 1000),
       },
     })
-      .select('date type amount merchant note')
+      .select('date type amount merchant note account_id')
       .lean();
 
     const existingKeys = new Set(
       existingTransactions.map((tx) =>
         [
+          String(tx.account_id || ''),
           new Date(tx.date).toISOString().slice(0, 10),
           tx.type,
           Number(tx.amount).toFixed(2),
@@ -1032,6 +1045,7 @@ router.post('/statement/import', async (req, res) => {
 
     const newTransactions = accepted.filter((tx) => {
       const key = [
+        String(tx.account_id || ''),
         tx.date.toISOString().slice(0, 10),
         tx.type,
         tx.amount.toFixed(2),
@@ -1076,6 +1090,15 @@ router.post('/statement/import', async (req, res) => {
     }
 
     const balance = await syncUserBalance(req.userId);
+
+    // Sync current_balance for all accounts touched by this import
+    const affectedAccountIds = [
+      ...new Set(created.map((tx) => tx.account_id).filter(Boolean).map(String)),
+    ];
+    if (affectedAccountIds.length > 0) {
+      await syncAccountBalances(req.userId, affectedAccountIds);
+    }
+
     return res.status(201).json({
       created: created.length,
       skipped,

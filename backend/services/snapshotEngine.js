@@ -24,9 +24,9 @@ const User = require('../models/User');
 
 // ── Depreciation utility — mirrored from routes/wealth.js ──
 // Applies compound depreciation per year of ownership using a fixed
-// default rate (0.15) when no rate is supplied.
+// default rate (0.15) for illiquid physical assets.
 const calculateDepreciation = (baseValue, acquisitionDate, rate = 0.15) => {
-  if (!acquisitionDate) return baseValue;
+  if (!acquisitionDate || rate === 0) return baseValue;
   const yearsOwned = (Date.now() - new Date(acquisitionDate).getTime()) / (1000 * 60 * 60 * 24 * 365);
   return parseFloat((baseValue * Math.pow(1 - rate, Math.max(0, yearsOwned))).toFixed(2));
 };
@@ -50,7 +50,7 @@ const takeSnapshot = async (userId) => {
 
     // ── Identify symbols for live price hydration ──
     const symbols = items
-      .filter(item => item.symbol && item.quantity)
+      .filter(item => item.symbol && item.quantity != null)
       .map(item => item.symbol);
 
     // ── Fetch live prices (best-effort) ──
@@ -66,10 +66,15 @@ const takeSnapshot = async (userId) => {
       if (item.current_value_override !== null && item.current_value_override !== undefined) {
         // Manual override wins over any computed value
         currentVal = item.current_value_override;
-      } else if (item.asset_class === 'illiquid_asset' || item.asset_class === 'business_equity') {
-        // Apply depreciation for physical assets
-        currentVal = calculateDepreciation(item.base_value, item.acquisition_date);
-      } else if (item.symbol && item.quantity && livePrices[item.symbol]) {
+      } else if (item.asset_class === 'illiquid_asset') {
+        // Apply depreciation for physical assets (real estate / illiquid physical goods)
+        currentVal = calculateDepreciation(item.base_value, item.acquisition_date, 0.15);
+      } else if (item.asset_class === 'business_equity') {
+        // Business equity does not automatically depreciate; user controls via override
+        currentVal = item.base_value;
+      } else if (item.quantity === 0) {
+        currentVal = 0;
+      } else if (item.symbol && item.quantity != null && livePrices[item.symbol] != null) {
         // Live market value for investable assets
         currentVal = item.quantity * livePrices[item.symbol];
       } else {

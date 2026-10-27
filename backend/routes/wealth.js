@@ -71,7 +71,7 @@ const rateLimit = require('express-rate-limit');
 const aiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  keyGenerator: (req) => String(req.user?.id || req.user?._id || 'authenticated_user'),
+  keyGenerator: (req) => String(req.userId || req.user?.id || req.user?._id || 'authenticated_user'),
   validate: { keyGeneratorIpFallback: false },
   message: { error: 'Too many AI requests. Please try again later.' },
 });
@@ -89,11 +89,12 @@ const VALID_ASSET_CLASSES = [
   'liability',
 ];
 
-// Annual depreciation per asset class. Rates reflect typical asset
-// behaviour and can be externalised to env vars if needed.
+// Annual depreciation per asset class. Illiquid physical assets depreciate,
+// while business equity does not automatically decay (user sets manual override).
 const DEPRECIATION_RATES = {
   illiquid_asset: 0.15,
-  default: 0.15,
+  business_equity: 0,
+  default: 0,
 };
 
 // ── AI response cache timings ──
@@ -106,14 +107,15 @@ const AI_CACHE_CLEANUP_MS = 60 * 1000;
 
 // ── Compute the depreciated value of an asset ──
 // Uses compound depreciation per year of ownership. Falls back to the
-// base value when no acquisition date or no base value is present.
+// base value when no acquisition date, no base value, or 0% depreciation rate.
 const calculateDepreciation = (baseValue, acquisitionDate, assetClass = 'illiquid_asset') => {
   if (!acquisitionDate || baseValue == null) return baseValue;
   const date = new Date(acquisitionDate);
   if (Number.isNaN(date.getTime())) return baseValue;
 
   const yearsOwned = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24 * 365);
-  const rate = DEPRECIATION_RATES[assetClass] || DEPRECIATION_RATES.default;
+  const rate = DEPRECIATION_RATES[assetClass] !== undefined ? DEPRECIATION_RATES[assetClass] : (DEPRECIATION_RATES.default ?? 0);
+  if (rate === 0) return baseValue;
   const depreciated = baseValue * Math.pow(1 - rate, Math.max(0, yearsOwned));
   return parseFloat(depreciated.toFixed(2));
 };
@@ -273,7 +275,7 @@ router.get('/items', async (req, res) => {
     const symbolsToFetch = [
       ...new Set(
         items
-          .filter((item) => item.symbol && item.quantity)
+          .filter((item) => item.symbol && item.quantity != null)
           .map((item) => item.symbol)
       ),
     ];
@@ -307,7 +309,9 @@ router.get('/items', async (req, res) => {
           item.acquisition_date,
           item.asset_class
         );
-      } else if (item.symbol && item.quantity && livePrices[item.symbol] != null) {
+      } else if (item.quantity === 0) {
+        currentValue = 0;
+      } else if (item.symbol && item.quantity != null && livePrices[item.symbol] != null) {
         currentValue = Number((item.quantity * livePrices[item.symbol]).toFixed(2));
       } else {
         currentValue = item.base_value;
@@ -347,6 +351,12 @@ router.post(
       .withMessage('Invalid date format.'),
     body('current_value_override').optional({ nullable: true }).isFloat({ min: 0 })
       .withMessage('Override must be a non-negative number.'),
+    body('sold_at').optional({ nullable: true }).isISO8601().toDate()
+      .withMessage('Invalid sale date format.'),
+    body('sale_price').optional({ nullable: true }).isFloat({ min: 0 })
+      .withMessage('Sale price must be non-negative.'),
+    body('sale_fees').optional({ nullable: true }).isFloat({ min: 0 })
+      .withMessage('Sale fees must be non-negative.'),
     // Note: an earlier version omitted the `note` validator, dropping
     // notes entered in the UI on wealth items. Now validated and saved.
     body('note').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 1000 }),
@@ -376,14 +386,13 @@ router.post(
     try {
       // ── Instantiate the item ──
       // normalizeOptionalNumber treats null/''/undefined as null and
-      // returns the number otherwise. The previous ternary coerced
-      // `null` into NaN, failing Mongoose validation for JSON bodies
-      // that explicitly sent null.
+      // returns the number otherwise.
+      const parsedSaleFees = normalizeOptionalNumber(sale_fees);
       const newItem = new WealthItem({
         user_id: req.userId,
         name: name.trim(),
         asset_class,
-        base_value: Number(base_value),
+        base_value: Math.round(Number(base_value) * 100) / 100,
         symbol: symbol ? symbol.trim().toUpperCase() : null,
         quantity: normalizeOptionalNumber(quantity),
         interest_rate: normalizeOptionalNumber(interest_rate),
@@ -391,7 +400,7 @@ router.post(
         current_value_override: normalizeOptionalNumber(current_value_override),
         sold_at: sold_at ? new Date(sold_at) : null,
         sale_price: normalizeOptionalNumber(sale_price),
-        sale_fees: normalizeOptionalNumber(sale_fees) ?? 0,
+        sale_fees: parsedSaleFees != null ? Math.max(0, parsedSaleFees) : 0,
         note: note ? String(note).trim().slice(0, 1000) : '',
       });
 
@@ -438,6 +447,12 @@ router.put(
     body('interest_rate').optional({ nullable: true }).isFloat({ min: 0, max: 100 }),
     body('acquisition_date').optional({ nullable: true }).isISO8601().toDate(),
     body('current_value_override').optional({ nullable: true }).isFloat({ min: 0 }),
+    body('sold_at').optional({ nullable: true }).isISO8601().toDate()
+      .withMessage('Invalid sale date format.'),
+    body('sale_price').optional({ nullable: true }).isFloat({ min: 0 })
+      .withMessage('Sale price must be non-negative.'),
+    body('sale_fees').optional({ nullable: true }).isFloat({ min: 0 })
+      .withMessage('Sale fees must be non-negative.'),
     // Note: an earlier version omitted `note` validation on PUT.
     body('note').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 1000 }),
   ],
@@ -471,7 +486,7 @@ router.put(
       // ── Apply updates conditionally ──
       if (name !== undefined) item.name = name.trim();
       if (asset_class !== undefined) item.asset_class = asset_class;
-      if (base_value !== undefined) item.base_value = Number(base_value);
+      if (base_value !== undefined) item.base_value = Math.round(Number(base_value) * 100) / 100;
       if (symbol !== undefined) item.symbol = symbol ? symbol.trim().toUpperCase() : null;
       if (quantity !== undefined) item.quantity = normalizeOptionalNumber(quantity);
       if (interest_rate !== undefined) item.interest_rate = normalizeOptionalNumber(interest_rate);
@@ -494,12 +509,21 @@ router.put(
         item.sale_price = normalizeOptionalNumber(sale_price);
       }
       if (sale_fees !== undefined) {
-        item.sale_fees = normalizeOptionalNumber(sale_fees);
+        const fees = normalizeOptionalNumber(sale_fees);
+        item.sale_fees = fees != null ? Math.max(0, fees) : 0;
       }
 
       // Note: an earlier version never updated `note` on existing items.
       if (note !== undefined) {
         item.note = note ? String(note).trim().slice(0, 1000) : '';
+      }
+
+      // ── Reject invalid sale dates ──
+      if (item.sold_at && item.acquisition_date && item.sold_at < item.acquisition_date) {
+        return res.status(400).json({
+          error: 'Sale date must be on or after the acquisition date.',
+          code: 'TAX_INVALID_DATE',
+        });
       }
 
       // ── Persist ──
@@ -585,6 +609,10 @@ router.get('/history', async (req, res) => {
     }
 
     // ── Load and shape the MOST RECENT 24 snapshots ──
+    const user = await User.findById(req.userId).select('language').lean();
+    const localeMap = { en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN' };
+    const locale = localeMap[user?.language] || 'en-IN';
+
     // Query newest-first so `.limit(24)` keeps the latest months, then
     // reverse into ascending order for the chart.
     const history = await NetWorthHistory.find(filter)
@@ -593,7 +621,7 @@ router.get('/history', async (req, res) => {
 
     return res.json(
       history.reverse().map((h) => ({
-        month: new Date(h.snapshot_date).toLocaleDateString('en-US', {
+        month: new Date(h.snapshot_date).toLocaleDateString(locale, {
           month: 'short',
           year: '2-digit',
         }),
@@ -637,9 +665,10 @@ router.post(
     }
 
     try {
-      // ── Resolve the currency symbol ──
+      // ── Resolve the currency symbol and ISO code ──
       const user = await User.findById(req.userId).select('currency').lean();
-      const currencySymbol = CURRENCY_SYMBOLS[user?.currency] || '$';
+      const userCurrency = user?.currency || 'USD';
+      const currencySymbol = CURRENCY_SYMBOLS[userCurrency] || '$';
 
       // ── Read and normalize metrics ──
       const totalAssets = Number(req.body.totalAssets) || 0;
@@ -648,13 +677,14 @@ router.post(
       const liabilities = Number(req.body.liabilities) || 0;
 
       const metrics = { totalAssets, liquidAssets, physicalAssets, liabilities };
+      // Cache key uses ISO code so distinct currencies with the same symbol (e.g. USD and MXN) do not collide
       const cacheKey = [
         req.userId,
         totalAssets,
         liquidAssets,
         physicalAssets,
         liabilities,
-        currencySymbol,
+        userCurrency,
       ].join('_');
 
       // ── Return a cached insight when fresh ──
@@ -705,7 +735,8 @@ router.get('/ai-status', async (req, res) => {
   } catch (error) {
     // ── Map the failure to a status code ──
     const status = /rate limit/i.test(error.message) ? 'quota_exceeded' : 'error';
-    return res.json({ status, message: error.message });
+    const httpStatus = status === 'quota_exceeded' ? 429 : 503;
+    return res.status(httpStatus).json({ status, message: error.message });
   }
 });
 
