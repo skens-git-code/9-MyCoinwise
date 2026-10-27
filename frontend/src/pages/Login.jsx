@@ -212,7 +212,10 @@ export default function Login() {
   /* ---------------- Redirect if already logged in ---------------- */
   useEffect(() => {
     if (user) {
-      const dest = location.state?.from?.pathname || '/';
+      const from = location.state?.from;
+      const dest = from?.pathname
+        ? `${from.pathname}${from.search || ''}${from.hash || ''}`
+        : (typeof from === 'string' ? from : '/');
       navigate(dest, { replace: true });
     }
   }, [user, navigate, location.state]);
@@ -263,20 +266,33 @@ export default function Login() {
 
   /* ---------------- Pre-emptive Server Wake-Up & Idle Prefetch ---------------- */
   useEffect(() => {
-    try {
-      const p = api?.healthCheck?.({ timeout: 20000 });
-      if (p && typeof p.then === 'function') {
-        p.then((result) => {
-          setServerWarm(result !== null);
-        }).catch(() => {
-          setServerWarm(false);
-        });
-      } else {
-        queueMicrotask(() => setServerWarm(true));
+    let cancelled = false;
+    let retryTimer = null;
+
+    const probe = async () => {
+      try {
+        const result = await api?.healthCheck?.({ timeout: 12000 });
+        if (cancelled) return;
+        if (result !== null) {
+          setServerWarm(true);
+        } else {
+          // Retry once after 2.5s before showing a slow server warning banner
+          retryTimer = setTimeout(async () => {
+            if (cancelled) return;
+            try {
+              const retryRes = await api?.healthCheck?.({ timeout: 15000 });
+              if (!cancelled) setServerWarm(retryRes !== null);
+            } catch {
+              if (!cancelled) setServerWarm(false);
+            }
+          }, 2500);
+        }
+      } catch {
+        if (!cancelled) setServerWarm(false);
       }
-    } catch {
-      queueMicrotask(() => setServerWarm(true));
-    }
+    };
+
+    probe();
 
     // Prefetch Dashboard and AppLayout during idle so sign-in transition is 0ms instant
     const idleCallback = typeof window !== 'undefined' && window.requestIdleCallback
@@ -288,6 +304,8 @@ export default function Login() {
     });
 
     return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       if (typeof window !== 'undefined' && window.cancelIdleCallback) {
         window.cancelIdleCallback(cancelId);
       }
@@ -389,6 +407,7 @@ export default function Login() {
 
     setError('');
     setErrorKind(null);
+    setServerWarm(null);
 
     // Resolve effective values from state or direct DOM inputs (autofill fallback)
     const effectiveEmail = (email || emailInputRef.current?.value || '').trim();
@@ -431,7 +450,10 @@ export default function Login() {
 
       await login(token, loggedUser, rememberMe);
 
-      const destination = location.state?.from?.pathname || '/';
+      const from = location.state?.from;
+      const destination = from?.pathname
+        ? `${from.pathname}${from.search || ''}${from.hash || ''}`
+        : (typeof from === 'string' ? from : '/');
       navigate(destination, { replace: true });
     } catch (err) {
       if (isCancelError(err)) return;
@@ -513,7 +535,7 @@ export default function Login() {
       >
         {/* ===================== Top Bar: Brand & Language ===================== */}
         <div className="auth-header-row auth-top-row">
-          <div className="auth-logo" style={{ margin: 0 }}>
+          <Link to="/" className="auth-logo" style={{ margin: 0, textDecoration: 'none', color: 'inherit' }} title="Return to MyCoinwise Homepage">
             <motion.div
               className="auth-logo-icon"
               whileHover={{ scale: 1.05 }}
@@ -523,7 +545,7 @@ export default function Login() {
               <CoinwiseMark size={24} />
             </motion.div>
             <span className="auth-logo-text">MyCoinwise</span>
-          </div>
+          </Link>
 
           <div
             className="auth-lang-selector"

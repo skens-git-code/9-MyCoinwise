@@ -443,9 +443,11 @@ export default function Calendar() {
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
 
-  useEffect(() => {
+  const [prevYear, setPrevYear] = useState(currentYear);
+  if (prevYear !== currentYear) {
+    setPrevYear(currentYear);
     setPickerYear(currentYear);
-  }, [currentYear]);
+  }
 
   const isViewingDifferentMonthFromToday = useMemo(() => {
     const today = getAppDate();

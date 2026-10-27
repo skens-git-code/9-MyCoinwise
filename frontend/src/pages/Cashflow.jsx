@@ -673,20 +673,26 @@ export default function Cashflow() {
       `${forecastHorizon}-day projection remains above the safety floor. Keep maintaining consistent cash reserves.`,
     );
 
+  const displayedAiSummary = useMemo(() => {
+    if (liveTransactions.length === 0) {
+      return tr('ai_need_tx', 'Add some transactions to enable AI forecasting analysis.');
+    }
+    if (!token) {
+      return tr('ai_unavailable', 'AI insights are unavailable right now.');
+    }
+    return aiSummary || localAiFallback;
+  }, [liveTransactions.length, token, aiSummary, localAiFallback, tr]);
+
   /* ============================================================
    * AI Insights (with proper trigger key + cleanup)
    * ============================================================ */
   useEffect(() => {
     if (liveTransactions.length === 0) {
-      setAiSummary(tr('ai_need_tx', 'Add some transactions to enable AI forecasting analysis.'));
-      setIsAiLoading(false);
       aiTriggerRef.current = '';
       return undefined;
     }
 
     if (!token) {
-      setAiSummary(tr('ai_unavailable', 'AI insights are unavailable right now.'));
-      setIsAiLoading(false);
       return undefined;
     }
 
@@ -1177,7 +1183,7 @@ export default function Cashflow() {
                   {tr('analyzing', 'Analyzing financial trajectory…')}
                 </span>
               ) : (
-                <p>{aiSummary || localAiFallback}</p>
+                <p>{displayedAiSummary}</p>
               )}
 
               {/* ── Optimistic / conservative bounds ── */}

@@ -513,17 +513,18 @@ export default function Analytics() {
     } catch { return new Set(); }
   });
 
-  const chartSectionRef = useRef(null);
-
-  // Reload reviewed anomalies if the storage key changes (e.g. user switch).
-  useEffect(() => {
+  const [prevStorageKey, setPrevStorageKey] = useState(reviewedStorageKey);
+  if (prevStorageKey !== reviewedStorageKey) {
+    setPrevStorageKey(reviewedStorageKey);
+    let reloadedSet = new Set();
     try {
       const stored = localStorage.getItem(reviewedStorageKey);
-      setReviewedAnomalies(new Set(stored ? JSON.parse(stored) : []));
-    } catch {
-      setReviewedAnomalies(new Set());
-    }
-  }, [reviewedStorageKey]);
+      if (stored) reloadedSet = new Set(JSON.parse(stored));
+    } catch { /* storage may be full or disabled */ }
+    setReviewedAnomalies(reloadedSet);
+  }
+
+  const chartSectionRef = useRef(null);
 
   // ── Persist reviewed anomaly IDs to storage ──
   useEffect(() => {
@@ -1045,7 +1046,7 @@ export default function Analytics() {
   }, [validTransactions, showToast]);
 
   // ── Copy a plain-text summary to the clipboard ──
-  const handleShareSummary = useCallback(async () => {
+  const handleShareSummary = async () => {
     const savingsRateText =
       comparisonMetrics.savingsRate != null
         ? `${comparisonMetrics.savingsRate.toFixed(1)}%`
@@ -1069,7 +1070,7 @@ export default function Analytics() {
     } catch {
       showToast('error', 'Failed to copy summary.');
     }
-  }, [periodFilter, fmt, comparisonMetrics, expenseCategories, showToast]);
+  };
 
   /* ============================================================
    * Drill‑down handlers (stable callbacks)

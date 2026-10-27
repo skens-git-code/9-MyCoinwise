@@ -902,6 +902,7 @@ const NotificationPreferences = ({ preferences, onChange, handleSave, saving, is
  * Password change (with re-auth)
  * ============================================================ */
 const PasswordChange = ({ userId, showMessage, logout }) => {
+  const navigate = useNavigate();
   // ── Local form state + visibility toggle + loading ──
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -949,8 +950,8 @@ const PasswordChange = ({ userId, showMessage, logout }) => {
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setTimeout(() => {
         logout?.();
-        window.location.href = '/login';
-      }, 900);
+        navigate('/login', { replace: true });
+      }, 500);
     } catch (error) {
       showMessage('error', error?.response?.data?.error || error?.response?.data?.message || 'Failed to change password');
     } finally {
@@ -1057,7 +1058,6 @@ const SessionManagement = ({ userId, showMessage }) => {
   // ── Load sessions on mount; guard against unmounted updates ──
   useEffect(() => {
     let alive = true;
-    setLoading(true);
     (async () => {
       await loadSessions();
       if (alive) setLoading(false);
@@ -1344,6 +1344,7 @@ const AdvancedPreferences = ({ prefs, onChange, handleSave, saving, isDirty, t }
  * Email change (with logout + re-auth)
  * ============================================================ */
 const EmailChangeSection = ({ user, showMessage, logout, t }) => {
+  const navigate = useNavigate();
   // ── Modal visibility + form state ──
   const [showModal, setShowModal] = useState(false);
   const [emailForm, setEmailForm] = useState({ newEmail: '', currentPassword: '' });
@@ -1371,8 +1372,8 @@ const EmailChangeSection = ({ user, showMessage, logout, t }) => {
       setEmailForm({ newEmail: '', currentPassword: '' });
       setTimeout(() => {
         logout?.();
-        window.location.href = '/login';
-      }, 1200);
+        navigate('/login', { replace: true });
+      }, 500);
     } catch (err) {
       showMessage('error', err?.response?.data?.error || err?.response?.data?.message || 'Failed to update email.');
     } finally {
@@ -2755,10 +2756,13 @@ function SettingsInner({ context }) {
   const [activeTab, setActiveTab] = useState(() => (
     tabParam && TAB_IDS.includes(tabParam) ? tabParam : 'profile'
   ));
-
-  useEffect(() => {
-    if (tabParam && TAB_IDS.includes(tabParam)) setActiveTab(tabParam);
-  }, [tabParam]);
+  const [prevTabParam, setPrevTabParam] = useState(tabParam);
+  if (prevTabParam !== tabParam) {
+    setPrevTabParam(tabParam);
+    if (tabParam && TAB_IDS.includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }
 
   /* ---------------- New: settings search ---------------- */
   const [search, setSearch] = useState('');
@@ -3075,14 +3079,14 @@ function SettingsInner({ context }) {
       showMessage('success', 'Account completely reset. All records deleted.');
       // Immediate clean logout and hard redirect to login
       logout?.();
-      window.location.href = '/login';
+      _navigate('/login', { replace: true });
     } catch (error) {
       console.error('Reset error:', error);
       showMessage('error', error?.response?.data?.error || error?.message || 'Error resetting account.');
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, reset: false }));
     }
-  }, [resetAccount, showMessage, requestReAuth, loadingStates.reset, logout, USER_ID, user]);
+  }, [resetAccount, showMessage, requestReAuth, loadingStates.reset, logout, USER_ID, user, _navigate]);
 
   // ── Delete a user (self-delete logs out; other-delete refreshes) ──
   const handleDeleteUser = useCallback(async () => {
@@ -3102,7 +3106,7 @@ function SettingsInner({ context }) {
       if (String(userId) === String(USER_ID)) {
         showMessage('success', 'Your account has been deleted.');
         logout?.();
-        window.location.href = '/login';
+        _navigate('/login', { replace: true });
       } else {
         if (refetch) await refetch();
         showMessage('success', 'Account successfully removed.');
@@ -3112,7 +3116,7 @@ function SettingsInner({ context }) {
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, deleteUser: false }));
     }
-  }, [modals.deleteUser, USER_ID, refetch, showMessage, requestReAuth, loadingStates.deleteUser, logout]);
+  }, [modals.deleteUser, USER_ID, refetch, showMessage, requestReAuth, loadingStates.deleteUser, logout, _navigate]);
 
   // ── Switch to a different user (auto-saves dirty state first) ──
   const handleSwitchUser = useCallback(async () => {

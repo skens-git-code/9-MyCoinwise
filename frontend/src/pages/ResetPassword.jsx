@@ -16,7 +16,7 @@ export default function ResetPassword() {
   const [confirm, setConfirm] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => (!token || token.length < 32 ? 'This reset link is invalid or incomplete. Please request a new one.' : ''));
   const [done, setDone] = useState(false);
 
   const pwdStrength = password.length === 0
@@ -39,12 +39,6 @@ export default function ResetPassword() {
       document.body.classList.remove('auth-viewport-scrollable');
     };
   }, []);
-
-  useEffect(() => {
-    if (!token || token.length < 32) {
-      setError('This reset link is invalid or incomplete. Please request a new one.');
-    }
-  }, [token]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

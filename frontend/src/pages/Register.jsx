@@ -334,7 +334,6 @@ export default function Register() {
       !USERNAME_REGEX.test(username) ||
       RESERVED_USERNAMES.has(username.toLowerCase())
     ) {
-      setUsernameStatus('idle');
       if (usernameAbortRef.current) {
         usernameAbortRef.current.abort();
         usernameAbortRef.current = null;
@@ -346,10 +345,8 @@ export default function Register() {
 
     if (usernameCheckTimerRef.current) clearTimeout(usernameCheckTimerRef.current);
 
-    // Set immediately so the UI reflects the in-flight state during debounce.
-    setUsernameStatus('checking');
-
     usernameCheckTimerRef.current = setTimeout(async () => {
+      setUsernameStatus('checking');
       const controller = new AbortController();
       usernameAbortRef.current = controller;
       try {
@@ -389,6 +386,15 @@ export default function Register() {
    * Validation
    * ============================================================ */
 
+  // ── Effective username availability status (derived to avoid cascading renders) ──
+  const effectiveUsernameStatus = useMemo(() => {
+    const u = formData.username.trim();
+    if (!u || !USERNAME_REGEX.test(u) || RESERVED_USERNAMES.has(u.toLowerCase())) {
+      return 'idle';
+    }
+    return usernameStatus;
+  }, [formData.username, usernameStatus]);
+
   // ── Validate a single field and return its error string ──
   // `snapshot` overrides formData, used for cross-field checks.
   const validateField = useCallback((name, value, snapshot = formData) => {
@@ -400,7 +406,7 @@ export default function Register() {
         if (v.length > MAX_USERNAME_LENGTH) return tr('username_max_chars', `Username must be at most ${MAX_USERNAME_LENGTH} characters.`);
         if (!USERNAME_REGEX.test(v)) return tr('username_invalid_chars', 'Use only letters, numbers, and underscores.');
         if (RESERVED_USERNAMES.has(v.toLowerCase())) return tr('username_reserved', 'This username is reserved.');
-        if (usernameStatus === 'taken') return tr('username_taken', 'This username is already taken.');
+        if (effectiveUsernameStatus === 'taken') return tr('username_taken', 'This username is already taken.');
         return '';
       }
       case 'email': {
@@ -429,7 +435,7 @@ export default function Register() {
       default:
         return '';
     }
-  }, [formData, tr, usernameStatus]);
+  }, [formData, tr, effectiveUsernameStatus]);
 
   // ── Validate every field, storing errors in state ──
   const validateForm = useCallback(() => {
@@ -442,15 +448,6 @@ export default function Register() {
     return errors;
   }, [formData, validateField]);
 
-  /* Re-validate username when the async availability check resolves. */
-  useEffect(() => {
-    if (!touched.username) return;
-    const err = validateField('username', formData.username, formData);
-    setFieldErrors((prev) => (prev.username === err ? prev : { ...prev, username: err }));
-    // Only fires when usernameStatus changes — surfacing "taken" as an error.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usernameStatus]);
-
   /* ============================================================
    * Field Handlers
    * ============================================================ */
@@ -460,6 +457,10 @@ export default function Register() {
   const handleChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
     const val = type === 'checkbox' ? checked : value;
+
+    if (name === 'username') {
+      setUsernameStatus('idle');
+    }
 
     const next = { ...formData, [name]: val };
     setFormData(next);
@@ -620,7 +621,12 @@ export default function Register() {
 
   // ── Field-level error visibility ──
   const emailHasError = Boolean(fieldErrors.email && touched.email);
-  const usernameHasError = Boolean(fieldErrors.username && touched.username);
+  const usernameError =
+    fieldErrors.username ||
+    (touched.username && effectiveUsernameStatus === 'taken'
+      ? tr('username_taken', 'This username is already taken.')
+      : '');
+  const usernameHasError = Boolean(usernameError && touched.username);
   const passwordHasError = Boolean(fieldErrors.password && touched.password);
   const confirmHasError = Boolean(fieldErrors.confirmPassword && touched.confirmPassword);
   const termsHasError = Boolean(fieldErrors.agreeTerms && touched.agreeTerms);
@@ -646,7 +652,7 @@ export default function Register() {
       >
         {/* ===================== Top Bar: Brand & Language ===================== */}
         <div className="auth-header-row auth-top-row">
-          <div className="auth-logo" style={{ margin: 0 }}>
+          <Link to="/" className="auth-logo" style={{ margin: 0, textDecoration: 'none', color: 'inherit' }} title="Return to MyCoinwise Homepage">
             <motion.div
               className="auth-logo-icon"
               whileHover={{ scale: 1.05 }}
@@ -656,7 +662,7 @@ export default function Register() {
               <CoinwiseMark size={24} />
             </motion.div>
             <span className="auth-logo-text">MyCoinwise</span>
-          </div>
+          </Link>
 
           <div
             className="auth-lang-selector"
@@ -766,18 +772,18 @@ export default function Register() {
                 aria-describedby={
                   usernameHasError
                     ? 'username-error'
-                    : usernameStatus === 'available'
+                    : effectiveUsernameStatus === 'available'
                       ? 'username-available'
-                      : usernameStatus === 'checking'
+                      : effectiveUsernameStatus === 'checking'
                         ? 'username-checking'
                         : undefined
                 }
               />
               {/* ── Availability suffix icon (checking / available / taken) ── */}
-              {usernameStatus === 'checking' && (
+              {effectiveUsernameStatus === 'checking' && (
                 <Loader2 className="input-suffix-icon spin" size={16} aria-hidden="true" />
               )}
-              {usernameStatus === 'available' && (
+              {effectiveUsernameStatus === 'available' && (
                 <CheckCircle2
                   className="input-suffix-icon"
                   size={16}
@@ -785,7 +791,7 @@ export default function Register() {
                   aria-hidden="true"
                 />
               )}
-              {usernameStatus === 'taken' && (
+              {effectiveUsernameStatus === 'taken' && (
                 <X
                   className="input-suffix-icon"
                   size={16}
@@ -796,15 +802,15 @@ export default function Register() {
             </div>
             {usernameHasError && (
               <div id="username-error" className="form-error" role="alert">
-                {fieldErrors.username}
+                {usernameError}
               </div>
             )}
-            {!usernameHasError && usernameStatus === 'available' && (
+            {!usernameHasError && effectiveUsernameStatus === 'available' && (
               <div id="username-available" className="form-hint" style={{ color: 'var(--success-color, #10b981)' }}>
                 {tr('username_available', 'Username is available')}
               </div>
             )}
-            {!usernameHasError && usernameStatus === 'checking' && (
+            {!usernameHasError && effectiveUsernameStatus === 'checking' && (
               <div id="username-checking" className="form-hint">
                 {tr('checking_availability', 'Checking availability…')}
               </div>

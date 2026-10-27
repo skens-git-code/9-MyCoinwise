@@ -49,12 +49,12 @@ const calculationSchema = new mongoose.Schema({
     maxlength: 120
   },
 
-  // ── Numeric result used for sorting or comparisons ──
+  // ── Numeric result used for sorting or comparisons (bounded to ±1e15) ──
   numeric_result: {
     type: Number,
     required: true,
-    min: -Number.MAX_VALUE,
-    max: Number.MAX_VALUE
+    min: -1e15,
+    max: 1e15
   },
 
   // ── Angle mode used when the expression was evaluated ──

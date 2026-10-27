@@ -12,16 +12,12 @@ export default function VerifyEmail() {
   const { showToast } = useToast();
   const token = searchParams.get('token') || '';
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => Boolean(token));
   const [success, setSuccess] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => (!token ? 'Missing or invalid verification link.' : ''));
 
   useEffect(() => {
-    if (!token) {
-      setError('Missing or invalid verification link.');
-      setLoading(false);
-      return;
-    }
+    if (!token) return;
 
     let isMounted = true;
     const verify = async () => {

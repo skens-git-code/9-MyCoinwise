@@ -29,6 +29,9 @@ const crypto   = require('crypto');
 const MAX_FAILED_LOGINS = 5;
 const LOCK_DURATION_MINUTES = 30;
 
+// ── Hex color pattern for profile accent ──
+const HEX_COLOR_PATTERN = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/;
+
 // ── Define schema ──
 const userSchema = new mongoose.Schema({
   /* —————————————————————————————————————
@@ -67,19 +70,25 @@ const userSchema = new mongoose.Schema({
     index: true
   },
 
-  // ── Login email (unique, lowercase) ──
+  // ── Login email (unique, lowercase, RFC format validated) ──
   email: {
     type: String,
     required: true,
     unique: true,
     lowercase: true,
-    trim: true
+    trim: true,
+    maxlength: 254,
+    validate: {
+      validator: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+      message: 'Email must be a valid email address.',
+    },
   },
 
   // ── Hashed password (hidden by default) ──
   password: {
     type: String,
     required: true,
+    maxlength: 128,
     select: false
   },
 
@@ -143,11 +152,14 @@ const userSchema = new mongoose.Schema({
     default: '😊'
   },
 
-  // ── Profile accent color ──
+  // ── Profile accent color (validated hex) ──
   profile_color: {
     type: String,
     default: '#0ea5e9',
-    maxlength: 20
+    validate: {
+      validator: (v) => !v || HEX_COLOR_PATTERN.test(v),
+      message: 'Profile color must be a valid hex color code.',
+    },
   },
 
   /* —————————————————————————————————————
@@ -188,6 +200,12 @@ const userSchema = new mongoose.Schema({
   failed_login_count: {
     type: Number,
     default: 0
+  },
+
+  // ── Window anchor for decaying failed login attempts ──
+  failed_login_window_start: {
+    type: Date,
+    default: null
   },
 
   // ── Whether the account is currently locked ──
@@ -353,11 +371,11 @@ userSchema.index({ reset_password_token: 1 }, { sparse: true });
  * Middleware
  * ————————————————————————————————————— */
 
-// ── Pre-save: hash password when it changes ──
+// ── Pre-save: hash password when it changes (cost 12 per OWASP recommendations) ──
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
   try {
-    const salt = await bcrypt.genSalt(10);
+    const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
     this.password_changed_at = new Date();
     next();
@@ -385,12 +403,18 @@ userSchema.methods.isLocked = function() {
   return true;
 };
 
-// ── Increment failed logins and lock if the threshold is reached ──
+// ── Increment failed logins and lock if the threshold is reached within the window ──
 userSchema.methods.incrementFailedLogin = async function() {
+  const now = Date.now();
+  const windowMs = LOCK_DURATION_MINUTES * 60 * 1000;
+  if (!this.failed_login_window_start || now - this.failed_login_window_start.getTime() > windowMs) {
+    this.failed_login_count = 0;
+    this.failed_login_window_start = new Date();
+  }
   this.failed_login_count += 1;
   if (this.failed_login_count >= MAX_FAILED_LOGINS) {
     this.account_locked = true;
-    this.locked_until = new Date(Date.now() + LOCK_DURATION_MINUTES * 60 * 1000);
+    this.locked_until = new Date(now + windowMs);
   }
   return this.save({ validateBeforeSave: false });
 };
@@ -398,6 +422,7 @@ userSchema.methods.incrementFailedLogin = async function() {
 // ── Clear lock state and record a successful login ──
 userSchema.methods.resetLoginAttempts = async function(ip) {
   this.failed_login_count = 0;
+  this.failed_login_window_start = null;
   this.account_locked     = false;
   this.locked_until       = null;
   this.last_login         = new Date();

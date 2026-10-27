@@ -158,6 +158,7 @@ const useExchangeRates = (baseCurrency = 'INR') => {
     }
 
     abortControllerRef.current = new AbortController();
+    await Promise.resolve();
 
     try {
       // Check cache
@@ -209,7 +210,12 @@ const useExchangeRates = (baseCurrency = 'INR') => {
 
   // ── Fetch on mount and refresh on the cache interval (pausing when tab is hidden) ──
   useEffect(() => {
-    fetchExchangeRates();
+    let ignore = false;
+    (async () => {
+      if (!ignore) {
+        await fetchExchangeRates();
+      }
+    })();
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       fetchExchangeRates();
@@ -223,6 +229,7 @@ const useExchangeRates = (baseCurrency = 'INR') => {
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
+      ignore = true;
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibility);
       if (abortControllerRef.current) {

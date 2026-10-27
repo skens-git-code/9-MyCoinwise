@@ -38,6 +38,19 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
+// Polyfill IntersectionObserver for Framer Motion and lazy loading
+if (typeof window !== 'undefined' && !window.IntersectionObserver) {
+  window.IntersectionObserver = class IntersectionObserver {
+    constructor(callback) {
+      this.callback = callback;
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() { return []; }
+  };
+}
+
 // Polyfill localStorage and sessionStorage for test environments
 const createStorageMock = () => {
   let store = {};

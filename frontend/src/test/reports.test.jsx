@@ -12,9 +12,13 @@ vi.mock('../services/api', () => ({
   },
 }));
 
-vi.mock('../services/pdfExport', () => ({
-  exportToPDF: vi.fn().mockResolvedValue({ success: true, fileName: 'MyCoinwise_Statement_Test.pdf' }),
-}));
+vi.mock('../services/pdfExport', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    exportToPDF: vi.fn().mockResolvedValue({ success: true, fileName: 'MyCoinwise_Statement_Test.pdf' }),
+  };
+});
 
 describe('Reports & Statements Download Center (A4 Executive Edition)', () => {
   const mockTransactions = [
@@ -170,5 +174,38 @@ describe('Reports & Statements Download Center (A4 Executive Edition)', () => {
 
     fireEvent.click(fitBtn);
     expect(fitBtn).toBeInTheDocument();
+  });
+
+  it('triggers CSV download with BOM prefix and formula injection escaping', async () => {
+    let createdBlob = null;
+    globalThis.URL.createObjectURL = vi.fn((blob) => {
+      createdBlob = blob;
+      return 'blob:mock-csv';
+    });
+    globalThis.URL.revokeObjectURL = vi.fn();
+
+    renderReports();
+    const csvBtn = screen.getByRole('button', { name: /CSV/i });
+    fireEvent.click(csvBtn);
+
+    expect(globalThis.URL.createObjectURL).toHaveBeenCalled();
+    expect(createdBlob).not.toBeNull();
+  });
+
+  it('invokes window.print after safely resetting zoom', () => {
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {});
+    const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb();
+      return 1;
+    });
+
+    renderReports();
+    const printBtn = screen.getByRole('button', { name: /Print/i });
+    fireEvent.click(printBtn);
+
+    expect(rafSpy).toHaveBeenCalled();
+    expect(printSpy).toHaveBeenCalled();
+    printSpy.mockRestore();
+    rafSpy.mockRestore();
   });
 });

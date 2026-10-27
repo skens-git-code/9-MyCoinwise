@@ -17,7 +17,8 @@
  *   - Dead ref, unused imports, and fake-QR removed.
  * ————————————————————————————————————————————————————————————— */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+
 import { motion } from 'framer-motion';
 import {
   Download, Printer, CheckCircle2, ShieldCheck,
@@ -25,7 +26,7 @@ import {
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { useToast } from '../components/ToastProvider';
-import { exportToPDF } from '../services/pdfExport';
+import { exportToPDF, cleanDescription, formatDateLatin, sha256Hex } from '../services/pdfExport';
 import { api } from '../services/api';
 import { CoinwiseMark } from '../components/CoinwiseBrand';
 
@@ -60,6 +61,10 @@ const PRINT_CSS = `
   body { background: #fff !important; }
   body * { visibility: hidden !important; }
   .a4-document-sheet, .a4-document-sheet * { visibility: visible !important; }
+  .reports-viewport-scrollable,
+  .reports-viewport-scrollable > div {
+    zoom: 1 !important;
+  }
   .a4-document-sheet {
     position: absolute !important;
     left: 0; top: 0;
@@ -99,14 +104,6 @@ function toLatinNumLocale(locale) {
   return /-u-nu-/.test(base) ? base : `${base}-u-nu-latn`;
 }
 
-/** Deterministic English-month date — never non-Latin. */
-const EN_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function formatDateLatin(input) {
-  const d = input instanceof Date ? input : new Date(input);
-  if (isNaN(d.getTime())) return '—';
-  return `${String(d.getDate()).padStart(2, '0')} ${EN_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-}
-
 /** Sign resolution for running balance (income/expense/transfer). */
 function resolveSign(tx) {
   if (tx.type === 'income') return 1;
@@ -116,17 +113,20 @@ function resolveSign(tx) {
   return (Number(tx.amount) || 0) < 0 ? -1 : 1;
 }
 
-/** SHA-256 hex via WebCrypto — matches PDF engine. */
-async function sha256Hex(str) {
-  const buf = new TextEncoder().encode(str);
-  const digest = await crypto.subtle.digest('SHA-256', buf);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
 /** Normalize an account identifier (id | _id | name) to a string. */
 function normAccId(v) {
   if (v == null) return '';
   return typeof v === 'string' ? v : String(v);
+}
+
+/** Safe CSV field escaping neutralizing formula injection (=, +, -, @, \t, \r). */
+function escapeCsvField(raw) {
+  const str = raw == null ? '' : String(raw);
+  const needsPrefix = /^[=+\-@\t\r]/.test(str);
+  const escaped = str.replace(/"/g, '""');
+  const prefixed = needsPrefix ? `'${escaped}` : escaped;
+  const needsQuotes = needsPrefix || /[",\n\r\t]/.test(prefixed);
+  return needsQuotes ? `"${prefixed}"` : prefixed;
 }
 
 /* ============================================================
@@ -134,7 +134,7 @@ function normAccId(v) {
  * ============================================================ */
 
 export default function Reports() {
-  const { user, transactions = [], accounts = [], currency, currencyInfo, lang } = useAppState();
+  const { user, transactions = [], accounts = [], currency, currencyInfo, lang, loading: contextLoading } = useAppState();
   const { t } = useAppActions();
   const { showToast } = useToast();
 
@@ -185,13 +185,27 @@ export default function Reports() {
       start = new Date(now.getFullYear(), 0, 1);
       label = `Jan 1 – Present, ${now.getFullYear()}`;
     } else if (periodPreset === 'custom') {
-      if (customStartDate) start = new Date(customStartDate);
-      if (customEndDate) {
-        const d = new Date(customEndDate);
-        d.setHours(23, 59, 59, 999);
-        end = d;
+      if (customStartDate && customEndDate) {
+        const [sy, sm, sd] = customStartDate.split('-').map(Number);
+        const [ey, em, ed] = customEndDate.split('-').map(Number);
+        let sDate = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+        let eDate = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+        if (sDate > eDate) {
+          sDate = new Date(ey, em - 1, ed, 0, 0, 0, 0);
+          eDate = new Date(sy, sm - 1, sd, 23, 59, 59, 999);
+        }
+        start = sDate;
+        end   = eDate;
+        label = `${customStartDate} to ${customEndDate}`;
+      } else if (customStartDate) {
+        const [sy, sm, sd] = customStartDate.split('-').map(Number);
+        start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+        label = `From ${customStartDate}`;
+      } else if (customEndDate) {
+        const [ey, em, ed] = customEndDate.split('-').map(Number);
+        end   = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+        label = `Up to ${customEndDate}`;
       }
-      label = `${customStartDate || 'Start'} to ${customEndDate || 'Present'}`;
     }
     return { start, end, label };
   }, [periodPreset, customStartDate, customEndDate]);
@@ -248,9 +262,6 @@ export default function Reports() {
     () => walletCurrentCents - postPeriodNetCents - inPeriodNetCents,
     [walletCurrentCents, postPeriodNetCents, inPeriodNetCents]
   );
-  // Closing at period end = opening + in-period net
-  const closingCents = openingCents + inPeriodNetCents;
-
   /* ── Summary metrics ── */
   const summaryMetrics = useMemo(() => {
     let incomeCents  = 0;
@@ -259,8 +270,10 @@ export default function Reports() {
 
     for (const tx of filteredTransactions) {
       const c = Math.abs(toCents(tx.amount));
-      if (tx.type === 'income') incomeCents += c;
-      else {
+      const sign = resolveSign(tx);
+      if (sign > 0) {
+        incomeCents += c;
+      } else {
         expenseCents += c;
         const cat = tx.category || 'General';
         catCents[cat] = (catCents[cat] || 0) + c;
@@ -279,7 +292,7 @@ export default function Reports() {
         pct: expenseCents > 0 ? (cents / expenseCents) * 100 : 0,
       }))
       .sort((a, b) => b.cents - a.cents)
-      .slice(0, 5);
+      .slice(0, 4);
 
     return {
       incomeCents,
@@ -290,6 +303,9 @@ export default function Reports() {
       count: filteredTransactions.length,
     };
   }, [filteredTransactions]);
+
+  // Closing at period end = opening + in-period net cashflow (matches PDF engine and ledger)
+  const closingCents = openingCents + summaryMetrics.netCents;
 
   /* ── Ledger rows + running balance (pure, memoized) ── */
   const ledgerRows = useMemo(() => {
@@ -303,15 +319,17 @@ export default function Reports() {
 
       const ref  = tx._id ? String(tx._id).slice(-6).toUpperCase()
                           : `TX-${String(idx + 1).padStart(4, '0')}`;
-      const desc = includeNotes
+      const rawDesc = includeNotes
         ? (tx.note || tx.description || tx.category || 'Transaction Entry')
         : (tx.category || 'Transaction Entry');
+      const desc = cleanDescription(rawDesc, 52);
 
       rows.push({
         key: tx.id || tx._id || idx,
         dateStr: formatDateLatin(tx.date),
         ref,
         desc,
+        fullDesc: String(rawDesc),
         category: tx.category || 'General',
         account:  tx.account_name,
         sign,
@@ -321,6 +339,7 @@ export default function Reports() {
         balStr: symbol
               + fromCents(runCents).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         isInc: sign > 0,
+        _tx: tx,
       });
     }
     return rows;
@@ -348,17 +367,18 @@ export default function Reports() {
 
   /* ── Real audit checksum (same canonical form the PDF engine uses) ── */
   const [checksum, setChecksum] = useState('SHA256: computing…');
-  React.useEffect(() => {
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       const canonical = JSON.stringify({
-        ref:     statementMeta.referenceId,
+        ref:      statementMeta.referenceId,
         currency: activeCurrency,
-        opening: fromCents(openingCents),
-        income:  fromCents(summaryMetrics.incomeCents),
-        expense: fromCents(summaryMetrics.expenseCents),
-        closing: fromCents(closingCents),
-        count:   summaryMetrics.count,
+        opening:  fromCents(openingCents),
+        income:   fromCents(summaryMetrics.incomeCents),
+        expense:  fromCents(summaryMetrics.expenseCents),
+        closing:  fromCents(closingCents),
+        count:    summaryMetrics.count,
+        options:  { includeNotes, includeCategories, includeSeal },
         rows: filteredTransactions.map((t) => [
           t._id ? String(t._id) : null,
           t.date || null,
@@ -368,19 +388,26 @@ export default function Reports() {
         ]),
       });
       const hex = await sha256Hex(canonical);
-      if (!cancelled) setChecksum(`SHA256: ${hex.slice(0, 32)}`);
+      if (!cancelled) setChecksum(hex ? `SHA256: ${hex.slice(0, 32)}` : 'SHA256: unavailable');
     })();
     return () => { cancelled = true; };
   }, [
     statementMeta.referenceId, activeCurrency,
     openingCents, closingCents, summaryMetrics,
+    includeNotes, includeCategories, includeSeal,
     filteredTransactions,
   ]);
 
   /* ── Handlers ── */
   const handlePrint = useCallback(() => {
-    if (typeof window !== 'undefined') window.print();
-  }, []);
+    if (typeof window === 'undefined') return;
+    const prev = zoomLevel;
+    setZoomLevel(1);
+    requestAnimationFrame(() => {
+      window.print();
+      setZoomLevel(prev);
+    });
+  }, [zoomLevel]);
 
   const handleFitWidth = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -401,6 +428,10 @@ export default function Reports() {
         dateRangeLabel: dateRangeBounds.label,
         isFiltered: true,
         openingBalance: fromCents(openingCents),
+        displayCurrency: activeCurrency,
+        referenceId: statementMeta.referenceId,
+        accountNumber: statementMeta.accountNumber,
+        includeCategories,
         includeNotes,
         includeSeal,
       });
@@ -418,7 +449,8 @@ export default function Reports() {
   }, [
     isExportingPDF, user, filteredTransactions, currencyInfo, locale,
     statementType, dateRangeBounds, selectedAccountName,
-    openingCents, includeNotes, includeSeal, showToast, tr,
+    openingCents, activeCurrency, statementMeta.referenceId, statementMeta.accountNumber,
+    includeCategories, includeNotes, includeSeal, showToast, tr,
   ]);
 
   const handleDownloadExcel = useCallback(async () => {
@@ -449,21 +481,20 @@ export default function Reports() {
 
   const handleDownloadCSV = useCallback(() => {
     try {
-      const esc = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
       const headers = ['Date', 'Reference', 'Type', 'Category', 'Description', 'Account', 'Amount', 'Currency'];
-      const rows = ledgerRows.map((r, i) => [
-        formatDateLatin(filteredTransactions[i]?.date),
-        r.ref,
-        filteredTransactions[i]?.type || '',
-        esc(r.category),
-        esc(filteredTransactions[i]?.note || filteredTransactions[i]?.description || ''),
-        esc(r.account || ''),
-        (r.sign * fromCents(r.amtCents)).toFixed(2),
-        activeCurrency,
+      const rows = ledgerRows.map((r) => [
+        escapeCsvField(r.dateStr),
+        escapeCsvField(r.ref),
+        escapeCsvField(r._tx?.type || ''),
+        escapeCsvField(r.category),
+        escapeCsvField(r._tx?.note || r._tx?.description || r.fullDesc || ''),
+        escapeCsvField(r.account || ''),
+        escapeCsvField((r.sign * fromCents(r.amtCents)).toFixed(2)),
+        escapeCsvField(activeCurrency),
       ]);
 
       const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -471,17 +502,23 @@ export default function Reports() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       showToast('success', tr('csv_download_success', 'CSV ledger downloaded!'));
     } catch (err) {
       console.error('[handleDownloadCSV]', err);
       showToast('error', 'CSV export failed.');
     }
-  }, [ledgerRows, filteredTransactions, activeCurrency, statementMeta, showToast, tr]);
+  }, [ledgerRows, activeCurrency, statementMeta, showToast, tr]);
 
   /* ── Formatting helpers bound to this render ── */
   const fmtMoney = useCallback(
-    (cents) => symbol + fromCents(cents).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    (cents) => {
+      const sign = cents < 0 ? '-' : '';
+      return sign + symbol + Math.abs(fromCents(cents)).toLocaleString(locale, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    },
     [symbol, locale]
   );
 
@@ -531,7 +568,7 @@ export default function Reports() {
               whileTap={{ scale: 0.98 }}
               className="btn-primary"
               onClick={handleDownloadPDF}
-              disabled={isExportingPDF}
+              disabled={isExportingPDF || (contextLoading && transactions.length === 0)}
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', padding: '9px 18px' }}
             >
               <Download size={16} />
@@ -781,7 +818,13 @@ export default function Reports() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ledgerRows.length === 0 ? (
+                    {contextLoading && transactions.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+                          Loading verified statement data…
+                        </td>
+                      </tr>
+                    ) : ledgerRows.length === 0 ? (
                       <tr>
                         <td colSpan={6} style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
                           No transaction records found matching the specified statement period or account filters.
@@ -791,7 +834,7 @@ export default function Reports() {
                       <tr key={r.key} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                         <td style={{ padding: '6px 8px', color: '#475569' }}>{r.dateStr}</td>
                         <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontWeight: 700, color: '#0f172a' }}>{r.ref}</td>
-                        <td style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 500 }}>
+                        <td style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 500 }} title={r.fullDesc}>
                           {r.desc}
                           {r.account && (
                             <span style={{ display: 'block', fontSize: '7.5px', color: '#64748b' }}>

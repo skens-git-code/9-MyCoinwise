@@ -83,6 +83,10 @@ const categoryBudgetSchema = new mongoose.Schema(
       type: String,
       default: '🏷️',
       maxlength: MAX_ICON_LENGTH,
+      validate: {
+        validator: (value) => !value || /^[\p{Emoji}\p{Emoji_Component}\s]{1,16}$/u.test(value),
+        message: 'Category icon must be a valid emoji.',
+      },
     },
   },
   { _id: false }
@@ -118,6 +122,16 @@ const budgetSchema = new mongoose.Schema(
       default: 'monthly',
     },
 
+    // ── Currency ──
+    currency: {
+      type: String,
+      required: true,
+      uppercase: true,
+      trim: true,
+      default: 'USD',
+      match: /^[A-Z]{3}$/,
+    },
+
     // ── Period fields ──
 
     // Period start date
@@ -132,9 +146,9 @@ const budgetSchema = new mongoose.Schema(
       required: true,
       validate: {
         validator: function (value) {
-          // `this` is the doc on create, or the query on update.
-          // For updates we cannot see period_start, so accept when either is missing.
-          return !this.period_start || !value || value >= this.period_start;
+          const start = this.period_start || (typeof this.getUpdate === 'function' ? (this.getUpdate()?.$set?.period_start ?? this.getUpdate()?.period_start) : undefined);
+          if (!start || !value) return true;
+          return new Date(value) >= new Date(start);
         },
         message: 'period_end must be on or after period_start.',
       },
@@ -170,10 +184,22 @@ const budgetSchema = new mongoose.Schema(
     categories: {
       type: [categoryBudgetSchema],
       default: [],
-      validate: {
-        validator: (list) => Array.isArray(list) && list.length <= 100,
-        message: 'A budget cannot have more than 100 categories.',
-      },
+      validate: [
+        {
+          validator: (list) => Array.isArray(list) && list.length <= 100,
+          message: 'A budget cannot have more than 100 categories.',
+        },
+        {
+          validator: function (list) {
+            if (!Array.isArray(list) || list.length === 0) return true;
+            const parentLimit = this.total_limit ?? (typeof this.getUpdate === 'function' ? (this.getUpdate()?.$set?.total_limit ?? this.getUpdate()?.total_limit) : undefined);
+            if (parentLimit === undefined) return true;
+            const sum = list.reduce((acc, c) => acc + (c?.limit || 0), 0);
+            return sum <= parentLimit + 0.01;
+          },
+          message: 'Sum of category limits cannot exceed total_limit.',
+        },
+      ],
     },
 
     // ── Feature flags ──
@@ -192,8 +218,11 @@ const budgetSchema = new mongoose.Schema(
       max: MAX_ROLLOVER,
       validate: {
         validator: function (value) {
-          // Rollover only makes sense when the feature is enabled.
-          if (!this.rollover_enabled && value !== 0) return false;
+          if (!value) return true; // 0, null, or undefined
+          const enabled = this.rollover_enabled !== undefined
+            ? this.rollover_enabled
+            : (typeof this.getUpdate === 'function' ? (this.getUpdate()?.$set?.rollover_enabled ?? this.getUpdate()?.rollover_enabled) : undefined);
+          if (enabled === false && value !== 0) return false;
           return true;
         },
         message: 'rollover_amount must be 0 when rollover_enabled is false.',
@@ -201,6 +230,7 @@ const budgetSchema = new mongoose.Schema(
     },
 
     // Warning thresholds (percentages)
+    // Note: Configurable per-budget alert boundaries (e.g., [50, 80, 100]).
     warning_thresholds: {
       type: [Number],
       default: [50, 80, 100],
@@ -218,6 +248,7 @@ const budgetSchema = new mongoose.Schema(
     },
 
     // Optional template preset
+    // Note: Template identifier for preset category archetypes (student, freelancer, etc.)
     template: {
       type: String,
       enum: [...ALLOWED_TEMPLATES, null],
@@ -232,7 +263,7 @@ const budgetSchema = new mongoose.Schema(
       default: true,
     },
 
-    // Auto-renew toggle
+    // Auto-renew toggle (auto-rolls period over to next month/week upon expiration)
     auto_renew: {
       type: Boolean,
       default: true,
@@ -248,16 +279,55 @@ const budgetSchema = new mongoose.Schema(
 );
 
 /* —————————————————————————————————————
+ * Document & Query Validation Hooks
+ * ————————————————————————————————————— */
+
+// Pre-validate hook executes on save() where `this` is the full document
+budgetSchema.pre('validate', function (next) {
+  if (this.period_start && this.period_end && this.period_end < this.period_start) {
+    this.invalidate('period_end', 'period_end must be on or after period_start.');
+  }
+  if (this.rollover_enabled === false && this.rollover_amount && this.rollover_amount !== 0) {
+    this.invalidate('rollover_amount', 'rollover_amount must be 0 when rollover_enabled is false.');
+  }
+  if (Array.isArray(this.categories) && this.categories.length > 0) {
+    const sumCategories = this.categories.reduce((acc, c) => acc + (c?.limit || 0), 0);
+    if (sumCategories > (this.total_limit || 0) + 0.01) {
+      this.invalidate('categories', 'Sum of category limits cannot exceed total_limit.');
+    }
+  }
+  next();
+});
+
+// Pre-findOneAndUpdate hook validates partial updates that include date or rollover changes
+budgetSchema.pre('findOneAndUpdate', async function (next) {
+  const update = this.getUpdate();
+  if (!update) return next();
+  const set = update.$set || update;
+  if (set.rollover_enabled === false && set.rollover_amount !== undefined && set.rollover_amount !== 0) {
+    return next(new Error('rollover_amount must be 0 when rollover_enabled is false.'));
+  }
+  if (set.period_start && set.period_end && new Date(set.period_end) < new Date(set.period_start)) {
+    return next(new Error('period_end must be on or after period_start.'));
+  }
+  next();
+});
+
+/* —————————————————————————————————————
  * Indexes
  * ————————————————————————————————————— */
 
-// Unique, case-insensitive budget name per user per period
+// Unique, case-insensitive budget name per user per period for ACTIVE budgets.
+// Deactivated budgets (is_active: false) are excluded so users can deactivate a budget
+// and safely re-create one with the same name without duplicate-key errors.
+// Overlapping cross-period ranges are validated at the route layer.
 budgetSchema.index(
   { user_id: 1, name: 1, period_start: 1 },
   {
     unique: true,
+    partialFilterExpression: { is_active: true },
     collation: { locale: 'en', strength: 2 },
-    name: 'user_name_period_unique_ci',
+    name: 'user_name_period_unique_ci_active',
   }
 );
 
@@ -282,15 +352,17 @@ budgetSchema.virtual('id').get(function () {
   return this._id.toHexString();
 });
 
-// ── Remaining budget (may be negative on overspend) ──
+// ── Remaining budget (respects rollover_enabled flag) ──
 budgetSchema.virtual('remaining').get(function () {
-  const totalAvailable = (this.total_limit || 0) + (this.rollover_amount || 0);
+  const rollover = this.rollover_enabled ? (this.rollover_amount || 0) : 0;
+  const totalAvailable = (this.total_limit || 0) + rollover;
   return Number((totalAvailable - (this.total_spent || 0)).toFixed(2));
 });
 
 // ── Uncapped progress percentage (values above 100 mean overspent) ──
 budgetSchema.virtual('progress_percentage').get(function () {
-  const totalAvailable = (this.total_limit || 0) + (this.rollover_amount || 0);
+  const rollover = this.rollover_enabled ? (this.rollover_amount || 0) : 0;
+  const totalAvailable = (this.total_limit || 0) + rollover;
   if (totalAvailable <= 0) return 0;
   return Number(((this.total_spent || 0) / totalAvailable * 100).toFixed(1));
 });

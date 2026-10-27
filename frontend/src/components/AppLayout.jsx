@@ -18,7 +18,7 @@
  * ————————————————————————————————————— */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import throttle from 'lodash.throttle';
 // [OPTIMIZATION: Removed external 'react-responsive' dependency in favor of native window.matchMedia hook]
@@ -105,6 +105,7 @@ const preloadRoute = (to) => {
     case '/settings': import('../pages/SettingsPage'); break;
     case '/terms': import('../pages/Terms'); break;
     case '/privacy': import('../pages/Privacy'); break;
+    case '/404': import('../pages/NotFound'); break;
     default: break;
   }
 };
@@ -545,14 +546,15 @@ export default function AppLayout({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Close the mobile drawer whenever the route changes.
+  // Close the mobile drawer and any active dropdowns whenever the route changes.
   const prevPathRef = useRef(location.pathname);
   useEffect(() => {
     if (prevPathRef.current !== location.pathname) {
       prevPathRef.current = location.pathname;
       setDrawerOpen(false);
+      closeAll();
     }
-  }, [location.pathname]);
+  }, [location.pathname, closeAll]);
 
   // Lock body scroll while the mobile drawer is open.
   useEffect(() => {
@@ -694,7 +696,8 @@ export default function AppLayout({ children }) {
 
   const handleLogout = useCallback(() => {
     if (typeof logout === 'function') logout();
-  }, [logout]);
+    navigate('/login', { replace: true });
+  }, [logout, navigate]);
 
   const handleToggleTheme = useCallback(() => {
     if (typeof toggleTheme === 'function') toggleTheme();
@@ -932,7 +935,7 @@ export default function AppLayout({ children }) {
                 }}
               >
                 <Breadcrumbs />
-                {children}
+                {children || <Outlet />}
               </motion.div>
             </AnimatePresence>
             <Footer />

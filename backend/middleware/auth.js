@@ -22,7 +22,13 @@ const authenticateRequest = async (req, res, next) => {
       bearerToken = req.cookies.token;
     } else if (req.headers.cookie) {
       const match = req.headers.cookie.match(/(?:^|;\s*)token=([^;]+)/);
-      if (match) bearerToken = decodeURIComponent(match[1]);
+      if (match) {
+        try {
+          bearerToken = decodeURIComponent(match[1]);
+        } catch {
+          bearerToken = null;
+        }
+      }
     }
 
     if (!bearerToken) {
@@ -87,21 +93,34 @@ const authenticateRequest = async (req, res, next) => {
           return res.status(401).json({ error: 'This session has been revoked. Please log in again.' });
         }
 
-        // If not revoked, check if user exists to repair session or reject
+        // Reject purged/missing session records if token is older than the initial 5-minute race window
+        const tokenIssuedAt = decodedToken.iat ? decodedToken.iat * 1000 : 0;
+        const tokenAgeMs = Date.now() - tokenIssuedAt;
+        if (tokenAgeMs > 5 * 60 * 1000) {
+          return res.status(401).json({ error: 'Session has been revoked or expired. Please log in again.' });
+        }
+
+        // If within recent issuance window, verify user still exists before repairing session
         authenticatedUser = await User.findById(uid);
         if (!authenticatedUser) {
           return res.status(401).json({ error: 'User associated with this token no longer exists.' });
         }
 
         // Create missing session record
-        activeSession = await Session.create({
-          user_id: authenticatedUser._id,
-          token_id: decodedToken.jti,
-          device: 'Active session',
-          ip: req.ip || req.headers['x-forwarded-for'] || '',
-          user_agent: req.headers['user-agent'] || '',
-          is_active: true,
-        }).catch(() => null);
+        try {
+          activeSession = await Session.create({
+            user_id: authenticatedUser._id,
+            token_id: decodedToken.jti,
+            device: 'Active session',
+            ip: req.ip || req.headers['x-forwarded-for'] || '',
+            user_agent: req.headers['user-agent'] || '',
+            is_active: true,
+          });
+        } catch (createErr) {
+          const { logger } = require('../utils/logger');
+          logger.warn(`[auth] Session repair failed for user ${userId}: ${createErr.message}`);
+          activeSession = null;
+        }
       }
     } else {
       // Legacy token without jti claim

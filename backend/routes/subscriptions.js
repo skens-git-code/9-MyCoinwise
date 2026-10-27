@@ -235,14 +235,16 @@ router.post(
     try {
       const normalizedName = name.trim();
 
-      // Duplicate name check (matches accounts.js pattern).
+      // Duplicate name check on live (uncancelled & active) subscriptions
       const duplicate = await Subscription.exists({
         user_id: req.user.id,
         name: new RegExp(`^${escapeRegExp(normalizedName)}$`, 'i'),
+        is_active: true,
+        cancelled_at: null,
       });
       if (duplicate) {
         return res.status(409).json({
-          error: 'A subscription with this name already exists.',
+          error: 'An active subscription with this name already exists.',
         });
       }
 
@@ -255,6 +257,7 @@ router.post(
         color: color || '#3b82f6',
         icon: icon || '💳',
         url: url ? String(url).trim() : null,
+        currency: req.body.currency ? String(req.body.currency).trim().toUpperCase() : 'USD',
 
         // Note: an earlier version defaulted to 'credit_card', which
         // violates the Subscription schema enum ['card', ...]. The
@@ -269,6 +272,7 @@ router.post(
         notes: notes ? String(notes).trim() : null,
         is_active: true,
         is_paused: false,
+        cancelled_at: null,
       };
 
       // ── Persist the new subscription ──
@@ -342,20 +346,27 @@ router.put(
         is_active, is_paused, cancelled_at,
       } = req.body;
 
-      // Duplicate name check (excluding self).
+      // Duplicate name check (excluding self, matching live subscriptions only).
       if (name !== undefined) {
         const normalizedName = name.trim();
         const duplicate = await Subscription.exists({
           _id: { $ne: subscription._id },
           user_id: req.user.id,
           name: new RegExp(`^${escapeRegExp(normalizedName)}$`, 'i'),
+          is_active: true,
+          cancelled_at: null,
         });
         if (duplicate) {
           return res.status(409).json({
-            error: 'A subscription with this name already exists.',
+            error: 'An active subscription with this name already exists.',
           });
         }
         subscription.name = normalizedName;
+      }
+
+      // ── Update currency ──
+      if (req.body.currency !== undefined) {
+        subscription.currency = String(req.body.currency).trim().toUpperCase();
       }
 
       // ── Update amount ──

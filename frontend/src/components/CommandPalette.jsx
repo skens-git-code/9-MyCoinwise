@@ -25,7 +25,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, ArrowRight, Wallet, Target, CreditCard,
   Briefcase, Calendar, Settings, BarChart3,
-  ArrowLeftRight, X, Zap, Tag, ReceiptText
+  ArrowLeftRight, X, Zap, Tag, ReceiptText,
+  PieChart, Landmark, Activity, FileCheck, Calculator as CalculatorIcon, Info
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -73,11 +74,17 @@ export default function CommandPalette({ isOpen, onClose }) {
     { id: 'nav-tx', type: 'page', title: 'Transactions', subtitle: 'View & filter all records', icon: ArrowLeftRight, to: '/transactions' },
     { id: 'nav-cal', type: 'page', title: 'Calendar', subtitle: 'Monthly timeline & schedule', icon: Calendar, to: '/calendar' },
     { id: 'nav-ana', type: 'page', title: 'Analytics', subtitle: 'Detailed breakdowns & charts', icon: BarChart3, to: '/analytics' },
+    { id: 'nav-acc', type: 'page', title: 'Accounts', subtitle: 'Bank accounts, credit cards & wallets', icon: Landmark, to: '/accounts' },
+    { id: 'nav-bud', type: 'page', title: 'Budgets', subtitle: 'Spending limits & rollover rules', icon: PieChart, to: '/budgets' },
     { id: 'nav-goal', type: 'page', title: 'Savings Goals', subtitle: 'Track targets & milestones', icon: Target, to: '/goals' },
     { id: 'nav-sub', type: 'page', title: 'Subscriptions', subtitle: 'Recurring monthly & annual bills', icon: CreditCard, to: '/subscriptions' },
+    { id: 'nav-cash', type: 'page', title: 'Forecasting & Cashflow', subtitle: 'Predict future runway & balances', icon: Activity, to: '/cashflow' },
     { id: 'nav-wealth', type: 'page', title: 'Wealth & Assets', subtitle: 'Net worth & asset management', icon: Briefcase, to: '/wealth' },
-    { id: 'nav-set', type: 'page', title: 'Settings', subtitle: 'Preferences, security & profile', icon: Settings, to: '/settings' },
+    { id: 'nav-calc', type: 'page', title: 'Calculator', subtitle: 'SIP, EMI, compound interest calculators', icon: CalculatorIcon, to: '/calculator' },
     { id: 'nav-tax', type: 'page', title: 'Tax Center', subtitle: 'Profiles, estimates & reports', icon: ReceiptText, to: '/tax' },
+    { id: 'nav-rep', type: 'page', title: 'Statements & Reports', subtitle: 'Export CSV, PDF & Excel reports', icon: FileCheck, to: '/reports' },
+    { id: 'nav-set', type: 'page', title: 'Settings', subtitle: 'Preferences, security & profile', icon: Settings, to: '/settings' },
+    { id: 'nav-abt', type: 'page', title: 'About MyCoinwise', subtitle: 'Platform overview & architecture', icon: Info, to: '/about' },
   ], []);
 
   /* —————————————————————————————————————

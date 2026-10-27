@@ -204,7 +204,11 @@ export const api = {
   healthCheck: async (options = {}) => {
     try {
       const { timeout = 15000, ...rest } = options || {};
-      const res = await apiClient.get(`${API_URL}/health`, { ...rest, timeout });
+      const res = await apiClient.get(`${API_URL}/health`, {
+        ...rest,
+        timeout,
+        validateStatus: (status) => (status >= 200 && status < 300) || status === 503,
+      });
       return res.data;
     } catch {
       return null;
@@ -215,10 +219,33 @@ export const api = {
    * Auth
    * ───────────────────────────────────── */
 
-  // ── Log in and return { token, user } ──
+  // ── Log in and return { token, user } (with automatic retry for cold-start waking backends) ──
   login: async (credentials) => {
-    const res = await apiClient.post(`${API_URL}/auth/login`, credentials);
-    return res.data;
+    let lastError;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const res = await apiClient.post(`${API_URL}/auth/login`, credentials);
+        return res.data;
+      } catch (err) {
+        lastError = err;
+        const status = err?.response?.status;
+        const isColdStart =
+          err?.code === 'ECONNABORTED' ||
+          err?.code === 'ERR_NETWORK' ||
+          !err?.response ||
+          status === 502 ||
+          status === 503 ||
+          status === 504;
+        // Do not retry explicit client rejections (400 bad data, 401 invalid creds, 403, 423 locked, 429 rate limit)
+        if (!isColdStart || (status && status < 500 && status !== 408)) {
+          throw err;
+        }
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 1200 * (attempt + 1)));
+        }
+      }
+    }
+    throw lastError;
   },
 
   // ── Register a new account and return { token, user } ──
@@ -328,9 +355,8 @@ export const api = {
    * ───────────────────────────────────── */
 
   // ── List a user's transactions ──
-  // Auto-paginates through the cursor API (200/page, capped at 2000) so
-  // every caller receives the full list. Previously this returned only the
-  // first 50 rows and silently dropped `nextCursor`/`hasMore`.
+  // Fetches up to 2000 transactions in a single fast backend round-trip
+  // using legacy=1, preserving full array shape for all callers.
   getTransactions: async (userId, params = {}) => {
     const merged = { ...params };
     // Explicit paging requested → single page, preserve legacy shape.
@@ -344,23 +370,22 @@ export const api = {
       2000,
       Math.max(1, Number.parseInt(merged.limit, 10) || 2000)
     );
-    const PAGE_SIZE = 200;
-    const items = [];
-    let cursor = null;
-    for (let page = 0; page < 10; page += 1) {
+    try {
       const res = await apiClient.get(`${API_URL}/transactions/${userId}`, {
-        params: { ...merged, limit: Math.min(PAGE_SIZE, MAX_ITEMS - items.length), ...(cursor ? { cursor } : {}) },
+        params: { ...merged, legacy: 1, limit: MAX_ITEMS },
       });
-      if (Array.isArray(res.data)) {
-        items.push(...res.data);
-        break;
-      }
-      const batch = Array.isArray(res.data?.items) ? res.data.items : [];
-      items.push(...batch);
-      if (!res.data?.hasMore || !res.data?.nextCursor || items.length >= MAX_ITEMS) break;
-      cursor = res.data.nextCursor;
+      if (Array.isArray(res.data)) return res.data;
+      if (Array.isArray(res.data?.items)) return res.data.items;
+      return [];
+    } catch {
+      // Fallback: try default endpoint shape if legacy query is not supported
+      const res = await apiClient.get(`${API_URL}/transactions/${userId}`, {
+        params: { ...merged, limit: Math.min(200, MAX_ITEMS) },
+      });
+      if (Array.isArray(res.data)) return res.data;
+      if (Array.isArray(res.data?.items)) return res.data.items;
+      return [];
     }
-    return items.slice(0, MAX_ITEMS);
   },
 
   // ── List transactions with cursor metadata for pagination ──

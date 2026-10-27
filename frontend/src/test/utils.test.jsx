@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { formatDate, parseSafeDate, isDateValid } from '../utils/dateUtils';
+import { formatDate, parseSafeDate, parseLocalDate, isDateValid } from '../utils/dateUtils';
 import { escapeCsvCell, buildCsv } from '../utils/csvUtils';
 import { formatCurrency, getCurrencySymbol } from '../utils/currencyUtils';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -10,6 +10,14 @@ describe('dateUtils', () => {
     const d = parseSafeDate('2026-09-16T12:00:00Z');
     expect(d).toBeInstanceOf(Date);
     expect(isDateValid('2026-09-16')).toBe(true);
+  });
+
+  it('parses local dates (YYYY-MM-DD) preserving the calendar day', () => {
+    const d = parseLocalDate('2025-01-01');
+    expect(d).toBeInstanceOf(Date);
+    expect(d.getFullYear()).toBe(2025);
+    expect(d.getMonth()).toBe(0);
+    expect(d.getDate()).toBe(1);
   });
 
   it('handles invalid dates gracefully with fallback', () => {

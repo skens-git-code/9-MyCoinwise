@@ -275,8 +275,9 @@ router.get(
         if (Number.isNaN(dateObj.getTime())) continue;
 
         // ── Accumulate totals ──
-        if (t.type === 'income') totalIncome += amount;
-        else if (t.type === 'expense') totalExpense += amount;
+        const tType = String(t.type || '').trim().toLowerCase();
+        if (tType === 'income') totalIncome += amount;
+        else if (tType === 'expense') totalExpense += amount;
         exportedCount += 1;
 
         // ── Write the row ──
@@ -292,7 +293,7 @@ router.get(
         // ── Color the amount by direction ──
         row.getCell('amount').font = {
           bold: true,
-          color: { argb: t.type === 'income' ? 'FF10B981' : 'FFEF4444' },
+          color: { argb: tType === 'income' ? 'FF10B981' : 'FFEF4444' },
         };
       }
 

@@ -40,6 +40,9 @@ const Terms = lazy(() => import('./pages/Terms'));
 const Privacy = lazy(() => import('./pages/Privacy'));
 const Reports = lazy(() => import('./pages/Reports'));
 const NotFound = lazy(() => import('./pages/NotFound'));
+const Landing = lazy(() => import('./pages/Landing/Landing'));
+
+import ScrollToTop from './components/ScrollToTop';
 
 import {
   DashboardSkeleton,
@@ -75,8 +78,13 @@ function AppRoutes() {
         <Route path="/calculator" element={<Suspense fallback={<PageSkeleton title="Calculator" />}><Calculator /></Suspense>} />
         <Route path="/tax" element={<Suspense fallback={<PageSkeleton title="Tax" />}><Tax /></Suspense>} />
         <Route path="/reports" element={<Suspense fallback={<PageSkeleton title="Statements & Reports" />}><Reports /></Suspense>} />
-        <Route path="/download" element={<Suspense fallback={<PageSkeleton title="Statements & Reports" />}><Reports /></Suspense>} />
-        <Route path="/statements" element={<Suspense fallback={<PageSkeleton title="Statements & Reports" />}><Reports /></Suspense>} />
+        <Route path="/download" element={<Navigate to="/reports" replace />} />
+        <Route path="/statements" element={<Navigate to="/reports" replace />} />
+        <Route path="/tax-center" element={<Navigate to="/tax" replace />} />
+        <Route path="/taxes" element={<Navigate to="/tax" replace />} />
+        <Route path="/history" element={<Navigate to="/transactions" replace />} />
+        <Route path="/overview" element={<Navigate to="/" replace />} />
+        <Route path="/profile" element={<Navigate to="/settings" replace />} />
         <Route path="/terms" element={<Suspense fallback={<PageSkeleton title="Terms" />}><Terms /></Suspense>} />
         <Route path="/privacy" element={<Suspense fallback={<PageSkeleton title="Privacy" />}><Privacy /></Suspense>} />
         <Route path="/404" element={<Suspense fallback={<PageSkeleton title="Not Found" />}><NotFound /></Suspense>} />
@@ -494,6 +502,7 @@ export default function App() {
 
   const lastAuthRedirectRef = useRef(0);
   const inFlightFetchRef = useRef(null);
+  const lastFetchedTokenRef = useRef(null);
 
   useEffect(() => {
     const handleAuthExpired = (event) => {
@@ -723,10 +732,15 @@ export default function App() {
       setIsInitialAuthLoad(false);
     }
     setToken(newToken);
+    lastFetchedTokenRef.current = newToken;
     fetchData(newToken, userData);
   }, [fetchData]);
 
-  useEffect(() => { fetchData(); }, [token]);
+  useEffect(() => {
+    if (token && lastFetchedTokenRef.current === token) return;
+    if (token) lastFetchedTokenRef.current = token;
+    fetchData();
+  }, [token, fetchData]);
 
   const applyBalance = useCallback((balance) => {
     if (balance === undefined || balance === null) return;
@@ -960,9 +974,11 @@ export default function App() {
                 <Loader fullScreen mode={token ? "auth" : "inline"} />
               ) : (
                 <Router>
+                  <ScrollToTop />
                   <CookieBanner />
                   <Suspense fallback={<Loader />}>
                     <Routes>
+                      <Route path="/welcome" element={<Landing />} />
                       <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
                       <Route path="/register" element={!user ? <Register /> : <Navigate to="/" replace />} />
                       <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" replace />} />
@@ -971,6 +987,7 @@ export default function App() {
                       <Route path="/terms" element={<Terms />} />
                       <Route path="/privacy" element={<Privacy />} />
                       <Route path="/404" element={<NotFound />} />
+                      {!user && !token && <Route path="/" element={<Landing />} />}
                       <Route path="/*" element={
                         <ProtectedRoute>
                           <AppLayout>

@@ -131,8 +131,16 @@ function parseTrustProxy(raw) {
     if (/^\d+$/.test(value)) return Number(value);
     return raw;
   }
-  // Auto-detect reverse proxy in common cloud environments (Render sets RENDER=true, Vercel sets VERCEL=1)
-  if (process.env.RENDER === 'true' || process.env.VERCEL === '1') {
+  // Auto-detect reverse proxy in common cloud environments (Render, Vercel, Heroku, Fly, AWS)
+  if (
+    process.env.RENDER === 'true' ||
+    process.env.VERCEL === '1' ||
+    process.env.VERCEL === 'true' ||
+    Boolean(process.env.VERCEL) ||
+    Boolean(process.env.HEROKU_APP_ID) ||
+    Boolean(process.env.FLY_APP_NAME) ||
+    Boolean(process.env.AWS_EXECUTION_ENV)
+  ) {
     return 1;
   }
   return false;

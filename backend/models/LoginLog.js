@@ -85,15 +85,18 @@ const loginLogSchema = new mongoose.Schema({
    * Security Intelligence
    * ————————————————————————————————————— */
 
-  // ── Client IP (IPv4 or IPv6) ──
+  // ── Client IP (IPv4 or IPv6, normalized from multi-hop proxy chains) ──
   ip: { 
     type: String, 
     default: null,
+    set: function(v) {
+      if (!v) return v;
+      return String(v).split(',')[0].trim().replace(/^::ffff:/i, '');
+    },
     validate: {
       validator: function(v) {
         if (!v) return true;
-        const cleaned = String(v).replace(/^::ffff:/i, '').split(',')[0].trim();
-        return net.isIP(v) !== 0 || net.isIP(cleaned) !== 0;
+        return net.isIP(v) !== 0;
       },
       message: 'Invalid IP address format'
     }
@@ -128,7 +131,7 @@ const loginLogSchema = new mongoose.Schema({
     default: false 
   },
 
-  // ── Whether 2FA was successfully verified ──
+  // ── Whether 2FA was successfully verified (tri-state: null = not required, false = failed, true = verified) ──
   mfa_verified: { 
     type: Boolean, 
     default: null 
@@ -277,7 +280,8 @@ const loginLogSchema = new mongoose.Schema({
   login_duration_seconds: { 
     type: Number, 
     default: null,
-    min: 0
+    min: 0,
+    max: 3600
   },
 
   /* —————————————————————————————————————
@@ -295,7 +299,8 @@ const loginLogSchema = new mongoose.Schema({
   response_time_ms: { 
     type: Number, 
     default: null,
-    min: 0
+    min: 0,
+    max: 600000
   },
 
   // ── HTTP method of the request ──
@@ -338,16 +343,33 @@ const loginLogSchema = new mongoose.Schema({
     maxlength: 500
   },
 
-  // ── IP that created the audit entry ──
+  // ── IP that created the audit entry (normalized) ──
   created_by_ip: { 
     type: String, 
-    default: null 
+    default: null,
+    set: function(v) {
+      if (!v) return v;
+      return String(v).split(',')[0].trim().replace(/^::ffff:/i, '');
+    },
+    validate: {
+      validator: function(v) {
+        if (!v) return true;
+        return net.isIP(v) !== 0;
+      },
+      message: 'Invalid created_by_ip address format'
+    }
   },
 
   // ── Timestamp set in pre-save when the entry is finalized ──
   processed_at: { 
     type: Date, 
     default: null 
+  },
+
+  // ── Timestamp when the audit entry was last modified ──
+  updated_at: { 
+    type: Date, 
+    default: Date.now 
   },
 
   // ── Entry creation timestamp (used by TTL index) ──
@@ -396,18 +418,21 @@ loginLogSchema.index({ created_at: -1, is_suspicious: 1 });
 
 // ── Pre-save: compute risk score and normalize fields ──
 loginLogSchema.pre('save', function(next) {
-  // ── Boost risk for flagged suspicious entries ──
-  if (this.is_suspicious) {
+  // ── Boost risk for flagged suspicious entries (idempotent, only on modification) ──
+  if (this.isModified('is_suspicious') && this.is_suspicious) {
     this.risk_score = Math.min(100, (this.risk_score || 0) + 50);
   }
 
-  // ── Boost risk when prior failures exceed threshold ──
-  if (this.status === 'failed' && this.failed_attempts_before > 5) {
+  // ── Boost risk when prior failures hit/exceed threshold (idempotent, aligns with >= 5) ──
+  if (this.isModified('failed_attempts_before') && this.status === 'failed' && this.failed_attempts_before >= 5) {
     this.risk_score = Math.min(100, (this.risk_score || 0) + 30);
   }
 
-  // ── Mark processed timestamp ──
-  this.processed_at = new Date();
+  // ── Mark processed timestamp once upon creation ──
+  if (!this.processed_at) {
+    this.processed_at = new Date();
+  }
+  this.updated_at = new Date();
 
   // ── Normalize email ──
   if (this.email) {
@@ -422,30 +447,48 @@ loginLogSchema.pre('save', function(next) {
   next();
 });
 
-// ── Post-save: emit real-time security events ──
-loginLogSchema.post('save', async function(doc) {
+// ── Post-save: emit real-time security events safely (decoupled from save lifecycle) ──
+loginLogSchema.post('save', function(doc) {
+  const events = [];
+
   // ── Emit event for suspicious successful logins ──
   if (doc.is_suspicious && doc.status === 'success') {
-    if (mongoose.connection.emit) {
-      mongoose.connection.emit('suspicious_login', {
+    events.push([
+      'suspicious_login',
+      {
         user_id: doc.user_id,
         email: doc.email,
         ip: doc.ip,
         country: doc.country,
-        created_at: doc.created_at
-      });
-    }
+        created_at: doc.created_at,
+      },
+    ]);
   }
 
-  // ── Emit event when failed attempts hit the threshold ──
+  // ── Emit event when failed attempts hit the threshold (>= 5) ──
   if (doc.status === 'failed' && doc.failed_attempts_before >= 5) {
-    if (mongoose.connection.emit) {
-      mongoose.connection.emit('multiple_failed_logins', {
+    events.push([
+      'multiple_failed_logins',
+      {
         email: doc.email,
         ip: doc.ip,
-        attempts: doc.failed_attempts_before
-      });
-    }
+        attempts: doc.failed_attempts_before,
+      },
+    ]);
+  }
+
+  if (events.length > 0) {
+    process.nextTick(() => {
+      for (const [eventName, payload] of events) {
+        try {
+          if (mongoose.connection && typeof mongoose.connection.emit === 'function') {
+            mongoose.connection.emit(eventName, payload);
+          }
+        } catch (_err) {
+          // Prevent external listener exceptions from failing the write
+        }
+      }
+    });
   }
 });
 
@@ -487,7 +530,6 @@ loginLogSchema.virtual('risk_level').get(function() {
 // ── Flag the entry as suspicious and append a reason note ──
 loginLogSchema.methods.markAsSuspicious = async function(reason) {
   this.is_suspicious = true;
-  this.risk_score = Math.min(100, (this.risk_score || 0) + 40);
   if (reason && this.notes) {
     this.notes = `${this.notes}; Suspicious: ${reason}`;
   } else if (reason) {
@@ -537,19 +579,25 @@ loginLogSchema.statics.parseUserAgent = function(ua) {
   let browser_version = null;
   let versionMatch;
 
-  if ((versionMatch = ua.match(/Edg\/(\d+\.\d+)/i))) {
+  if ((versionMatch = ua.match(/Edg\/(\d+(?:\.\d+)*)/i))) {
     browser = 'Edge';
     browser_version = versionMatch[1];
-  } else if ((versionMatch = ua.match(/Chrome\/(\d+\.\d+)/i)) && !ua.includes('Edg')) {
+  } else if ((versionMatch = ua.match(/CriOS\/(\d+(?:\.\d+)*)/i))) {
     browser = 'Chrome';
     browser_version = versionMatch[1];
-  } else if ((versionMatch = ua.match(/Firefox\/(\d+\.\d+)/i))) {
+  } else if ((versionMatch = ua.match(/FxiOS\/(\d+(?:\.\d+)*)/i))) {
     browser = 'Firefox';
     browser_version = versionMatch[1];
-  } else if ((versionMatch = ua.match(/Version\/(\d+\.\d+).*Safari/i))) {
+  } else if ((versionMatch = ua.match(/Chrome\/(\d+(?:\.\d+)*)/i)) && !ua.includes('Edg')) {
+    browser = 'Chrome';
+    browser_version = versionMatch[1];
+  } else if ((versionMatch = ua.match(/Firefox\/(\d+(?:\.\d+)*)/i))) {
+    browser = 'Firefox';
+    browser_version = versionMatch[1];
+  } else if ((versionMatch = ua.match(/Version\/(\d+(?:\.\d+)*).*Safari/i))) {
     browser = 'Safari';
     browser_version = versionMatch[1];
-  } else if ((versionMatch = ua.match(/MSIE (\d+\.\d+)/i)) || (versionMatch = ua.match(/Trident.*rv:(\d+\.\d+)/i))) {
+  } else if ((versionMatch = ua.match(/MSIE (\d+(?:\.\d+)*)/i)) || (versionMatch = ua.match(/Trident.*rv:(\d+(?:\.\d+)*)/i))) {
     browser = 'Internet Explorer';
     browser_version = versionMatch[1];
   }
@@ -558,19 +606,19 @@ loginLogSchema.statics.parseUserAgent = function(ua) {
   let os = 'Unknown';
   let os_version = null;
 
-  if ((versionMatch = ua.match(/Windows NT (\d+\.\d+)/i))) {
+  if ((versionMatch = ua.match(/Windows NT (\d+(?:\.\d+)*)/i))) {
     os = 'Windows';
     const winVersions = { '10.0': '10/11', '6.3': '8.1', '6.2': '8', '6.1': '7' };
     os_version = winVersions[versionMatch[1]] || versionMatch[1];
-  } else if ((versionMatch = ua.match(/Mac OS X (\d+[._]\d+)/i))) {
+  } else if ((versionMatch = ua.match(/Mac OS X (\d+(?:[._]\d+)*)/i))) {
     os = 'macOS';
-    os_version = versionMatch[1].replace('_', '.');
-  } else if ((versionMatch = ua.match(/Android (\d+\.\d+)/i))) {
+    os_version = versionMatch[1].replace(/_/g, '.');
+  } else if ((versionMatch = ua.match(/Android (\d+(?:\.\d+)*)/i))) {
     os = 'Android';
     os_version = versionMatch[1];
-  } else if ((versionMatch = ua.match(/iPhone OS (\d+[._]\d+)/i))) {
+  } else if ((versionMatch = ua.match(/iPhone OS (\d+(?:[._]\d+)*)/i))) {
     os = 'iOS';
-    os_version = versionMatch[1].replace('_', '.');
+    os_version = versionMatch[1].replace(/_/g, '.');
   } else if (ua.includes('Linux')) {
     os = 'Linux';
   }
@@ -578,21 +626,22 @@ loginLogSchema.statics.parseUserAgent = function(ua) {
   return { device_type, browser, browser_version, os, os_version };
 };
 
-// ── Count failed attempts for an email or IP within a time window ──
+// ── Count failed attempts for an email or IP within a time window (parallel queries) ──
 loginLogSchema.statics.getFailedAttempts = async function(identifier, minutes = 15) {
   const cutoffTime = new Date(Date.now() - minutes * 60 * 1000);
 
-  const emailAttempts = await this.countDocuments({
-    email: identifier,
-    status: 'failed',
-    created_at: { $gte: cutoffTime }
-  });
-
-  const ipAttempts = await this.countDocuments({
-    ip: identifier,
-    status: 'failed',
-    created_at: { $gte: cutoffTime }
-  });
+  const [emailAttempts, ipAttempts] = await Promise.all([
+    this.countDocuments({
+      email: identifier,
+      status: 'failed',
+      created_at: { $gte: cutoffTime }
+    }),
+    this.countDocuments({
+      ip: identifier,
+      status: 'failed',
+      created_at: { $gte: cutoffTime }
+    })
+  ]);
 
   return { emailAttempts, ipAttempts, total: Math.max(emailAttempts, ipAttempts) };
 };
@@ -630,7 +679,7 @@ loginLogSchema.statics.getLoginStats = async function(hours = 24) {
       total_logins: { $sum: 1 },
       successful_logins: { $sum: { $cond: [{ $eq: ['$status', 'success'] }, 1, 0] } },
       failed_logins: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
-      suspicious_logins: { $sum: { $cond: ['$is_suspicious', 1, 0] } },
+      suspicious_logins: { $sum: { $cond: [{ $eq: ['$is_suspicious', true] }, 1, 0] } },
       unique_ips: { $addToSet: '$ip' },
       unique_users: { $addToSet: '$user_id' },
       unique_emails: { $addToSet: '$email' }
@@ -664,8 +713,13 @@ loginLogSchema.statics.getLoginStats = async function(hours = 24) {
   };
 };
 
-// ── Manually delete logs older than the retention window ──
+// ── Manually delete logs older than the retention window (safeguarded) ──
 loginLogSchema.statics.cleanupOldLogs = async function(daysToKeep = 90) {
+  if (daysToKeep < 90) {
+    throw new Error(
+      `cleanupOldLogs refuses to delete logs younger than the 90-day TTL retention policy (requested: ${daysToKeep}).`
+    );
+  }
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
 

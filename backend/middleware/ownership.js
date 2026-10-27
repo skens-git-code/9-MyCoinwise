@@ -51,10 +51,14 @@ const checkOwnership = (idParamName = 'userId', ownershipOptions = {}) => {
         }
 
         const targetUserRecord = await User.findById(targetId).select('household_id').lean();
-        const targetHouseholdId = String(targetUserRecord?.household_id || targetUserRecord?._id || '');
+        if (!targetUserRecord) {
+          return res.status(404).json({ error: 'User not found.' });
+        }
+
+        const targetHouseholdId = String(targetUserRecord.household_id || targetUserRecord._id || '');
         const currentHouseholdId = String(req.user.household_id || requesterId);
 
-        if (!targetUserRecord || targetHouseholdId !== currentHouseholdId) {
+        if (targetHouseholdId !== currentHouseholdId) {
           return res.status(403).json({ error: 'Access denied: profile is not linked to your household.' });
         }
 
@@ -62,6 +66,10 @@ const checkOwnership = (idParamName = 'userId', ownershipOptions = {}) => {
       }
 
       // ── Verify direct user match ──
+      if (!isValidObjectId(targetId)) {
+        return res.status(400).json({ error: 'Invalid user ID.' });
+      }
+
       if (String(targetId) !== String(requesterId)) {
         return res.status(403).json({ error: 'Access denied: You do not have permission to access or modify this resource.' });
       }

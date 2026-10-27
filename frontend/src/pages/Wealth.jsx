@@ -356,7 +356,13 @@ export default function Wealth() {
 
   // ── Fetch on mount / when the token becomes available ──
   useEffect(() => {
-    if (token) fetchWealthData();
+    let alive = true;
+    (async () => {
+      if (alive && token) {
+        await fetchWealthData();
+      }
+    })();
+    return () => { alive = false; };
   }, [token, fetchWealthData]);
 
   /* ============================================================
@@ -459,13 +465,20 @@ export default function Wealth() {
     return copy;
   }, [liveItems, classFilter, search, sortBy]);
 
+  // ── Derived AI strategy string ──
+  const displayedAiInsight = useMemo(() => {
+    if (liveItems.length === 0 || !token) {
+      return tr('ai_empty', 'Add assets and liabilities to unlock your AI wealth strategy.');
+    }
+    return aiInsight || tr('ai_empty', 'Add assets and liabilities to unlock your AI wealth strategy.');
+  }, [liveItems.length, token, aiInsight, tr]);
+
   /* ============================================================
    * AI Insights
    * Debounced request throttled by payload equality + cooldown.
    * ============================================================ */
   useEffect(() => {
     if (liveItems.length === 0 || !token) {
-      setAiInsight(tr('ai_empty', 'Add assets and liabilities to unlock your AI wealth strategy.'));
       return undefined;
     }
 
@@ -1148,7 +1161,7 @@ export default function Wealth() {
           <Sparkles size={16} aria-hidden /> {tr('ai_advisor', 'MyCoinwise AI Wealth Advisor')}
         </h3>
         <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: '0.88rem', lineHeight: 1.5 }}>
-          {isAiLoading ? tr('analyzing', 'Analyzing portfolio…') : aiInsight}
+          {isAiLoading ? tr('analyzing', 'Analyzing portfolio…') : displayedAiInsight}
         </p>
       </motion.div>
 

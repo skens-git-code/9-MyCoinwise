@@ -33,8 +33,9 @@ import {
   Download, Upload, Copy, CheckSquare, Square,
   FileSpreadsheet, FileCode, CheckCircle2, ChevronDown,
   Layers, RefreshCw, Undo2, AlertTriangle, Loader2, Tag,
-  Calendar, DollarSign, Keyboard, Receipt, Share2, Landmark, User, Lock, Target,
+  Calendar, DollarSign, Keyboard, Receipt, Share2, Landmark, User, Lock, Target, ShieldCheck,
 } from 'lucide-react';
+import { CoinwiseMark, CoinwiseBadge } from '../components/CoinwiseBrand';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
 import Modal from '../components/Modal';
@@ -111,6 +112,19 @@ const safeNumber = (v, fallback = 0) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+/** Extracts the effective numerical amount in display currency (or stored fallback). */
+const getTxAmount = (tx) => safeNumber(tx?.displayAmount ?? tx?.amount, 0);
+
+/** Converts a YYYY-MM-DD or date object into local-midnight timestamp without UTC drift. */
+const parseLocalDateToTimestamp = (dateInput) => {
+  const key = toLocalDateKey(dateInput);
+  if (!key) return null;
+  const match = key.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const dt = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 0, 0, 0, 0);
+  return Number.isNaN(dt.getTime()) ? null : dt.getTime();
+};
+
 /** CSV escape + injection prevention (RFC 4180). */
 const escapeCsvField = (raw) => {
   const str = raw == null ? '' : String(raw);
@@ -128,7 +142,8 @@ const getTransactionId = (transaction) => {
 };
 
 // ── True when the transaction is not soft-deleted ──
-const isLiveTransaction = (tx) => tx && typeof tx === 'object' && tx.is_deleted !== true;
+const isLiveTransaction = (tx) =>
+  tx && typeof tx === 'object' && tx.is_deleted !== true && tx.is_deleted !== 'true' && tx.is_deleted !== 1;
 
 // ── True when the transaction date is in the future ──
 const isFutureTransaction = (tx) => {
@@ -137,18 +152,24 @@ const isFutureTransaction = (tx) => {
   return Boolean(dateKey && todayKey && dateKey > todayKey);
 };
 
-/** Highlight a search term inside text (returns JSX fragments). */
+/** Highlight a search term inside text across all matches (returns JSX fragments). */
 const highlight = (text, query) => {
   const str = String(text || '');
   const q = String(query || '').trim();
   if (!q) return str;
-  const idx = str.toLowerCase().indexOf(q.toLowerCase());
-  if (idx === -1) return str;
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escaped})`, 'gi');
+  const parts = str.split(regex);
+  if (parts.length <= 1) return str;
   return (
     <>
-      {str.slice(0, idx)}
-      <mark className="tx-highlight">{str.slice(idx, idx + q.length)}</mark>
-      {str.slice(idx + q.length)}
+      {parts.map((part, i) =>
+        part.toLowerCase() === q.toLowerCase() ? (
+          <mark key={i} className="tx-highlight">{part}</mark>
+        ) : (
+          part
+        )
+      )}
     </>
   );
 };
@@ -308,11 +329,13 @@ export default function Transactions() {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && selectedTxId) {
+        e.preventDefault();
+        e.stopPropagation();
         setSelectedTxId(null);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [selectedTxId]);
 
   // ── Prevent background scroll on mobile when receipt modal is active ──
@@ -390,8 +413,8 @@ export default function Transactions() {
     const currentYear = now.getFullYear();
 
     const search = deferredSearchTerm.trim().toLowerCase();
-    const fromTs = dateFrom ? new Date(dateFrom + 'T00:00:00').getTime() : null;
-    const toTs = dateTo ? new Date(dateTo + 'T23:59:59').getTime() : null;
+    const fromTs = dateFrom ? parseLocalDateToTimestamp(dateFrom) : null;
+    const toTs = dateTo ? (parseLocalDateToTimestamp(dateTo) != null ? parseLocalDateToTimestamp(dateTo) + 86399999 : null) : null;
     const minAmt = amountMin !== '' ? Number(amountMin) : null;
     const maxAmt = amountMax !== '' ? Number(amountMax) : null;
 
@@ -400,25 +423,28 @@ export default function Transactions() {
       if (filterCategory !== 'all' && tx.category !== filterCategory) return false;
       if (filterTag !== 'all' && !(Array.isArray(tx.tags) && tx.tags.includes(filterTag))) return false;
 
+      const amt = getTxAmount(tx);
+
       if (search) {
-        const hay = `${tx.category || ''} ${tx.note || ''} ${tx.merchant || ''} ${tx.amount || ''} ${tx.bank_name || ''} ${tx.sender_name || ''} ${tx.receiver_name || ''} ${tx.transaction_number || ''}`.toLowerCase();
+        const hay = `${tx.category || ''} ${tx.note || ''} ${tx.merchant || ''} ${amt} ${tx.bank_name || ''} ${tx.sender_name || ''} ${tx.receiver_name || ''} ${tx.transaction_number || ''}`.toLowerCase();
         if (!hay.includes(search)) return false;
       }
 
-      const ts = new Date(tx.date).getTime();
-      if (Number.isFinite(ts)) {
-        if (fromTs != null && ts < fromTs) return false;
-        if (toTs != null && ts > toTs) return false;
+      const txDateKey = toLocalDateKey(tx.date);
+      const txTs = txDateKey ? parseLocalDateToTimestamp(txDateKey) : new Date(tx.date).getTime();
+      if (Number.isFinite(txTs)) {
+        if (fromTs != null && txTs < fromTs) return false;
+        if (toTs != null && txTs > toTs) return false;
       }
 
-      const amt = safeNumber(tx.amount, 0);
       if (minAmt != null && Number.isFinite(minAmt) && amt < minAmt) return false;
       if (maxAmt != null && Number.isFinite(maxAmt) && amt > maxAmt) return false;
 
       // Presets
       if (activePreset === 'thisMonth') {
-        const d = new Date(tx.date);
-        if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear) return false;
+        if (!txDateKey) return false;
+        const [y, m] = txDateKey.split('-').map(Number);
+        if ((m - 1) !== currentMonth || y !== currentYear) return false;
       } else if (activePreset === 'highValue') {
         if (amt < 500) return false;
       } else if (activePreset === 'uncategorized') {
@@ -434,6 +460,11 @@ export default function Transactions() {
 
     // ── Sort with safe timestamp fallback ──
     const safeTime = (d) => {
+      const key = toLocalDateKey(d);
+      if (key) {
+        const ts = parseLocalDateToTimestamp(key);
+        if (ts != null) return ts;
+      }
       const ts = new Date(d).getTime();
       return Number.isFinite(ts) ? ts : 0;
     };
@@ -442,8 +473,8 @@ export default function Transactions() {
       switch (sortBy) {
         case 'date-desc': return safeTime(b.date) - safeTime(a.date);
         case 'date-asc': return safeTime(a.date) - safeTime(b.date);
-        case 'amount-desc': return safeNumber(b.amount, 0) - safeNumber(a.amount, 0);
-        case 'amount-asc': return safeNumber(a.amount, 0) - safeNumber(b.amount, 0);
+        case 'amount-desc': return getTxAmount(b) - getTxAmount(a);
+        case 'amount-asc': return getTxAmount(a) - getTxAmount(b);
         case 'category-asc':
           return String(a.category || '').localeCompare(String(b.category || ''));
         default: return 0;
@@ -456,10 +487,10 @@ export default function Transactions() {
     activePreset, sortBy, dateFrom, dateTo, amountMin, amountMax,
   ]);
 
-  // ── Whether any filter is currently active ──
+  // ── Whether any filter is currently active (checks immediate searchInput) ──
   const hasActiveFilters =
-    searchTerm || filterType !== 'all' || filterCategory !== 'all' ||
-    filterTag !== 'all' || activePreset !== 'all' || dateFrom || dateTo ||
+    Boolean(searchInput || searchTerm) || filterType !== 'all' || filterCategory !== 'all' ||
+    filterTag !== 'all' || activePreset !== 'all' || Boolean(dateFrom) || Boolean(dateTo) ||
     amountMin !== '' || amountMax !== '';
 
   // ── Reset all filters to their defaults ──
@@ -490,11 +521,19 @@ export default function Transactions() {
    * Selection Handlers
    * ============================================================ */
 
-  // ── Toggle select-all for the filtered list ──
+  // ── Toggle select-all for the filtered list with set containment ──
   const toggleSelectAll = useCallback(() => {
     setSelectedIds((prev) => {
-      if (prev.size === filtered.length && filtered.length > 0) return new Set();
-      return new Set(filtered.map(getTransactionId).filter(Boolean));
+      const allFilteredIds = filtered.map(getTransactionId).filter(Boolean);
+      if (allFilteredIds.length === 0) return prev;
+      const allAreSelected = allFilteredIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allAreSelected) {
+        allFilteredIds.forEach((id) => next.delete(id));
+      } else {
+        allFilteredIds.forEach((id) => next.add(id));
+      }
+      return next;
     });
   }, [filtered]);
 
@@ -530,7 +569,7 @@ export default function Transactions() {
           onClick={() => setSelectedTxId(transactionId)}
           role="button"
           tabIndex={0}
-          aria-label={`${tx.category}, ${tx.type}, ${fmt(tx.amount)}`}
+          aria-label={`${tx.category}, ${tx.type}, ${fmt(getTxAmount(tx))}`}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
@@ -581,7 +620,14 @@ export default function Transactions() {
               )}
             </p>
             <p className="ili-date">
-              {new Date(tx.date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })}
+              {(() => {
+                const k = toLocalDateKey(tx.date);
+                if (k) {
+                  const [y, m, d] = k.split('-').map(Number);
+                  return new Date(y, m - 1, d).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
+                }
+                return new Date(tx.date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
+              })()}
               {tx.bank_name && <span className="ili-note-snip" style={{ color: 'var(--brand-primary)', fontWeight: 600 }}> · {highlight(tx.bank_name, deferredSearchTerm)}</span>}
               {tx.merchant && <span className="ili-note-snip"> · {highlight(tx.merchant, deferredSearchTerm)}</span>}
               {!tx.merchant && tx.note && <span className="ili-note-snip"> · {highlight(tx.note, deferredSearchTerm)}</span>}
@@ -593,7 +639,7 @@ export default function Transactions() {
           {/* ── Amount ── */}
           <div className="ili-amount">
             <span className={tx.type}>
-              {tx.type === 'income' ? '+' : '-'}{fmt(tx.amount)}
+              {tx.type === 'income' ? '+' : '-'}{fmt(getTxAmount(tx))}
             </span>
           </div>
         </div>
@@ -624,11 +670,17 @@ export default function Transactions() {
       }
       showToast('success', tr('bulk_deleted', `Deleted ${idsToDelete.length} transactions`));
 
-      // Snapshot for undo
+      // Snapshot for undo with parallel restoration to avoid partial aborts
       const restoreFn = async () => {
-        for (const tx of snapshot) {
-          const { id, _id, ...rest } = tx;
-          await addTransaction({ ...rest, date: toLocalDateKey(tx.date) });
+        const results = await Promise.allSettled(
+          snapshot.map((tx) => {
+            const { id, _id, ...rest } = tx;
+            return addTransaction({ ...rest, date: toLocalDateKey(tx.date) });
+          })
+        );
+        const failures = results.filter((r) => r.status === 'rejected');
+        if (failures.length > 0) {
+          throw new Error(`Restored ${snapshot.length - failures.length}/${snapshot.length}`);
         }
       };
       armUndo(tr('bulk_deleted_undo', `${idsToDelete.length} deleted`), restoreFn);
@@ -636,7 +688,11 @@ export default function Transactions() {
       setSelectedIds(new Set());
       setShowBulkDeleteModal(false);
       if (selectedIds.has(String(selectedTxId))) setSelectedTxId(null);
-      await refetch();
+      try {
+        await refetch();
+      } catch (refetchErr) {
+        console.warn('Post-bulk-delete refetch error:', refetchErr);
+      }
     } catch (err) {
       showToast('error', err?.message || tr('bulk_delete_failed', 'Failed to delete some transactions'));
     } finally {
@@ -725,6 +781,7 @@ export default function Transactions() {
       showToast('success', tr('tx_added', 'Transaction added'));
     } catch (err) {
       showToast('error', err?.message || tr('tx_add_failed', 'Failed to add transaction'));
+      throw err;
     }
   }, [addTransaction, showToast, tr]);
 
@@ -736,6 +793,7 @@ export default function Transactions() {
       showToast('success', tr('tx_duplicated', 'Transaction duplicated'));
     } catch (err) {
       showToast('error', err?.message || tr('tx_duplicate_failed', 'Failed to duplicate'));
+      throw err;
     }
   }, [addTransaction, showToast, tr]);
 
@@ -748,6 +806,7 @@ export default function Transactions() {
       showToast('success', tr('tx_updated', 'Transaction updated'));
     } catch (err) {
       showToast('error', err?.message || tr('tx_update_failed', 'Failed to update transaction'));
+      throw err;
     }
   }, [editTransaction, editingTx, showToast, tr]);
 
@@ -798,7 +857,7 @@ export default function Transactions() {
         t.transaction_number || '',
         t.note || '',
         Array.isArray(t.tags) ? t.tags.join(',') : '',
-        safeNumber(t.amount, 0).toFixed(2),
+        getTxAmount(t).toFixed(2),
       ]);
 
       const csvContent = [
@@ -826,23 +885,32 @@ export default function Transactions() {
   /* ============================================================
    * JSON Export (sanitized payload)
    * ============================================================ */
-  const handleExportJSON = useCallback(() => {
+  const handleExportJSON = useCallback((exportSelected = false) => {
     try {
-      const sanitized = filtered.map((t) => ({
+      const listToExport = exportSelected
+        ? filtered.filter((t) => selectedIds.has(getTransactionId(t)))
+        : filtered;
+
+      if (listToExport.length === 0) {
+        showToast('error', tr('nothing_to_export', 'No transactions to export'));
+        return;
+      }
+
+      const sanitized = listToExport.map((t) => ({
         date: toLocalDateKey(t.date),
         type: t.type,
         category: t.category,
         merchant: t.merchant,
         note: t.note,
         tags: t.tags,
-        amount: safeNumber(t.amount, 0),
+        amount: getTxAmount(t),
         payment_method: t.payment_method,
       }));
       const blob = new Blob([JSON.stringify(sanitized, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `transactions_${toLocalDateKey(new Date())}.json`;
+      link.download = `transactions_${exportSelected ? 'selected_' : ''}${toLocalDateKey(new Date())}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -853,18 +921,27 @@ export default function Transactions() {
       console.error(err);
       showToast('error', tr('export_failed', 'Export failed'));
     }
-  }, [filtered, showToast, tr]);
+  }, [filtered, selectedIds, showToast, tr]);
 
   /* ============================================================
    * PDF Export (lazy-loaded)
    * ============================================================ */
-  const handleExportPDF = useCallback(async () => {
+  const handleExportPDF = useCallback(async (exportSelected = false) => {
     setShowExportMenu(false);
     if (isExporting) return;
     setIsExporting(true);
     try {
+      const listToExport = exportSelected
+        ? filtered.filter((t) => selectedIds.has(getTransactionId(t)))
+        : filtered;
+
+      if (listToExport.length === 0) {
+        showToast('error', tr('nothing_to_export', 'No transactions to export'));
+        return;
+      }
+
       const { exportToPDF } = await import('../services/pdfExport');
-      await exportToPDF(user, filtered, currencyInfo, locale);
+      await exportToPDF(user, listToExport, currencyInfo, locale);
       showToast('success', tr('pdf_generated', 'PDF report generated'));
     } catch (err) {
       console.error(err);
@@ -872,7 +949,7 @@ export default function Transactions() {
     } finally {
       setIsExporting(false);
     }
-  }, [user, filtered, currencyInfo, locale, showToast, tr, isExporting]);
+  }, [user, filtered, selectedIds, currencyInfo, locale, showToast, tr, isExporting]);
 
   /* ============================================================
    * Bank Statement Import (CSV, Excel, PDF)
@@ -1090,8 +1167,8 @@ export default function Transactions() {
         try {
           await navigator.share({
             files: [file],
-            title: `${tr('payment_receipt', 'Payment Receipt')} - ${fmt(selectedTx.amount)}`,
-            text: `${selectedTx.type === 'income' ? '+' : '-'}${fmt(selectedTx.amount)} · ${selectedTx.category || 'Transaction'} (${new Date(selectedTx.date).toLocaleDateString(locale)})`,
+            title: `${tr('payment_receipt', 'Payment Receipt')} - ${fmt(getTxAmount(selectedTx))}`,
+            text: `${selectedTx.type === 'income' ? '+' : '-'}${fmt(getTxAmount(selectedTx))} · ${selectedTx.category || 'Transaction'} (${toLocalDateKey(selectedTx.date)})`,
           });
           showToast('success', tr('receipt_shared', 'Receipt picture shared!'));
           return;
@@ -1120,7 +1197,7 @@ export default function Transactions() {
       cardEl.classList.remove('is-capturing-ticket');
       setIsSharingTicket(false);
     }
-  }, [selectedTx, isSharingTicket, theme, tr, fmt, locale, showToast]);
+  }, [selectedTx, isSharingTicket, theme, tr, fmt, showToast]);
 
   /* ============================================================
    * Keyboard Shortcuts
@@ -1146,6 +1223,9 @@ export default function Transactions() {
         return;
       }
       if (e.key === 'Escape' && !inField) {
+        if (e.defaultPrevented || selectedTxId) {
+          return;
+        }
         if (selectedIds.size > 0) {
           clearSelection();
         } else if (hasActiveFilters) {
@@ -1155,10 +1235,10 @@ export default function Transactions() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedIds.size, hasActiveFilters, clearSelection, clearAllFilters, handleOpenAdd]);
+  }, [selectedIds.size, hasActiveFilters, clearSelection, clearAllFilters, handleOpenAdd, selectedTxId]);
 
   /* ============================================================
-   * Memoized Totals
+   * Memoized Totals & Selection Stats
    * ============================================================ */
 
   // ── Income / expense / net across all live transactions ──
@@ -1166,12 +1246,16 @@ export default function Transactions() {
     let income = 0;
     let expense = 0;
     for (const tx of transactions) {
-      const amt = safeNumber(tx.amount, 0);
+      const amt = getTxAmount(tx);
       if (tx.type === 'income') income += amt;
       else if (tx.type === 'expense') expense += amt;
     }
     return { income, expense, net: income - expense };
   }, [transactions]);
+
+  const allFilteredIds = useMemo(() => filtered.map(getTransactionId).filter(Boolean), [filtered]);
+  const allFilteredSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id));
+  const visibleSelectedCount = useMemo(() => allFilteredIds.filter((id) => selectedIds.has(id)).length, [allFilteredIds, selectedIds]);
 
   /* ============================================================
    * Loading State
@@ -1197,7 +1281,6 @@ export default function Transactions() {
   /* ============================================================
    * Render
    * ============================================================ */
-  const allFilteredSelected = filtered.length > 0 && selectedIds.size === filtered.length;
 
   return (
     <div className="inbox-layout-page tx-page">
@@ -1284,9 +1367,17 @@ export default function Transactions() {
                     <FileCode size={15} className="text-brand" aria-hidden /> {tr('export_json', 'Export JSON')}
                   </button>
                   {selectedIds.size > 0 && (
-                    <button type="button" role="menuitem" className="tx-export-item" onClick={() => handleExportCSV(true)}>
-                      <CheckSquare size={15} aria-hidden /> {tr('export_selected', 'Export Selected')} ({selectedIds.size})
-                    </button>
+                    <>
+                      <button type="button" role="menuitem" className="tx-export-item" onClick={() => handleExportCSV(true)}>
+                        <CheckSquare size={15} aria-hidden /> {tr('export_selected_csv', 'Export Selected (CSV)')} ({selectedIds.size})
+                      </button>
+                      <button type="button" role="menuitem" className="tx-export-item" onClick={() => handleExportJSON(true)}>
+                        <FileCode size={15} className="text-brand" aria-hidden /> {tr('export_selected_json', 'Export Selected (JSON)')} ({selectedIds.size})
+                      </button>
+                      <button type="button" role="menuitem" className="tx-export-item" onClick={() => handleExportPDF(true)} disabled={isExporting}>
+                        <FileText size={15} className="text-danger" aria-hidden /> {tr('export_selected_pdf', 'Export Selected (PDF)')} ({selectedIds.size})
+                      </button>
+                    </>
                   )}
                 </motion.div>
               )}
@@ -1362,7 +1453,9 @@ export default function Transactions() {
             <div className="tbt-left">
               <span className="tbt-count">
                 <CheckCircle2 size={16} className="text-success" aria-hidden />
-                {selectedIds.size} {tr('selected', 'selected')}
+                {visibleSelectedCount < selectedIds.size
+                  ? `${selectedIds.size} ${tr('selected', 'selected')} (${visibleSelectedCount} ${tr('visible', 'visible')})`
+                  : `${selectedIds.size} ${tr('selected', 'selected')}`}
               </span>
             </div>
             <div className="tbt-actions">
@@ -1616,7 +1709,7 @@ export default function Transactions() {
                       onClick={() => setSelectedTxId(transactionId)}
                       role="button"
                       tabIndex={0}
-                      aria-label={`${tx.category}, ${tx.type}, ${fmt(tx.amount)}`}
+                      aria-label={`${tx.category}, ${tx.type}, ${fmt(getTxAmount(tx))}`}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
@@ -1667,7 +1760,14 @@ export default function Transactions() {
                           )}
                         </p>
                         <p className="ili-date">
-                          {new Date(tx.date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {(() => {
+                            const k = toLocalDateKey(tx.date);
+                            if (k) {
+                              const [y, m, d] = k.split('-').map(Number);
+                              return new Date(y, m - 1, d).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
+                            }
+                            return new Date(tx.date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
+                          })()}
                           {tx.bank_name && <span className="ili-note-snip" style={{ color: 'var(--brand-primary)', fontWeight: 600 }}> · {highlight(tx.bank_name, deferredSearchTerm)}</span>}
                           {tx.merchant && <span className="ili-note-snip"> · {highlight(tx.merchant, deferredSearchTerm)}</span>}
                           {!tx.merchant && tx.note && <span className="ili-note-snip"> · {highlight(tx.note, deferredSearchTerm)}</span>}
@@ -1679,7 +1779,7 @@ export default function Transactions() {
                       {/* ── Amount ── */}
                       <div className="ili-amount">
                         <span className={tx.type}>
-                          {tx.type === 'income' ? '+' : '-'}{fmt(tx.amount)}
+                          {tx.type === 'income' ? '+' : '-'}{fmt(getTxAmount(tx))}
                         </span>
                       </div>
                     </motion.div>
@@ -1712,27 +1812,50 @@ export default function Transactions() {
                   transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {/* ── Receipt top bar ── */}
+                  {/* ── Official Coinwise Subtle Watermark Emblem in Background ── */}
+                  <div className="tx-ticket-watermark" aria-hidden="true">
+                    <CoinwiseMark size={210} color="#FC0100" />
+                  </div>
+
+                  {/* ── Top Bar: Official Coinwise Brand + Verified Security Badge + Close ── */}
                   <div className="tx-ticket-topbar">
-                    <div className="tx-ticket-badge">
-                      <Receipt size={13} aria-hidden />
-                      <span>{tr('payment_receipt', 'PAYMENT RECEIPT')}</span>
+                    <div className="tx-ticket-brand-lockup">
+                      <CoinwiseBadge size={34} radius={10} variant="surface" className="tx-brand-badge">
+                        <CoinwiseMark size={20} color="#FC0100" />
+                      </CoinwiseBadge>
+                      <div className="tx-brand-meta">
+                        <div className="tx-brand-title">
+                          <span className="brand-name">MyCoinwise</span>
+                          <span className="tx-brand-verified" title="Cryptographically Verified Vault Record">
+                            <ShieldCheck size={11} aria-hidden />
+                            <span>VERIFIED</span>
+                          </span>
+                        </div>
+                        <span className="tx-brand-sub">Financial Vault Record</span>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      className="tx-ticket-close-btn"
-                      onClick={() => setSelectedTxId(null)}
-                      aria-label={tr('close', 'Close')}
-                      title={tr('close', 'Close')}
-                    >
-                      <X size={15} />
-                    </button>
+
+                    <div className="tx-ticket-topbar-actions">
+                      <div className="tx-ticket-badge">
+                        <Receipt size={12} aria-hidden />
+                        <span>{tr('payment_receipt', 'PAYMENT RECEIPT')}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="tx-ticket-close-btn"
+                        onClick={() => setSelectedTxId(null)}
+                        aria-label={tr('close', 'Close')}
+                        title={tr('close', 'Close')}
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
                   </div>
 
                   {/* ── Hero section: icon, status, amount, category, date ── */}
                   <div className="tx-ticket-hero">
                     <div className={`tx-ticket-hero-icon ${tx.type}`} aria-hidden>
-                      {tx.type === 'income' ? <ArrowUpRight size={24} /> : <ArrowDownRight size={24} />}
+                      {tx.type === 'income' ? <ArrowUpRight size={26} /> : <ArrowDownRight size={26} />}
                     </div>
 
                     <div className={`tx-ticket-status-pill ${tx.type}`}>
@@ -1745,7 +1868,7 @@ export default function Transactions() {
                     </div>
 
                     <h3 className={`tx-ticket-amount ${tx.type}`}>
-                      {tx.type === 'income' ? '+' : '-'}{fmt(tx.amount)}
+                      {tx.type === 'income' ? '+' : '-'}{fmt(getTxAmount(tx))}
                     </h3>
 
                     <div className="tx-ticket-merchant-block">
@@ -1754,103 +1877,124 @@ export default function Transactions() {
                     </div>
 
                     <p className="tx-ticket-date">
-                      <Calendar size={12} aria-hidden />
+                      <Calendar size={13} aria-hidden />
                       <span>
-                        {new Date(tx.date).toLocaleDateString(locale, {
-                          weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-                        })}
+                        {(() => {
+                          const k = toLocalDateKey(tx.date);
+                          if (k) {
+                            const [y, m, d] = k.split('-').map(Number);
+                            return new Date(y, m - 1, d).toLocaleDateString(locale, {
+                              weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                            });
+                          }
+                          return new Date(tx.date).toLocaleDateString(locale, {
+                            weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                          });
+                        })()}
                       </span>
                     </p>
                   </div>
 
-                  {/* ── Perforation divider ── */}
+                  {/* ── Symmetrical Ticket Cutout Notches & Perforation Line ── */}
                   <div className="tx-ticket-divider" aria-hidden="true">
                     <div className="tx-ticket-notch left" />
                     <div className="tx-ticket-line" />
                     <div className="tx-ticket-notch right" />
                   </div>
 
-                  {/* ── Receipt details breakdown ── */}
+                  {/* ── Bento Breakdown Body ── */}
                   <div className="tx-ticket-body">
-                    {/* Type */}
-                    <div className="tx-ticket-row">
-                      <span className="ttr-label">{tr('type', 'Type')}</span>
-                      <span className={`ttr-pill ${tx.type}`}>
-                        {tx.type === 'income'
-                          ? tr('income_label', 'Income')
-                          : tr('expense_label', 'Expense')}
-                      </span>
+                    {/* Bento Mini Grid */}
+                    <div className="tx-ticket-bento-grid">
+                      {/* Tile 1: Type */}
+                      <div className="tx-ticket-bento-card">
+                        <span className="ttr-label">{tr('type', 'Type')}</span>
+                        <div className="ttr-val-wrap">
+                          <span className={`ttr-pill ${tx.type}`}>
+                            {tx.type === 'income'
+                              ? tr('income_label', 'Income')
+                              : tr('expense_label', 'Expense')}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Tile 2: Category */}
+                      <div className="tx-ticket-bento-card">
+                        <span className="ttr-label">{tr('category', 'Category')}</span>
+                        <span className="ttr-val bold">{tx.category || tr('uncategorized', 'Uncategorized')}</span>
+                      </div>
+
+                      {/* Tile 3: Budget Link (Expense only) */}
+                      {tx.type === 'expense' && (
+                        <div className="tx-ticket-bento-card full-width">
+                          <span className="ttr-label">
+                            <Target size={12} aria-hidden /> {tr('budget_link', 'Budget Link')}
+                          </span>
+                          <span
+                            className="ttr-val bold"
+                            style={{
+                              color: tx.budget_category === 'none' ? 'var(--text-muted)' : 'var(--brand-primary)',
+                            }}
+                          >
+                            {tx.budget_category === 'none'
+                              ? tr('unlinked', 'None (Unlinked)')
+                              : (tx.budget_category && tx.budget_category !== 'auto'
+                                  ? tx.budget_category
+                                  : `${tx.category || 'General'} (Auto)`)}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Tile 4: Merchant */}
+                      {tx.merchant && (
+                        <div className="tx-ticket-bento-card full-width">
+                          <span className="ttr-label">{tr('merchant', 'Merchant / Payee')}</span>
+                          <span className="ttr-val bold">{tx.merchant}</span>
+                        </div>
+                      )}
+
+                      {/* Tile 5: Bank / Platform */}
+                      {tx.bank_name && (
+                        <div className="tx-ticket-bento-card">
+                          <span className="ttr-label">
+                            <Landmark size={12} aria-hidden /> {tr('bank_or_app', 'Bank / App')}
+                          </span>
+                          <span className="ttr-val bold">{tx.bank_name}</span>
+                        </div>
+                      )}
+
+                      {/* Tile 6: Sender / Receiver */}
+                      {(tx.sender_name || tx.receiver_name) && (
+                        <div className="tx-ticket-bento-card">
+                          <span className="ttr-label">
+                            <User size={12} aria-hidden />
+                            {tx.sender_name ? tr('sender_name', 'From') : tr('receiver_name', 'To')}
+                          </span>
+                          <span className="ttr-val bold">{tx.sender_name || tx.receiver_name}</span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Category */}
-                    <div className="tx-ticket-row">
-                      <span className="ttr-label">{tr('category', 'Category')}</span>
-                      <span className="ttr-val">{tx.category || tr('uncategorized', 'Uncategorized')}</span>
-                    </div>
-
-                    {/* Budget Link */}
-                    {tx.type === 'expense' && (
-                      <div className="tx-ticket-row">
-                        <span className="ttr-label"><Target size={12} aria-hidden /> {tr('budget_link', 'Budget Link')}</span>
-                        <span
-                          className="ttr-val bold"
-                          style={{
-                            color: tx.budget_category === 'none' ? 'var(--text-muted)' : 'var(--brand-primary)',
-                          }}
-                        >
-                          {tx.budget_category === 'none'
-                            ? tr('unlinked', 'None (Unlinked)')
-                            : (tx.budget_category && tx.budget_category !== 'auto'
-                                ? tx.budget_category
-                                : `${tx.category || 'General'} (Auto)`)}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Merchant */}
-                    {tx.merchant && (
-                      <div className="tx-ticket-row">
-                        <span className="ttr-label">{tr('merchant', 'Merchant / Payee')}</span>
-                        <span className="ttr-val bold">{tx.merchant}</span>
-                      </div>
-                    )}
-
-                    {/* Bank / App Platform */}
-                    {tx.bank_name && (
-                      <div className="tx-ticket-row">
-                        <span className="ttr-label"><Landmark size={12} aria-hidden /> {tr('bank_or_app', 'Bank / App')}</span>
-                        <span className="ttr-val bold">{tx.bank_name}</span>
-                      </div>
-                    )}
-
-                    {/* Sender Name */}
-                    {tx.sender_name && (
-                      <div className="tx-ticket-row">
-                        <span className="ttr-label"><User size={12} aria-hidden /> {tr('sender_name', 'Sender (From)')}</span>
-                        <span className="ttr-val">{tx.sender_name}</span>
-                      </div>
-                    )}
-
-                    {/* Receiver Name */}
-                    {tx.receiver_name && (
-                      <div className="tx-ticket-row">
-                        <span className="ttr-label"><User size={12} aria-hidden /> {tr('receiver_name', 'Receiver (To)')}</span>
-                        <span className="ttr-val">{tx.receiver_name}</span>
-                      </div>
-                    )}
-
-                    {/* Note */}
+                    {/* Note Box */}
                     {tx.note ? (
                       <div className="tx-ticket-row note-row">
-                        <span className="ttr-label"><FileText size={12} aria-hidden /> {tr('description', 'Note')}</span>
-                        <span className="ttr-note-box">{tx.note}</span>
+                        <span className="ttr-label">
+                          <FileText size={12} aria-hidden /> {tr('description', 'Note')}
+                        </span>
+                        <div className="ttr-note-box">
+                          <span className="ttr-note-quote" aria-hidden="true">“</span>
+                          <span className="ttr-note-text">{tx.note}</span>
+                          <span className="ttr-note-quote" aria-hidden="true">”</span>
+                        </div>
                       </div>
                     ) : null}
 
                     {/* Tags */}
                     {Array.isArray(tx.tags) && tx.tags.length > 0 && (
                       <div className="tx-ticket-row tags-row">
-                        <span className="ttr-label"><Tag size={12} aria-hidden /> {tr('tags', 'Tags')}</span>
+                        <span className="ttr-label">
+                          <Tag size={12} aria-hidden /> {tr('tags', 'Tags')}
+                        </span>
                         <div className="ttr-tags">
                           {tx.tags.map((tg) => (
                             <span key={tg} className="ttr-tag-chip">#{tg}</span>
@@ -1859,34 +2003,64 @@ export default function Transactions() {
                       </div>
                     )}
 
-                    {/* Transaction number + copy */}
+                    {/* Security Reference & Micro Barcode Seal */}
                     {tx.transaction_number && (
-                      <div className="tx-ticket-row ref-row">
-                        <span className="ttr-label">{tr('txn_id', 'Txn Ref ID')}</span>
-                        <div className="ttr-copy-val allow-copy" data-allow-copy="true">
-                          <code className="allow-copy" data-allow-copy="true">{tx.transaction_number}</code>
-                          <button
-                            type="button"
-                            className="ttr-copy-btn"
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(tx.transaction_number);
-                                showToast('success', tr('copied', 'Copied'));
-                              } catch {
-                                showToast('error', tr('copy_failed', 'Failed to copy'));
-                              }
-                            }}
-                            title={tr('copy', 'Copy')}
-                            aria-label={tr('copy_transaction_number', 'Copy transaction number')}
-                          >
-                            <Copy size={13} aria-hidden />
-                          </button>
+                      <div className="tx-ticket-security-stamp ref-row">
+                        <div className="tx-sec-meta">
+                          <div className="tx-sec-header">
+                            <span className="ttr-label">{tr('txn_id', 'Txn Ref ID')}</span>
+                            <span className="tx-sec-badge">
+                              <Lock size={10} aria-hidden />
+                              <span>256-BIT HASH</span>
+                            </span>
+                          </div>
+                          <div className="ttr-copy-val allow-copy" data-allow-copy="true">
+                            <code className="allow-copy" data-allow-copy="true">{tx.transaction_number}</code>
+                            <button
+                              type="button"
+                              className="ttr-copy-btn"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(tx.transaction_number);
+                                  showToast('success', tr('copied', 'Copied'));
+                                } catch {
+                                  showToast('error', tr('copy_failed', 'Failed to copy'));
+                                }
+                              }}
+                              title={tr('copy', 'Copy')}
+                              aria-label={tr('copy_transaction_number', 'Copy transaction number')}
+                            >
+                              <Copy size={13} aria-hidden />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Stylized Security Barcode / Micro Matrix Graphic */}
+                        <div className="tx-sec-barcode" aria-hidden="true" title="Digital Vault Ledger Fingerprint">
+                          <div className="barcode-bars">
+                            <span className="bar w-2" />
+                            <span className="bar w-1" />
+                            <span className="bar w-3" />
+                            <span className="bar w-1" />
+                            <span className="bar w-2" />
+                            <span className="bar w-4" />
+                            <span className="bar w-1" />
+                            <span className="bar w-2" />
+                            <span className="bar w-3" />
+                            <span className="bar w-1" />
+                            <span className="bar w-2" />
+                            <span className="bar w-4" />
+                            <span className="bar w-2" />
+                            <span className="bar w-1" />
+                            <span className="bar w-3" />
+                          </div>
+                          <span className="barcode-label">VAULT SEAL</span>
                         </div>
                       </div>
                     )}
                   </div>
 
-                  {/* ── Action buttons ── */}
+                  {/* ── Action buttons (Bento Buttons) ── */}
                   <div className="tx-ticket-actions">
                     <button
                       type="button"
@@ -1942,48 +2116,50 @@ export default function Transactions() {
 
             return (
               <>
-                <AnimatePresence>
-                  {selectedTx ? (
-                    renderTicketCard(selectedTx, false)
-                  ) : (
-                    /* ── Empty state when no transaction is selected ── */
-                    <motion.div
-                      key="empty"
-                      className="idp-empty"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                    >
-                      <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(59, 130, 246, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                        <Wallet size={40} className="idp-empty-icon" style={{ color: 'var(--brand-primary)', margin: 0 }} aria-hidden />
-                      </div>
-                      <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 6px', color: 'var(--text-primary)' }}>
-                        {tr('select_a_transaction', 'Select a Transaction')}
-                      </h3>
-                      <p style={{ fontSize: '0.88rem', color: '#64748B', maxWidth: 320, lineHeight: 1.5, margin: '0 auto 12px' }}>
-                        {tr('click_transaction_to_inspect', 'Click on any transaction to view, edit, duplicate, or inspect its details.')}
-                      </p>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: 'var(--glass-2)', border: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: '#64748B', marginBottom: 20 }}>
-                        <Keyboard size={13} aria-hidden /> {tr('shortcuts_hint', 'Press / to search, N for new')}
-                      </div>
+                {!isMobile && (
+                  <AnimatePresence>
+                    {selectedTx ? (
+                      renderTicketCard(selectedTx, false)
+                    ) : (
+                      /* ── Empty state when no transaction is selected ── */
+                      <motion.div
+                        key="empty"
+                        className="idp-empty"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                      >
+                        <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(59, 130, 246, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                          <Wallet size={40} className="idp-empty-icon" style={{ color: 'var(--brand-primary)', margin: 0 }} aria-hidden />
+                        </div>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 6px', color: 'var(--text-primary)' }}>
+                          {tr('select_a_transaction', 'Select a Transaction')}
+                        </h3>
+                        <p style={{ fontSize: '0.88rem', color: '#64748B', maxWidth: 320, lineHeight: 1.5, margin: '0 auto 12px' }}>
+                          {tr('click_transaction_to_inspect', 'Click on any transaction to view, edit, duplicate, or inspect its details.')}
+                        </p>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: 'var(--glass-2)', border: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: '#64748B', marginBottom: 20 }}>
+                          <Keyboard size={13} aria-hidden /> {tr('shortcuts_hint', 'Press / to search, N for new')}
+                        </div>
 
-                      <div className="idp-quick-stats">
-                        <div className="iqs-box iqs-earned glass">
-                          <label>{tr('earned', 'EARNED')}</label>
-                          <span className="success">{fmt(totals.income)}</span>
+                        <div className="idp-quick-stats">
+                          <div className="iqs-box iqs-earned glass">
+                            <label>{tr('earned', 'EARNED')}</label>
+                            <span className="success">{fmt(totals.income)}</span>
+                          </div>
+                          <div className="iqs-box iqs-spent glass">
+                            <label>{tr('spent_upper', 'SPENT')}</label>
+                            <span className="danger">{fmt(totals.expense)}</span>
+                          </div>
+                          <div className="iqs-box iqs-net glass">
+                            <label>{tr('net_upper', 'NET')}</label>
+                            <span className="primary">{fmt(totals.net)}</span>
+                          </div>
                         </div>
-                        <div className="iqs-box iqs-spent glass">
-                          <label>{tr('spent_upper', 'SPENT')}</label>
-                          <span className="danger">{fmt(totals.expense)}</span>
-                        </div>
-                        <div className="iqs-box iqs-net glass">
-                          <label>{tr('net_upper', 'NET')}</label>
-                          <span className="primary">{fmt(totals.net)}</span>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                )}
 
                 {/* ── Mobile Portal Receipt Modal: Mounts to document.body with full-screen coverage ── */}
                 {isMobile && selectedTx && typeof document !== 'undefined' && createPortal(
@@ -2041,7 +2217,7 @@ export default function Transactions() {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
             {tr('delete_transaction_body', 'Delete this')}{' '}
             <strong>{deletingTx.type}</strong> {tr('of', 'of')}{' '}
-            <strong>{fmt(deletingTx.amount)}</strong> {tr('for', 'for')}{' '}
+            <strong>{fmt(getTxAmount(deletingTx))}</strong> {tr('for', 'for')}{' '}
             <strong>{deletingTx.category}</strong>?
           </p>
         )}

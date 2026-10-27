@@ -52,8 +52,12 @@ const Meta = mongoose.models.Meta || mongoose.model('Meta', MetaSchema);
  *   The version range migrated and which migration numbers ran.
  */
 async function runMigrations() {
-  const record = await Meta.findOne({ key: SCHEMA_VERSION_KEY });
-  const from = Number(record?.value ?? 0);
+  const record = await Meta.findOne({ key: SCHEMA_VERSION_KEY }).lean();
+  const fromRaw = record?.value;
+  const from = Number.isFinite(Number(fromRaw)) ? Number(fromRaw) : 0;
+  if (record?.value != null && !Number.isFinite(Number(fromRaw))) {
+    logger.warn(`[migrations] Invalid schema version "${fromRaw}"; treating as 0.`);
+  }
 
   if (from >= LATEST_VERSION) {
     logger.info(`Migrations up to date (schema v${from}).`);

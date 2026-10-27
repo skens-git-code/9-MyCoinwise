@@ -8,7 +8,8 @@ import { visualizer } from 'rollup-plugin-visualizer';
 export default defineConfig(({ mode }) => {
   const isProd = mode === 'production';
   const env = loadEnv(mode, process.cwd(), '');
-  const apiProxyTarget = env.VITE_API_URL || 'http://localhost:5001';
+  const rawTarget = env.VITE_API_URL || 'http://localhost:5001';
+  const apiProxyTarget = rawTarget.replace(/\/api\/?$/, '').replace(/\/+$/, '') || 'http://localhost:5001';
   return {
     plugins: [
       react(),

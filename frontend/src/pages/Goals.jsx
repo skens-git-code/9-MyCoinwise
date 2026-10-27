@@ -533,6 +533,7 @@ export default function Goals() {
   const [goalToDelete, setGoalToDelete] = useState(null);
   const [contributeGoal, setContributeGoal] = useState(null);
   const [contributeAmount, setContributeAmount] = useState('');
+  const [nowMs] = useState(() => Date.now());
   const [activeCategoryFilter, setActiveCategoryFilter] = useState('all');
 
   /* ✨ NEW: view / sort / filter / search state */
@@ -721,11 +722,12 @@ export default function Goals() {
   }, [goals, searchQuery, activeCategoryFilter, showOverdueOnly, showCompleted, sortBy, getPct, isOverdue, t]);
 
   /** Auto-reset category if empty. */
-  useEffect(() => {
-    if (activeCategoryFilter === 'all' || goals.length === 0) return;
+  if (activeCategoryFilter !== 'all' && goals.length > 0) {
     const stillHas = goals.some((g) => getCategoryKey(g.category) === activeCategoryFilter);
-    if (!stillHas) setActiveCategoryFilter('all');
-  }, [goals, activeCategoryFilter]);
+    if (!stillHas) {
+      setActiveCategoryFilter('all');
+    }
+  }
 
   /** Summary totals — reflect the current filter. */
   // ── Sum of targets and savings across the filtered goals ──
@@ -1566,7 +1568,7 @@ export default function Goals() {
               const createdDate = createdRaw ? new Date(createdRaw) : null;
               const ageInDays =
                 createdDate && !Number.isNaN(createdDate.getTime())
-                  ? Math.floor((Date.now() - createdDate.getTime()) / 86400000)
+                  ? Math.floor((nowMs - createdDate.getTime()) / 86400000)
                   : null;
               const isStuck = pct < 15 && ageInDays !== null && ageInDays > 14;
 
@@ -1576,7 +1578,7 @@ export default function Goals() {
               if (g.deadline && !done && !overdue) {
                 const dl = parseLocalDate(g.deadline);
                 if (dl) {
-                  const today = new Date();
+                  const today = new Date(nowMs);
                   today.setHours(0, 0, 0, 0);
                   const dlLocal = new Date(dl);
                   dlLocal.setHours(0, 0, 0, 0);

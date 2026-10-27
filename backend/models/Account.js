@@ -127,13 +127,14 @@ const accountSchema = new mongoose.Schema(
 
 // ── Define indexes ──
 
-// Unique, case-insensitive account name per user
+// Unique, case-insensitive account name per user for active accounts (allows re-creating archived accounts)
 accountSchema.index(
   { user_id: 1, name: 1 },
   {
     unique: true,
+    partialFilterExpression: { is_active: true },
     collation: { locale: 'en', strength: 2 },
-    name: 'user_account_name_unique_ci',
+    name: 'user_account_name_unique_ci_live',
   }
 );
 

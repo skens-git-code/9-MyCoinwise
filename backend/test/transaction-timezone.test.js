@@ -84,5 +84,73 @@ assert.strictEqual(
 );
 assert.strictEqual(payloadAccepted.numericAmount, 25.00);
 
-console.log('✅ ALL 7 TRANSACTION TIMEZONE & GRACE PERIOD TESTS PASSED CLEANLY!\n');
+// Test 8: parseTransactionAmount accepts MAX_AMOUNT (999,999,999.99)
+const { parseTransactionAmount, nextOccurrence, toIsoDay } = require('../routes/transactions');
+assert.strictEqual(
+  parseTransactionAmount(999999999.99),
+  999999999.99,
+  'parseTransactionAmount must accept MAX_AMOUNT 999999999.99'
+);
+assert.strictEqual(
+  parseTransactionAmount('999999999.99'),
+  999999999.99,
+  'parseTransactionAmount must accept string MAX_AMOUNT 999999999.99'
+);
+assert.strictEqual(
+  parseTransactionAmount(999999999.991),
+  null,
+  'parseTransactionAmount must reject more than 2 decimal places'
+);
+assert.strictEqual(
+  parseTransactionAmount(1000000000),
+  null,
+  'parseTransactionAmount must reject amount > MAX_AMOUNT'
+);
+
+// Test 9: nextOccurrence clamps month overflow properly
+const jan31 = new Date(Date.UTC(2025, 0, 31, 12));
+const nextMonthly = nextOccurrence(jan31, 'monthly');
+assert.strictEqual(nextMonthly.getUTCMonth(), 1, 'Jan 31 next month must be February');
+assert.strictEqual(nextMonthly.getUTCDate(), 28, 'Jan 31 next month in 2025 must be Feb 28');
+
+const feb29Leap = new Date(Date.UTC(2024, 1, 29, 12));
+const nextYearly = nextOccurrence(feb29Leap, 'yearly');
+assert.strictEqual(nextYearly.getUTCFullYear(), 2025, 'Year must advance to 2025');
+assert.strictEqual(nextYearly.getUTCMonth(), 1, 'Month must stay February');
+assert.strictEqual(nextYearly.getUTCDate(), 28, 'Feb 29 next year must clamp to Feb 28 on non-leap year');
+
+// Test 10: toIsoDay parses Indian DD/MM format and rejects invalid rolling days
+assert.strictEqual(toIsoDay('05/06/2024'), '2024-06-05', '05/06/2024 must parse as 5th June in Indian format');
+assert.strictEqual(toIsoDay('25/01/2024'), '2024-01-25', '25/01/2024 must parse as 25th January');
+assert.strictEqual(toIsoDay('01/25/2024'), '2024-01-25', '01/25/2024 must parse as 25th January');
+assert.strictEqual(toIsoDay('05/45/2024'), null, '05/45/2024 must be rejected rather than rolling over to June');
+
+// Test 11: validateTransactionPayload validates recurrence_ends_at is after transaction date
+const recurrencePast = validateTransactionPayload({
+  type: 'expense',
+  category: 'Bills',
+  amount: '100.00',
+  date: '2026-06-01',
+  is_recurring: true,
+  recurrence_interval: 'monthly',
+  recurrence_ends_at: '2026-05-01',
+});
+assert(recurrencePast.error, 'recurrence_ends_at before transaction date must be rejected');
+assert.strictEqual(
+  recurrencePast.error,
+  'Recurrence end date must be after the transaction date.'
+);
+
+const recurrenceFuture = validateTransactionPayload({
+  type: 'expense',
+  category: 'Bills',
+  amount: '100.00',
+  date: '2026-06-01',
+  is_recurring: true,
+  recurrence_interval: 'monthly',
+  recurrence_ends_at: '2026-07-01',
+});
+assert.strictEqual(recurrenceFuture.error, undefined, 'recurrence_ends_at after transaction date must be accepted');
+
+console.log('✅ ALL 11 TRANSACTION TIMEZONE, AMOUNT & RECURRENCE TESTS PASSED CLEANLY!\n');
 process.exit(0);

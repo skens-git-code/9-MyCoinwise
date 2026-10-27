@@ -245,7 +245,7 @@ const getBudgetProgress = (budget, expenses) => {
     if (targetCategoryKey) {
       if (effectiveCategory === targetCategoryKey) totalSpent += amount;
     } else if (subcatSet) {
-      if (!subcatSet.has(effectiveCategory)) totalSpent += amount;
+      if (subcatSet.has(effectiveCategory)) totalSpent += amount;
     } else {
       totalSpent += amount;
     }
@@ -386,6 +386,7 @@ router.post('/', async (req, res) => {
   const {
     name,
     type,
+    currency,
     category,
     period_start,
     period_end,
@@ -402,6 +403,8 @@ router.post('/', async (req, res) => {
   const limitNum = parseMoney(total_limit, { allowZero: false });
   const periodStart = parseDateBoundary(period_start);
   const periodEnd = parseDateBoundary(period_end, true);
+  const rawCurrency = currency ? String(currency).trim().toUpperCase() : 'USD';
+  const budgetCurrency = /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : 'USD';
 
   if (!trimmedName || trimmedName.length > MAX_NAME_LENGTH) {
     return res.status(400).json({
@@ -463,12 +466,11 @@ router.post('/', async (req, res) => {
     }
 
     // ── Create the budget ──
-    // Note: an earlier version omitted `category` here, which caused
-    // category-filtered budgets in the UI to become global.
     const budget = await Budget.create({
       user_id: req.userId,
       name: trimmedName,
       type: type || 'monthly',
+      currency: budgetCurrency,
       category: category ? String(category).trim().slice(0, 80) : null,
       period_start: periodStart,
       period_end: periodEnd,
@@ -527,6 +529,7 @@ router.put('/:id', async (req, res) => {
     const {
       name,
       type,
+      currency,
       category,
       total_limit,
       period_start,
@@ -545,6 +548,14 @@ router.put('/:id', async (req, res) => {
         return res.status(400).json({ error: 'Budget name is invalid.' });
       }
       budget.name = trimmedName;
+    }
+
+    // ── Update currency ──
+    if (currency !== undefined) {
+      const rawCurrency = String(currency).trim().toUpperCase();
+      if (/^[A-Z]{3}$/.test(rawCurrency)) {
+        budget.currency = rawCurrency;
+      }
     }
 
     // ── Update type ──

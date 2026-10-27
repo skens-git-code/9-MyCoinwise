@@ -220,14 +220,15 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    // ── Reject duplicate names (case-insensitive) per user ──
+    // ── Reject duplicate names (case-insensitive) per user on active accounts ──
     const normalizedName = name.trim();
     const duplicate = await Account.exists({
       user_id: req.userId,
       name: new RegExp(`^${escapeRegExp(normalizedName)}$`, 'i'),
+      is_active: true,
     });
     if (duplicate) {
-      return res.status(409).json({ error: 'An account with this name already exists.' });
+      return res.status(409).json({ error: 'An active account with this name already exists.' });
     }
 
     // ── Create the account ──
@@ -272,16 +273,20 @@ router.put('/:id', async (req, res) => {
 
     const { name, type, currency, is_active, color, icon } = req.body;
 
-    // ── Update name (reject duplicates) ──
+    // ── Update name (reject duplicates on active accounts) ──
     if (name !== undefined) {
       const normalizedName = name.trim();
-      const duplicate = await Account.exists({
-        _id: { $ne: account._id },
-        user_id: req.userId,
-        name: new RegExp(`^${escapeRegExp(normalizedName)}$`, 'i'),
-      });
-      if (duplicate) {
-        return res.status(409).json({ error: 'An account with this name already exists.' });
+      const targetIsActive = is_active !== undefined ? is_active : account.is_active;
+      if (targetIsActive) {
+        const duplicate = await Account.exists({
+          _id: { $ne: account._id },
+          user_id: req.userId,
+          name: new RegExp(`^${escapeRegExp(normalizedName)}$`, 'i'),
+          is_active: true,
+        });
+        if (duplicate) {
+          return res.status(409).json({ error: 'An active account with this name already exists.' });
+        }
       }
       account.name = normalizedName;
     }

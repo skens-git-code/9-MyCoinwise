@@ -44,7 +44,10 @@ const convertToCurrency = (amount, fromCurrency, toCurrency) => {
   if (from === to) return Number(amount) || 0;
   const fromRate = FALLBACK_RATES_TO_INR[from];
   const toRate = FALLBACK_RATES_TO_INR[to];
-  if (!fromRate || !toRate) return Number(amount) || 0;
+  if (!fromRate || !toRate) {
+    logger.warn(`[repair-balances] Unknown currency pair ${from}/${to}; skipping transaction to prevent corrupted balance.`);
+    return null;
+  }
   return ((Number(amount) || 0) * fromRate) / toRate;
 };
 
@@ -86,7 +89,9 @@ async function computeBalance(Transaction, Account, user) {
       displayCurrency
     );
     const amount = convertToCurrency(transaction.amount, sourceCurrency, displayCurrency);
-    balance += transaction.type === 'income' ? amount : -amount;
+    if (amount === null) continue; // Skip unconvertible rows safely
+    const type = String(transaction.type || '').trim().toLowerCase();
+    balance += type === 'income' ? amount : type === 'expense' ? -amount : 0;
   }
 
   return Number(balance.toFixed(2));

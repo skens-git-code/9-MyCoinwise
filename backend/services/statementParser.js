@@ -47,11 +47,12 @@ const MONTHS = {
 
 /**
  * Standardize dates to YYYY-MM-DD.
- * Properly defaults ambiguous dates (e.g. 05/06/2024) to DD/MM/YYYY for Indian statements.
+ * Properly defaults ambiguous dates (e.g. 05/06/2024) to DD/MM/YYYY for Indian statements,
+ * or MM/DD/YYYY when preferredFormat is 'MDY' (for US statements like Chase, BoA, Wells Fargo).
  * Validates actual calendar days (rejects non-existent dates like 31/04/2024 instead of rolling over).
  * Uses UTC fields on Date objects to prevent timezone-shift discrepancies.
  */
-const toIsoDay = (value) => {
+const toIsoDay = (value, preferredFormat = 'DMY') => {
   if (!value) return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`;
@@ -79,7 +80,7 @@ const toIsoDay = (value) => {
   let m = s.match(/\b(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})\b/);
   if (m) return ok(m[1], m[2], m[3]);
 
-  // 2. DD-MM-YYYY or DD/MM/YYYY (default DD/MM for Indian statements, unless first part > 12)
+  // 2. DD-MM-YYYY or MM-DD-YYYY
   m = s.match(/\b(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})\b/);
   if (m) {
     const [, a, b, y] = m;
@@ -93,9 +94,15 @@ const toIsoDay = (value) => {
       day = b;
       month = a;
     } else {
-      // Indian standard is DD/MM/YYYY
-      day = a;
-      month = b;
+      // Ambiguous case (both <= 12): use preferred format hint
+      if (String(preferredFormat).toUpperCase() === 'MDY') {
+        day = b;
+        month = a;
+      } else {
+        // Indian/UK default is DD/MM/YYYY
+        day = a;
+        month = b;
+      }
     }
     return ok(year, month, day);
   }
@@ -127,13 +134,26 @@ const parseStatementAmount = (value) => {
     return Number.isFinite(value) && value !== 0 ? Math.abs(value) : null;
   }
 
-  let s = cleanText(value)
-    .replace(/^\((.*)\)$/, '-$1')
-    .replace(/\b(inr|usd|eur|gbp|aed|sgd|rs\.?|rupees?)\b/gi, ' ')
+  let s = cleanText(value).replace(/^\((.*)\)$/, '-$1');
+
+  // Strip "Rs/-" or "500/-" common in Indian statements
+  s = s.replace(/\/-(?=\s|$|\b)/g, '');
+
+  // Strip currency prefixes and labels (including Rs. and Rs/-)
+  s = s
+    .replace(/\b(inr|usd|eur|gbp|aed|sgd|rupees?)\b/gi, ' ')
+    .replace(/\brs\.?(?:\s*\/?-?)?/gi, ' ')
     .replace(/\((?:debit|dr|credit|cr)\)/gi, ' ')
     .replace(/\b(dr|cr|debit|credit)\b\.?/gi, ' ')
-    .replace(/(?:dr|cr)$/i, '')
-    .replace(/[₹$€£,\s]/g, '');
+    .replace(/(?:dr|cr)$/i, '');
+
+  // Detect European format: e.g. 1.234,56 or 1234,56 (dot thousands, comma decimal)
+  const europeanCandidate = s.replace(/[^\d.,-]/g, '');
+  if (/^-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}$/.test(europeanCandidate)) {
+    s = s.replace(/\./g, '').replace(/,/g, '.');
+  }
+
+  s = s.replace(/[₹$€£,\s\/]/g, '');
 
   if (!s || s === '-' || s.toLowerCase() === 'null') return null;
   const n = Number(s);
@@ -148,19 +168,32 @@ const parseSignedAmount = (value) => {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : null;
   }
-  let s = cleanText(value)
-    .replace(/^\((.*)\)$/, '-$1')
-    .replace(/\b(inr|usd|eur|gbp|aed|sgd|rs\.?|rupees?)\b/gi, ' ')
+  let s = cleanText(value).replace(/^\((.*)\)$/, '-$1');
+
+  // Strip "Rs/-" or "500/-" common in Indian statements
+  s = s.replace(/\/-(?=\s|$|\b)/g, '');
+
+  // Strip currency prefixes and labels (including Rs. and Rs/-)
+  s = s
+    .replace(/\b(inr|usd|eur|gbp|aed|sgd|rupees?)\b/gi, ' ')
+    .replace(/\brs\.?(?:\s*\/?-?)?/gi, ' ')
     .replace(/\((?:debit|dr)\)/gi, '-')
     .replace(/\((?:credit|cr)\)/gi, '+')
     .replace(/\b(debit|dr)\b\.?/gi, '-')
     .replace(/\b(credit|cr)\b\.?/gi, '+')
     .replace(/(?:dr)$/i, '-')
-    .replace(/(?:cr)$/i, '+')
-    .replace(/[₹$€£,\s]/g, '');
+    .replace(/(?:cr)$/i, '+');
 
   if (s.endsWith('-')) s = `-${s.slice(0, -1)}`;
   if (s.endsWith('+')) s = s.slice(0, -1);
+
+  // Detect European format: e.g. 1.234,56 or 1234,56
+  const europeanCandidate = s.replace(/[^\d.,-]/g, '');
+  if (/^-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}$/.test(europeanCandidate)) {
+    s = s.replace(/\./g, '').replace(/,/g, '.');
+  }
+
+  s = s.replace(/[₹$€£,\s\/]/g, '');
 
   if (!s || s === '-' || s === '+' || s.toLowerCase() === 'null') return null;
   const n = Number(s);
@@ -171,7 +204,7 @@ const parseSignedAmount = (value) => {
  * Guard to identify non-transaction statement balance / total lines.
  */
 const isBalanceOrSummary = (line) =>
-  /\b(opening balance|closing balance|available balance|ledger balance|balance b\/?f|balance c\/?f|\bb\/f\b|\bc\/f\b|total (debit|credit|amount|withdrawal|deposit)|grand total|sub total|page \d+(?: of \d+)?)\b/i.test(line);
+  /\b(opening balance|closing balance|available balance|ledger balance|current balance|running balance|previous balance|total balance|net balance|balance b\/?f|balance c\/?f|\bb\/f\b|\bc\/f\b|total (debit|credit|amount|withdrawal|deposit|balance)|(debit|credit|amount|withdrawal|deposit) total|grand total|sub[- ]?total|net (total|amount)|statement summary|account summary|page \d+(?: of \d+)?)\b/i.test(line);
 
 /* —————————————————————————————————————
  * Classification Rules & Dictionaries
@@ -198,6 +231,15 @@ const CATEGORY_RULES = [
   ['Investment', /mutual fund|zerodha|groww|angel one|upstox|kuvera|indmoney|smallcase|sip|investment|nse|bse|ppf|nps/i],
   ['Salary', /salary|payroll|stipend|wages/i],
   ['Transfer', /self transfer|atm wdl|cash wdl|fund transfer|wallet topup/i],
+];
+
+const INCOME_CATEGORY_RULES = [
+  ['Salary', /salary|payroll|stipend|wages/i],
+  ['Freelance', /freelanc|consultanc|contractor|gig|upwork|fiverr/i],
+  ['Investment', /dividend|interest credit|mutual fund|stock sale|capital gain|wealth/i],
+  ['Gift', /gift|bonus|reward|cashback|referral/i],
+  ['Refund', /refund|reversal|chargeback|dispute/i],
+  ['Transfer', /self transfer|account transfer|fund transfer/i],
 ];
 
 const KNOWN_BANKS = [
@@ -301,7 +343,8 @@ const extractMerchantOrName = (description) => {
     parts.find((part) => part.length > 2 && !/^(to|from|ref|by|at|via|inb|mob|pay|inr|rs|p2a|p2p|p2m)$/i.test(part)) ||
     value;
 
-  return cleanText(candidate).slice(0, 150) || 'Bank transaction';
+  const cleanedCandidate = candidate.replace(/^\s*(?:to|from|at|by|via)\s+/i, '').trim();
+  return cleanText(cleanedCandidate || candidate).slice(0, 150) || 'Bank transaction';
 };
 
 // ── Parse Narration for Sender, Receiver, and Bank ──
@@ -438,7 +481,7 @@ const extractPdfText = async (buffer, { password = null } = {}) => {
 /**
  * Extracts and classifies transactions from PDF statements (Paytm, GPay, PhonePe, BharatPe, Banks).
  */
-const parsePdfBuffer = async (buffer, filename = '', { password = null } = {}) => {
+const parsePdfBuffer = async (buffer, filename = '', { password = null, preferredFormat = 'DMY' } = {}) => {
   const text = await extractPdfText(buffer, { password });
 
   // Check file header block (first 600 chars) for source determination to prevent body false positives
@@ -484,7 +527,7 @@ const parsePdfBuffer = async (buffer, filename = '', { password = null } = {}) =
       const line = rawLines[i];
       if (isBalanceOrSummary(line)) continue;
 
-      const parsedDate = toIsoDay(line);
+      const parsedDate = toIsoDay(line, preferredFormat);
       if (parsedDate) {
         lastSeenDate = parsedDate;
       }
@@ -549,10 +592,13 @@ const parsePdfBuffer = async (buffer, filename = '', { password = null } = {}) =
       const line = rawLines[i];
       if (isBalanceOrSummary(line)) continue;
 
-      const date = toIsoDay(line);
+      const dateMatch = line.match(/\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{1,2}[-\s.]?[A-Za-z]{3,9}[-\s.]?\d{2,4}|[A-Za-z]{3,9}[-\s.]?\d{1,2}[-\s.,]*\d{2,4}|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2})\b/);
+      const rawDateStr = dateMatch ? dateMatch[0] : null;
+      const date = toIsoDay(rawDateStr || line, preferredFormat);
       if (!date) continue;
 
-      const lineWithoutDate = line.replace(date, ' ').replace(/\b\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}\b|\b\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}\b/, ' ');
+      const lineWithoutDate = (rawDateStr ? line.replace(rawDateStr, ' ') : line)
+        .replace(/\b\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}\b|\b\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}\b/, ' ');
       const amtMatch = lineWithoutDate.match(/(?:[+-]\s*)?(?:₹|rs\.?|inr)\s*([0-9,]+(?:\.[0-9]{2})?)/i) ||
                        lineWithoutDate.match(/(?:[+-]\s*)?([0-9,]+\.[0-9]{2})/i);
 
@@ -582,7 +628,7 @@ const parsePdfBuffer = async (buffer, filename = '', { password = null } = {}) =
       const line = rawLines[i];
       if (isBalanceOrSummary(line)) continue;
 
-      const parsedDate = toIsoDay(line);
+      const parsedDate = toIsoDay(line, preferredFormat);
       if (parsedDate) lastSeenDate = parsedDate;
 
       const isStart = /^(paid\b|payment\b|received\b)/i.test(line);
@@ -647,7 +693,11 @@ const parsePdfBuffer = async (buffer, filename = '', { password = null } = {}) =
       const line = rawLines[i];
       if (isBalanceOrSummary(line)) continue;
 
-      const date = toIsoDay(line);
+      const date = toIsoDay(line, preferredFormat);
+      if (date && date !== lastSeenDate) {
+        currentDesc = '';
+        currentTxnId = null;
+      }
       if (date) lastSeenDate = date;
 
       const txnIdMatch = extractTransactionId(line);
@@ -705,7 +755,7 @@ const parsePdfBuffer = async (buffer, filename = '', { password = null } = {}) =
     if (currentBlock) blocks.push(currentBlock);
 
     for (const block of blocks) {
-      const date = toIsoDay(block.dateStr);
+      const date = toIsoDay(block.dateStr, preferredFormat);
       if (!date) continue;
 
       const blockText = block.lines.join(' ');
@@ -715,33 +765,56 @@ const parsePdfBuffer = async (buffer, filename = '', { password = null } = {}) =
         .replace(txnId || '', ' ')
         .replace(/\b\d{10,}\b/g, ' ');
 
+      const checkBalanceContext = (index, matchStr) => {
+        const textBefore = textForAmounts.slice(Math.max(0, index - 25), index);
+        const isPrecededByBalance = /\b(bal|balance|closing|opening|avail|available|ledger)\b\s*[:=\-]?\s*(?:(?:₹|rs\.?|inr|\$|€|£)\s*)?$/i.test(textBefore);
+        const textAfter = textForAmounts.slice(index + matchStr.length, Math.min(textForAmounts.length, index + matchStr.length + 20));
+        const isFollowedByBalance = /^\s*(?:\([^\)]*\)\s*)?\b(bal|balance|closing|opening|avail|available|ledger)\b/i.test(textAfter);
+        return isPrecededByBalance || isFollowedByBalance;
+      };
+
+      const seenIndices = new Set();
       let candidateAmounts = [];
-      // Priority 1: Currency-preceded amounts
+
+      // 1. Currency-preceded amounts
       const currencyMatches = textForAmounts.matchAll(/(?:₹|rs\.?|inr|\$|€|£)\s*([0-9,]+(?:\.[0-9]{2})?)/gi);
       for (const m of currencyMatches) {
         const amt = parseStatementAmount(m[1]);
-        if (amt && amt > 0 && amt <= MAX_AMOUNT) candidateAmounts.push(amt);
-      }
-      // Priority 2: Standard 2-decimal numbers (e.g. 450.00, 1,234.56)
-      if (candidateAmounts.length === 0) {
-        const decimalMatches = textForAmounts.matchAll(/\b([0-9]{1,3}(?:,[0-9]{2,3})*|\d+)\.(\d{2})\b/g);
-        for (const m of decimalMatches) {
-          const amt = parseStatementAmount(m[0]);
-          if (amt && amt > 0 && amt <= MAX_AMOUNT) candidateAmounts.push(amt);
+        if (amt && amt > 0 && amt <= MAX_AMOUNT) {
+          seenIndices.add(m.index);
+          candidateAmounts.push({ amount: amt, isBalance: checkBalanceContext(m.index, m[0]) });
         }
       }
-      // Priority 3: Formatted thousands or integer amounts (e.g. 1,500 or 500)
+
+      // 2. Standard 2-decimal numbers (e.g. 450.00, 1,234.56)
+      const decimalMatches = textForAmounts.matchAll(/\b([0-9]{1,3}(?:,[0-9]{2,3})*|\d+)\.(\d{2})\b/g);
+      for (const m of decimalMatches) {
+        const isDuplicate = Array.from(seenIndices).some((idx) => Math.abs(idx - m.index) < 10);
+        if (!isDuplicate) {
+          const amt = parseStatementAmount(m[0]);
+          if (amt && amt > 0 && amt <= MAX_AMOUNT) {
+            seenIndices.add(m.index);
+            candidateAmounts.push({ amount: amt, isBalance: checkBalanceContext(m.index, m[0]) });
+          }
+        }
+      }
+
+      // 3. Formatted thousands or integer amounts (if still no candidates)
       if (candidateAmounts.length === 0) {
         const intMatches = textForAmounts.matchAll(/\b([0-9]{1,3}(?:,[0-9]{2,3})+|\d{2,8})\b/g);
         for (const m of intMatches) {
           const amt = parseStatementAmount(m[0]);
-          if (amt && amt > 0 && amt <= MAX_AMOUNT) candidateAmounts.push(amt);
+          if (amt && amt > 0 && amt <= MAX_AMOUNT) {
+            candidateAmounts.push({ amount: amt, isBalance: checkBalanceContext(m.index, m[0]) });
+          }
         }
       }
 
       if (candidateAmounts.length === 0) continue;
 
-      let txnAmount = candidateAmounts[0];
+      const nonBalance = candidateAmounts.filter((c) => !c.isBalance);
+      let txnAmount = (nonBalance.length > 0 ? nonBalance[0] : candidateAmounts[0]).amount;
+
       // Multi-currency override if explicit foreign currency noted
       if (candidateAmounts.length >= 2 && /\b(usd|eur|gbp|aed)\b/i.test(blockText)) {
         const inrMatch = blockText.match(/(?:inr|rs\.?|₹)\s*([0-9,]+(?:\.[0-9]{2})?)/i);
@@ -804,11 +877,13 @@ const parseExcelBuffer = async (buffer) => {
     const values = Array.isArray(row.values) ? row.values.slice(1) : [];
     const formatted = values.map((val) => {
       if (val === null || val === undefined) return '';
-      if (val instanceof Date) {
-        return `${val.getUTCFullYear()}-${String(val.getUTCMonth() + 1).padStart(2, '0')}-${String(val.getUTCDate()).padStart(2, '0')}`;
+      if (val instanceof Date && !Number.isNaN(val.getTime())) {
+        return `${val.getFullYear()}-${String(val.getMonth() + 1).padStart(2, '0')}-${String(val.getDate()).padStart(2, '0')}`;
       }
-      if (typeof val === 'object' && val.text) return String(val.text).trim();
-      if (typeof val === 'object' && val.result !== undefined) return String(val.result).trim();
+      if (typeof val === 'object') {
+        if ('text' in val) return String(val.text || '').trim();
+        if (val.result !== undefined) return String(val.result ?? '').trim();
+      }
       return String(val).trim();
     });
     if (formatted.some(Boolean)) {
@@ -911,7 +986,12 @@ const findColumn = (headers, names) => {
 /**
  * Normalizes tabular rows (CSV/Excel) into structured transactions.
  */
-const processTabularRows = ({ rows, defaultBank = null, merchantCategories = new Map() }) => {
+const processTabularRows = ({
+  rows,
+  defaultBank = null,
+  merchantCategories = new Map(),
+  preferredFormat = 'DMY',
+}) => {
   if (rows.length < 2) {
     throw new Error('Statement must contain a header row and at least one transaction row.');
   }
@@ -984,7 +1064,7 @@ const processTabularRows = ({ rows, defaultBank = null, merchantCategories = new
     if (isBalanceOrSummary(fullRowText)) continue;
 
     const dateVal = row[columns.date] || (columns.valueDate >= 0 ? row[columns.valueDate] : null);
-    const date = toIsoDay(dateVal);
+    const date = toIsoDay(dateVal, preferredFormat);
     if (!date) continue;
 
     const desc = cleanText(
@@ -1030,9 +1110,9 @@ const processTabularRows = ({ rows, defaultBank = null, merchantCategories = new
       defaultBank: detectedBank,
     });
 
-    const explicitBank = columns.bank >= 0 ? cleanText(row[columns.bank]) : null;
-    const explicitSender = columns.sender >= 0 ? cleanText(row[columns.sender]) : null;
-    const explicitReceiver = columns.receiver >= 0 ? cleanText(row[columns.receiver]) : null;
+    const explicitBank = columns.bank >= 0 ? cleanText(row[columns.bank]).slice(0, 100) : null;
+    const explicitSender = columns.sender >= 0 ? cleanText(row[columns.sender]).slice(0, 150) : null;
+    const explicitReceiver = columns.receiver >= 0 ? cleanText(row[columns.receiver]).slice(0, 150) : null;
     const explicitRef = (columns.reference >= 0 ? cleanText(row[columns.reference]) : '') ||
                         (columns.ref >= 0 ? cleanText(row[columns.ref]) : '');
 
@@ -1047,10 +1127,11 @@ const processTabularRows = ({ rows, defaultBank = null, merchantCategories = new
     const normalizedMerchant = normalizeForMatch(merchant);
     const savedCategory = merchantCategories.get(normalizedMerchant);
     const categoryRule = CATEGORY_RULES.find(([, rule]) => rule.test(desc.toLowerCase()));
+    const incomeCategoryRule = INCOME_CATEGORY_RULES.find(([, rule]) => rule.test(desc.toLowerCase()));
 
     const category = isIncome
-      ? /(salary|payroll|stipend)/i.test(desc) ? 'Salary' : 'Other'
-      : savedCategory || categoryRule?.[0] || 'Other';
+      ? (savedCategory !== undefined ? savedCategory : (incomeCategoryRule?.[0] || 'Other'))
+      : (savedCategory !== undefined ? savedCategory : (categoryRule?.[0] || 'Other'));
 
     const fingerprint = crypto
       .createHash('sha256')
@@ -1100,6 +1181,7 @@ const parseStatement = async ({
   filename = 'statement.csv',
   userTransactions = [],
   password = null,
+  dateFormat = null,
 }) => {
   let buffer = null;
   const isBase64 = typeof fileData === 'string' && fileData.trim() !== '';
@@ -1138,6 +1220,10 @@ const parseStatement = async ({
     throw err;
   }
 
+  // Detect date format preference: MDY for US banks/statements, default DMY for Indian banks
+  const isUsBankOrFile = /chase|bofa|bank\s*of\s*america|wells\s*fargo|wells|amex|american\s*express|citi|citibank/i.test(filename);
+  const preferredFormat = (dateFormat ? String(dateFormat).toUpperCase() : null) || (isUsBankOrFile ? 'MDY' : 'DMY');
+
   // Load user merchant categories & existing fingerprints
   const merchantCategories = new Map();
   const existingFingerprints = new Set();
@@ -1145,11 +1231,11 @@ const parseStatement = async ({
 
   for (const tx of userTransactions) {
     const merchant = normalizeForMatch(tx.merchant || tx.receiver_name || tx.note);
-    if (merchant && tx.category && tx.category !== 'Other' && !merchantCategories.has(merchant)) {
+    if (merchant && tx.category && !merchantCategories.has(merchant)) {
       merchantCategories.set(merchant, tx.category);
     }
     if (tx.import_fingerprint) existingFingerprints.add(tx.import_fingerprint);
-    const day = toIsoDay(tx.date) || '';
+    const day = toIsoDay(tx.date, preferredFormat) || '';
     if (day && tx.amount) {
       existingKeys.add(
         [
@@ -1168,7 +1254,7 @@ const parseStatement = async ({
 
   if (isPdf) {
     detectedFormat = 'PDF';
-    const { rawTransactions, bankName, statementSource } = await parsePdfBuffer(buffer, filename, { password });
+    const { rawTransactions, bankName, statementSource } = await parsePdfBuffer(buffer, filename, { password, preferredFormat });
     defaultBank = bankName || defaultBank;
 
     parsedList = rawTransactions.map((tx, idx) => {
@@ -1182,10 +1268,11 @@ const parseStatement = async ({
       const normalizedMerchant = normalizeForMatch(merchant);
       const savedCategory = merchantCategories.get(normalizedMerchant);
       const categoryRule = CATEGORY_RULES.find(([, rule]) => rule.test(tx.desc.toLowerCase()));
+      const incomeCategoryRule = INCOME_CATEGORY_RULES.find(([, rule]) => rule.test(tx.desc.toLowerCase()));
 
       const category = tx.type === 'income'
-        ? /(salary|payroll|stipend)/i.test(tx.desc) ? 'Salary' : 'Other'
-        : savedCategory || categoryRule?.[0] || 'Other';
+        ? (savedCategory !== undefined ? savedCategory : (incomeCategoryRule?.[0] || 'Other'))
+        : (savedCategory !== undefined ? savedCategory : (categoryRule?.[0] || 'Other'));
 
       const txnNumber = tx.txnId || entities.transaction_number;
       const fingerprint = crypto
@@ -1228,6 +1315,7 @@ const parseStatement = async ({
       rows,
       defaultBank,
       merchantCategories,
+      preferredFormat,
     });
   } else {
     detectedFormat = 'CSV';
@@ -1237,6 +1325,7 @@ const parseStatement = async ({
       rows,
       defaultBank,
       merchantCategories,
+      preferredFormat,
     });
   }
 

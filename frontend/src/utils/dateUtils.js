@@ -54,6 +54,21 @@ export function getAppDate() {
  *   - Any other string the native Date constructor understands
  *   - Unix timestamps
  * ————————————————————————————————————— */
+export function parseLocalDate(dateInput) {
+  if (!dateInput) return null;
+  if (dateInput instanceof Date) {
+    return isValid(dateInput) ? dateInput : null;
+  }
+  if (typeof dateInput === 'string') {
+    const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      const local = new Date(+m[1], +m[2] - 1, +m[3]);
+      return isValid(local) ? local : null;
+    }
+  }
+  return parseSafeDate(dateInput);
+}
+
 export function parseSafeDate(dateInput) {
   // ── Reject empty / falsy inputs ──
   if (!dateInput) return null;
@@ -65,6 +80,11 @@ export function parseSafeDate(dateInput) {
 
   // ── String inputs: try ISO first, then native Date ──
   if (typeof dateInput === 'string') {
+    const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) {
+      const local = new Date(+m[1], +m[2] - 1, +m[3]);
+      if (isValid(local)) return local;
+    }
     const parsed = parseISO(dateInput);
     if (isValid(parsed)) return parsed;
     const native = new Date(dateInput);

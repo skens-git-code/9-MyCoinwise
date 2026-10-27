@@ -95,12 +95,18 @@ const CATEGORY_EMOJIS = {
 
 // ── Normalize any date input into a YYYY-MM-DD string for <input type="date"> ──
 const formatDateForInput = (dateInput) => {
-  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
-    return dateInput;
+  if (!dateInput) {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+  const match = String(dateInput).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return `${match[1]}-${match[2]}-${match[3]}`;
   }
   const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
   if (isNaN(date.getTime())) {
-    return formatDateForInput(new Date());
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   }
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -108,11 +114,23 @@ const formatDateForInput = (dateInput) => {
   return `${year}-${month}-${day}`;
 };
 
+const isTruthyBool = (v) => v === true || v === 'true' || v === 1 || v === '1';
+
 export default function TransactionForm({ isOpen = true, onClose, onSubmit, initialData = null }) {
   // ── Context: currency, accounts, i18n ──
   const { currency, currencyInfo, accounts = [], budgets = [] } = useAppState();
   const { t } = useAppActions();
   const currSymbol = currencyInfo?.symbol || '₹';
+
+  /* —————————————————————————————————————
+   * Quick Date Helpers (Today & Yesterday)
+   * ————————————————————————————————————— */
+  const todayStr = useMemo(() => formatDateForInput(new Date()), []);
+  const yesterdayStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return formatDateForInput(d);
+  }, []);
 
   /* —————————————————————————————————————
    * Form State
@@ -135,13 +153,19 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   const [budgetCategory, setBudgetCategory] = useState(() => initialData?.budget_category || 'auto');
   const [budgetId, setBudgetId] = useState(() => initialData?.budget_id || '');
 
+  const linkedBudgetName = useMemo(() => {
+    if (!budgetId) return null;
+    const match = (budgets || []).find((b) => String(b._id || b.id) === String(budgetId));
+    return match ? (match.name || match.category) : null;
+  }, [budgetId, budgets]);
+
   const [note, setNote] = useState(initialData?.note || '');
 
   const [date, setDate] = useState(() => {
     if (initialData?.date) {
       return formatDateForInput(initialData.date);
     }
-    return formatDateForInput(new Date());
+    return todayStr;
   });
 
   // ── Enhanced Fields ──
@@ -155,7 +179,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   const [paymentMethod, setPaymentMethod] = useState(initialData?.payment_method || 'other');
   const [accountId, setAccountId] = useState(initialData?.account_id || '');
   const [transactionNumber, setTransactionNumber] = useState(initialData?.transaction_number || '');
-  const [isRecurring, setIsRecurring] = useState(initialData?.is_recurring || false);
+  const [isRecurring, setIsRecurring] = useState(() => isTruthyBool(initialData?.is_recurring));
   const [recurrenceInterval, setRecurrenceInterval] = useState(initialData?.recurrence_interval || 'monthly');
 
   // ── Drawer & UI states ──
@@ -169,7 +193,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         (Array.isArray(initialData?.tags) && initialData.tags.length > 0) ||
         (typeof initialData?.tags === 'string' && initialData.tags.trim()) ||
         initialData?.transaction_number ||
-        initialData?.is_recurring ||
+        isTruthyBool(initialData?.is_recurring) ||
         (initialData?.payment_method && initialData.payment_method !== 'other')
     );
   });
@@ -198,7 +222,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       setAmount(initialData?.amount !== undefined && initialData?.amount !== null ? String(initialData.amount) : '');
       setCategory(initialData?.category || CATEGORIES[nextType][0]);
       setNote(initialData?.note || '');
-      setDate(initialData?.date ? formatDateForInput(initialData.date) : formatDateForInput(new Date()));
+      setDate(initialData?.date ? formatDateForInput(initialData.date) : todayStr);
       setMerchant(initialData?.merchant || '');
       setBankName(initialData?.bank_name || '');
       setSenderName(initialData?.sender_name || '');
@@ -207,7 +231,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       setPaymentMethod(initialData?.payment_method || 'other');
       setAccountId(initialData?.account_id || '');
       setTransactionNumber(initialData?.transaction_number || '');
-      setIsRecurring(Boolean(initialData?.is_recurring));
+      setIsRecurring(isTruthyBool(initialData?.is_recurring));
       setRecurrenceInterval(initialData?.recurrence_interval || 'monthly');
       setBudgetCategory(initialData?.budget_category || 'auto');
       setBudgetId(initialData?.budget_id || '');
@@ -222,12 +246,12 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         (Array.isArray(initialData?.tags) && initialData.tags.length > 0) ||
         (typeof initialData?.tags === 'string' && initialData.tags.trim()) ||
         initialData?.transaction_number ||
-        initialData?.is_recurring ||
+        isTruthyBool(initialData?.is_recurring) ||
         (initialData?.payment_method && initialData.payment_method !== 'other')
       );
       setIsMoreOpen(shouldOpenMore);
     }
-  }, [initialData, isOpen]);
+  }, [initialData, isOpen, todayStr]);
 
   // ── Handle Type Toggle ──
   const handleTypeToggle = useCallback(
@@ -248,13 +272,37 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   }, [initialData]);
 
   const handleCancel = useCallback(() => {
-    const isDirty = !isEditMode && (amount !== '' || note !== '');
+    const isDirty =
+      !isEditMode &&
+      (amount !== '' ||
+        note.trim() !== '' ||
+        merchant.trim() !== '' ||
+        tags.trim() !== '' ||
+        bankName.trim() !== '' ||
+        senderName.trim() !== '' ||
+        receiverName.trim() !== '' ||
+        transactionNumber.trim() !== '' ||
+        accountId !== '' ||
+        isRecurring);
     if (isDirty) {
       setShowUnsavedModal(true);
     } else {
       onClose();
     }
-  }, [amount, note, isEditMode, onClose]);
+  }, [
+    isEditMode,
+    amount,
+    note,
+    merchant,
+    tags,
+    bankName,
+    senderName,
+    receiverName,
+    transactionNumber,
+    accountId,
+    isRecurring,
+    onClose,
+  ]);
 
   const isTouchDevice = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -295,10 +343,10 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   }, [isOpen]);
 
   const handleFormFocusCapture = useCallback(() => {
-    if (typeof window !== 'undefined' && window.scrollY !== 0) {
+    if (typeof window !== 'undefined' && isTouchDevice && window.scrollY !== 0) {
       window.scrollTo(0, 0);
     }
-  }, []);
+  }, [isTouchDevice]);
 
   const handleOverlayPointerDown = useCallback((e) => {
     overlayPointerDownRef.current = e.target === e.currentTarget;
@@ -347,11 +395,12 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   }, []);
 
   const quickPresets = useMemo(() => {
-    if (currSymbol === '₹') {
+    const isInr = currency === 'INR' || currencyInfo?.code === 'INR' || currSymbol === '₹';
+    if (isInr) {
       return type === 'income' ? [1000, 5000, 10000, 25000] : [100, 500, 1000, 2000];
     }
     return type === 'income' ? [100, 250, 500, 1000] : [10, 25, 50, 100];
-  }, [currSymbol, type]);
+  }, [currency, currencyInfo?.code, currSymbol, type]);
 
   const handleAddPreset = useCallback((presetVal) => {
     setAmount((prev) => {
@@ -366,13 +415,6 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   /* —————————————————————————————————————
    * Quick Date Helpers (Today & Yesterday)
    * ————————————————————————————————————— */
-  const todayStr = useMemo(() => formatDateForInput(new Date()), []);
-  const yesterdayStr = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return formatDateForInput(d);
-  }, []);
-
   const isToday = date === todayStr;
   const isYesterday = date === yesterdayStr;
 
@@ -426,12 +468,13 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       setError('Amount is too large.');
       return false;
     }
-    if (!category) {
+    const catStr = String(category || '').trim();
+    if (!catStr) {
       setError('Please select a category.');
       return false;
     }
-    if (!CATEGORIES[type].includes(category)) {
-      setError('Invalid category selected.');
+    if (catStr.length > 60) {
+      setError('Category must be 60 characters or less.');
       return false;
     }
     if (!date) {
@@ -444,15 +487,18 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       return false;
     }
     return true;
-  }, [amount, category, type, date]);
+  }, [amount, category, date]);
 
   const resetForm = useCallback(() => {
     setType('expense');
     setAmount('');
     setCategory(CATEGORIES.expense[0]);
     setNote('');
-    setDate(formatDateForInput(new Date()));
+    setDate(todayStr);
     setMerchant('');
+    setBankName('');
+    setSenderName('');
+    setReceiverName('');
     setTags('');
     setPaymentMethod('other');
     setAccountId('');
@@ -462,7 +508,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     setBudgetCategory('auto');
     setBudgetId('');
     setError('');
-  }, []);
+    setIsMoreOpen(false);
+  }, [todayStr]);
 
   const handleSubmit = useCallback(
     async (e) => {
@@ -620,6 +667,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                     <AnimatePresence>
                       {error && (
                         <motion.div
+                          role="alert"
+                          aria-live="assertive"
+                          aria-atomic="true"
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
                           exit={{ opacity: 0, height: 0 }}
@@ -641,11 +691,11 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                     </AnimatePresence>
 
                     {/* ── Segmented Type Toggle ── */}
-                    <div className="tx-segmented-control" role="tablist" aria-label="Transaction type">
+                    <div className="tx-segmented-control" role="radiogroup" aria-label="Transaction type">
                       <button
                         type="button"
-                        role="tab"
-                        aria-selected={type === 'expense'}
+                        role="radio"
+                        aria-checked={type === 'expense'}
                         className={`tx-segmented-btn ${type === 'expense' ? 'active' : ''}`}
                         onClick={() => handleTypeToggle('expense')}
                       >
@@ -654,8 +704,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                       </button>
                       <button
                         type="button"
-                        role="tab"
-                        aria-selected={type === 'income'}
+                        role="radio"
+                        aria-checked={type === 'income'}
                         className={`tx-segmented-btn ${type === 'income' ? 'active' : ''}`}
                         onClick={() => handleTypeToggle('income')}
                       >
@@ -806,7 +856,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                                 fontWeight: 600,
                               }}
                             >
-                              {budgetCategory === 'none' ? '🚫 Unlinked' : `🎯 Linked: ${budgetCategory}`}
+                              {budgetCategory === 'none' ? '🚫 Unlinked' : `🎯 Linked: ${linkedBudgetName || budgetCategory}`}
                             </span>
                           )}
                         </div>
@@ -946,7 +996,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                             id="tx-date-input"
                             type="date"
                             value={date}
-                            max={formatDateForInput(new Date())}
+                            max={todayStr}
                             onChange={(e) => setDate(e.target.value)}
                             disabled={isSubmitting}
                             aria-required="true"

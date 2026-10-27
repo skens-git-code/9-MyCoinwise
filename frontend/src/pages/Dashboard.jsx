@@ -116,7 +116,7 @@ const safeParseDate = (dateInput) => {
     return new Date(dateInput.getTime());
   }
   if (typeof dateInput === 'string') {
-    const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (m) {
       const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
       return Number.isNaN(d.getTime()) ? null : d;
@@ -713,10 +713,12 @@ export default function Dashboard() {
     });
   }, []);
   const hasLoadedOnceRef = useRef(!loading);
-  if (!loading) {
-    hasLoadedOnceRef.current = true;
-  }
-  const hasLoadedOnce = hasLoadedOnceRef.current;
+  useEffect(() => {
+    if (!loading) {
+      hasLoadedOnceRef.current = true;
+    }
+  }, [loading]);
+  const hasLoadedOnce = hasLoadedOnceRef.current || !loading;
 
   const handleOpenAddForm = useCallback(() => {
     setEditingTx(null);
@@ -801,12 +803,12 @@ export default function Dashboard() {
       const t = tx.parsedDate;
       if (!t || t > now) return false;
       if (dateFilter === '7days') {
-        const diff = (startOfToday - t) / 86400000;
-        return diff <= 7;
+        const start7 = new Date(startOfToday.getTime() - 6 * 86400000);
+        return t >= start7 && t <= now;
       }
       if (dateFilter === '30days') {
-        const diff = (startOfToday - t) / 86400000;
-        return diff <= 30;
+        const start30 = new Date(startOfToday.getTime() - 29 * 86400000);
+        return t >= start30 && t <= now;
       }
       if (dateFilter === 'thisMonth') {
         return t.getMonth() === now.getMonth() && t.getFullYear() === now.getFullYear();
@@ -904,15 +906,33 @@ export default function Dashboard() {
 
   const activeGoalTarget = useMemo(() => {
     if (monthlyGoal > 0) return monthlyGoal;
-    if (primaryGoal) return toNumber(primaryGoal.target, 0);
+    if (primaryGoal) {
+      const raw = toNumber(primaryGoal.target, 0);
+      const converted = convertCurrency(
+        raw,
+        resolveCurrency(primaryGoal.currency, displayCurrency),
+        displayCurrency,
+        fxRatesToInr
+      );
+      return converted ?? raw;
+    }
     return 0;
-  }, [monthlyGoal, primaryGoal]);
+  }, [monthlyGoal, primaryGoal, displayCurrency, fxRatesToInr]);
 
   const activeGoalSaved = useMemo(() => {
     if (monthlyGoal > 0) return Math.max(0, monthlyNetSavings);
-    if (primaryGoal) return toNumber(primaryGoal.saved, 0);
+    if (primaryGoal) {
+      const raw = toNumber(primaryGoal.saved, 0);
+      const converted = convertCurrency(
+        raw,
+        resolveCurrency(primaryGoal.currency, displayCurrency),
+        displayCurrency,
+        fxRatesToInr
+      );
+      return converted ?? raw;
+    }
     return 0;
-  }, [monthlyGoal, monthlyNetSavings, primaryGoal]);
+  }, [monthlyGoal, monthlyNetSavings, primaryGoal, displayCurrency, fxRatesToInr]);
 
   const hasSavingsGoal = activeGoalTarget > 0;
 
@@ -926,7 +946,7 @@ export default function Dashboard() {
         return t === '' || liquidTypes.has(t);
       })
       .reduce((sum, account) => {
-        const opening = Number(account?.initial_balance);
+        const opening = Number(account?.initial_balance ?? account?.starting_balance ?? 0);
         if (!Number.isFinite(opening)) return sum;
         const converted = convertCurrency(
           opening,
@@ -946,7 +966,7 @@ export default function Dashboard() {
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const daysRemaining = Math.max(1, monthEnd.getDate() - today.getDate() + 1);
     const recurringBills = (Array.isArray(subscriptions) ? subscriptions : [])
-      .filter((sub) => !sub?.is_paused && !sub?.cancelled_at)
+      .filter((sub) => sub?.is_active !== false && !sub?.is_paused && !sub?.cancelled_at)
       .reduce((sum, sub) => {
         const rawAmount = toNumber(sub?.amount, 0);
         const subCurrency = resolveCurrency(sub?.currency, displayCurrency);
@@ -955,7 +975,7 @@ export default function Dashboard() {
         if (cycle === 'yearly' || cycle === 'annual') return sum + amount / 12;
         if (cycle === 'quarterly') return sum + amount / 3;
         if (cycle === 'weekly') return sum + amount * 4.33;
-        if (cycle === 'daily') return sum + amount * 30;
+        if (cycle === 'daily') return sum + (amount * 365) / 12;
         return sum + amount;
       }, 0);
     const netAvailable = Math.max(0, spendableBalance - recurringBills);
@@ -1049,6 +1069,10 @@ export default function Dashboard() {
     const sorted = Array.from(buckets.entries()).sort((a, b) => a[0].localeCompare(b[0]));
     if (sorted.length < 5) return null;
     let running = startingBalance;
+    const firstUsedKey = sorted[Math.max(0, sorted.length - 14)]?.[0];
+    for (const [key, delta] of sorted) {
+      if (key < firstUsedKey) running += delta;
+    }
     const series = sorted.slice(-14).map(([, delta]) => {
       running += delta;
       return running;
@@ -1115,10 +1139,12 @@ export default function Dashboard() {
       start = new Date(today.getTime() - 29 * 86400000);
       end = today;
     } else {
-      // 'all': ensure continuous curve starting from at least monthStart up to today/lastTx
-      if (start.getTime() === end.getTime() || (end.getTime() - start.getTime()) < 3 * 86400000) {
-        start = new Date(Math.min(start.getTime(), monthStart.getTime()));
-        end = new Date(Math.max(end.getTime(), today.getTime()));
+      // 'all': focus on the active transaction range with a clean 1-2 day lead-in
+      start = new Date(firstTxDate.getFullYear(), firstTxDate.getMonth(), firstTxDate.getDate() - 1);
+      end = new Date(Math.max(lastTxDate.getTime(), today.getTime()));
+      // Ensure at least 3 points so recharts can render a continuous area
+      if (Math.round((end.getTime() - start.getTime()) / 86400000) < 3) {
+        start = new Date(end.getTime() - 3 * 86400000);
       }
     }
 
@@ -1133,7 +1159,7 @@ export default function Dashboard() {
     const daysToUse = allDays.length > 30 ? allDays.slice(-30) : allDays;
 
     // ── Fill in zero-days so the chart is continuous ──
-    const rows = daysToUse.map((day) => {
+    let rows = daysToUse.map((day) => {
       const key = toLocalDateKey(day);
       const existing = map.get(key);
       if (existing) {
@@ -1150,6 +1176,13 @@ export default function Dashboard() {
         categories: new Map(),
       };
     });
+
+    // ── Trim excess leading flat zero days (> 2 leading zero days before first active transaction)
+    // so transactions are not crushed against the right edge of the card.
+    const firstActiveIdx = rows.findIndex((r) => r.income > 0 || r.expense > 0);
+    if (firstActiveIdx > 2) {
+      rows = rows.slice(firstActiveIdx - 1);
+    }
 
     // ── Final labels (with year when the range spans years) ──
     const spansMultipleYears = new Set(rows.map((row) => new Date(row.timestamp).getFullYear())).size > 1;
@@ -1272,7 +1305,7 @@ export default function Dashboard() {
   const topExpenseCategory = useMemo(() => {
     const map = new Map();
     let totalExp = 0;
-    for (const t of parsedTransactions) {
+    for (const t of periodTransactions) {
       const type = String(t?.type || '').trim().toLowerCase();
       if (type !== 'expense') continue;
       const amt = Math.abs(Number(t?.displayAmount ?? t?.amount) || 0);
@@ -1284,7 +1317,7 @@ export default function Dashboard() {
     if (map.size === 0 || totalExp === 0) return null;
     const [name, amount] = Array.from(map.entries()).sort((a, b) => b[1] - a[1])[0];
     return { name, amount, pct: ((amount / totalExp) * 100).toFixed(0) };
-  }, [parsedTransactions]);
+  }, [periodTransactions]);
 
   // 15. Pie data (top 5 categories + 'Other' for the selected period, ensuring 100% mathematical integrity)
   const pieData = useMemo(() => {
@@ -1308,7 +1341,12 @@ export default function Dashboard() {
     const top5 = entries.slice(0, 5).map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }));
     const remainder = entries.slice(5).reduce((sum, [_, val]) => sum + val, 0);
     if (remainder > 0) {
-      top5.push({ name: 'Other', value: Number(remainder.toFixed(2)) });
+      const existingOther = top5.find((e) => e.name.toLowerCase() === 'other');
+      if (existingOther) {
+        existingOther.value = Number((existingOther.value + remainder).toFixed(2));
+      } else {
+        top5.push({ name: 'Other', value: Number(remainder.toFixed(2)) });
+      }
     }
     return top5;
   }, [periodTransactions]);
@@ -1455,11 +1493,14 @@ export default function Dashboard() {
 
   // ── Share a plain-text summary (Web Share API, else clipboard) ──
   const handleShare = useCallback(async () => {
+    const isFiltered = dateFilter !== 'all' || categoryFilter !== 'all';
+    const rateToReport = isFiltered ? savingsRate : unfilteredMetrics.savingsRate;
+    const filterContext = isFiltered ? ` (${dateFilter} filter)` : '';
     const summary =
-      `My Budget Dashboard\n` +
+      `My Budget Dashboard${filterContext}\n` +
       `Balance: ${formatCurrencyText(rawBalance, safeFmt, currencySymbol)}\n` +
       `Net Savings: ${formatCurrencyText(netSavings, safeFmt, currencySymbol)}\n` +
-      `Savings Rate: ${savingsRate.toFixed(1)}%`;
+      `Savings Rate: ${rateToReport.toFixed(1)}%`;
     try {
       if (navigator.share) {
         await navigator.share({ title: 'My Financial Dashboard', text: summary });
@@ -1474,7 +1515,7 @@ export default function Dashboard() {
     } catch (err) {
       if (err?.name !== 'AbortError') showToast('error', 'Sharing failed');
     }
-  }, [rawBalance, netSavings, savingsRate, safeFmt, currencySymbol, showToast]);
+  }, [rawBalance, netSavings, savingsRate, unfilteredMetrics.savingsRate, dateFilter, categoryFilter, safeFmt, currencySymbol, showToast]);
 
   // ── Add a new transaction ──
   const handleAddTransaction = useCallback(async (tx) => {
@@ -2100,9 +2141,9 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="bt-chart-wrap" style={{ height: SPENDING_CHART_HEIGHT, minHeight: 220 }}>
+            <div className="bt-chart-wrap" style={{ flex: '1 1 auto', width: '100%', minHeight: 220, position: 'relative' }}>
               {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={SPENDING_CHART_HEIGHT} minWidth={1} minHeight={200}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200}>
                   <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
                     <defs>
                       {/* ── Income area gradient ── */}
@@ -2157,7 +2198,7 @@ export default function Dashboard() {
                       ]}
                     />
                     <Legend
-                      wrapperStyle={{ paddingTop: 12, fontSize: '0.78rem', fontWeight: 700 }}
+                      wrapperStyle={{ paddingTop: 6, paddingBottom: 2, fontSize: '0.78rem', fontWeight: 700 }}
                       formatter={(value) => (
                         <span style={{ color: 'var(--text-secondary)' }}>
                           {value === 'income' ? tr('income_label', 'Income') : tr('expense_label', 'Expenses')}
@@ -2495,10 +2536,10 @@ export default function Dashboard() {
                 </NavLink>
               </div>
             </div>
-            <div className="bt-pie-wrap" style={{ height: 215, minHeight: 180, position: 'relative' }}>
+            <div className="bt-pie-wrap" style={{ height: 235, minHeight: 200, position: 'relative' }}>
               {pieData.length > 0 ? (
                 <>
-                  <ResponsiveContainer width="100%" height={215} minWidth={1} minHeight={180}>
+                  <ResponsiveContainer width="100%" height={235} minWidth={1} minHeight={200}>
                     <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                       <Pie
                         isAnimationActive={!prefersReducedMotion && !loading}
@@ -2507,7 +2548,7 @@ export default function Dashboard() {
                         animationEasing="ease-out"
                         data={pieData}
                         cx="50%"
-                        cy="44%"
+                        cy="40%"
                         startAngle={90}
                         endAngle={-270}
                         innerRadius="50%"
@@ -2539,16 +2580,16 @@ export default function Dashboard() {
                         contentStyle={tooltipStyle}
                         formatter={(val, name) => {
                           const amount = Number(val) || 0;
-                          const pct = pieTotal > 0 ? ((amount / pieTotal) * 100).toFixed(1) : '0.0';
+                          const rawPct = pieTotal > 0 ? (amount / pieTotal) * 100 : 0;
+                          const pct = rawPct > 0 && rawPct < 0.1 ? '<0.1' : rawPct.toFixed(1);
                           return [`${formatCurrencyText(amount, safeFmt, currencySymbol)} (${pct}%)`, name];
                         }}
                       />
                       <Legend
                         verticalAlign="bottom"
-                        height={36}
                         iconType="circle"
                         iconSize={8}
-                        wrapperStyle={{ fontSize: '0.74rem', fontWeight: 600, paddingTop: 4, cursor: 'pointer' }}
+                        wrapperStyle={{ fontSize: '0.74rem', fontWeight: 600, paddingTop: 6, lineHeight: '1.4', cursor: 'pointer' }}
                         onClick={(e) => {
                           const catName = e?.value;
                           if (catName) {
@@ -2557,7 +2598,15 @@ export default function Dashboard() {
                         }}
                         formatter={(value) => {
                           const item = pieData.find((p) => p.name === value);
-                          const pct = item && pieTotal > 0 ? ` (${((item.value / pieTotal) * 100).toFixed(0)}%)` : '';
+                          let pct = '';
+                          if (item && pieTotal > 0) {
+                            const rawPct = (item.value / pieTotal) * 100;
+                            if (rawPct > 0 && rawPct < 1) {
+                              pct = ' (<1%)';
+                            } else {
+                              pct = ` (${Math.round(rawPct)}%)`;
+                            }
+                          }
                           const isSelected = categoryFilter.toLowerCase() === String(value || '').toLowerCase();
                           return (
                             <span style={{
@@ -2576,7 +2625,7 @@ export default function Dashboard() {
                   <div
                     style={{
                       position: 'absolute',
-                      top: '44%',
+                      top: '40%',
                       left: '50%',
                       transform: 'translate(-50%, -50%)',
                       textAlign: 'center',

@@ -18,6 +18,13 @@
 // ── Load mongoose ──
 const mongoose = require('mongoose');
 
+// ── Hex color pattern for subscription card ──
+const HEX_COLOR_PATTERN = /^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/;
+
+// ── Maximum lengths aligned with Budget and LoginLog models ──
+const MAX_NAME_LENGTH = 100;
+const MAX_ICON_LENGTH = 16;
+
 // ── Define schema ──
 const subscriptionSchema = new mongoose.Schema({
   /* —————————————————————————————————————
@@ -32,11 +39,11 @@ const subscriptionSchema = new mongoose.Schema({
     index: true
   },
 
-  // ── Subscription display name ──
+  // ── Subscription display name (max 100 chars, matching Budget) ──
   name: {
     type: String,
     required: true,
-    maxlength: 255,
+    maxlength: MAX_NAME_LENGTH,
     trim: true
   },
 
@@ -54,29 +61,47 @@ const subscriptionSchema = new mongoose.Schema({
     default: 'monthly'
   },
 
-  // ── UI color for the subscription card ──
+  // ── UI color for the subscription card (strictly validated hex) ──
   color: {
     type: String,
     default: '#0ea5e9',
-    maxlength: 20
+    validate: {
+      validator: (v) => !v || HEX_COLOR_PATTERN.test(v),
+      message: 'Color must be a valid hex color.',
+    },
   },
 
-  // ── UI icon for the subscription card ──
+  // ── UI icon for the subscription card (16 code units for compound/family emoji) ──
   icon: {
     type: String,
     default: '💳',
-    maxlength: 10
+    maxlength: MAX_ICON_LENGTH
   },
 
   /* —————————————————————————————————————
    * Subscription Details
    * ————————————————————————————————————— */
 
-  // ── Service URL (management page or signup) ──
+  // ── Service URL (management page or signup; strictly http/https) ──
   url: {
     type: String,
     default: null,
-    maxlength: 1024
+    maxlength: 1024,
+    set: (v) => {
+      if (!v) return null;
+      const trimmed = String(v).trim();
+      if (!trimmed) return null;
+      // If an explicit protocol/scheme exists, keep it as-is for the validator
+      if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+        return trimmed;
+      }
+      // If no protocol was provided (e.g. 'netflix.com'), default to https://
+      return `https://${trimmed}`;
+    },
+    validate: {
+      validator: (v) => v == null || v === '' || /^https?:\/\//i.test(v),
+      message: 'URL must start with http:// or https://',
+    },
   },
 
   // ── Free-form notes ──
@@ -93,12 +118,23 @@ const subscriptionSchema = new mongoose.Schema({
     default: 'card'
   },
 
-  // ── Billing currency code ──
+  // ── Billing currency code (ISO 4217 3-letter, defaults to USD) ──
   currency: {
     type: String,
-    default: null,
-    maxlength: 10
+    default: 'USD',
+    uppercase: true,
+    trim: true,
+    validate: {
+      validator: (v) => v == null || v === '' || /^[A-Z]{3}$/.test(v),
+      message: 'Currency must be a 3-letter ISO 4217 code.',
+    },
   },
+
+  // ── Optional references to realizing transactions (cash flow reconciliation) ──
+  linked_transaction_ids: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Transaction'
+  }],
 
   /* —————————————————————————————————————
    * Billing Dates
@@ -129,13 +165,29 @@ const subscriptionSchema = new mongoose.Schema({
   // ── Primary active toggle ──
   is_active: {
     type: Boolean,
-    default: true
+    default: true,
+    validate: {
+      validator: function(v) {
+        // A cancelled subscription cannot be active
+        if (v === true && (this?.cancelled_at || this?.getUpdate?.()?.cancelled_at)) return false;
+        return true;
+      },
+      message: 'A cancelled subscription cannot be marked active.',
+    },
   },
 
   // ── Temporary pause flag ──
   is_paused: {
     type: Boolean,
-    default: false
+    default: false,
+    validate: {
+      validator: function(v) {
+        // A cancelled subscription cannot be paused
+        if (v === true && (this?.cancelled_at || this?.getUpdate?.()?.cancelled_at)) return false;
+        return true;
+      },
+      message: 'A cancelled subscription cannot be paused.',
+    },
   },
 
   // ── Timestamp when the subscription was cancelled ──
@@ -152,6 +204,24 @@ const subscriptionSchema = new mongoose.Schema({
 });
 
 /* —————————————————————————————————————
+ * Lifecycle Hooks
+ * ————————————————————————————————————— */
+
+// ── Ensure status flag coherence before validation ──
+subscriptionSchema.pre('validate', function(next) {
+  // A cancelled subscription cannot be active or paused
+  if (this.cancelled_at) {
+    this.is_active = false;
+    this.is_paused = false;
+  }
+  // A paused subscription must be active-but-paused
+  if (this.is_paused && !this.cancelled_at) {
+    this.is_active = true;
+  }
+  next();
+});
+
+/* —————————————————————————————————————
  * Indexes
  * ————————————————————————————————————— */
 
@@ -162,10 +232,16 @@ subscriptionSchema.index({ user_id: 1, is_active: 1 });
 subscriptionSchema.index({ user_id: 1, next_billing_date: 1 });
 subscriptionSchema.index({ next_billing_date: 1 });
 
-// ── Unique, case-insensitive name per user ──
+// ── Partial unique, case-insensitive name per user for live subscriptions ──
+// Allows cancelled subscriptions to coexist with fresh re-subscriptions
 subscriptionSchema.index(
   { user_id: 1, name: 1 },
-  { unique: true, collation: { locale: 'en', strength: 2 }, name: 'user_sub_name_unique' }
+  {
+    unique: true,
+    partialFilterExpression: { cancelled_at: null, is_active: true },
+    collation: { locale: 'en', strength: 2 },
+    name: 'user_sub_name_unique_live',
+  }
 );
 
 /* —————————————————————————————————————
@@ -174,26 +250,36 @@ subscriptionSchema.index(
 
 // ── Expose string _id as `id` ──
 subscriptionSchema.virtual('id').get(function() {
-  return this._id.toHexString();
+  return this._id ? this._id.toHexString() : '';
 });
 
-// ── Annualized cost derived from amount × cycle multiplier ──
+// ── Annualized cost derived from amount × cycle multiplier (rounded to 2 decimals) ──
 subscriptionSchema.virtual('annual_cost').get(function() {
   const multipliers = { daily: 365, weekly: 52, monthly: 12, quarterly: 4, yearly: 1 };
-  return this.amount * (multipliers[this.cycle] || 12);
+  const cost = (this.amount || 0) * (multipliers[this.cycle] || 12);
+  return Number(cost.toFixed(2));
 });
 
-// ── True while the trial window is still open ──
+// ── True while the trial window is open and the subscription is not cancelled ──
 subscriptionSchema.virtual('is_in_trial').get(function() {
   if (!this.trial_ends) return false;
+  if (this.cancelled_at) return false;
   return this.trial_ends > new Date();
 });
 
-// ── Days remaining until next billing (never negative) ──
+// ── Calendar days remaining until next billing (never negative; 0 if billing today) ──
 subscriptionSchema.virtual('days_until_billing').get(function() {
   if (!this.next_billing_date) return null;
-  const diff = this.next_billing_date - new Date();
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  const now = new Date();
+  if (this.next_billing_date <= now) return 0;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const billingDay = new Date(
+    this.next_billing_date.getFullYear(),
+    this.next_billing_date.getMonth(),
+    this.next_billing_date.getDate()
+  );
+  const diffDays = Math.round((billingDay - today) / (1000 * 60 * 60 * 24));
+  return Math.max(0, diffDays);
 });
 
 // ── Standardize schema serialization and ObjectId validation ──

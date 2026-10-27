@@ -11,6 +11,7 @@ import { useAppState, useAppActions } from '../contexts/AppContext';
 import { api, CURRENCIES } from '../services/api';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
+import { convertCurrency, resolveCurrency } from '../utils/currencyRates';
 
 /* 
  * ————————————————————————————————————————————
@@ -22,7 +23,7 @@ const PALETTE = [
   '#0ea5e9', '#10b981', '#f59e0b', '#ec4899',
   '#8b5cf6', '#3b82f6', '#f43f5e', '#14b8a6',
 ];
-const PERIOD_TYPES = ['monthly', 'weekly', 'custom'];
+const PERIOD_TYPES = ['monthly', 'weekly', 'custom', 'yearly', 'daily'];
 const STATUS_WARNING_THRESHOLD = 80;
 const STATUS_CRITICAL_THRESHOLD = 100;
 const MAX_FINANCIAL_LIMIT = 999_999_999.99;
@@ -263,10 +264,11 @@ const ActionIconButton = React.memo(({
  */
 export default function Budgets() {
   const {
-    budgets = [],
+    budgets: rawBudgets = [],
     transactions = [],
     lang: currentLanguage,
     currency = 'USD',
+    currencyInfo,
   } = useAppState();
   const {
     refetch: refreshData,
@@ -276,6 +278,15 @@ export default function Budgets() {
   
   const { showToast } = useToast();
   const currSymbol = CURRENCIES?.[currency]?.symbol || currency || '$';
+  const fxRatesToInr = currencyInfo?.fxRatesToInr;
+  const displayCurrency = useMemo(() => resolveCurrency(currency, 'USD'), [currency]);
+
+  // Exclude soft-deleted budgets from calculations and views
+  const budgets = useMemo(() => {
+    return (Array.isArray(rawBudgets) ? rawBudgets : []).filter(
+      (b) => b && b.is_deleted !== true && b.is_deleted !== 'true' && b.is_deleted !== 1
+    );
+  }, [rawBudgets]);
 
   const userLocale = useMemo(() => getBrowserLocale(currentLanguage), [currentLanguage]);
   const getTranslation = useCallback((key, fallbackText) => translate?.(key) || fallbackText, [translate]);
@@ -335,13 +346,25 @@ export default function Budgets() {
   }, [isCreateModalOpen]);
 
   /**
-   * Extracts unique categories from existing transactions and budgets.
+   * Extracts unique categories from existing transactions and budgets with case-insensitive deduping.
    */
   const availableCategories = useMemo(() => {
-    const categorySet = new Set();
-    transactions.forEach((tx) => { if (tx?.category) categorySet.add(String(tx.category)); });
-    budgets.forEach((b) => { if (b?.category) categorySet.add(String(b.category)); });
-    return Array.from(categorySet).sort((a, b) => a.localeCompare(b));
+    const categoryMap = new Map();
+    transactions.forEach((tx) => {
+      if (tx?.category) {
+        const cat = String(tx.category).trim();
+        const key = cat.toLowerCase();
+        if (key && !categoryMap.has(key)) categoryMap.set(key, cat);
+      }
+    });
+    budgets.forEach((b) => {
+      if (b?.category) {
+        const cat = String(b.category).trim();
+        const key = cat.toLowerCase();
+        if (key && !categoryMap.has(key)) categoryMap.set(key, cat);
+      }
+    });
+    return Array.from(categoryMap.values()).sort((a, b) => a.localeCompare(b));
   }, [transactions, budgets]);
 
   /**
@@ -351,9 +374,10 @@ export default function Budgets() {
     if (!Array.isArray(transactions)) return [];
     
     const processedExpenses = [];
-    for (const tx of transactions) {
+    for (let i = 0; i < transactions.length; i += 1) {
+      const tx = transactions[i];
       if (!tx || String(tx.type || '').trim().toLowerCase() !== 'expense') continue;
-      if (tx.is_deleted === true) continue;
+      if (tx.is_deleted === true || tx.is_deleted === 'true' || tx.is_deleted === 1) continue;
       
       const timestamp = getStartOfDayTimestamp(tx.date);
       if (timestamp == null) continue;
@@ -362,8 +386,10 @@ export default function Budgets() {
       const linkCategory = tx.budget_category ? String(tx.budget_category).trim() : null;
       const linkCategoryKey = linkCategory ? linkCategory.toLowerCase() : null;
       const budgetId = tx.budget_id ? String(tx.budget_id) : null;
+      const txId = String(tx._id || tx.id || `tx-${i}-${timestamp}-${amount}`);
 
       processedExpenses.push({
+        id: txId,
         timestamp,
         amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
         normalizedCategory: (tx.category || '').trim().toLowerCase(),
@@ -377,7 +403,7 @@ export default function Budgets() {
   }, [transactions]);
 
   /**
-   * Enriches budget objects with calculated spending, limits, and progress metrics.
+   * Enriches budget objects with calculated spending, FX-converted limits, and progress metrics.
    */
   const enrichedBudgets = useMemo(() => {
     return budgets.map((budget, index) => {
@@ -391,6 +417,7 @@ export default function Budgets() {
         : null;
       const budgetIdStr = String(budget._id || budget.id || '');
       let clientCalculatedSpent = 0;
+      const matchedTxList = [];
 
       if (isPeriodValid) {
         for (const tx of normalizedExpenses) {
@@ -404,6 +431,7 @@ export default function Budgets() {
           if (tx.budgetId) {
             if (tx.budgetId === budgetIdStr) {
               clientCalculatedSpent += tx.amount;
+              matchedTxList.push(tx);
             }
             continue;
           }
@@ -419,18 +447,31 @@ export default function Budgets() {
             if (!subcatSet.has(effectiveCat)) continue;
           }
           clientCalculatedSpent += tx.amount;
+          matchedTxList.push(tx);
         }
       }
 
-      const serverSpent = Number(budget.spent);
-      const finalSpentAmount = isPeriodValid
-        ? (clientCalculatedSpent === 0 && normalizedExpenses.length === 0 && Number.isFinite(serverSpent)
-            ? serverSpent
-            : clientCalculatedSpent)
-        : (Number.isFinite(serverSpent) ? serverSpent : 0);
+      // Convert limits & serverSpent from budget currency to active displayCurrency
+      const budgetCurrency = resolveCurrency(budget.currency, displayCurrency);
+      const rawLimit = Number(budget.total_limit) || 0;
+      const convertedLimit = convertCurrency(rawLimit, budgetCurrency, displayCurrency, fxRatesToInr);
+      const baseLimitValue = convertedLimit != null ? convertedLimit : rawLimit;
 
-      const baseLimitValue = Number(budget.total_limit) || 0;
-      const rolloverValue = budget.rollover_enabled ? (Number(budget.rollover_amount) || 0) : 0;
+      const rawRollover = budget.rollover_enabled ? (Number(budget.rollover_amount) || 0) : 0;
+      const convertedRollover = convertCurrency(rawRollover, budgetCurrency, displayCurrency, fxRatesToInr);
+      const rolloverValue = convertedRollover != null ? convertedRollover : rawRollover;
+
+      const rawServerSpent = Number(budget.spent);
+      const convertedServerSpent = Number.isFinite(rawServerSpent)
+        ? (convertCurrency(rawServerSpent, budgetCurrency, displayCurrency, fxRatesToInr) ?? rawServerSpent)
+        : null;
+      const safeServerSpent = convertedServerSpent != null && convertedServerSpent > 0 ? convertedServerSpent : 0;
+
+      // Reconcile client vs server spent (safeguards against stale local transactions)
+      const finalSpentAmount = isPeriodValid
+        ? Math.max(clientCalculatedSpent, safeServerSpent)
+        : safeServerSpent;
+
       const effectiveLimit = baseLimitValue + rolloverValue;
       const remainingBalance = effectiveLimit - finalSpentAmount;
       
@@ -448,17 +489,38 @@ export default function Budgets() {
         progress: usagePercentage,
         isPeriodValid,
         assignedColor: budget.color || selectBudgetColor(extractBudgetId(budget) ?? budget.name, index),
+        matchedTxList,
       };
     });
-  }, [budgets, normalizedExpenses]);
+  }, [budgets, normalizedExpenses, displayCurrency, fxRatesToInr]);
 
   /**
-   * Calculates overall totals for the summary strip.
+   * Calculates overall totals for the summary strip without double-counting
+   * overlapping/general budgets.
    */
   const overallTotals = useMemo(() => {
     const activeList = enrichedBudgets.filter((b) => b.is_active !== false);
     const totalLimit = activeList.reduce((acc, b) => acc + (b.limit || 0), 0);
-    const totalSpent = activeList.reduce((acc, b) => acc + (b.spent || 0), 0);
+
+    // Deduplicate transactions across active budgets so that having a general/all-spending
+    // budget alongside specific category budgets does not count the same spend twice
+    const uniqueTxMap = new Map();
+    let orphanServerSpent = 0;
+
+    for (const b of activeList) {
+      if (b.matchedTxList && b.matchedTxList.length > 0) {
+        for (const tx of b.matchedTxList) {
+          const key = tx.id || `${tx.timestamp}_${tx.amount}_${tx.normalizedCategory}`;
+          if (!uniqueTxMap.has(key)) {
+            uniqueTxMap.set(key, tx.amount);
+          }
+        }
+      } else if (b.spent > 0) {
+        orphanServerSpent += b.spent;
+      }
+    }
+
+    const totalSpent = Array.from(uniqueTxMap.values()).reduce((sum, amt) => sum + amt, 0) + orphanServerSpent;
     const totalRemaining = totalLimit - totalSpent;
     const spentPercent = totalLimit > 0 ? (totalSpent / totalLimit) * 100 : 0;
     return { totalLimit, totalSpent, totalRemaining, spentPercent };
@@ -466,12 +528,15 @@ export default function Budgets() {
 
   /**
    * Summary counts for filters and alerts.
+   * Includes budgets exactly at 100% within nearLimitCount.
    */
   const dashboardStats = useMemo(() => {
     const activeList = enrichedBudgets.filter((b) => b.is_active !== false);
     const inactiveList = enrichedBudgets.filter((b) => b.is_active === false);
     const overBudgetCount = activeList.filter((b) => b.remaining < 0).length;
-    const nearLimitCount = activeList.filter((b) => b.progress >= STATUS_WARNING_THRESHOLD && b.progress < STATUS_CRITICAL_THRESHOLD).length;
+    const nearLimitCount = activeList.filter(
+      (b) => b.progress >= STATUS_WARNING_THRESHOLD && b.remaining >= 0
+    ).length;
     
     return {
       total: enrichedBudgets.length,
@@ -641,12 +706,18 @@ export default function Budgets() {
       return { isValid: false, errorMessage: `Limit cannot exceed ${MAX_FINANCIAL_LIMIT}.` };
     }
 
+    const trimmedCategory = formCategory.trim();
+    if (trimmedCategory.length > 60) {
+      return { isValid: false, errorMessage: 'Category must not exceed 60 characters.' };
+    }
+
     return {
       isValid: true,
       payload: {
         name: trimmedName,
         type: formType,
-        category: formCategory.trim() || null,
+        currency: budgetToEdit?.currency || displayCurrency || 'USD',
+        category: trimmedCategory || null,
         total_limit: numericLimit,
         period_start: formStartDate,
         period_end: formEndDate,
@@ -665,6 +736,7 @@ export default function Budgets() {
     formType,
     formCategory,
     isRolloverEnabled,
+    displayCurrency,
   ]);
 
   const handleFormSubmission = useCallback(async (event) => {
@@ -831,7 +903,7 @@ export default function Budgets() {
             <div className="bsc-sub">
               <span>
                 {overallTotals.totalLimit > 0
-                  ? `${((overallTotals.totalSpent / overallTotals.totalLimit) * 100).toFixed(0)}% of allocation`
+                  ? `${overallTotals.spentPercent.toFixed(0)}% of allocation`
                   : '0% used'}
               </span>
             </div>
@@ -1019,7 +1091,7 @@ export default function Budgets() {
                         <span>
                           {formatDisplayDate(budgetItem.period_start, userLocale)} – {formatDisplayDate(budgetItem.period_end, userLocale)}
                         </span>
-                        {budgetItem.category && (
+                        {budgetItem.category ? (
                           <span
                             style={{
                               fontSize: '0.72rem',
@@ -1032,6 +1104,21 @@ export default function Budgets() {
                             }}
                           >
                             {budgetItem.category}
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              background: 'rgba(99, 102, 241, 0.1)',
+                              border: '1px solid rgba(99, 102, 241, 0.25)',
+                              padding: '2px 8px',
+                              borderRadius: 8,
+                              fontWeight: 600,
+                              color: 'var(--brand-primary)',
+                            }}
+                            title="Tracks all expenses across all categories within the period"
+                          >
+                            All spending
                           </span>
                         )}
                       </div>
@@ -1149,7 +1236,7 @@ export default function Budgets() {
                       color: isOverSpent ? 'var(--danger-color, #ef4444)' : 'var(--text-muted)',
                     }}
                   >
-                    <span>{progressPercent.toFixed(0)}% used</span>
+                    <span>{progressPercent > 0 && progressPercent < 1 ? '<1% used' : `${progressPercent.toFixed(0)}% used`}</span>
                     <span>{isOverSpent ? 'Exceeded' : `${(100 - clampedProgress).toFixed(0)}% left`}</span>
                   </div>
                 </div>
@@ -1230,6 +1317,8 @@ export default function Budgets() {
                       inputMode="decimal"
                       aria-label={`Total Budget Limit in ${currSymbol}`}
                       className="tx-amount-input"
+                      aria-describedby={formErrorMessage ? 'budget-form-error' : undefined}
+                      aria-invalid={Boolean(formErrorMessage)}
                     />
                   </div>
 
@@ -1336,6 +1425,8 @@ export default function Budgets() {
                         max={formEndDate || undefined}
                         onChange={(e) => { setFormStartDate(e.target.value); clearFormError(); }}
                         required
+                        aria-describedby={formErrorMessage ? 'budget-form-error' : undefined}
+                        aria-invalid={Boolean(formErrorMessage)}
                         style={{
                           width: '100%',
                           padding: '8px 12px',
@@ -1358,6 +1449,8 @@ export default function Budgets() {
                         min={formStartDate || undefined}
                         onChange={(e) => { setFormEndDate(e.target.value); clearFormError(); }}
                         required
+                        aria-describedby={formErrorMessage ? 'budget-form-error' : undefined}
+                        aria-invalid={Boolean(formErrorMessage)}
                         style={{
                           width: '100%',
                           padding: '8px 12px',

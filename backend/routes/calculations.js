@@ -39,6 +39,7 @@ const DEFAULT_LIMIT = 30;
 const MAX_CLIENT_ID = 80;
 const MAX_EXPRESSION = 500;
 const MAX_RESULT = 120;
+const NUMERIC_RESULT_BOUND = 1e15;
 
 /* —————————————————————————————————————
  * Helpers
@@ -47,9 +48,18 @@ const MAX_RESULT = 120;
 // ── Normalize a calculation document for API responses ──
 // Converts _id to `id` and strips user_id and __v.
 const toResponseShape = (doc) => {
+  if (!doc) return doc;
   const obj = typeof doc.toObject === 'function' ? doc.toObject() : doc;
   const { _id, user_id, __v, ...rest } = obj;
   return { ...rest, id: String(_id) };
+};
+
+// ── Parameter validation middleware: ensure userId is a valid ObjectId ──
+const validateUserIdParam = (req, res, next) => {
+  if (!mongoose.isValidObjectId(req.params.userId)) {
+    return res.status(400).json({ error: 'Invalid user ID.' });
+  }
+  return next();
 };
 
 /* —————————————————————————————————————
@@ -69,43 +79,42 @@ router.use((req, res, next) => {
 // ── Disable caching on every response, including errors ──
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   next();
 });
 
 /* —————————————————————————————————————
  * GET /:userId
  * List the user's recent calculations, newest first.
+ * Supports limit and offset pagination.
  * ————————————————————————————————————— */
-router.get('/:userId', checkOwnership('userId'), async (req, res) => {
-  // ── Validate user ID ──
-  if (!mongoose.isValidObjectId(req.params.userId)) {
-    return res.status(400).json({ error: 'Invalid user ID.' });
-  }
-
+router.get('/:userId', validateUserIdParam, checkOwnership('userId'), async (req, res) => {
   // ── Ensure the request targets the authenticated user ──
   if (String(req.userId) !== String(req.params.userId)) {
     return res.status(403).json({ error: 'Forbidden.' });
   }
 
-  // ── Parse the optional limit query parameter ──
+  // ── Parse pagination query parameters ──
   const parsedLimit = Number.parseInt(req.query.limit, 10);
   const limit = Number.isFinite(parsedLimit)
     ? Math.min(MAX_LIMIT, Math.max(1, parsedLimit))
     : DEFAULT_LIMIT;
 
+  const parsedOffset = Number.parseInt(req.query.offset, 10);
+  const offset = Number.isFinite(parsedOffset) && parsedOffset > 0 ? parsedOffset : 0;
+
   try {
-    // ── Load calculations, newest first, capped by limit ──
+    // ── Load calculations, newest first, with offset and limit ──
     const calculations = await Calculation.find({ user_id: req.params.userId })
       .select('client_id expression result numeric_result angle_mode created_at updated_at')
       .sort({ created_at: -1 })
+      .skip(offset)
       .limit(limit)
       .lean();
 
-    // ── Map to the API response shape ──
-    return res.json(calculations.map(({ _id, ...calc }) => ({
-      ...calc,
-      id: String(_id),
-    })));
+    // ── Map to the standard API response shape ──
+    return res.json(calculations.map(toResponseShape));
   } catch (error) {
     logger.error('[Calculations] list error:', error);
     return res.status(500).json({ error: 'Could not load calculation history.' });
@@ -123,7 +132,9 @@ router.post(
     body('client_id').isString().trim().notEmpty().isLength({ max: MAX_CLIENT_ID }),
     body('expression').isString().trim().notEmpty().isLength({ max: MAX_EXPRESSION }),
     body('result').isString().trim().notEmpty().isLength({ max: MAX_RESULT }),
-    body('numeric_result').isFloat({ min: -Number.MAX_VALUE, max: Number.MAX_VALUE }),
+    body('numeric_result')
+      .isFloat({ min: -NUMERIC_RESULT_BOUND, max: NUMERIC_RESULT_BOUND })
+      .withMessage(`Numeric result must be a valid float within ±${NUMERIC_RESULT_BOUND}.`),
     body('angle_mode').optional().isIn(['DEG', 'RAD']),
   ],
   async (req, res) => {
@@ -135,7 +146,9 @@ router.post(
 
     try {
       // ── Upsert by (user_id, client_id) ──
-      const calculation = await Calculation.findOneAndUpdate(
+      // $setOnInsert is redundant with the filter clause but documents intent:
+      // on upsert-insert, client_id and user_id come from the filter object.
+      const result = await Calculation.findOneAndUpdate(
         { user_id: req.userId, client_id: req.body.client_id },
         {
           $set: {
@@ -149,18 +162,29 @@ router.post(
             client_id: req.body.client_id,
           },
         },
-        { new: true, upsert: true, runValidators: true }
+        { new: true, upsert: true, runValidators: true, includeResultMetadata: true }
       );
 
-      return res.status(201).json(toResponseShape(calculation));
+      const calculation = result && result.value ? result.value : result;
+      const wasInsert = result && result.lastErrorObject ? !result.lastErrorObject.updatedExisting : false;
+
+      return res.status(wasInsert ? 201 : 200).json(toResponseShape(calculation));
     } catch (error) {
-      // ── Handle a duplicate-key race by returning the existing row ──
+      // ── Handle a duplicate-key race by updating the existing doc (last-write-wins) ──
       if (error?.code === 11000) {
-        const existing = await Calculation.findOne({
-          user_id: req.userId,
-          client_id: req.body.client_id,
-        }).lean();
-        if (existing) return res.status(200).json(toResponseShape(existing));
+        const retried = await Calculation.findOneAndUpdate(
+          { user_id: req.userId, client_id: req.body.client_id },
+          {
+            $set: {
+              expression: req.body.expression,
+              result: req.body.result,
+              numeric_result: Number(req.body.numeric_result),
+              angle_mode: req.body.angle_mode || 'DEG',
+            },
+          },
+          { new: true, runValidators: true }
+        );
+        if (retried) return res.status(200).json(toResponseShape(retried));
       }
       logger.error('[Calculations] create error:', error);
       return res.status(500).json({ error: 'Could not save calculation.' });
@@ -172,12 +196,7 @@ router.post(
  * DELETE /:userId
  * Clear all calculations for the given user.
  * ————————————————————————————————————— */
-router.delete('/:userId', checkOwnership('userId'), async (req, res) => {
-  // ── Validate user ID ──
-  if (!mongoose.isValidObjectId(req.params.userId)) {
-    return res.status(400).json({ error: 'Invalid user ID.' });
-  }
-
+router.delete('/:userId', validateUserIdParam, checkOwnership('userId'), async (req, res) => {
   // ── Ensure the request targets the authenticated user ──
   if (String(req.userId) !== String(req.params.userId)) {
     return res.status(403).json({ error: 'Forbidden.' });
@@ -185,10 +204,13 @@ router.delete('/:userId', checkOwnership('userId'), async (req, res) => {
 
   try {
     // ── Delete all calculations for the user ──
-    await Calculation.deleteMany({
+    const result = await Calculation.deleteMany({
       user_id: new mongoose.Types.ObjectId(req.params.userId),
     });
-    return res.json({ message: 'Calculation history cleared.' });
+    return res.json({
+      message: 'Calculation history cleared.',
+      deletedCount: result.deletedCount || 0,
+    });
   } catch (error) {
     logger.error('[Calculations] clear error:', error);
     return res.status(500).json({ error: 'Could not clear calculation history.' });
@@ -201,6 +223,7 @@ router.delete('/:userId', checkOwnership('userId'), async (req, res) => {
  * ————————————————————————————————————— */
 router.delete(
   '/:userId/:clientId',
+  validateUserIdParam,
   checkOwnership('userId'),
   [param('clientId').isString().trim().notEmpty().isLength({ max: MAX_CLIENT_ID })],
   async (req, res) => {
@@ -208,11 +231,6 @@ router.delete(
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
-    }
-
-    // ── Validate user ID ──
-    if (!mongoose.isValidObjectId(req.params.userId)) {
-      return res.status(400).json({ error: 'Invalid user ID.' });
     }
 
     // ── Ensure the request targets the authenticated user ──
@@ -230,7 +248,10 @@ router.delete(
       if (!result) {
         return res.status(404).json({ error: 'Calculation not found.' });
       }
-      return res.json({ message: 'Calculation deleted successfully.' });
+      return res.json({
+        message: 'Calculation deleted successfully.',
+        deletedCount: 1,
+      });
     } catch (error) {
       logger.error('[Calculations] delete single error:', error);
       return res.status(500).json({ error: 'Could not delete calculation.' });

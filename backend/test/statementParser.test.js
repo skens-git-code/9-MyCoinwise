@@ -81,6 +81,9 @@ async function runTests() {
 
   // 3. Date Parsing & Indian ambiguous date validation
   assert.strictEqual(toIsoDay('05/06/2024'), '2024-06-05', '05/06/2024 must default to June 5 (DD/MM for India)');
+  assert.strictEqual(toIsoDay('05/06/2024', 'MDY'), '2024-05-06', '05/06/2024 with MDY must parse as May 6');
+  assert.strictEqual(toIsoDay('01/02/2025', 'MDY'), '2025-01-02', '01/02/2025 with MDY must parse as Jan 2');
+  assert.strictEqual(toIsoDay('01/02/2025', 'DMY'), '2025-02-01', '01/02/2025 with DMY must parse as Feb 1');
   assert.strictEqual(toIsoDay('25/12/2024'), '2024-12-25', '25/12/2024 must parse as Dec 25');
   assert.strictEqual(toIsoDay('01-Apr-2024'), '2024-04-01');
   assert.strictEqual(toIsoDay('01 Apr 2024'), '2024-04-01');
@@ -89,18 +92,24 @@ async function runTests() {
   assert.strictEqual(toIsoDay('Oct 24, 2024'), '2024-10-24');
   assert.strictEqual(toIsoDay('31/04/2024'), null, '31/04/2024 is invalid (April has 30 days) and must return null, not rollover to May 1');
   assert.strictEqual(toIsoDay('2024-13-05'), null, '2024-13-05 has invalid month 13 and must return null');
-  console.log('  ✅ toIsoDay correctly parses Indian DD/MM/YYYY, text dates, and rejects invalid calendar days');
+  console.log('  ✅ toIsoDay correctly parses Indian DD/MM/YYYY, US MM/DD/YYYY hint, text dates, and rejects invalid calendar days');
 
-  // 4. Amount parsing with currency words, Dr/Cr, and parens
+  // 4. Amount parsing with currency words, Dr/Cr, parens, Rs/- suffixes, and European format
   assert.strictEqual(parseStatementAmount('INR 1,234.56'), 1234.56);
   assert.strictEqual(parseStatementAmount('1,234.56 Dr'), 1234.56);
   assert.strictEqual(parseStatementAmount('1,234.56 Cr'), 1234.56);
   assert.strictEqual(parseStatementAmount('1,234.56 (Debit)'), 1234.56);
   assert.strictEqual(parseStatementAmount('(1,234.56)'), 1234.56);
+  assert.strictEqual(parseStatementAmount('500/-'), 500, '500/- must parse as 500');
+  assert.strictEqual(parseStatementAmount('Rs. 500/-'), 500, 'Rs. 500/- must parse as 500');
+  assert.strictEqual(parseStatementAmount('Rs/- 500'), 500, 'Rs/- 500 must parse as 500');
+  assert.strictEqual(parseStatementAmount('1.234,56'), 1234.56, 'European format 1.234,56 must parse as 1234.56');
   assert.strictEqual(parseSignedAmount('(1,234.56)'), -1234.56);
   assert.strictEqual(parseSignedAmount('1,234.56 Dr'), -1234.56);
   assert.strictEqual(parseSignedAmount('1,234.56 Cr'), 1234.56);
-  console.log('  ✅ parseStatementAmount and parseSignedAmount safely handle INR/Dr/Cr/Debit/parens');
+  assert.strictEqual(parseSignedAmount('500/- Dr'), -500);
+  assert.strictEqual(parseSignedAmount('1.234,56 Dr'), -1234.56);
+  console.log('  ✅ parseStatementAmount and parseSignedAmount safely handle INR/Dr/Cr/Debit/parens/Rs/-/European format');
 
   // 5. Balance & Summary guard
   assert.strictEqual(isBalanceOrSummary('Opening Balance ₹5,000.00'), true);
@@ -108,6 +117,13 @@ async function runTests() {
   assert.strictEqual(isBalanceOrSummary('Available Balance 10,000.00'), true);
   assert.strictEqual(isBalanceOrSummary('Balance b/f 1,500.00'), true);
   assert.strictEqual(isBalanceOrSummary('Total Debit: ₹2,340.00'), true);
+  assert.strictEqual(isBalanceOrSummary('Total Balance: 25,000.00'), true);
+  assert.strictEqual(isBalanceOrSummary('Current Balance 12000'), true);
+  assert.strictEqual(isBalanceOrSummary('Running Balance: 15,400.00'), true);
+  assert.strictEqual(isBalanceOrSummary('Previous Balance: 10,000.00'), true);
+  assert.strictEqual(isBalanceOrSummary('Statement Summary'), true);
+  assert.strictEqual(isBalanceOrSummary('Account Summary'), true);
+  assert.strictEqual(isBalanceOrSummary('Net Total: 5,000.00'), true);
   assert.strictEqual(isBalanceOrSummary('Paid to Swiggy'), false);
   console.log('  ✅ isBalanceOrSummary correctly filters out statement balance and total summary lines');
 
@@ -360,6 +376,78 @@ async function runTests() {
   assert.strictEqual(merchantCsvResult.transactions[0].merchant, 'Swiggy');
   assert.strictEqual(merchantCsvResult.transactions[0].amount, 450);
   console.log('  ✅ parseStatement parses CSV with Merchant / Payee headers cleanly');
+
+  // 19. US Bank Statement Auto-Detection & dateFormat Hint
+  const chaseCsv = 'Date,Description,Amount\n01/02/2025,Starbucks Coffee,5.75\n02/03/2025,Target Store,45.20';
+  const chaseResult = await parseStatement({
+    content: chaseCsv,
+    filename: 'Chase_Checking_2025.csv',
+    userTransactions: [],
+  });
+  assert.strictEqual(chaseResult.transactions[0].date, '2025-01-02', 'Chase statement 01/02/2025 must parse as Jan 2');
+  assert.strictEqual(chaseResult.transactions[1].date, '2025-02-03', 'Chase statement 02/03/2025 must parse as Feb 3');
+  console.log('  ✅ parseStatement automatically applies MDY format for US bank filenames');
+
+  // 20. Explicit dateFormat query/body hint override
+  const explicitMdyResult = await parseStatement({
+    content: 'Posting Date,Description,Amount\n03/04/2025,Trader Joes,35.00',
+    filename: 'statement.csv',
+    userTransactions: [],
+    dateFormat: 'MDY',
+  });
+  assert.strictEqual(explicitMdyResult.transactions[0].date, '2025-03-04', 'Explicit MDY dateFormat hint parsed 03/04/2025 as March 4');
+  console.log('  ✅ parseStatement respects explicit dateFormat hint');
+
+  // 21. User Explicit "Other" Category Learning
+  const userLearnedHistory = [
+    { merchant: 'Swiggy', category: 'Other', date: new Date('2025-01-10T00:00:00Z'), amount: 400 },
+    { merchant: 'Swiggy', category: 'Food', date: new Date('2024-12-01T00:00:00Z'), amount: 350 },
+  ];
+  const learnedOtherResult = await parseStatement({
+    content: 'Date,Description,Amount\n2025-01-15,Swiggy Order,500.00',
+    filename: 'statement.csv',
+    userTransactions: userLearnedHistory,
+  });
+  assert.strictEqual(
+    learnedOtherResult.transactions[0].category,
+    'Other',
+    'User latest preference for Other category must be honored over older Food rule'
+  );
+  console.log('  ✅ parseStatement learns explicit "Other" category intent from user history');
+
+  // 22. Income Category Classification Rules
+  const incomeCsv = [
+    'Date,Description,Amount,Type',
+    '2025-01-01,Upwork Freelance Client,1500.00,Cr',
+    '2025-01-02,Quarterly Dividend Credit,250.00,Cr',
+    '2025-01-03,Birthday Gift from Mom,100.00,Cr',
+    '2025-01-04,Amazon Refund Reversal,45.00,Cr',
+  ].join('\n');
+  const incomeResult = await parseStatement({
+    content: incomeCsv,
+    filename: 'income_statement.csv',
+    userTransactions: [],
+  });
+  assert.strictEqual(incomeResult.transactions[0].category, 'Freelance');
+  assert.strictEqual(incomeResult.transactions[1].category, 'Investment');
+  assert.strictEqual(incomeResult.transactions[2].category, 'Gift');
+  assert.strictEqual(incomeResult.transactions[3].category, 'Refund');
+  console.log('  ✅ parseStatement accurately classifies granular Income categories');
+
+  // 23. General Bank PDF with Balance preceding Transaction Amount
+  const balanceFirstPdfBuf = createPdfBuffer([
+    'Bank of Baroda Statement',
+    'Date Particulars Balance Amount',
+    '2025-01-15',
+    'Balance: Rs. 45,000.00 Paid to Swiggy ₹350.00',
+  ]);
+  const balanceFirstResult = await parseStatement({
+    content: balanceFirstPdfBuf,
+    filename: 'bob_statement.pdf',
+    userTransactions: [],
+  });
+  assert.strictEqual(balanceFirstResult.transactions[0].amount, 350, 'Must pick transaction amount 350, not balance 45000');
+  console.log('  ✅ parseStatement general bank parser picks transaction amount instead of balance');
 
   console.log('\n🎉 ALL STATEMENT PARSER UNIT TESTS PASSED!');
 }

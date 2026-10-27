@@ -367,7 +367,7 @@ async function run() {
 
     const resList = await fetch(`${BACKEND_URL}/transactions/${userId}`, { headers: authHeaders });
     const txList = await resList.json();
-    const rawTxList = Array.isArray(txList) ? txList : txList.transactions || [];
+    const rawTxList = Array.isArray(txList) ? txList : (txList.items || txList.transactions || []);
     logStep(
       'List User Transactions (GET /transactions/:userId)',
       resList.status === 200 && rawTxList.some(t => (t._id || t.id) === createdTxId),

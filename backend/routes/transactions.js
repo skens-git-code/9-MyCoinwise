@@ -133,11 +133,13 @@ const parseTransactionAmount = (value) => {
   if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_AMOUNT) return null;
 
   // Reject values with more than two decimal places using an epsilon
-  // tolerance so legitimate amounts like 12.34 are accepted.
+  // tolerance so legitimate amounts like 12.34 or MAX_AMOUNT (999,999,999.99)
+  // are accepted despite IEEE 754 float drift (~2.4e-5 for MAX_AMOUNT * 100).
   // Also reject sub-paisa amounts (e.g. 1e-8) where rounded <= 0.
   const scaled = amount * 100;
   const rounded = Math.round(scaled);
-  if (Math.abs(scaled - rounded) > 1e-6 || rounded <= 0) return null;
+  const tolerance = Math.max(1e-4, Math.abs(scaled) * 1e-12);
+  if (Math.abs(scaled - rounded) > tolerance || rounded <= 0) return null;
 
   return rounded / 100;
 };
@@ -203,10 +205,10 @@ const parseCsv = (content) => {
   const rows = [];
   let row = [], field = '', quoted = false;
   const text = String(content || '').replace(/^\uFEFF/, '');
-  const firstLine = text.split(/\r?\n/, 1)[0];
+  const linesSample = text.split(/\r?\n/).slice(0, 5).join('\n');
   const delimiter =
-    (firstLine.match(/;/g) || []).length >
-    (firstLine.match(/,/g) || []).length
+    (linesSample.match(/;/g) || []).length >
+    (linesSample.match(/,/g) || []).length
       ? ';'
       : ',';
 
@@ -240,9 +242,10 @@ const headerKey = (value) => cleanText(value).toLowerCase().replace(/[^a-z0-9]/g
 const findColumn = (headers, names) => headers.findIndex((h) => names.includes(h));
 
 // ── Convert a date cell into an ISO YYYY-MM-DD string ──
-// Handles DD/MM/YYYY vs MM/DD/YYYY ambiguity by assuming the larger
-// number is the day when it exceeds 12.
-const toIsoDay = (value) => {
+// Handles DD/MM/YYYY vs MM/DD/YYYY ambiguity: Indian bank statements predominantly
+// use DD/MM/YYYY. When one number exceeds 12, it is unambiguously the day.
+// Includes round-trip validation to prevent invalid days (e.g., 05/45/2024) from rolling over.
+const toIsoDay = (value, preferredFormat = 'DMY') => {
   const source = cleanText(value);
   if (!source) return null;
   const match = source.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
@@ -251,13 +254,33 @@ const toIsoDay = (value) => {
     return Number.isNaN(direct.getTime()) ? null : direct.toISOString().slice(0, 10);
   }
   const [, first, second, yearRaw] = match;
-  const year = yearRaw.length === 2 ? `20${yearRaw}` : yearRaw;
-  const day = Number(first) > 12 ? first : second;
-  const month = Number(first) > 12 ? second : first;
-  const parsed = new Date(
-    `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`
-  );
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+  const year = Number(yearRaw.length === 2 ? `20${yearRaw}` : yearRaw);
+  const n1 = Number(first);
+  const n2 = Number(second);
+  let dayNum, monthNum;
+  if (n1 > 12 && n2 <= 12) {
+    dayNum = n1;
+    monthNum = n2;
+  } else if (n2 > 12 && n1 <= 12) {
+    dayNum = n2;
+    monthNum = n1;
+  } else {
+    // Both <= 12: use preferred format hint ('MDY' for US, 'DMY' default for India)
+    if (String(preferredFormat).toUpperCase() === 'MDY') {
+      dayNum = n2;
+      monthNum = n1;
+    } else {
+      dayNum = n1;
+      monthNum = n2;
+    }
+  }
+  const parsed = new Date(Date.UTC(year, monthNum - 1, dayNum, 12));
+  if (Number.isNaN(parsed.getTime())) return null;
+  // Round-trip validation to prevent silent date rollover
+  if (parsed.getUTCFullYear() !== year) return null;
+  if (parsed.getUTCMonth() !== monthNum - 1) return null;
+  if (parsed.getUTCDate() !== dayNum) return null;
+  return parsed.toISOString().slice(0, 10);
 };
 
 /* —————————————————————————————————————
@@ -483,6 +506,9 @@ const validateTransactionPayload = (payload) => {
       if (Number.isNaN(endsAt.getTime())) {
         return { error: 'Recurrence end date must be valid.' };
       }
+      if (parsedDate && endsAt.getTime() <= parsedDate.getTime()) {
+        return { error: 'Recurrence end date must be after the transaction date.' };
+      }
       parsed.recurrence_ends_at = endsAt;
     }
   }
@@ -562,7 +588,7 @@ const adjustUserBalanceIncrementally = async (userId, signedDelta, txnDate = nul
     const user = await User.findById(userId).select('balance').lean();
     return Number((user?.balance || 0).toFixed(2));
   }
-  if (!Number.isFinite(signedDelta) || Math.abs(signedDelta) < 1e-4) {
+  if (!Number.isFinite(signedDelta) || Math.abs(signedDelta) < 1e-9) {
     const user = await User.findById(userId).select('balance').lean();
     return Number((user?.balance || 0).toFixed(2));
   }
@@ -640,12 +666,33 @@ const syncAccountBalances = async (userId, accountIds = []) => {
 // ── Compute the next occurrence date for a given interval ──
 const nextOccurrence = (date, interval) => {
   const next = new Date(date);
-  if (interval === 'daily') next.setDate(next.getDate() + 1);
-  else if (interval === 'weekly') next.setDate(next.getDate() + 7);
-  else if (interval === 'monthly') next.setMonth(next.getMonth() + 1);
-  else if (interval === 'yearly') next.setFullYear(next.getFullYear() + 1);
-  else return null;
-  return next;
+  if (interval === 'daily') {
+    next.setDate(next.getDate() + 1);
+    return next;
+  }
+  if (interval === 'weekly') {
+    next.setDate(next.getDate() + 7);
+    return next;
+  }
+  if (interval === 'monthly') {
+    const day = next.getDate();
+    next.setDate(1);
+    next.setMonth(next.getMonth() + 1);
+    const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    next.setDate(Math.min(day, lastDay));
+    return next;
+  }
+  if (interval === 'yearly') {
+    const month = next.getMonth();
+    const day = next.getDate();
+    next.setFullYear(next.getFullYear() + 1);
+    if (next.getMonth() !== month) {
+      // Handle Feb 29 on leap year shifting to Mar 1 on non-leap year: snap to Feb 28
+      next.setDate(0);
+    }
+    return next;
+  }
+  return null;
 };
 
 // ── Materialise overdue occurrences of recurring transactions ──
@@ -817,6 +864,7 @@ router.post('/statement/preview', async (req, res) => {
       filename,
       userTransactions,
       password,
+      dateFormat: req.body?.dateFormat || req.query?.dateFormat,
     });
 
     return res.json({
@@ -893,7 +941,14 @@ router.post('/statement/import', async (req, res) => {
     let skipped = 0;
 
     for (const item of requested) {
-      const validation = validateTransactionPayload(item);
+      const safePaymentMethod = PAYMENT_METHODS.has(item.payment_method)
+        ? item.payment_method
+        : 'bank_transfer';
+      const safeItem = {
+        ...item,
+        payment_method: safePaymentMethod,
+      };
+      const validation = validateTransactionPayload(safeItem);
       const merchant = cleanText(item.merchant || item.receiver_name).slice(0, 150) || null;
       const fingerprint = String(item.import_fingerprint || '').slice(0, 64);
       const key = [
@@ -931,11 +986,7 @@ router.post('/statement/import', async (req, res) => {
         bank_name: cleanText(item.bank_name).slice(0, 100) || null,
         sender_name: cleanText(item.sender_name).slice(0, 150) || null,
         receiver_name: cleanText(item.receiver_name).slice(0, 150) || null,
-        payment_method: ['cash', 'card', 'upi', 'bank_transfer', 'wallet', 'cheque', 'other'].includes(
-          item.payment_method
-        )
-          ? item.payment_method
-          : 'bank_transfer',
+        payment_method: safePaymentMethod,
         counterparty_bank: cleanText(item.counterparty_bank).slice(0, 200) || null,
         transaction_number: cleanText(item.transaction_number || item.external_reference).slice(0, 100) || null,
         external_reference: cleanText(item.external_reference || item.transaction_number).slice(0, 150) || null,
@@ -1092,9 +1143,11 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   if (req.query.legacy === 'true' || req.query.legacy === '1') {
     try {
       if (shouldProcessRecurring(req.params.userId)) {
-        processRecurringForUser(req.params.userId).catch((err) => {
-          logger.error('[Transactions] Background recurring process error:', err);
-        });
+        try {
+          await processRecurringForUser(req.params.userId);
+        } catch (err) {
+          logger.error('[Transactions] Recurring process error:', err);
+        }
       }
 
       const limit = Math.min(
@@ -1136,9 +1189,11 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
 
   try {
     if (shouldProcessRecurring(req.params.userId)) {
-      processRecurringForUser(req.params.userId).catch((err) => {
-        logger.error('[Transactions] Background recurring process error:', err);
-      });
+      try {
+        await processRecurringForUser(req.params.userId);
+      } catch (err) {
+        logger.error('[Transactions] Recurring process error:', err);
+      }
     }
 
     // `{ $ne: true }` (not `false`) for consistency with every other query in the
@@ -1282,14 +1337,17 @@ router.post('/', async (req, res) => {
     });
 
     // ── Refresh cached balances incrementally (O(1)) ──
+    const userDisplayCurrency = normalizeCurrency(owner?.currency);
     const signedAmount = await getTransactionSignedAmountForUser(
       req.userId,
       transaction,
-      transactionCurrency
+      userDisplayCurrency
     );
     const balance = await adjustUserBalanceIncrementally(req.userId, signedAmount, transaction.date);
     if (transaction.account_id && transaction.date.getTime() <= Date.now()) {
-      const accountDelta = transaction.type === 'income' ? transaction.amount : -transaction.amount;
+      const accountCurrency = normalizeCurrency(selectedAccount?.currency, userDisplayCurrency);
+      const convertedToAccount = convertToCurrency(transaction.amount, transactionCurrency, accountCurrency);
+      const accountDelta = transaction.type === 'income' ? convertedToAccount : -convertedToAccount;
       // Scoped by user_id: `account_id` is ownership-verified above, but the
       // filter keeps the write safe even if that check ever regresses.
       await Account.updateOne(
@@ -1365,6 +1423,7 @@ router.put('/:id', async (req, res) => {
       validation.currency || selectedAccount?.currency || t.currency || owner?.currency
     );
 
+    const previousDate = t.date;
     const previousAccountId = t.account_id;
     const oldType = t.type;
     const oldAmount = t.amount;
@@ -1402,6 +1461,10 @@ router.put('/:id', async (req, res) => {
     await t.save();
 
     // ── Refresh cached balances incrementally (O(1)) ──
+    const userDisplayCurrency = normalizeCurrency(owner?.currency);
+    const oldWasPast = previousDate.getTime() <= Date.now();
+    const newIsPast = t.date.getTime() <= Date.now();
+
     const oldSigned = await getTransactionSignedAmountForUser(
       req.userId,
       {
@@ -1409,36 +1472,52 @@ router.put('/:id', async (req, res) => {
         amount: oldAmount,
         currency: oldCurrency,
       },
-      transactionCurrency
+      userDisplayCurrency
     );
     const newSigned = await getTransactionSignedAmountForUser(
       req.userId,
       t,
-      transactionCurrency
+      userDisplayCurrency
     );
-    const delta = newSigned - oldSigned;
-    const balance = await adjustUserBalanceIncrementally(req.userId, delta, t.date);
 
-    // Update account balances incrementally
+    const effOldSigned = oldWasPast ? oldSigned : 0;
+    const effNewSigned = newIsPast ? newSigned : 0;
+    const delta = effNewSigned - effOldSigned;
+    const balance = await adjustUserBalanceIncrementally(req.userId, delta, null);
+
+    // Update account balances incrementally with currency conversion and past/future transition tracking
     const oldAccId = previousAccountId ? String(previousAccountId) : null;
     const newAccId = t.account_id ? String(t.account_id) : null;
-    const isPast = t.date.getTime() <= Date.now();
+
+    let oldAccountCurrency = userDisplayCurrency;
+    if (oldAccId) {
+      if (oldAccId === newAccId && selectedAccount) {
+        oldAccountCurrency = normalizeCurrency(selectedAccount.currency, userDisplayCurrency);
+      } else {
+        const oldAccDoc = await Account.findOne({ _id: oldAccId, user_id: req.userId }).select('currency').lean();
+        oldAccountCurrency = normalizeCurrency(oldAccDoc?.currency, userDisplayCurrency);
+      }
+    }
+    const newAccountCurrency = normalizeCurrency(selectedAccount?.currency, userDisplayCurrency);
+
+    const oldConverted = convertToCurrency(oldAmount, oldCurrency, oldAccountCurrency);
+    const oldAccSigned = oldType === 'income' ? oldConverted : -oldConverted;
+
+    const newConverted = convertToCurrency(t.amount, t.currency, newAccountCurrency);
+    const newAccSigned = t.type === 'income' ? newConverted : -newConverted;
 
     if (oldAccId === newAccId && oldAccId) {
-      if (isPast) {
-        const oldAccSigned = oldType === 'income' ? oldAmount : -oldAmount;
-        const newAccSigned = t.type === 'income' ? t.amount : -t.amount;
-        const accDelta = Math.round((newAccSigned - oldAccSigned) * 100) / 100;
-        if (accDelta !== 0) {
-          await Account.updateOne(
-            { _id: oldAccId, user_id: req.userId },
-            { $inc: { current_balance: accDelta } }
-          );
-        }
+      const effOldAcc = oldWasPast ? oldAccSigned : 0;
+      const effNewAcc = newIsPast ? newAccSigned : 0;
+      const accDelta = Math.round((effNewAcc - effOldAcc) * 100) / 100;
+      if (accDelta !== 0) {
+        await Account.updateOne(
+          { _id: oldAccId, user_id: req.userId },
+          { $inc: { current_balance: accDelta } }
+        );
       }
     } else {
-      if (oldAccId) {
-        const oldAccSigned = oldType === 'income' ? oldAmount : -oldAmount;
+      if (oldAccId && oldWasPast) {
         // SECURITY: the PREVIOUS account id comes from the stored document and
         // was never ownership-checked, so it must be scoped here.
         await Account.updateOne(
@@ -1446,8 +1525,7 @@ router.put('/:id', async (req, res) => {
           { $inc: { current_balance: Math.round(-oldAccSigned * 100) / 100 } }
         );
       }
-      if (newAccId && isPast) {
-        const newAccSigned = t.type === 'income' ? t.amount : -t.amount;
+      if (newAccId && newIsPast) {
         await Account.updateOne(
           { _id: newAccId, user_id: req.userId },
           { $inc: { current_balance: Math.round(newAccSigned * 100) / 100 } }
@@ -1493,7 +1571,10 @@ router.delete('/:id', async (req, res) => {
     const oldSigned = await getTransactionSignedAmountForUser(req.userId, t);
 
     if (t.account_id && t.date.getTime() <= Date.now()) {
-      const accDelta = t.type === 'income' ? -t.amount : t.amount;
+      const accountDoc = await Account.findOne({ _id: t.account_id, user_id: req.userId }).select('currency').lean();
+      const accountCurrency = normalizeCurrency(accountDoc?.currency, t.currency);
+      const converted = convertToCurrency(t.amount, t.currency, accountCurrency);
+      const accDelta = t.type === 'income' ? -converted : converted;
       await Account.updateOne(
         { _id: t.account_id, user_id: req.userId },
         { $inc: { current_balance: Math.round(accDelta * 100) / 100 } }
@@ -1571,4 +1652,6 @@ router.isFutureDate = isFutureDate;
 router.validateTransactionPayload = validateTransactionPayload;
 router.parseTransactionAmount = parseTransactionAmount;
 router.getTransactionSignedAmountForUser = getTransactionSignedAmountForUser;
+router.nextOccurrence = nextOccurrence;
+router.toIsoDay = toIsoDay;
 module.exports = router;
