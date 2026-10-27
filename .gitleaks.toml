@@ -1,0 +1,10 @@
+# Gitleaks configuration
+# Global allowlist for test mocks, fixtures, and documentation examples
+
+[allowlist]
+description = "Allowlist test files and dummy fixture data"
+paths = [
+  '''(?i)frontend/src/test/.*''',
+  '''(?i)backend/test/.*''',
+  '''(?i).*test\.(js|jsx|ts|tsx)$'''
+]

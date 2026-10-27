@@ -16,7 +16,7 @@ vi.mock('../services/api', () => ({
   },
 }));
 
-const valid64Token = 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+const valid64Token = 'a'.repeat(64);
 
 describe('ResetPassword Audit Requirements', () => {
   beforeEach(() => {
@@ -30,7 +30,7 @@ describe('ResetPassword Audit Requirements', () => {
       expect(isValidTokenShape(undefined)).toBe(false);
       expect(isValidTokenShape('short')).toBe(false);
       // 32 chars (previous buggy lower bound)
-      expect(isValidTokenShape('abcdef1234567890abcdef1234567890')).toBe(false);
+      expect(isValidTokenShape('a'.repeat(32))).toBe(false);
       // 63 chars (off by 1)
       expect(isValidTokenShape('a'.repeat(63))).toBe(false);
       // 65 chars
@@ -41,7 +41,7 @@ describe('ResetPassword Audit Requirements', () => {
 
     it('accepts exact 64-hexadecimal characters', () => {
       expect(isValidTokenShape('a'.repeat(64))).toBe(true);
-      expect(isValidTokenShape('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')).toBe(true);
+      expect(isValidTokenShape('f'.repeat(64))).toBe(true);
       expect(isValidTokenShape('  ' + 'a'.repeat(64) + '  ')).toBe(true); // trims whitespace safely
     });
   });

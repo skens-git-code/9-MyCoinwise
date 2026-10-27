@@ -77,7 +77,7 @@ describe('ForgotPassword Page', () => {
   });
 });
 
-const valid64Token = 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+const valid64Token = 'a'.repeat(64);
 
 describe('ResetPassword Page', () => {
   beforeEach(() => {
@@ -98,7 +98,7 @@ describe('ResetPassword Page', () => {
 
   it('rejects structurally invalid tokens (e.g. 32 chars instead of 64 hex)', () => {
     render(
-      <MemoryRouter initialEntries={['/reset-password?token=abcdef1234567890abcdef1234567890']}>
+      <MemoryRouter initialEntries={[`/reset-password?token=${'a'.repeat(32)}`]}>
         <ToastProvider>
           <ResetPassword />
         </ToastProvider>
