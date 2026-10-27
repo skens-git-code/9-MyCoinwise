@@ -34,6 +34,7 @@ import {
   FileSpreadsheet, FileCode, CheckCircle2, ChevronDown,
   Layers, RefreshCw, Undo2, AlertTriangle, Loader2, Tag,
   Calendar, DollarSign, Keyboard, Receipt, Share2, Landmark, User, Lock, Target, ShieldCheck,
+  CreditCard,
 } from 'lucide-react';
 import { CoinwiseMark, CoinwiseBadge } from '../components/CoinwiseBrand';
 import { useAppState, useAppActions } from '../contexts/AppContext';
@@ -323,6 +324,7 @@ export default function Transactions() {
   const detailPaneRef = useRef(null);
   const ticketCardRef = useRef(null);
   const [isSharingTicket, setIsSharingTicket] = useState(false);
+  const [isDownloadingReceiptPDF, setIsDownloadingReceiptPDF] = useState(false);
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   // ── Escape key closes active receipt ──
@@ -1199,6 +1201,27 @@ export default function Transactions() {
     }
   }, [selectedTx, isSharingTicket, theme, tr, fmt, showToast]);
 
+  /* ---------------- Download PDF Receipt ---------------- */
+  const handleDownloadReceiptPDF = useCallback(async (tx) => {
+    const targetTx = tx || selectedTx;
+    if (!targetTx || isDownloadingReceiptPDF) return;
+    setIsDownloadingReceiptPDF(true);
+    try {
+      const { exportReceiptPDF } = await import('../services/pdfExport');
+      const res = await exportReceiptPDF(user, targetTx, currencyInfo, locale);
+      if (res?.success) {
+        showToast('success', tr('receipt_pdf_downloaded', 'PDF receipt downloaded!'));
+      } else {
+        showToast('error', res?.error || tr('pdf_failed', 'Failed to generate PDF'));
+      }
+    } catch (err) {
+      console.error('Failed to export receipt PDF:', err);
+      showToast('error', tr('pdf_failed', 'Failed to generate PDF'));
+    } finally {
+      setIsDownloadingReceiptPDF(false);
+    }
+  }, [user, selectedTx, currencyInfo, locale, isDownloadingReceiptPDF, showToast, tr]);
+
   /* ============================================================
    * Keyboard Shortcuts
    * ============================================================ */
@@ -1812,34 +1835,41 @@ export default function Transactions() {
                   transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {/* ── Official Coinwise Subtle Watermark Emblem in Background ── */}
-                  <div className="tx-ticket-watermark" aria-hidden="true">
-                    <CoinwiseMark size={210} color="#FC0100" />
-                  </div>
-
                   {/* ── Top Bar: Official Coinwise Brand + Verified Security Badge + Close ── */}
                   <div className="tx-ticket-topbar">
                     <div className="tx-ticket-brand-lockup">
-                      <CoinwiseBadge size={34} radius={10} variant="surface" className="tx-brand-badge">
-                        <CoinwiseMark size={20} color="#FC0100" />
-                      </CoinwiseBadge>
-                      <div className="tx-brand-meta">
-                        <div className="tx-brand-title">
-                          <span className="brand-name">MyCoinwise</span>
-                          <span className="tx-brand-verified" title="Cryptographically Verified Vault Record">
-                            <ShieldCheck size={11} aria-hidden />
-                            <span>VERIFIED</span>
-                          </span>
-                        </div>
-                        <span className="tx-brand-sub">Financial Vault Record</span>
+                      <div className="tx-ticket-logo-wrap">
+                        <img
+                          src="/coinwise-logo.png"
+                          alt="Coinwise"
+                          className="tx-ticket-logo-img"
+                          crossOrigin="anonymous"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            const fallback = e.currentTarget.nextElementSibling;
+                            if (fallback) fallback.style.display = 'inline-flex';
+                          }}
+                        />
+                        <CoinwiseMark size={22} color="#FC0100" className="tx-ticket-logo-fallback" style={{ display: 'none' }} />
                       </div>
+                      <span className="tx-brand-verified" title="Cryptographically Verified Vault Record">
+                        <ShieldCheck size={11} aria-hidden />
+                        <span>CERTIFIED</span>
+                      </span>
                     </div>
 
                     <div className="tx-ticket-topbar-actions">
-                      <div className="tx-ticket-badge">
-                        <Receipt size={12} aria-hidden />
-                        <span>{tr('payment_receipt', 'PAYMENT RECEIPT')}</span>
-                      </div>
+                      <button
+                        type="button"
+                        className="tx-ticket-pdf-btn"
+                        onClick={() => handleDownloadReceiptPDF(tx)}
+                        disabled={isDownloadingReceiptPDF}
+                        title={tr('download_receipt_pdf', 'Download PDF Receipt')}
+                        aria-label={tr('download_receipt_pdf', 'Download PDF Receipt')}
+                      >
+                        {isDownloadingReceiptPDF ? <Loader2 size={12} className="spin" aria-hidden /> : <Download size={12} aria-hidden />}
+                        <span>PDF</span>
+                      </button>
                       <button
                         type="button"
                         className="tx-ticket-close-btn"
@@ -1852,12 +1882,19 @@ export default function Transactions() {
                     </div>
                   </div>
 
-                  {/* ── Hero section: icon, status, amount, category, date ── */}
-                  <div className="tx-ticket-hero">
-                    <div className={`tx-ticket-hero-icon ${tx.type}`} aria-hidden>
-                      {tx.type === 'income' ? <ArrowUpRight size={26} /> : <ArrowDownRight size={26} />}
+                  {/* ── Dedicated Voucher Identification Strip ── */}
+                  <div className="tx-ticket-voucher-strip">
+                    <div className="tx-ticket-badge">
+                      <Receipt size={12} aria-hidden />
+                      <span>{tr('payment_receipt', 'PAYMENT RECEIPT')}</span>
                     </div>
+                    <span className="tx-ticket-sub-ref">
+                      {tx.transaction_number || (tx._id ? `REF-${String(tx._id).slice(-8).toUpperCase()}` : (tx.id ? `REF-${String(tx.id).slice(-8).toUpperCase()}` : ''))}
+                    </span>
+                  </div>
 
+                  {/* ── Hero section: status, amount, category, date ── */}
+                  <div className="tx-ticket-hero">
                     <div className={`tx-ticket-status-pill ${tx.type}`}>
                       <span className="status-dot" />
                       <span>
@@ -1902,36 +1939,43 @@ export default function Transactions() {
                     <div className="tx-ticket-notch right" />
                   </div>
 
-                  {/* ── Bento Breakdown Body ── */}
+                  {/* ── Executive Ledger Particulars Sheet ── */}
                   <div className="tx-ticket-body">
-                    {/* Bento Mini Grid */}
-                    <div className="tx-ticket-bento-grid">
-                      {/* Tile 1: Type */}
-                      <div className="tx-ticket-bento-card">
-                        <span className="ttr-label">{tr('type', 'Type')}</span>
-                        <div className="ttr-val-wrap">
+                    <div className="tx-ticket-ledger-sheet">
+                      {/* Row 1: Flow / Type */}
+                      <div className="tx-ledger-row">
+                        <span className="tl-label">{tr('type', 'Flow Type')}</span>
+                        <div className="tl-val">
                           <span className={`ttr-pill ${tx.type}`}>
-                            {tx.type === 'income'
-                              ? tr('income_label', 'Income')
-                              : tr('expense_label', 'Expense')}
+                            {tx.type === 'income' ? tr('income_label', 'Income') : tr('expense_label', 'Expense')}
                           </span>
                         </div>
                       </div>
 
-                      {/* Tile 2: Category */}
-                      <div className="tx-ticket-bento-card">
-                        <span className="ttr-label">{tr('category', 'Category')}</span>
-                        <span className="ttr-val bold">{tx.category || tr('uncategorized', 'Uncategorized')}</span>
+                      {/* Row 2: Category */}
+                      <div className="tx-ledger-row">
+                        <span className="tl-label">{tr('category', 'Category')}</span>
+                        <span className="tl-val bold">{tx.category || tr('uncategorized', 'Uncategorized')}</span>
                       </div>
 
-                      {/* Tile 3: Budget Link (Expense only) */}
+                      {/* Row 3: Payment Method */}
+                      {tx.payment_method && (
+                        <div className="tx-ledger-row">
+                          <span className="tl-label">
+                            <CreditCard size={12} aria-hidden /> {tr('payment_method', 'Payment Method')}
+                          </span>
+                          <span className="tl-val bold">{tx.payment_method}</span>
+                        </div>
+                      )}
+
+                      {/* Row 4: Budget Allocation (Expense only) */}
                       {tx.type === 'expense' && (
-                        <div className="tx-ticket-bento-card full-width">
-                          <span className="ttr-label">
+                        <div className="tx-ledger-row">
+                          <span className="tl-label">
                             <Target size={12} aria-hidden /> {tr('budget_link', 'Budget Link')}
                           </span>
                           <span
-                            className="ttr-val bold"
+                            className="tl-val bold"
                             style={{
                               color: tx.budget_category === 'none' ? 'var(--text-muted)' : 'var(--brand-primary)',
                             }}
@@ -1945,32 +1989,32 @@ export default function Transactions() {
                         </div>
                       )}
 
-                      {/* Tile 4: Merchant */}
+                      {/* Row 5: Merchant / Payee */}
                       {tx.merchant && (
-                        <div className="tx-ticket-bento-card full-width">
-                          <span className="ttr-label">{tr('merchant', 'Merchant / Payee')}</span>
-                          <span className="ttr-val bold">{tx.merchant}</span>
+                        <div className="tx-ledger-row">
+                          <span className="tl-label">{tr('merchant', 'Merchant / Payee')}</span>
+                          <span className="tl-val bold">{tx.merchant}</span>
                         </div>
                       )}
 
-                      {/* Tile 5: Bank / Platform */}
+                      {/* Row 6: Bank / Account */}
                       {tx.bank_name && (
-                        <div className="tx-ticket-bento-card">
-                          <span className="ttr-label">
-                            <Landmark size={12} aria-hidden /> {tr('bank_or_app', 'Bank / App')}
+                        <div className="tx-ledger-row">
+                          <span className="tl-label">
+                            <Landmark size={12} aria-hidden /> {tr('bank_or_app', 'Bank / Account')}
                           </span>
-                          <span className="ttr-val bold">{tx.bank_name}</span>
+                          <span className="tl-val bold">{tx.bank_name}</span>
                         </div>
                       )}
 
-                      {/* Tile 6: Sender / Receiver */}
+                      {/* Row 7: Counterparty (From / To) */}
                       {(tx.sender_name || tx.receiver_name) && (
-                        <div className="tx-ticket-bento-card">
-                          <span className="ttr-label">
+                        <div className="tx-ledger-row">
+                          <span className="tl-label">
                             <User size={12} aria-hidden />
                             {tx.sender_name ? tr('sender_name', 'From') : tr('receiver_name', 'To')}
                           </span>
-                          <span className="ttr-val bold">{tx.sender_name || tx.receiver_name}</span>
+                          <span className="tl-val bold">{tx.sender_name || tx.receiver_name}</span>
                         </div>
                       )}
                     </div>
@@ -2004,63 +2048,72 @@ export default function Transactions() {
                     )}
 
                     {/* Security Reference & Micro Barcode Seal */}
-                    {tx.transaction_number && (
-                      <div className="tx-ticket-security-stamp ref-row">
-                        <div className="tx-sec-meta">
-                          <div className="tx-sec-header">
-                            <span className="ttr-label">{tr('txn_id', 'Txn Ref ID')}</span>
-                            <span className="tx-sec-badge">
-                              <Lock size={10} aria-hidden />
-                              <span>256-BIT HASH</span>
-                            </span>
+                    {(() => {
+                      const refId = tx.transaction_number || (tx._id ? `TXN-${String(tx._id).slice(-9).toUpperCase()}` : (tx.id ? `TXN-${String(tx.id).slice(-9).toUpperCase()}` : 'TXN-RECORD'));
+                      return (
+                        <div className="tx-ticket-security-stamp ref-row">
+                          <div className="tx-sec-meta">
+                            <div className="tx-sec-header">
+                              <span className="ttr-label">{tr('txn_id', 'Txn Ref ID')}</span>
+                              <span className="tx-sec-badge">
+                                <Lock size={10} aria-hidden />
+                                <span>256-BIT HASH</span>
+                              </span>
+                            </div>
+                            <div className="ttr-copy-val allow-copy" data-allow-copy="true">
+                              <code className="allow-copy" data-allow-copy="true">{refId}</code>
+                              <button
+                                type="button"
+                                className="ttr-copy-btn"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(refId);
+                                    showToast('success', tr('copied', 'Copied'));
+                                  } catch {
+                                    showToast('error', tr('copy_failed', 'Failed to copy'));
+                                  }
+                                }}
+                                title={tr('copy', 'Copy')}
+                                aria-label={tr('copy_transaction_number', 'Copy transaction number')}
+                              >
+                                <Copy size={13} aria-hidden />
+                              </button>
+                            </div>
                           </div>
-                          <div className="ttr-copy-val allow-copy" data-allow-copy="true">
-                            <code className="allow-copy" data-allow-copy="true">{tx.transaction_number}</code>
-                            <button
-                              type="button"
-                              className="ttr-copy-btn"
-                              onClick={async () => {
-                                try {
-                                  await navigator.clipboard.writeText(tx.transaction_number);
-                                  showToast('success', tr('copied', 'Copied'));
-                                } catch {
-                                  showToast('error', tr('copy_failed', 'Failed to copy'));
-                                }
-                              }}
-                              title={tr('copy', 'Copy')}
-                              aria-label={tr('copy_transaction_number', 'Copy transaction number')}
-                            >
-                              <Copy size={13} aria-hidden />
-                            </button>
-                          </div>
-                        </div>
 
-                        {/* Stylized Security Barcode / Micro Matrix Graphic */}
-                        <div className="tx-sec-barcode" aria-hidden="true" title="Digital Vault Ledger Fingerprint">
-                          <div className="barcode-bars">
-                            <span className="bar w-2" />
-                            <span className="bar w-1" />
-                            <span className="bar w-3" />
-                            <span className="bar w-1" />
-                            <span className="bar w-2" />
-                            <span className="bar w-4" />
-                            <span className="bar w-1" />
-                            <span className="bar w-2" />
-                            <span className="bar w-3" />
-                            <span className="bar w-1" />
-                            <span className="bar w-2" />
-                            <span className="bar w-4" />
-                            <span className="bar w-2" />
-                            <span className="bar w-1" />
-                            <span className="bar w-3" />
+                          {/* Stylized Security Barcode / Micro Matrix Graphic */}
+                          <div className="tx-sec-barcode" aria-hidden="true" title="Digital Vault Ledger Fingerprint">
+                            <div className="barcode-bars">
+                              <span className="bar w-2" />
+                              <span className="bar w-1" />
+                              <span className="bar w-3" />
+                              <span className="bar w-1" />
+                              <span className="bar w-2" />
+                              <span className="bar w-4" />
+                              <span className="bar w-1" />
+                              <span className="bar w-2" />
+                              <span className="bar w-3" />
+                              <span className="bar w-1" />
+                              <span className="bar w-2" />
+                              <span className="bar w-4" />
+                              <span className="bar w-2" />
+                              <span className="bar w-1" />
+                              <span className="bar w-3" />
+                            </div>
+                            <span className="barcode-label">VAULT SEAL</span>
                           </div>
-                          <span className="barcode-label">VAULT SEAL</span>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
+
+                    {/* Official Certification Stamp */}
+                    <div className="tx-ticket-legal-stamp">
+                      <ShieldCheck size={12} className="legal-stamp-icon" aria-hidden />
+                      <span>Coinwise Personal Financial Management • Certified Record</span>
+                    </div>
                   </div>
 
-                  {/* ── Action buttons (Bento Buttons) ── */}
+                  {/* ── Action buttons ── */}
                   <div className="tx-ticket-actions">
                     <button
                       type="button"

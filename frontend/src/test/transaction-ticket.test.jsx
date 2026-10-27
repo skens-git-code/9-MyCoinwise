@@ -70,8 +70,11 @@ describe('Paytm Transaction Ticket Component & Mobile Polish', () => {
     expect(ticketCard).toBeTruthy();
     expect(ticketCard).toBeTruthy();
 
-    // Verify "PAYMENT RECEIPT" badge
+    // Verify "PAYMENT RECEIPT" badge, brand logo, and PDF export action
     expect(screen.getByText(/PAYMENT RECEIPT/i)).toBeTruthy();
+    expect(ticketCard.querySelector('.tx-ticket-logo-img')).toBeTruthy();
+    expect(screen.getAllByText(/CERTIFIED/i).length).toBeGreaterThanOrEqual(1);
+    expect(ticketCard.querySelector('.tx-ticket-pdf-btn')).toBeTruthy();
 
     // Verify amount and category
     expect(container.querySelector('.tx-ticket-amount').textContent).toBe('-₹766.00');
@@ -89,7 +92,7 @@ describe('Paytm Transaction Ticket Component & Mobile Polish', () => {
     expect(screen.getAllByText('Electronics Store').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('etg')).toBeTruthy();
     expect(ticketCard.querySelector('.ttr-tag-chip').textContent).toBe('#gadgets');
-    expect(screen.getByText('TXN-987654321')).toBeTruthy();
+    expect(screen.getAllByText('TXN-987654321').length).toBeGreaterThanOrEqual(1);
 
     // Verify all 4 action buttons are present inside .tx-ticket-actions
     const editBtn = container.querySelector('.tx-ticket-btn.edit');

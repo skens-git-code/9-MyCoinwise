@@ -36,7 +36,7 @@ import { CoinwiseMark } from '../components/CoinwiseBrand';
 
 const BRAND = Object.freeze({
   name: 'COINWISE',
-  product: 'Coinwise Financial Intelligence System',
+  product: 'Coinwise Personal Wealth & Financial Management System',
 });
 
 const STATEMENT_TYPES = [
@@ -707,15 +707,17 @@ export default function Reports() {
               {/* === Header block === */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #0f172a', paddingBottom: '16px', marginBottom: '18px' }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                    <CoinwiseMark size={24} />
-                    <span style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '-0.02em', color: '#0f172a' }}>
-                      {BRAND.name}
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                    <img
+                      src="/coinwise-logo.png"
+                      alt="Coinwise"
+                      style={{ height: '30px', width: 'auto', objectFit: 'contain', display: 'block' }}
+                    />
+                    <span style={{ fontSize: '0px', width: '0px', height: '0px', opacity: 0, position: 'absolute' }}>{BRAND.name}</span>
                     <span style={badgeStyle}>CERTIFIED</span>
                   </div>
-                  <p style={{ margin: 0, fontSize: '10px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
-                    AI-Powered Financial Intelligence &amp; Audit Suite
+                  <p style={{ margin: 0, fontSize: '9.5px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+                    Personal Financial Management &amp; Audit System
                   </p>
                   <h2 style={{ margin: '8px 0 0', fontSize: '15px', color: '#0f172a', fontWeight: 800 }}>
                     {(STATEMENT_TYPES.find((s) => s.id === statementType)?.label || '').toUpperCase()}

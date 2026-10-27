@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { exportToPDF } from '../services/pdfExport';
+import { exportToPDF, exportReceiptPDF } from '../services/pdfExport';
 
 describe('PDF Export Engine v2 Audit Tests', () => {
   beforeEach(() => {
@@ -111,5 +111,34 @@ describe('PDF Export Engine v2 Audit Tests', () => {
     expect(result.success).toBe(true);
     expect(result.fileName).toContain('MultiPageUser');
     expect(result.checksum).toMatch(/^SHA256:[a-f0-9]{64}$/);
+  });
+
+  it('exports single transaction payment receipt PDF with audit checksum and clean naming', async () => {
+    const user = { username: 'ReceiptUser', currency: 'INR' };
+    const tx = {
+      _id: 'tx-999',
+      id: 'tx-999',
+      transaction_number: 'TXN-PAYTM-8822',
+      amount: 450,
+      type: 'expense',
+      category: 'Dining',
+      merchant: 'Gourmet Cafe',
+      bank_name: 'HDFC Bank',
+      payment_method: 'UPI',
+      date: '2026-09-18T10:30:00.000Z',
+      note: 'Team lunch',
+      tags: ['food', 'work'],
+    };
+
+    const res = await exportReceiptPDF(user, tx, { symbol: '₹' }, 'en-US');
+    expect(res.success).toBe(true);
+    expect(res.fileName).toContain('Coinwise_Receipt_TXN-PAYTM-8822');
+    expect(res.checksum).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('handles null transaction gracefully in exportReceiptPDF', async () => {
+    const res = await exportReceiptPDF({ username: 'Test' }, null);
+    expect(res.success).toBe(false);
+    expect(res.error).toBeDefined();
   });
 });

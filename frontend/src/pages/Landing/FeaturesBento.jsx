@@ -58,8 +58,8 @@ export default function FeaturesBento() {
     },
     {
       icon: Sparkles,
-      title: 'AI Cashflow & Hazard Radar',
-      desc: 'Gemini-powered projections simulate your 90-day trajectory, warning you weeks before cashflow dips below safety thresholds.',
+      title: 'Cashflow & Hazard Radar',
+      desc: 'Proactive projections simulate your 90-day trajectory, warning you weeks before cashflow dips below safety thresholds.',
       highlight: false,
       preview: (
         <span style={{ color: '#38bdf8', fontWeight: 600, fontSize: '0.8rem', display: 'block' }}>

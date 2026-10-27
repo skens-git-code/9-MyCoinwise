@@ -29,8 +29,8 @@ export default function HeroSection() {
         </h1>
 
         <p className="hero-subhead">
-          AI-driven cashflow forecasting, automated budget tracking, real-time wealth telemetry,
-          and intelligent tax planning — engineered for people who value absolute financial clarity.
+          Personal wealth telemetry, intelligent cashflow forecasting, automated budget tracking,
+          and dual tax regime planning — engineered for people who value absolute financial clarity.
         </p>
 
         <div className="hero-actions">
@@ -87,7 +87,7 @@ export default function HeroSection() {
               tabIndex={-1}
             >
               <Bot size={13} />
-              <span>AI Radar</span>
+              <span>Cashflow Radar</span>
             </button>
             <button
               type="button"
@@ -165,7 +165,7 @@ export default function HeroSection() {
               <div className="mockup-header">
                 <div>
                   <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600 }}>
-                    AI RADAR ENGINE
+                    CASHFLOW RADAR ENGINE
                   </span>
                   <strong style={{ display: 'block', fontSize: '1rem', color: '#ffffff' }}>90-Day Cashflow Runway</strong>
                 </div>
@@ -251,7 +251,7 @@ export default function HeroSection() {
             <Zap size={18} />
           </div>
           <div>
-            <strong style={{ display: 'block', color: '#ffffff' }}>AI Forecast Engine</strong>
+            <strong style={{ display: 'block', color: '#ffffff' }}>Forecast Engine</strong>
             <span style={{ color: '#10b981', fontWeight: 600 }}>90-Day Runway Safe</span>
           </div>
         </div>
