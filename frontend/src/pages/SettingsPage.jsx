@@ -124,11 +124,17 @@ const buildResetPayload = (user) => {
     profession: user?.profession || user?.role || 'Trader',
     monthlyGoal: user?.monthly_goal != null ? String(user.monthly_goal) : '',
     currency: user?.currency || 'INR',
-    language: user?.language || localStorage.getItem('mcw-lang') || 'en',
+    language: user?.language || (typeof window !== 'undefined' ? localStorage.getItem('mcw-lang') : 'en') || 'en',
     avatar: user?.profile_avatar || '😊',
     avatarColor: user?.profile_color || '#059669',
-    notificationPrefs: user?.notification_prefs || { ...DEFAULT_NOTIFICATION_PREFS },
-    advancedPrefs: user?.advanced_prefs || { ...DEFAULT_ADVANCED_PREFS },
+    notificationPrefs: {
+      ...DEFAULT_NOTIFICATION_PREFS,
+      ...(user?.notification_prefs || {}),
+    },
+    advancedPrefs: {
+      ...DEFAULT_ADVANCED_PREFS,
+      ...(user?.advanced_prefs || {}),
+    },
   };
 };
 
@@ -157,13 +163,8 @@ const getSafeUserAvatar = (user) => {
 
 // ── Compose a display name (avoids duplicating a surname) ──
 const getUserDisplayName = (user) => {
-  const username = String(user?.username || '').trim().replace(/\s+/g, ' ');
-  const surname = String(user?.last_name || '').trim().replace(/\s+/g, ' ');
-  const safeUsername = username.length <= 80 ? username : '';
-  const safeSurname = surname.length <= 80 ? surname : '';
-  const duplicateSurname =
-    safeSurname && safeUsername.toLocaleLowerCase().endsWith(` ${safeSurname.toLocaleLowerCase()}`);
-  return [safeUsername, duplicateSurname ? '' : safeSurname].filter(Boolean).join(' ') || 'Unnamed profile';
+  const full = getUserFullName(user);
+  return full || 'Unnamed profile';
 };
 
 /** Returns null when the user has no valid email (caller decides how to render). */
@@ -309,7 +310,7 @@ const ReAuthModalContent = ({ onClose, onConfirmed, actionLabel, isLoading }) =>
       const ok = await onConfirmed(password);
       if (ok) setPassword('');
     } catch (err) {
-      setError(err?.message || 'Incorrect password.');
+      setError(err?.response?.data?.error || err?.message || 'Incorrect password.');
     }
   };
 
@@ -443,8 +444,10 @@ const BackupRestore = ({ userId, showMessage }) => {
       const now = new Date();
       const dateStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       a.download = `mycoinwise-backup-${dateStamp}.json`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       if (isMountedRef.current) showMessage('success', 'Backup exported successfully!');
       return true;
     } catch (error) {
@@ -460,6 +463,12 @@ const BackupRestore = ({ userId, showMessage }) => {
   const handleImportBackup = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    const MAX_BACKUP_SIZE = 50 * 1024 * 1024; // 50 MB
+    if (file.size > MAX_BACKUP_SIZE) {
+      showMessage('error', 'Backup file exceeds 50 MB limit.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     try {
       const text = await file.text();
       const data = JSON.parse(text);
@@ -1791,7 +1800,11 @@ PreferencesTab.displayName = 'PreferencesTab';
 /* ============================================================
  * Language tab
  * ============================================================ */
-const LanguageTab = React.memo(({ lang, setLanguage, showMessage, t, user, USER_ID }) => (
+const LanguageTab = React.memo(({ lang, setLanguage, showMessage, t, user, USER_ID }) => {
+  const prefersReducedMotion = useReducedMotion();
+  const hoverAnim = prefersReducedMotion ? undefined : { x: 4, scale: 1.01 };
+
+  return (
   <>
     {/* ── Header ── */}
     <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
@@ -1826,7 +1839,7 @@ const LanguageTab = React.memo(({ lang, setLanguage, showMessage, t, user, USER_
             }
             showMessage('success', t?.('language_updated') || 'Language updated successfully');
           }}
-          whileHover={{ x: 4, scale: 1.01 }}
+          whileHover={hoverAnim}
           aria-pressed={lang === code}
           style={{
             display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px',
@@ -1845,13 +1858,18 @@ const LanguageTab = React.memo(({ lang, setLanguage, showMessage, t, user, USER_
       ))}
     </div>
   </>
-));
+  );
+});
 LanguageTab.displayName = 'LanguageTab';
 
 /* ============================================================
  * Appearance tab (adds Auto)
  * ============================================================ */
 const AppearanceTab = React.memo(({ theme, handleThemeChange }) => {
+  const prefersReducedMotion = useReducedMotion();
+  const hoverAnim = prefersReducedMotion ? undefined : { scale: 1.05, y: -4 };
+  const tapAnim = prefersReducedMotion ? undefined : { scale: 0.95 };
+
   // ── Available theme options ──
   const themes = [
     { id: 'light', label: 'Light', icon: <Sun size={18} />, bg: '#e8f7ed', accent: '#059669', sub: 'Clean Light' },
@@ -1887,8 +1905,8 @@ const AppearanceTab = React.memo(({ theme, handleThemeChange }) => {
           <motion.button
             key={opt.id}
             type="button"
-            whileHover={{ scale: 1.05, y: -4 }}
-            whileTap={{ scale: 0.95 }}
+            whileHover={hoverAnim}
+            whileTap={tapAnim}
             onClick={() => handleThemeChange(opt.id)}
             aria-pressed={theme === opt.id}
             style={{
@@ -2149,9 +2167,9 @@ const CookieSettingsSection = React.memo(({ showMessage }) => {
     setCookieConsent(choice);
     setConsent(choice);
     if (choice === 'rejected') {
-      showMessage?.('Analytics disabled and Clarity tracking cookies deleted.', 'info');
+      showMessage?.('info', 'Analytics disabled and Clarity tracking cookies deleted.');
     } else {
-      showMessage?.('Analytics enabled. Thank you for helping improve MyCoinwise!', 'success');
+      showMessage?.('success', 'Analytics enabled. Thank you for helping improve MyCoinwise!');
     }
   };
 
@@ -2750,19 +2768,20 @@ function SettingsInner({ context }) {
 
   /* ---------------- Tabs ---------------- */
 
-  // ── Tab state, driven by the ?tab= search param ──
+  // ── Tab state, driven directly by the ?tab= search param (single source of truth) ──
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState(() => (
+  const activeTab = useMemo(() => (
     tabParam && TAB_IDS.includes(tabParam) ? tabParam : 'profile'
-  ));
-  const [prevTabParam, setPrevTabParam] = useState(tabParam);
-  if (prevTabParam !== tabParam) {
-    setPrevTabParam(tabParam);
-    if (tabParam && TAB_IDS.includes(tabParam)) {
-      setActiveTab(tabParam);
-    }
-  }
+  ), [tabParam]);
+
+  const handleTabChange = useCallback((tabId) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tabId);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   /* ---------------- New: settings search ---------------- */
   const [search, setSearch] = useState('');
@@ -2814,17 +2833,18 @@ function SettingsInner({ context }) {
   }, []);
 
   const handleReAuthConfirm = useCallback(async (password) => {
-    // In a real backend, you would call `api.verifyPassword(USER_ID, password)`.
-    // Here we delegate to api.changePassword-style verification if available,
-    // otherwise we accept the password and let the downstream call validate it.
-    if (typeof api.verifyPassword === 'function') {
-      const ok = await api.verifyPassword(USER_ID, password);
-      if (!ok) throw new Error('Incorrect password.');
+    if (typeof api.verifyPassword !== 'function') {
+      throw new Error('Security verification service is unavailable. Please reload the page.');
+    }
+    const targetUserId = activeUserId || USER_ID;
+    const ok = await api.verifyPassword(targetUserId, password);
+    if (!ok) {
+      throw new Error('Incorrect password.');
     }
     reAuthState.resolve?.(true);
     setReAuthState({ isOpen: false, actionLabel: '', resolve: null });
     return true;
-  }, [reAuthState, USER_ID]);
+  }, [reAuthState, activeUserId, USER_ID]);
 
   const handleReAuthClose = useCallback(() => {
     reAuthState.resolve?.(false);
@@ -3074,7 +3094,7 @@ function SettingsInner({ context }) {
 
     setLoadingStates((prev) => ({ ...prev, reset: true }));
     try {
-      const targetId = USER_ID || user?.id || user?._id;
+      const targetId = activeUserId || USER_ID;
       await resetAccount(targetId);
       showMessage('success', 'Account completely reset. All records deleted.');
       // Immediate clean logout and hard redirect to login
@@ -3086,7 +3106,7 @@ function SettingsInner({ context }) {
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, reset: false }));
     }
-  }, [resetAccount, showMessage, requestReAuth, loadingStates.reset, logout, USER_ID, user, _navigate]);
+  }, [resetAccount, showMessage, requestReAuth, loadingStates.reset, logout, activeUserId, USER_ID, _navigate]);
 
   // ── Delete a user (self-delete logs out; other-delete refreshes) ──
   const handleDeleteUser = useCallback(async () => {
@@ -3103,7 +3123,7 @@ function SettingsInner({ context }) {
     setLoadingStates((prev) => ({ ...prev, deleteUser: true }));
     try {
       await api.deleteUser(userId);
-      if (String(userId) === String(USER_ID)) {
+      if (String(userId) === String(activeUserId || USER_ID)) {
         showMessage('success', 'Your account has been deleted.');
         logout?.();
         _navigate('/login', { replace: true });
@@ -3116,7 +3136,7 @@ function SettingsInner({ context }) {
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, deleteUser: false }));
     }
-  }, [modals.deleteUser, USER_ID, refetch, showMessage, requestReAuth, loadingStates.deleteUser, logout, _navigate]);
+  }, [modals.deleteUser, activeUserId, USER_ID, refetch, showMessage, requestReAuth, loadingStates.deleteUser, logout, _navigate]);
 
   // ── Switch to a different user (auto-saves dirty state first) ──
   const handleSwitchUser = useCallback(async () => {
@@ -3259,7 +3279,7 @@ function SettingsInner({ context }) {
     handleFieldChange,
     t,
     user,
-    USER_ID,
+    USER_ID: activeUserId || USER_ID,
     theme,
     handleThemeChange,
     lang,
@@ -3275,6 +3295,7 @@ function SettingsInner({ context }) {
     handleFieldChange,
     t,
     user,
+    activeUserId,
     USER_ID,
     theme,
     handleThemeChange,
@@ -3440,10 +3461,7 @@ function SettingsInner({ context }) {
                   type="button"
                   aria-selected={activeTab === tab.id}
                   id={`tab-${tab.id}`}
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    setSearchParams({ tab: tab.id }, { replace: true });
-                  }}
+                  onClick={() => handleTabChange(tab.id)}
                   whileHover={{ x: 4 }}
                   whileTap={{ scale: 0.98 }}
                   className={`settings-nav-tab ${activeTab === tab.id ? 'active' : ''}`}
@@ -3628,7 +3646,7 @@ function SettingsInner({ context }) {
           typeof modals.switchConfirm === 'object'
             ? (modals.switchConfirm?.id || modals.switchConfirm?._id)
             : modals.switchConfirm
-        ) !== String(USER_ID) && (
+        ) !== String(activeUserId || USER_ID) && (
           <div style={{ marginTop: 16 }}>
             <label
               htmlFor="switch-profile-password"

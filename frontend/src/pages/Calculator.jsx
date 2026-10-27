@@ -920,26 +920,10 @@ export default function ScientificCalculator() {
         <section className="calculator-main glass" aria-label="Calculator Workspace">
           {calculatorMode === 'standard' ? (
             <>
-              {/* OLED High-Contrast Display */}
-              <div
-                className="calculator-display"
-                style={{
-                  background: 'linear-gradient(160deg, #070c18 0%, #0d1527 100%)',
-                  border: '1px solid rgba(14, 165, 233, 0.28)',
-                  boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
-                }}
-              >
+              {/* High-Contrast Theme-Aware Display */}
+              <div className="calculator-display">
                 <div className="calculator-display-top">
-                  <span
-                    style={{
-                      background: 'rgba(14, 165, 233, 0.15)',
-                      color: 'var(--brand-primary)',
-                      padding: '2px 8px',
-                      borderRadius: 6,
-                      fontWeight: 700,
-                      fontSize: '0.72rem',
-                    }}
-                  >
+                  <span className="calculator-angle-badge">
                     {angleMode} mode
                   </span>
                   <span><Keyboard size={13} /> {translate?.('keyboard_ready') || 'Keyboard ready'}</span>
