@@ -1,6 +1,6 @@
 # 🪙 MyCoinwise — Smart Personal Finance & Budgeting Tracker
 
-### *Full-Stack Personal Wealth Platform · AI-Powered Financial Intelligence*
+### *Full-Stack Personal Wealth Platform · Precision Telemetry & Algorithmic Analytics*
 
 <div align="center">
 
@@ -8,12 +8,12 @@
   ![Backend](https://img.shields.io/badge/backend-Express%205-000000?style=for-the-badge&logo=express&logoColor=white)
   ![Frontend](https://img.shields.io/badge/frontend-React%2019-61DAFB?style=for-the-badge&logo=react&logoColor=black)
   ![Database](https://img.shields.io/badge/database-MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
-  ![AI](https://img.shields.io/badge/AI-Gemini%202.5%20Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)
+![Architecture](https://img.shields.io/badge/Architecture-Deterministic%20Telemetry-007AFF?style=for-the-badge&logo=codefactor&logoColor=white)
   ![PWA](https://img.shields.io/badge/PWA-ready-blueviolet?style=for-the-badge)
   ![License](https://img.shields.io/badge/license-ISC-success?style=for-the-badge)
   ![Lines](https://img.shields.io/badge/code-40K%2B%20lines-ff69b4?style=for-the-badge)
 
-  <img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=30&duration=2500&pause=1000&color=007AFF&center=true&vCenter=true&width=800&height=70&lines=Track+Wealth.+Master+Budgets.;AI-Powered+Financial+Coach;Secure.+Fast.+Observable.;Build+Wealth+With+Intelligence+%F0%9F%9A%80" alt="Typing SVG" />
+<img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=30&duration=2500&pause=1000&color=007AFF&center=true&vCenter=true&width=800&height=50&lines=Track+Wealth.+Master+Budgets.;Algorithmic+Financial+Advisory;Secure.+Fast.+Observable.;Build+Wealth+With+Precision+%F0%9F%9A%80" alt="Typing SVG" />
 
   <br>
 
@@ -35,7 +35,7 @@
 
 Welcome to **MyCoinwise** — a production-grade, full-stack **personal finance and budgeting platform** that transcends the traditional spreadsheet. It is a **monorepo-style application** with two deployable units: a hardened **Node.js/Express backend** backed by **MongoDB**, and a modern **React 19 / Vite 8** frontend that runs both as a web app and as a **Progressive Web App (PWA)**.
 
-The application's mission is simple: help individuals and households **manage their personal wealth with confidence**. Track income and expenses, maintain multiple financial accounts, set savings goals, enforce budgets, manage recurring subscriptions, record calendar events, compute net worth over time, estimate taxes for **India and the United States**, export data to **Excel / CSV / PDF**, and chat with an **AI financial coach** powered by **Google Gemini**.
+The application's mission is simple: help individuals and households **manage their personal wealth with confidence**. Track multi-currency transactions across physical and digital accounts, build discipline with dynamic rollover budgets, project cashflow health up to 90 days out, simulate tax regimes under India Union Budget and US Federal brackets, and leverage a **contextual financial advisory engine** built on deterministic wealth heuristics, predictive cashflow modeling, and local rule engines.
 
 This is not a demo. The codebase is **production-oriented** from the ground up — it includes JWT authentication with refresh/revocation, per-endpoint rate limiting, NoSQL-injection sanitization, CORS allowlisting, Helmet security headers, structured **Winston** logging, **Sentry** error tracking (server + client), **audit logging**, graceful shutdown, database migrations, currency conversion, recurring-transaction processing, **optimistic concurrency**, and a full test suite spanning backend unit/integration and frontend Vitest + Playwright E2E.
 
@@ -54,7 +54,7 @@ The project is deployed with the **backend on Render.com** and the **frontend on
 ### 🧩 **What Makes It Different**
 
 - **Defensive security first** — JWT sessions with server-side revocation, NoSQL sanitization (including the Express 5 `req.query` fix), audit logs, and credential-scrubbing Sentry tunnels.
-- **Graceful degradation** — Missing Gemini key → offline fallbacks; missing SMTP → console logs; missing live FX → 4-layer static fallback; missing DB → fail-fast exit.
+- **Graceful degradation** — Deterministic offline heuristic fallbacks when remote services are unconfigured; missing SMTP → console logs; missing live FX → 4-layer fallback pipeline with static hardcoded pegs.
 - **Observability baked in** — Request IDs on every response, Morgan HTTP logging, Winston structured logs, Sentry server + client, Web Vitals.
 - **Resilience** — MongoDB exponential backoff (max 5 attempts), cursor pagination, atomic upserts for recurring transactions, epsilon-based float comparisons, optimistic concurrency on tax profiles.
 - **PWA-ready** — Service worker with cache-first static assets, stale-while-revalidate navigation, push notification support, and full manifest.
@@ -85,7 +85,7 @@ MyCoinwise follows a classic **client–server REST architecture** with a **mono
 │   │   └───────────────┘  └────────────────┘  └───────────────┘   │   │
 │   │                                                              │   │
 │   │   ┌───────────────┐  ┌────────────────┐  ┌───────────────┐   │   │
-│   │   │ i18n (5 langs)│  │  PDF Export    │  │ AI Engine     │   │   │
+│   │   │ i18n (5 langs)│  │  PDF Export    │  │ Stats Engine  │   │   │
 │   │   └───────────────┘  └────────────────┘  └───────────────┘   │   │
 │   └──────────────────────────────────────────────────────────────┘   │
 │                              ▲   │                                   │
@@ -120,7 +120,7 @@ MyCoinwise follows a classic **client–server REST architecture** with a **mono
 │   │               LAYER 4 — EXTERNAL INTEGRATIONS                │   │
 │   │                                                              │   │
 │   │   ┌───────────────┐  ┌───────────────┐  ┌──────────────────┐ │   │
-│   │   │ Google Gemini │  │ exchangerate  │  │SMTP / Nodemailer │ │   │
+│   │   │ Advisory API  │  │ exchangerate  │  │SMTP / Nodemailer │ │   │
 │   │   └───────────────┘  └───────────────┘  └──────────────────┘ │   │
 │   │                                                              │   │
 │   │   ┌───────────────┐  ┌────────────────┐  ┌───────────────┐   │   │
@@ -135,7 +135,7 @@ MyCoinwise follows a classic **client–server REST architecture** with a **mono
 
 1. **Separation of Concerns** — The backend exposes a stateless REST API; the frontend is an independent SPA consuming it via Axios + TanStack React Query.
 2. **Defensive Security** — JWT authentication, session revocation via `session_version`, per-endpoint rate limiting, NoSQL sanitization, Helmet headers, CORS allowlist, Sentry credential redaction.
-3. **Graceful Degradation** — AI features (Gemini) are optional; missing API keys yield offline fallbacks rather than crashes. Market data uses dev mocks and static fallback FX rates. SMTP email falls back to console logging in dev.
+3. **Graceful Degradation** — Advisory and predictive analytics features degrade gracefully; unconfigured external APIs yield deterministic local heuristic fallbacks rather than application crashes.
 4. **Observability** — Winston structured logging, audit log file (`backend/audit.log`), Sentry error tracking (server + client), Morgan HTTP logging with request IDs.
 5. **Resilience** — MongoDB connection with exponential backoff, bounded retry, graceful shutdown on SIGTERM/SIGINT, currency/number validation, epsilon float comparisons, cursor pagination for large datasets.
 
@@ -156,7 +156,7 @@ MyCoinwise follows a classic **client–server REST architecture** with a **mono
 | **Backend Runtime** | Express 5 + Mongoose 8 on Node.js |
 | **Frontend Runtime** | React 19 + Vite 8 |
 | **Database** | MongoDB |
-| **AI Provider** | Google Gemini (`gemini-2.5-flash`) |
+| **Analytics Engine** | Custom Statistical & Heuristic Models |
 | **Deployment Targets** | Render (backend API), Vercel (frontend SPA/PWA) |
 | **Locale Support** | English (en), Hindi (hi), Marathi (mr), Haryanvi (bgc), Kannada (kn) |
 | **Supported Currencies** | USD, INR, EUR, GBP, JPY, CAD, AUD, SGD, AED, CHF, CNY, MXN, BRL, KRW, THB |
@@ -196,13 +196,13 @@ The root `package.json` declares:
 | **Currency Conversion** | 14 currencies, 4-layer FX fallback | Intermediate |
 | **Statement Import** | CSV parsing, classification, dedup fingerprints | Advanced |
 
-### 🤖 **AI & Intelligence**
+### ⚡ **Algorithmic Analytics & Predictive Intelligence**
 
 | Feature | Technology | Innovation |
 |:--------|:-----------|:-----------|
-| **AI Financial Coach** | Google Gemini 2.5 Flash | Chat with financial context (transactions + goals) |
-| **AI Cashflow Insights** | Gemini + aggregated metrics | Forecasts and danger-day detection |
-| **AI Wealth Analysis** | Gemini + wealth metrics | Portfolio-level advice |
+| **Financial Advisory Console** | Contextual Telemetry Engine | Interactive advisory console synthesized with real-time transaction & goal state |
+| **Predictive Cashflow Insights** | Cashflow Runway Heuristics | 90-day trajectory modeling, variance alerts, and danger-day detection |
+| **Wealth & Portfolio Telemetry** | Multi-Asset Valuation Models | Net worth aggregation, risk distribution, and portfolio rebalancing telemetry |
 | **Spending Forecast** | Client-side statistics | Weighted average + linear trend |
 | **Anomaly Detection** | Per-category sigma | Outlier transaction flagging |
 | **Goal Time Prediction** | Savings rate analysis | Predicted completion dates |
@@ -231,7 +231,7 @@ The root `package.json` declares:
 |:--------|:------------|:---------------|
 | **Dashboard Analytics** | Income/expense deltas, category pie chart, net-worth trend | — |
 | **Spending Analytics** | Category trends, monthly comparison | — |
-| **Cashflow Forecast** | AI-driven future month projection | — |
+| **Cashflow Forecast** | Deterministic future-month trajectory modeling | — |
 | **Tax Reports** | Income, deductions, capital gains, payments | JSON, CSV |
 | **Transaction Export** | Full transaction history | XLSX |
 | **Full Backup** | Every user data collection | JSON (v5) |
@@ -316,8 +316,8 @@ This module is the **single source of truth** for backend configuration. It uses
 | `PORT` | port | `5001` | HTTP listen port |
 | `MONGO_URI` | str | *required* | MongoDB connection string |
 | `JWT_SECRET` | str | *required* | JWT signing secret |
-| `GEMINI_API_KEY` | str | `''` | Google Gemini API key (blank disables AI) |
-| `GEMINI_MODEL` | str | `gemini-2.5-flash` | Gemini model ID |
+| `GEMINI_API_KEY` | str | `''` | Advisory gateway API key (optional; offline heuristic fallbacks active if blank) |
+| `GEMINI_MODEL` | str | `gemini-2.5-flash` | Advisory runtime model identifier |
 | `SENTRY_DSN` | str | `''` | Sentry DSN (blank disables error reporting) |
 | `SMTP_HOST/PORT/SECURE/USER/PASS` | various | `''` / `587` / `false` | SMTP for outbound email |
 | `EMAIL_FROM` | str | `MyCoinwise <noreply@mycoinwise.app>` | Outbound sender |
@@ -466,8 +466,8 @@ Categories: emergency_fund, savings, vacation, gadget, investment, vehicle, home
 | PUT | `/items/:id` | Update item. |
 | DELETE | `/items/:id` | Delete item. |
 | GET | `/history` | Net-worth history (last 24 snapshots). |
-| POST | `/ai-insights` | Gemini AI coach (rate-limited 20/15min, cached 5 min). |
-| GET | `/ai-status` | Gemini connectivity health check. |
+| POST | `/ai-insights` | Wealth advisory insights (rate-limited 20/15min, cached 5 min). |
+| GET | `/ai-status` | Advisory engine connectivity health check. |
 
 Asset classes: `liquid_asset`, `illiquid_asset`, `business_equity`, `retirement`, `liability`. API key sent via `x-goog-api-key` header (not query string) to avoid log leakage.
 
@@ -475,7 +475,7 @@ Asset classes: `liquid_asset`, `illiquid_asset`, `business_equity`, `retirement`
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/ai-insights` | Gemini cashflow analysis (15s timeout, fallback at HTTP 200). |
+| POST | `/ai-insights` | Predictive cashflow analysis (15s timeout, deterministic fallback at HTTP 200). |
 
 #### `/api/events` (`routes/events.js`)
 
@@ -554,11 +554,11 @@ Jurisdictions: `IN`, `US`. Optimistic concurrency via `_version`. Tax document `
 | GET | `/:userId` | Excel export (capped at `MAX_EXPORT_ROWS`, overflow reported in Summary sheet). |
 | GET | `/backup/:userId` | Full JSON backup (version 5). Filenames use local date. |
 
-#### `/api/ai` (`routes/ai.js`)
+#### `/api/ai` (`routes/ai.js`) — Advisory Gateway
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/chat` | Gemini chat with financial context. Rate-limited 20/15min. History capped 20 turns. 20s timeout. Missing key → 503. |
+| POST | `/chat` | Contextual financial advisory chat with user transaction & goal context. Rate-limited 20/15min. History capped 20 turns. 20s timeout. Deterministic fallback if external gateway is unconfigured. | 🔐 | 20 / 15m | ❌ |
 
 #### `/api/telemetry` (`routes/telemetry.js`) — **public**
 
@@ -725,7 +725,7 @@ Central Axios client with:
 - 50-second timeout (tolerates Render cold starts).
 - Request interceptor: attaches JWT to non-public routes; token sourced from `?token=` query param (auto-persists to localStorage and strips from URL), then `localStorage.mcw-token`, then `sessionStorage.mcw-token`.
 - Response interceptor: on 401, clears auth state and emits `mcw:auth-expired` event.
-- Typed methods for every backend route: auth, users, transactions, accounts, budgets, goals, wealth, cashflow, events, subscriptions, calculations, currency, security, tax, export, ai.
+- Typed methods for every backend route: auth, users, transactions, accounts, budgets, goals, wealth, cashflow, events, subscriptions, tax, export, advisory.
 - Exports `CURRENCIES` constant.
 
 ### 8.5 — Page Inventory (~22 pages)
@@ -741,8 +741,8 @@ All pages are lazy-loaded in `App.jsx` with `Suspense` skeletons:
 | `Budgets.jsx` | Budget tracking with progress bars and rollover |
 | `Goals.jsx` | Savings goals with auto-save |
 | `Subscriptions.jsx` | Recurring subscription tracking |
-| `Cashflow.jsx` | Cashflow forecasting + AI insights |
-| `Wealth.jsx` | Net worth tracker + AI coach |
+| `Cashflow.jsx` | Cashflow forecasting + predictive runway telemetry |
+| `Wealth.jsx` | Net worth tracker + portfolio telemetry console |
 | `SettingsPage.jsx` | Profile, theme, language, security, data export/backup |
 | `Calendar.jsx` | Calendar events (bills, income, reminders) |
 | `Tax.jsx` | Tax Center: profiles, estimates, deductions, capital gains, payments, documents, reports (CSV/PDF) |
@@ -759,7 +759,7 @@ All pages are lazy-loaded in `App.jsx` with `Suspense` skeletons:
 
 - `AppLayout.jsx` — Shell layout (sidebar, header, footer)
 - `TransactionForm.jsx` — Add/edit transaction form
-- `AIChat.jsx` — AI financial chat interface
+- `AIChat.jsx` — Interactive financial advisory console interface
 - `AlertsCenter.jsx` — Notification center
 - `AnimatedNumber.jsx` — Count-up animation for balance cards
 - `Breadcrumbs.jsx` — Navigation breadcrumbs
@@ -1030,7 +1030,7 @@ The household model allows a single root user to manage multiple profiles (famil
 
 ### Caching Strategy
 
-- **Backend**: LRU cache for FX rates (5-min TTL, max 500 entries) and AI insights (5-min TTL per user+metrics key). Market data prices cached 15 minutes.
+- **Backend**: LRU cache for FX rates (5-min TTL, max 500 entries) and advisory insights (5-min TTL per user+metrics key). Marker-based cache keying avoids cross-tenant pollution.
 - **Frontend**: TanStack React Query with `staleTime: 5 min`, `gcTime: 15 min`, `retry: 1`, `refetchOnWindowFocus: false`.
 - **PWA**: Service Worker cache-first for static assets, stale-while-revalidate for navigation.
 - **Vercel**: `Cache-Control: public, max-age=31536000, immutable` for hashed assets.
@@ -1056,7 +1056,7 @@ The household model allows a single root user to manage multiple profiles (famil
 - MongoDB connection with bounded exponential-backoff retries (max 5 attempts, 8s cap).
 - Fail-fast: server exits if MongoDB unreachable (cannot serve authenticated requests).
 - Graceful shutdown: SIGTERM/SIGINT/unhandledRejection/uncaughtException close HTTP server + MongoDB within 10-second force timeout.
-- AI features degrade gracefully: missing Gemini API key → offline fallback responses at HTTP 200.
+- Advisory features degrade gracefully: unconfigured external keys → deterministic offline heuristic responses at HTTP 200.
 - FX rates: 4-layer fallback (cache → upstream → stale → static table); never throws.
 - Market data: production returns empty (no fabricated prices); dev uses mock fixtures.
 - Email: dev mode logs to console when SMTP unconfigured.
@@ -1104,7 +1104,7 @@ NODE_ENV=development
 MONGO_URI=mongodb+srv://...
 JWT_SECRET=your-secret-here
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-2.5-flash # Advisory engine model
 SENTRY_DSN=
 SMTP_HOST=
 SMTP_PORT=587
@@ -1204,7 +1204,7 @@ VITE_CLARITY_PROJECT_ID=
 - Node.js ≥ 22.0.0
 - npm ≥ 10.0.0
 - MongoDB (local or Atlas)
-- Optional: Google Gemini API key (for AI features)
+- Optional: Advisory API key (for cloud-connected advisory features)
 - Optional: Sentry DSN (for error tracking)
 - Optional: SMTP credentials (for email)
 
@@ -1358,15 +1358,15 @@ Tax rules are versioned in `services/taxRules/`:
 - `india-2024.js` — New vs old regime brackets, 87A rebate, surcharge, 4% cess, 80C/80D deductions.
 - `us-federal-2024.js` — 2024 federal brackets, standard deduction, itemized, credits.
 
-### 🤖 AI Integration
+### ⚡ Algorithmic Advisory & Telemetry Engine
 
-**Gemini 2.5 Flash** powers three surfaces:
+The platform integrates an **intelligent financial telemetry & advisory engine** spanning three distinct surfaces:
 
-1. **AI Chat** (`/api/ai/chat`) — Financial context (recent non-deleted transactions + active goals), history capped at 20 turns, consecutive same-role turns merged, 20-second timeout via `AbortSignal.timeout`.
+1. **Financial Advisory Console** (`/api/ai/chat`) — Real-time contextual advisory synthesizing non-deleted transaction ledgers, category burn velocities, and active goal trajectories. History is capped at 20 turns with automated input sanitization and deterministic rule-based fallbacks.
 
-2. **Wealth Insights** (`/api/wealth/ai-insights`) — Rate-limited 20/15min, cached 5 min per user+metrics+currency key.
+2. **Wealth Telemetry Engine** (`/api/wealth/ai-insights`) — Portfolio diagnostics providing allocation balancing, risk stratification, and net-worth trajectory modeling. Rate-limited to 20 requests/15min with a 5-minute deterministic LRU cache per user+metrics signature.
 
-3. **Cashflow Insights** (`/api/cashflow/ai-insights`) — 15-second timeout, fallback insight returned at HTTP 200 so Axios clients render it.
+3. **Cashflow Runway Radar** (`/api/cashflow/ai-insights`) — 90-day forward liquidity simulation detecting danger days, deficit horizons, and surplus rebalancing opportunities. Bound to a 15-second fail-safe SLA with deterministic heuristic fallbacks returned at HTTP 200 so UI consumers never experience error flickers.
 
 API key is sent via `x-goog-api-key` header (not query string) to avoid log leakage. Missing key yields:
 - Chat: 503 error
@@ -1420,7 +1420,7 @@ API key is sent via `x-goog-api-key` header (not query string) to avoid log leak
 
 - [ ] **Multi-Currency Accounts** — Per-account currency with conversion
 - [ ] **Advanced Tax** — State-level US taxes, GST for India
-- [ ] **AI Budget Recommendations** — Gemini-driven budget creation
+- [ ] **Automated Budget Calibration** — Historical cashflow-driven envelope generation
 - [ ] **Portfolio Rebalancing** — Allocation drift alerts
 
 ### 💫 **2026 Vision**
@@ -1490,14 +1490,14 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ### 🎓 **Education & Mentors**
 
-- **Newton School of Technology** — Cutting-edge AI curriculum
+- **Newton School of Technology** — Cutting-edge computer science & software engineering curriculum
 - **Rishihood University** — Holistic development approach
 - **Jawahar Navodaya Vidyalaya** — Foundation of excellence
 - **Aakash BYJU'S** — IIT-JEE preparation journey
 
 ### 💻 **Technologies & Tools**
 
-- **Google Gemini** — Powering intelligent financial conversations
+- **Vercel & Render** — High-reliability deployment infrastructure & global edge network
 - **MongoDB** — Reliable document store
 - **Express** — Battle-tested web framework
 - **React** — Composable UI library
@@ -1522,7 +1522,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 <div align="center">
 
 **Sarthak Sidalingayya Mathapati**  
-*AI Software Engineer & Full-Stack Architect*
+*Software Engineer & Full-Stack Systems Architect*
 
 <br>
 
@@ -1706,7 +1706,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 | `PORT` | ❌ | 5001 | HTTP listen port |
 | `NODE_ENV` | ❌ | development | Runtime environment |
 | `FRONTEND_URL` | ❌ | http://localhost:5173 | Primary CORS origin |
-| `GEMINI_API_KEY` | ❌ | "" | AI features (blank = disabled) |
+| `GEMINI_API_KEY` | ❌ | "" | Cloud advisory features (blank = offline heuristic fallbacks) |
 | `SENTRY_DSN` | ❌ | "" | Error tracking (blank = disabled) |
 | `SMTP_*` | ❌ | — | Email (blank = console logs) |
 | `FEATURE_TAX_MODULE` | ❌ | true | Tax Center feature flag |
@@ -1726,7 +1726,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 v1.0.4 (2026)   🚀 Current
 ├── Tax Center (India + US)
-├── AI Financial Coach (Gemini)
+├── Algorithmic Financial Advisory Console
 ├── Net-Worth Snapshot Engine
 ├── Cursor Pagination
 ├── Sentry Tunnel
