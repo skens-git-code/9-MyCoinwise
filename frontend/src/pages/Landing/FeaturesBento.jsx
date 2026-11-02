@@ -78,23 +78,9 @@ export default function FeaturesBento() {
                 </div>
                 <button
                   type="button"
-                  className="bento-interactive-pill"
+                  className={`bento-interactive-pill ${rolloverActive ? 'is-active' : ''}`}
                   onClick={() => setRolloverActive(!rolloverActive)}
                   aria-pressed={rolloverActive}
-                  style={{
-                    padding: '5px 12px',
-                    borderRadius: 8,
-                    background: rolloverActive ? 'rgba(16, 185, 129, 0.16)' : 'rgba(255, 255, 255, 0.08)',
-                    color: rolloverActive ? '#10b981' : '#94a3b8',
-                    border: '1px solid',
-                    borderColor: rolloverActive ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.12)',
-                    fontWeight: 700,
-                    fontSize: '0.75rem',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6
-                  }}
                 >
                   <RefreshCw size={12} className={rolloverActive ? 'spin-slow' : ''} aria-hidden="true" />
                   <span>{rolloverActive ? `${spentPct}% Allocated · Rollover ON` : 'Rollover OFF (Fixed)'}</span>
@@ -152,7 +138,7 @@ export default function FeaturesBento() {
             <div className="bento-preview-box">
               <div className="radar-live-notification">
                 <Zap size={14} className="radar-spark-icon" aria-hidden="true" />
-                <span style={{ color: '#38bdf8', fontWeight: 600, fontSize: '0.8rem', display: 'block', lineHeight: 1.45 }}>
+                <span className="radar-notif-text">
                   ✨ "High surplus window projected on day 24 — consider moving ₹18,000 to Wealth."
                 </span>
               </div>
@@ -185,24 +171,13 @@ export default function FeaturesBento() {
             </div>
 
             <div className="bento-preview-box">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="group" aria-label="Asset category selector">
+              <div className="bento-asset-selector-wrap">
+                <div className="bento-asset-btn-group" role="group" aria-label="Asset category selector">
                   <button
                     type="button"
                     onClick={() => setSelectedAsset('funds')}
                     aria-pressed={selectedAsset === 'funds'}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: 6,
-                      background: selectedAsset === 'funds' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.06)',
-                      color: selectedAsset === 'funds' ? '#10b981' : '#f8fafc',
-                      border: '1px solid',
-                      borderColor: selectedAsset === 'funds' ? 'rgba(16, 185, 129, 0.4)' : 'transparent',
-                      cursor: 'pointer',
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                      transition: 'all 0.2s ease'
-                    }}
+                    className={`bento-asset-btn ${selectedAsset === 'funds' ? 'active-funds' : ''}`}
                   >
                     📈 Mutual Funds (55%)
                   </button>
@@ -210,18 +185,7 @@ export default function FeaturesBento() {
                     type="button"
                     onClick={() => setSelectedAsset('gold')}
                     aria-pressed={selectedAsset === 'gold'}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: 6,
-                      background: selectedAsset === 'gold' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.06)',
-                      color: selectedAsset === 'gold' ? '#f59e0b' : '#f8fafc',
-                      border: '1px solid',
-                      borderColor: selectedAsset === 'gold' ? 'rgba(245, 158, 11, 0.4)' : 'transparent',
-                      cursor: 'pointer',
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                      transition: 'all 0.2s ease'
-                    }}
+                    className={`bento-asset-btn ${selectedAsset === 'gold' ? 'active-gold' : ''}`}
                   >
                     🪙 Gold & Bullion (15%)
                   </button>
@@ -229,23 +193,12 @@ export default function FeaturesBento() {
                     type="button"
                     onClick={() => setSelectedAsset('re')}
                     aria-pressed={selectedAsset === 're'}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: 6,
-                      background: selectedAsset === 're' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.06)',
-                      color: selectedAsset === 're' ? '#38bdf8' : '#f8fafc',
-                      border: '1px solid',
-                      borderColor: selectedAsset === 're' ? 'rgba(56, 189, 248, 0.4)' : 'transparent',
-                      cursor: 'pointer',
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                      transition: 'all 0.2s ease'
-                    }}
+                    className={`bento-asset-btn ${selectedAsset === 're' ? 'active-re' : ''}`}
                   >
                     🏠 Real Estate (30%)
                   </button>
                 </div>
-                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted, #94a3b8)', lineHeight: 1.45 }}>
+                <span className="bento-asset-subtext">
                   Real-time multi-asset aggregation with daily mark-to-market.
                 </span>
               </div>
@@ -274,25 +227,14 @@ export default function FeaturesBento() {
             </div>
 
             <div className="bento-preview-box">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} role="group" aria-label="Tax regime selector">
+              <div className="tax-preview-inner">
+                <div className="tax-controls-row">
+                  <div className="tax-regime-group" role="group" aria-label="Tax regime selector">
                     <button
                       type="button"
                       onClick={() => setTaxRegime('new')}
                       aria-pressed={taxRegime === 'new'}
-                      style={{
-                        padding: '4px 10px',
-                        borderRadius: 6,
-                        border: '1px solid',
-                        borderColor: taxRegime === 'new' ? '#10b981' : 'rgba(255,255,255,0.1)',
-                        cursor: 'pointer',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        background: taxRegime === 'new' ? '#10b981' : 'rgba(255,255,255,0.06)',
-                        color: taxRegime === 'new' ? '#ffffff' : '#94a3b8',
-                        transition: 'all 0.2s ease'
-                      }}
+                      className={`bento-toggle-btn ${taxRegime === 'new' ? 'active-emerald' : ''}`}
                     >
                       New Regime
                     </button>
@@ -300,47 +242,26 @@ export default function FeaturesBento() {
                       type="button"
                       onClick={() => setTaxRegime('old')}
                       aria-pressed={taxRegime === 'old'}
-                      style={{
-                        padding: '4px 10px',
-                        borderRadius: 6,
-                        border: '1px solid',
-                        borderColor: taxRegime === 'old' ? '#38bdf8' : 'rgba(255,255,255,0.1)',
-                        cursor: 'pointer',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        background: taxRegime === 'old' ? '#38bdf8' : 'rgba(255,255,255,0.06)',
-                        color: taxRegime === 'old' ? '#ffffff' : '#94a3b8',
-                        transition: 'all 0.2s ease'
-                      }}
+                      className={`bento-toggle-btn ${taxRegime === 'old' ? 'active-cyan' : ''}`}
                     >
                       Old Regime
                     </button>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} role="group" aria-label="Simulated income bracket">
+                  <div className="tax-bracket-group" role="group" aria-label="Simulated income bracket">
                     {['12L', '15L', '20L'].map((b) => (
                       <button
                         key={b}
                         type="button"
                         onClick={() => setTaxBracket(b)}
                         aria-pressed={taxBracket === b}
-                        style={{
-                          padding: '2px 7px',
-                          borderRadius: 4,
-                          fontSize: '0.68rem',
-                          fontWeight: 600,
-                          background: taxBracket === b ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.05)',
-                          color: taxBracket === b ? '#ffffff' : '#94a3b8',
-                          border: '1px solid',
-                          borderColor: taxBracket === b ? 'rgba(255,255,255,0.25)' : 'transparent',
-                          cursor: 'pointer'
-                        }}
+                        className={`bento-chip-btn ${taxBracket === b ? 'active' : ''}`}
                       >
                         ₹{b}
                       </button>
                     ))}
                   </div>
                 </div>
-                <span style={{ color: taxRegime === 'new' ? '#10b981' : '#38bdf8', fontWeight: 600, fontSize: '0.8rem', lineHeight: 1.45 }}>
+                <span className={`tax-savings-summary ${taxRegime === 'new' ? 'tax-regime-new' : 'tax-regime-old'}`}>
                   {taxRegime === 'new'
                     ? `🇮🇳 At ₹${taxBracket}: New Regime saves ${taxSavingsMap[taxBracket].newSaves} vs Old Regime this fiscal year`
                     : `🇮🇳 At ₹${taxBracket}: Old Regime ${taxSavingsMap[taxBracket].oldNotes}`}
@@ -371,8 +292,8 @@ export default function FeaturesBento() {
             </div>
 
             <div className="bento-preview-box">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                <span style={{ color: subStatus === 'active' ? '#f59e0b' : '#10b981', fontWeight: 600, fontSize: '0.8rem', lineHeight: 1.45 }}>
+              <div className="sub-preview-row">
+                <span className={`sub-status-label ${subStatus === 'active' ? 'status-active' : 'status-saved'}`}>
                   {subStatus === 'active'
                     ? '⚠️ 2 Subscriptions renewing in the next 7 days (₹1,498)'
                     : '✓ Zombie leaks prevented; ₹1,498 saved this month'}
@@ -381,17 +302,7 @@ export default function FeaturesBento() {
                   type="button"
                   onClick={() => setSubStatus(subStatus === 'active' ? 'saved' : 'active')}
                   aria-pressed={subStatus === 'saved'}
-                  style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    padding: '3px 8px',
-                    borderRadius: 6,
-                    color: '#cbd5e1',
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap'
-                  }}
+                  className="bento-chip-btn sub-audit-btn"
                 >
                   {subStatus === 'active' ? 'Mark Audited' : 'Reset'}
                 </button>

@@ -466,25 +466,26 @@
   }
 
   .auth-submit {
-    background: var(--text-primary);
-    color: var(--surface-0);
-    box-shadow: none;
+    background: var(--brand-primary, #059669);
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(5, 150, 105, 0.25);
 
     &:hover {
-      background: rgba(255, 255, 255, 0.88);
-      box-shadow: 0 8px 28px rgba(255, 255, 255, 0.08);
+      background: #047857;
+      color: #ffffff;
+      box-shadow: 0 6px 20px rgba(5, 150, 105, 0.35);
     }
   }
 
   .auth-alt-btn {
-    background: var(--glass-1);
-    border-color: var(--glass-border);
-    color: var(--brand-primary);
+    background: var(--surface-2, #f1f5f9);
+    border-color: rgba(15, 23, 42, 0.12);
+    color: var(--text-primary);
 
     &:hover {
-      background: var(--text-primary);
-      color: var(--surface-0);
-      border-color: var(--text-primary);
+      background: var(--surface-3, #e2e8f0);
+      color: var(--brand-primary);
+      border-color: var(--brand-primary);
     }
   }
 

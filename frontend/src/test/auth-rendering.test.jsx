@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import Login from '../pages/Login';
 import Register from '../pages/Register';
@@ -103,6 +103,51 @@ describe('Login Autofill & Initial Attempt Handling', () => {
       expect.objectContaining({ email: 'autofilled@example.com' }),
       false
     );
+  });
+
+  it('allows toggling between light and dark themes directly from login page', () => {
+    const mockToggleTheme = vi.fn();
+    render(
+      <BrowserRouter>
+        <AppContext.Provider value={{ ...mockContext, toggleTheme: mockToggleTheme }}>
+          <Login />
+        </AppContext.Provider>
+      </BrowserRouter>
+    );
+
+    const themeToggleBtn = screen.getByRole('button', { name: /Switch to (Light|Dark) theme/i });
+    expect(themeToggleBtn).toBeDefined();
+
+    act(() => {
+      fireEvent.click(themeToggleBtn);
+    });
+    expect(mockToggleTheme).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects invalid emails without "@" on client side before contacting backend', async () => {
+    render(
+      <BrowserRouter>
+        <AppContext.Provider value={mockContext}>
+          <Login />
+        </AppContext.Provider>
+      </BrowserRouter>
+    );
+
+    const emailInput = screen.getByLabelText(/Email Address/i);
+    const passwordInput = screen.getByLabelText(/^Password$/i);
+    const submitBtn = screen.getByRole('button', { name: /Log In/i });
+
+    fireEvent.change(emailInput, { target: { value: 'invalidusername' } });
+    fireEvent.change(passwordInput, { target: { value: 'Secret123!' } });
+
+    fireEvent.click(submitBtn);
+
+    expect(api.login).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeDefined();
+      expect(screen.getByText(/Enter a valid email address/i)).toBeDefined();
+    });
   });
 
   it('handles registration flow and preserves success modal until user continues', async () => {

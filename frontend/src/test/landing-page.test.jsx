@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Landing from '../pages/Landing/Landing';
 import InteractiveSimulator from '../pages/Landing/InteractiveSimulator';
@@ -158,6 +158,36 @@ describe('Public Landing Page Suite', () => {
     expect(drawer).toBeInTheDocument();
     expect(drawer).toHaveAttribute('aria-modal', 'true');
     expect(drawer).toHaveAttribute('id', 'landing-mobile-drawer');
+  });
+
+  it('allows switching between light and dark themes from navbar and mobile drawer', () => {
+    render(
+      <MemoryRouter>
+        <LandingNavbar />
+      </MemoryRouter>
+    );
+
+    // Initial state check - navbar quick toggle
+    const themeBtns = screen.getAllByRole('button', { name: /Switch to (Light|Dark) theme/i });
+    expect(themeBtns.length).toBeGreaterThanOrEqual(1);
+
+    // Click theme toggle button
+    act(() => {
+      fireEvent.click(themeBtns[0]);
+    });
+    expect(document.documentElement.getAttribute('data-theme')).toMatch(/light|amoled|dark/);
+
+    // Open mobile drawer and verify drawer theme button
+    const toggleMenuBtn = screen.getByRole('button', { name: /Open navigation menu/i });
+    act(() => {
+      fireEvent.click(toggleMenuBtn);
+    });
+
+    const allThemeBtns = screen.getAllByRole('button', { name: /Switch to (Light|Dark) Theme/i });
+    expect(allThemeBtns.length).toBe(2);
+    act(() => {
+      fireEvent.click(allThemeBtns[1]);
+    });
   });
 
   it('renders defensible platform highlights ticker without unsubstantiated claims', () => {
@@ -345,5 +375,45 @@ describe('Public Landing Page Suite', () => {
     renderLandingPage();
 
     expect(screen.getByText(/Free core tier forever · No credit card required · Zero hidden charges/i)).toBeInTheDocument();
+  });
+
+  it('renders Cockpit tab view with mockup-view-cockpit class', () => {
+    renderLandingPage();
+
+    const cockpitTab = screen.getByRole('tab', { name: /Cockpit/i });
+    expect(cockpitTab).toBeInTheDocument();
+
+    fireEvent.click(cockpitTab);
+    const cockpitPanel = screen.getByRole('tabpanel', { name: /Cockpit/i });
+    expect(cockpitPanel).toBeInTheDocument();
+    expect(cockpitPanel).toHaveClass('mockup-view-cockpit');
+    expect(screen.getByText(/Total Net Worth/i)).toBeInTheDocument();
+  });
+
+  it('supports interactive asset toggles and rollover pill in FeaturesBento', () => {
+    renderLandingPage();
+
+    // Rollover Pill in Card 1
+    const rolloverPill = screen.getByRole('button', { name: /Allocated · Rollover ON/i });
+    expect(rolloverPill).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(rolloverPill);
+    expect(rolloverPill).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText(/Rollover OFF \(Fixed\)/i)).toBeInTheDocument();
+
+    // Asset buttons in Card 3
+    const goldBtn = screen.getByRole('button', { name: /Gold & Bullion/i });
+    expect(goldBtn).toBeInTheDocument();
+    fireEvent.click(goldBtn);
+    expect(goldBtn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('attaches landing-viewport-scrollable class on documentElement and body upon mount', () => {
+    const { unmount } = renderLandingPage();
+    expect(document.documentElement.classList.contains('landing-viewport-scrollable')).toBe(true);
+    expect(document.body.classList.contains('landing-viewport-scrollable')).toBe(true);
+
+    unmount();
+    expect(document.documentElement.classList.contains('landing-viewport-scrollable')).toBe(false);
+    expect(document.body.classList.contains('landing-viewport-scrollable')).toBe(false);
   });
 });

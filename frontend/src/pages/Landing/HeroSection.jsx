@@ -125,7 +125,7 @@ export default function HeroSection() {
 
         <h1 id="hero-heading" className="hero-title">
           <motion.span
-            className="hero-phrase"
+            className="hero-phrase hero-phrase-main"
             initial={prefersReduced ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={
@@ -137,7 +137,7 @@ export default function HeroSection() {
             Master Your Money.{' '}
           </motion.span>
           <motion.span
-            className="gradient-accent hero-phrase"
+            className="gradient-accent hero-phrase hero-phrase-accent"
             initial={prefersReduced ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={
@@ -250,6 +250,7 @@ export default function HeroSection() {
               id="hero-tab-ledger"
               type="button"
               role="tab"
+              aria-label="Living Ledger"
               aria-selected={activeTab === 'ledger'}
               aria-controls="hero-panel-ledger"
               className={`mockup-tab-btn ${activeTab === 'ledger' ? 'active' : ''}`}
@@ -262,6 +263,7 @@ export default function HeroSection() {
               id="hero-tab-cockpit"
               type="button"
               role="tab"
+              aria-label="Cockpit"
               aria-selected={activeTab === 'cockpit'}
               aria-controls="hero-panel-cockpit"
               className={`mockup-tab-btn ${activeTab === 'cockpit' ? 'active' : ''}`}
@@ -274,6 +276,7 @@ export default function HeroSection() {
               id="hero-tab-radar"
               type="button"
               role="tab"
+              aria-label="Cashflow Radar"
               aria-selected={activeTab === 'radar'}
               aria-controls="hero-panel-radar"
               className={`mockup-tab-btn ${activeTab === 'radar' ? 'active' : ''}`}
@@ -286,6 +289,7 @@ export default function HeroSection() {
               id="hero-tab-tax"
               type="button"
               role="tab"
+              aria-label="Tax Shield"
               aria-selected={activeTab === 'tax'}
               aria-controls="hero-panel-tax"
               className={`mockup-tab-btn ${activeTab === 'tax' ? 'active' : ''}`}
@@ -304,7 +308,7 @@ export default function HeroSection() {
           )}
 
           {activeTab === 'cockpit' && (
-            <div id="hero-panel-cockpit" role="tabpanel" aria-labelledby="hero-tab-cockpit" className="mockup-tab-content">
+            <div id="hero-panel-cockpit" role="tabpanel" aria-labelledby="hero-tab-cockpit" className="mockup-tab-content mockup-view-cockpit">
               <div className="mockup-header">
                 <div className="header-text-group">
                   <span className="mockup-eyebrow">PORTFOLIO OVERVIEW</span>

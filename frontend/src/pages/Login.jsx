@@ -15,18 +15,18 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useState, useRef, useEffect, useCallback, useMemo,
+  useState, useRef, useEffect, useCallback, useMemo, useContext,
 } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { api } from '../services/api';
-import { useAppState, useAppActions } from '../contexts/AppContext';
+import { useAppState, useAppActions, AppContext } from '../contexts/AppContext';
 import { LANGUAGES } from '../services/i18n';
 import { openCookiePreferences } from '../services/clarity';
 import {
-  KeyRound, Mail, AlertTriangle, Zap, Eye, EyeOff,
-  ArrowRight, Globe, Lock, X,
-  Info, CheckCircle2, RefreshCw, Check,
+  KeyRound, Mail, AlertTriangle, Eye, EyeOff,
+  ArrowRight, Globe, X,
+  Info, RefreshCw, Check, Sun, Moon,
 } from 'lucide-react';
 import { CoinwiseMark } from '../components/CoinwiseBrand';
 
@@ -93,81 +93,76 @@ const sanitizeBackendMessage = (msg) => {
 };
 
 /* ============================================================
- * Focus trap for modals
- * ============================================================ */
-function useFocusTrap(ref, isActive, onEscape) {
-  useEffect(() => {
-    if (!isActive || !ref.current) return undefined;
-    const node = ref.current;
-    const previousActive = document.activeElement;
-
-    // ── Query visible focusable elements inside the modal ──
-    const getFocusable = () =>
-      Array.from(
-        node.querySelectorAll(
-          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )
-      ).filter((el) => el.offsetParent !== null);
-
-    // ── Initial focus ──
-    const focusables = getFocusable();
-    if (focusables.length > 0) focusables[0].focus();
-
-    // ── Escape closes; Tab cycles within the modal ──
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onEscape?.();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      const list = getFocusable();
-      if (list.length === 0) {
-        e.preventDefault();
-        return;
-      }
-      const first = list[0];
-      const last = list[list.length - 1];
-      const current = document.activeElement;
-      if (e.shiftKey) {
-        if (current === first || !node.contains(current)) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else if (current === last || !node.contains(current)) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      try { previousActive?.focus?.(); } catch { /* ignore */ }
-    };
-  }, [ref, isActive, onEscape]);
-}
-
-/* ============================================================
  * Main Component
  * ============================================================ */
 export default function Login() {
   // ── App context + router ──
-  const { lang = 'en', user } = useAppState();
-  const { login, t, setLanguage } = useAppActions();
+  const { lang = 'en', user, theme: contextTheme } = useAppState();
+  const { login, t, setLanguage, toggleTheme } = useAppActions();
+  const legacyCtx = useContext(AppContext);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // ── Theme State & Resilient Synchronization ──
+  const [localTheme, setLocalTheme] = useState(() => {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem('mcw-theme');
+      if (stored) return stored;
+    }
+    if (typeof document !== 'undefined') {
+      return document.documentElement.getAttribute('data-theme') || 'dark';
+    }
+    return 'dark';
+  });
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const syncTheme = () => {
+      const dt = document.documentElement.getAttribute('data-theme');
+      if (dt) setLocalTheme(dt);
+    };
+    syncTheme();
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+
+  const activeTheme = contextTheme || legacyCtx?.theme || localTheme;
+  const isDark =
+    activeTheme === 'amoled' ||
+    activeTheme === 'dark' ||
+    (activeTheme === 'auto' &&
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+
+  const handleToggleTheme = useCallback(() => {
+    if (typeof toggleTheme === 'function') {
+      toggleTheme();
+    } else if (typeof legacyCtx?.toggleTheme === 'function') {
+      legacyCtx.toggleTheme();
+    } else {
+      const next = isDark ? 'light' : 'amoled';
+      setLocalTheme(next);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('mcw-theme', next);
+      }
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-theme', next);
+      }
+    }
+  }, [toggleTheme, legacyCtx, isDark]);
+
+  // ── Reduced Motion Preference ──
+  const prefersReduced = useReducedMotion();
 
   // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
 
   /* ---------------- Refs ---------------- */
 
-  // ── Form input + modal refs ──
+  // ── Form input refs ──
   const emailInputRef = useRef(null);
   const passwordInputRef = useRef(null);
-  const forgotModalRef = useRef(null);
-  const rateLimitTimerRef = useRef(null);
 
   /* ---------------- State ---------------- */
 
@@ -186,9 +181,8 @@ export default function Login() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [touched, setTouched] = useState({});
 
-  // ── Caps Lock warning + forgot-password modal ──
+  // ── Caps Lock warning ──
   const [capsLockOn, setCapsLockOn] = useState(false);
-  const [showForgotHelp, setShowForgotHelp] = useState(false);
 
   // ── Rate-limit cooldown countdown ──
   const [rateLimitSeconds, setRateLimitSeconds] = useState(0);
@@ -222,36 +216,25 @@ export default function Login() {
 
   /* ---------------- Rate-Limit Countdown ---------------- */
   // Drives the "wait Ns" indicator and re-enables the submit button
-  // when the cooldown expires.
+  // when the cooldown expires. Only creates a single timer across the cooldown.
+  const isRateLimited = rateLimitSeconds > 0;
   useEffect(() => {
-    if (rateLimitSeconds <= 0) {
-      if (rateLimitTimerRef.current) {
-        clearInterval(rateLimitTimerRef.current);
-        rateLimitTimerRef.current = null;
-      }
-      return undefined;
-    }
-    if (!rateLimitTimerRef.current) {
-      rateLimitTimerRef.current = setInterval(() => {
-        setRateLimitSeconds((s) => {
-          if (s <= 1) {
-            clearInterval(rateLimitTimerRef.current);
-            rateLimitTimerRef.current = null;
-            setError('');
-            setErrorKind(null);
-            return 0;
-          }
-          return s - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (rateLimitTimerRef.current) {
-        clearInterval(rateLimitTimerRef.current);
-        rateLimitTimerRef.current = null;
-      }
-    };
-  }, [rateLimitSeconds]);
+    if (!isRateLimited) return undefined;
+
+    const timerId = setInterval(() => {
+      setRateLimitSeconds((s) => {
+        if (s <= 1) {
+          clearInterval(timerId);
+          setError('');
+          setErrorKind(null);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timerId);
+  }, [isRateLimited]);
 
   /* ---------------- Caps Lock Detection ---------------- */
   const handleKeyEvent = useCallback((e) => {
@@ -259,10 +242,6 @@ export default function Login() {
       setCapsLockOn(e.getModifierState('CapsLock'));
     }
   }, []);
-
-  /* ---------------- Focus Trap on Forgot Modal ---------------- */
-  const closeForgotModal = useCallback(() => setShowForgotHelp(false), []);
-  useFocusTrap(forgotModalRef, showForgotHelp, closeForgotModal);
 
   /* ---------------- Pre-emptive Server Wake-Up & Idle Prefetch ---------------- */
   useEffect(() => {
@@ -347,7 +326,7 @@ export default function Login() {
       case 'email': {
         const v = String(value || '').trim();
         if (!v) return tr('email_required', 'Email is required.');
-        if (v.includes('@') && !EMAIL_REGEX.test(v)) return tr('invalid_email', 'Enter a valid email address.');
+        if (!EMAIL_REGEX.test(v)) return tr('invalid_email', 'Enter a valid email address.');
         return '';
       }
       case 'password':
@@ -407,7 +386,6 @@ export default function Login() {
 
     setError('');
     setErrorKind(null);
-    setServerWarm(null);
 
     // Resolve effective values from state or direct DOM inputs (autofill fallback)
     const effectiveEmail = (email || emailInputRef.current?.value || '').trim();
@@ -449,12 +427,7 @@ export default function Login() {
       else safeWriteEmail('');
 
       await login(token, loggedUser, rememberMe);
-
-      const from = location.state?.from;
-      const destination = from?.pathname
-        ? `${from.pathname}${from.search || ''}${from.hash || ''}`
-        : (typeof from === 'string' ? from : '/');
-      navigate(destination, { replace: true });
+      // Navigation is handled cleanly by the single-source-of-truth redirect effect on `user`.
     } catch (err) {
       if (isCancelError(err)) return;
 
@@ -491,7 +464,7 @@ export default function Login() {
     }
   }, [
     loading, rateLimitSeconds, validateForm, email, password, rememberMe,
-    login, navigate, location.state, tr,
+    login, tr,
   ]);
 
   /* ============================================================
@@ -510,7 +483,6 @@ export default function Login() {
   const errorIcon = useMemo(() => {
     if (errorKind === 'network') return <Info size={16} aria-hidden="true" />;
     if (errorKind === 'rate') return <RefreshCw size={16} aria-hidden="true" />;
-    if (errorKind === 'unknown') return <AlertTriangle size={16} aria-hidden="true" />;
     return <AlertTriangle size={16} aria-hidden="true" />;
   }, [errorKind]);
 
@@ -528,17 +500,17 @@ export default function Login() {
 
       <motion.div
         className="auth-card glass"
-        initial={{ opacity: 0, y: 32, scale: 0.96 }}
+        initial={prefersReduced ? false : { opacity: 0, y: 32, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        transition={prefersReduced ? { duration: 0 } : { duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         style={{ position: 'relative' }}
       >
-        {/* ===================== Top Bar: Brand & Language ===================== */}
+        {/* ===================== Top Bar: Brand, Theme & Language ===================== */}
         <div className="auth-header-row auth-top-row">
           <Link to="/" className="auth-logo" style={{ margin: 0, textDecoration: 'none', color: 'inherit' }} title="Return to MyCoinwise Homepage">
             <motion.div
               className="auth-logo-icon"
-              whileHover={{ scale: 1.05 }}
+              whileHover={prefersReduced ? undefined : { scale: 1.05 }}
               transition={{ type: 'spring', stiffness: 300 }}
               aria-hidden="true"
             >
@@ -547,37 +519,32 @@ export default function Login() {
             <span className="auth-logo-text">MyCoinwise</span>
           </Link>
 
-          <div
-            className="auth-lang-selector"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <Globe size={14} style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
-            <select
-              value={lang}
-              onChange={(e) => setLanguage && setLanguage(e.target.value)}
-              aria-label={tr('language', 'Language')}
-              style={{
-                background: 'var(--glass-2)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--glass-border)',
-                borderRadius: 8,
-                padding: '4px 8px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                outline: 'none',
-              }}
+          <div className="auth-top-actions">
+            {/* Quick theme toggle */}
+            <button
+              type="button"
+              className="auth-theme-toggle"
+              onClick={handleToggleTheme}
+              aria-label={`Switch to ${isDark ? 'Light' : 'Dark'} theme`}
+              title={`Switch to ${isDark ? 'Light' : 'Dark'} theme`}
             >
-              {Object.entries(LANGUAGES).map(([code, l]) => (
-                <option key={code} value={code}>
-                  {l.flag} {l.name}
-                </option>
-              ))}
-            </select>
+              {isDark ? <Sun size={15} aria-hidden="true" /> : <Moon size={15} aria-hidden="true" />}
+            </button>
+
+            <div className="auth-lang-selector">
+              <Globe size={14} style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
+              <select
+                value={lang}
+                onChange={(e) => setLanguage && setLanguage(e.target.value)}
+                aria-label={tr('language', 'Language')}
+              >
+                {Object.entries(LANGUAGES).map(([code, l]) => (
+                  <option key={code} value={code}>
+                    {l.flag} {l.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -595,9 +562,10 @@ export default function Login() {
             <motion.div
               role="status"
               aria-live="polite"
-              initial={{ opacity: 0, y: -8 }}
+              initial={prefersReduced ? false : { opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
+              exit={prefersReduced ? false : { opacity: 0, y: -8 }}
+              transition={prefersReduced ? { duration: 0 } : undefined}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 fontSize: '0.80rem', padding: '8px 12px',
@@ -620,10 +588,10 @@ export default function Login() {
               <motion.div
                 className={`auth-alert auth-alert-${errorKind || 'default'}`}
                 role="alert"
-                aria-live="assertive"
-                initial={{ opacity: 0, y: -8 }}
+                initial={prefersReduced ? false : { opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
+                exit={prefersReduced ? false : { opacity: 0, y: -8 }}
+                transition={prefersReduced ? { duration: 0 } : undefined}
               >
                 {errorIcon}
                 <span style={{ flex: 1 }}>{error}</span>
@@ -687,7 +655,13 @@ export default function Login() {
                 aria-invalid={emailHasError}
                 aria-describedby={emailHasError ? 'email-error' : undefined}
                 inputMode="email"
-                enterKeyHint="go"
+                enterKeyHint="next"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    passwordInputRef.current?.focus();
+                  }
+                }}
               />
             </div>
             {emailHasError && (
@@ -724,6 +698,7 @@ export default function Login() {
                 placeholder={tr('password_placeholder', '••••••••')}
                 disabled={loading || rateLimitSeconds > 0}
                 aria-invalid={passwordHasError}
+                enterKeyHint="go"
                 aria-describedby={
                   passwordHasError
                     ? 'password-error'
@@ -760,9 +735,10 @@ export default function Login() {
                 <motion.div
                   id="password-caps-warning"
                   className="form-hint form-hint-warning"
-                  initial={{ opacity: 0, y: -4 }}
+                  initial={prefersReduced ? false : { opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
+                  exit={prefersReduced ? false : { opacity: 0, y: -4 }}
+                  transition={prefersReduced ? { duration: 0 } : undefined}
                   role="status"
                 >
                   <AlertTriangle size={12} aria-hidden="true" />
@@ -803,18 +779,16 @@ export default function Login() {
             className="btn btn-primary auth-submit"
             disabled={submitDisabled}
             aria-busy={loading}
-            whileHover={submitDisabled ? undefined : { scale: 1.02 }}
-            whileTap={submitDisabled ? undefined : { scale: 0.98 }}
+            whileHover={submitDisabled || prefersReduced ? undefined : { scale: 1.02 }}
+            whileTap={submitDisabled || prefersReduced ? undefined : { scale: 0.98 }}
           >
             {loading ? (
-              <motion.span
-                animate={{ opacity: [1, 0.5, 1] }}
-                transition={{ duration: 1, repeat: Infinity }}
+              <span
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
               >
-                <RefreshCw size={16} className="spin" aria-hidden="true" />
+                <RefreshCw size={16} className={prefersReduced ? '' : 'spin'} aria-hidden="true" />
                 {tr('authenticating', 'Authenticating…')}
-              </motion.span>
+              </span>
             ) : rateLimitSeconds > 0 ? (
               <>
                 {tr('please_wait', 'Please wait')} ({rateLimitSeconds}s)
@@ -867,73 +841,6 @@ export default function Login() {
           </button>
         </div>
       </motion.div>
-
-      {/* ===================== Forgot Password Modal ===================== */}
-      <AnimatePresence>
-        {showForgotHelp && (
-          <motion.div
-            className="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={closeForgotModal}
-            style={{ zIndex: 1000 }}
-          >
-            <motion.div
-              ref={forgotModalRef}
-              className="modal-box glass"
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              onClick={(e) => e.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="forgot-modal-title"
-              aria-describedby="forgot-modal-desc"
-              style={{ maxWidth: 440, padding: 24, textAlign: 'center' }}
-            >
-              {/* ── Lock icon badge ── */}
-              <div
-                style={{
-                  width: 48, height: 48, borderRadius: '50%',
-                  background: 'rgba(5,150,105,0.15)', color: '#10b981',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  margin: '0 auto 16px',
-                }}
-                aria-hidden="true"
-              >
-                <Lock size={24} />
-              </div>
-              <h3 id="forgot-modal-title" style={{ margin: '0 0 8px', fontSize: '1.2rem' }}>
-                {tr('forgot_password_modal_title', 'Password Reset Help')}
-              </h3>
-              <p
-                id="forgot-modal-desc"
-                style={{
-                  color: 'var(--text-muted)', fontSize: '0.9rem',
-                  lineHeight: 1.5, margin: '0 0 20px',
-                }}
-              >
-                {tr(
-                  'forgot_password_modal_desc',
-                  'To reset or update your password, log into your account and open Settings > Security, or reach out to your household account administrator.'
-                )}
-              </p>
-              {/* ── Close button ── */}
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={closeForgotModal}
-                style={{ width: '100%' }}
-              >
-                <CheckCircle2 size={16} aria-hidden="true" />
-                {tr('close', 'Got it')}
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
     </div>
   );
 }

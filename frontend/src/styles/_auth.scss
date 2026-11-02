@@ -158,7 +158,7 @@ body.auth-viewport-scrollable #root {
   }
 }
 
-// ── Header Row (Logo + Language) ────────────────────────────────
+// ── Header Row (Logo, Theme Toggle & Language) ──────────────────
 .auth-header-row,
 .auth-top-row {
   display: flex;
@@ -167,6 +167,43 @@ body.auth-viewport-scrollable #root {
   gap: 12px;
   margin-bottom: clamp(16px, 3.5vw, 22px);
   width: 100%;
+}
+
+.auth-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  padding: 0;
+  flex-shrink: 0;
+
+  &:hover {
+    color: var(--text-primary);
+    background: var(--glass-3);
+    border-color: var(--brand-primary);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  svg {
+    display: block;
+  }
 }
 
 .auth-logo {
@@ -408,11 +445,20 @@ body.auth-viewport-scrollable #root {
         opacity: 0.55;
         cursor: not-allowed;
       }
+
+      &:-webkit-autofill,
+      &:-webkit-autofill:hover,
+      &:-webkit-autofill:focus {
+        -webkit-box-shadow: 0 0 0 1000px var(--surface-1) inset !important;
+        -webkit-text-fill-color: var(--text-primary) !important;
+        caret-color: var(--text-primary) !important;
+        transition: background-color 5000s ease-in-out 0s;
+      }
     }
 
     .input-suffix-btn {
       position: absolute;
-      right: 10px;
+      right: 4px;
       top: 50%;
       transform: translateY(-50%);
       background: transparent;
@@ -422,9 +468,9 @@ body.auth-viewport-scrollable #root {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 34px;
-      min-height: 34px;
-      padding: 6px;
+      min-width: 44px;
+      min-height: 44px;
+      padding: 10px;
       border-radius: 8px;
       transition: color var(--transition-fast), background var(--transition-fast);
       z-index: 2;
@@ -784,5 +830,153 @@ body.auth-viewport-scrollable #root {
 
   .auth-card {
     margin: 8px 0;
+  }
+}
+
+// ── Light Theme Explicit Overrides for Auth Components ───────────
+[data-theme="light"] {
+  .auth-page {
+    background: #f8fafc;
+  }
+
+  .auth-card {
+    background: #ffffff !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    box-shadow: 0 20px 48px -12px rgba(15, 23, 42, 0.10), 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+  }
+
+  .auth-theme-toggle {
+    background: rgba(15, 23, 42, 0.04) !important;
+    border-color: rgba(15, 23, 42, 0.12) !important;
+    color: #475569 !important;
+
+    &:hover {
+      background: rgba(15, 23, 42, 0.08) !important;
+      border-color: var(--brand-primary, #059669) !important;
+      color: #0f172a !important;
+    }
+  }
+
+  .auth-lang-selector select {
+    background: rgba(15, 23, 42, 0.04) !important;
+    border-color: rgba(15, 23, 42, 0.12) !important;
+    color: #0f172a !important;
+
+    &:hover,
+    &:focus {
+      background: rgba(15, 23, 42, 0.08) !important;
+      border-color: var(--brand-primary, #059669) !important;
+    }
+
+    option {
+      background: #ffffff !important;
+      color: #0f172a !important;
+    }
+  }
+
+  .form-group {
+    label {
+      color: #475569 !important;
+    }
+
+    &:focus-within label {
+      color: var(--brand-primary, #059669) !important;
+    }
+
+    .input-wrapper input {
+      background: #f8fafc !important;
+      border-color: rgba(15, 23, 42, 0.14) !important;
+      color: #0f172a !important;
+
+      &::placeholder {
+        color: #94a3b8 !important;
+      }
+
+      &:hover:not(:disabled):not(:focus) {
+        background: #f1f5f9 !important;
+        border-color: rgba(15, 23, 42, 0.24) !important;
+      }
+
+      &:focus {
+        background: #ffffff !important;
+        border-color: var(--brand-primary, #059669) !important;
+        box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.18) !important;
+      }
+
+      &:-webkit-autofill,
+      &:-webkit-autofill:hover,
+      &:-webkit-autofill:focus {
+        -webkit-box-shadow: 0 0 0 1000px #f8fafc inset !important;
+        -webkit-text-fill-color: #0f172a !important;
+        caret-color: #0f172a !important;
+      }
+    }
+  }
+
+  .checkbox-label {
+    .custom-checkbox:not(.checked) {
+      background: #f8fafc !important;
+      border-color: rgba(15, 23, 42, 0.22) !important;
+    }
+
+    .checkbox-text {
+      color: #475569 !important;
+    }
+
+    &:hover .checkbox-text {
+      color: #0f172a !important;
+    }
+  }
+
+  .auth-forgot-link {
+    color: var(--brand-primary, #059669) !important;
+
+    &:hover {
+      color: #047857 !important;
+    }
+  }
+
+  .auth-submit {
+    background: var(--brand-primary, #059669) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 14px rgba(5, 150, 105, 0.28) !important;
+
+    &:hover:not(:disabled) {
+      background: #047857 !important;
+      color: #ffffff !important;
+      box-shadow: 0 6px 20px rgba(5, 150, 105, 0.38) !important;
+    }
+  }
+
+  .auth-alt-btn {
+    background: #f1f5f9 !important;
+    border-color: rgba(15, 23, 42, 0.12) !important;
+    color: #0f172a !important;
+
+    &:hover {
+      background: #e2e8f0 !important;
+      border-color: var(--brand-primary, #059669) !important;
+      color: var(--brand-primary, #059669) !important;
+    }
+  }
+
+  .auth-divider {
+    &::before,
+    &::after {
+      background: rgba(15, 23, 42, 0.08) !important;
+    }
+
+    span {
+      color: #64748b !important;
+    }
+  }
+
+  .auth-benefits {
+    background: rgba(5, 150, 105, 0.06) !important;
+    border-color: rgba(5, 150, 105, 0.18) !important;
+
+    li {
+      color: #334155 !important;
+    }
   }
 }
