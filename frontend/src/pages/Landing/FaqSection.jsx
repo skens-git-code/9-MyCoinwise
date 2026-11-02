@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, HelpCircle, MessageSquare, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const FAQ_ITEMS = [
   {
@@ -35,7 +36,7 @@ export default function FaqSection() {
   const [openQuestion, setOpenQuestion] = useState(FAQ_ITEMS[0].question);
   const [categoryFilter, setCategoryFilter] = useState('All');
 
-  const filteredItems = React.useMemo(() => {
+  const filteredItems = useMemo(() => {
     if (categoryFilter === 'Security') {
       return FAQ_ITEMS.filter((item) => item.category === 'Security');
     }
@@ -50,33 +51,25 @@ export default function FaqSection() {
   };
 
   return (
-    <section id="faq" className="landing-faq">
+    <section id="faq" className="landing-faq" aria-labelledby="faq-heading">
       <div className="landing-container">
         <div className="section-header">
           <span className="section-pill">Got Questions?</span>
-          <h2>Frequently Asked Questions</h2>
+          <h2 id="faq-heading">Frequently Asked Questions</h2>
           <p>
             Everything you need to know about setting up your finances with MyCoinwise.
           </p>
 
           {/* Category Tabs */}
-          <div className="faq-category-pills" style={{ display: 'inline-flex', gap: 8, marginTop: '1.25rem', background: 'rgba(255,255,255,0.04)', padding: 4, borderRadius: 999, border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="faq-category-pills" role="radiogroup" aria-label="Filter FAQ topics">
             {['All', 'Security', 'Tax & Budgets'].map((cat) => (
               <button
                 key={cat}
                 type="button"
+                role="radio"
+                aria-checked={categoryFilter === cat}
                 onClick={() => setCategoryFilter(cat)}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: 999,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  background: categoryFilter === cat ? '#10b981' : 'transparent',
-                  color: categoryFilter === cat ? '#ffffff' : '#94a3b8',
-                  transition: 'all 0.2s ease'
-                }}
+                className={`filter-btn ${categoryFilter === cat ? 'active' : ''}`}
               >
                 {cat}
               </button>
@@ -91,8 +84,8 @@ export default function FaqSection() {
             const headerId = `faq-header-${idx}`;
 
             return (
-              <div 
-                key={item.question} 
+              <div
+                key={item.question}
                 className={`faq-item ${isOpen ? 'active' : ''}`}
               >
                 <button
@@ -103,12 +96,14 @@ export default function FaqSection() {
                   aria-expanded={isOpen}
                   aria-controls={contentId}
                 >
-                  <span>{item.question}</span>
-                  <ChevronDown 
-                    className={`faq-chevron ${isOpen ? 'rotate' : ''}`} 
-                    aria-hidden="true" 
-                    size={18}
-                  />
+                  <span className="question-text">{item.question}</span>
+                  <span className="chevron-pill">
+                    <ChevronDown
+                      className={`faq-chevron ${isOpen ? 'rotate' : ''}`}
+                      aria-hidden="true"
+                      size={18}
+                    />
+                  </span>
                 </button>
 
                 <AnimatePresence initial={false}>
@@ -121,7 +116,7 @@ export default function FaqSection() {
                       initial={prefersReduced ? false : { opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={prefersReduced ? { opacity: 0 } : { opacity: 0, height: 0 }}
-                      transition={{ duration: prefersReduced ? 0 : 0.3, ease: 'easeInOut' }}
+                      transition={{ duration: prefersReduced ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
                     >
                       <div className="faq-answer">
                         <p>{item.answer}</p>
@@ -132,6 +127,21 @@ export default function FaqSection() {
               </div>
             );
           })}
+        </div>
+
+        {/* Quick Help Card */}
+        <div className="faq-support-strip">
+          <div className="strip-left">
+            <MessageSquare size={18} className="text-emerald" aria-hidden="true" />
+            <div>
+              <strong>Have a tailored wealth scenario or migration query?</strong>
+              <p>Explore our transparent privacy manifesto and user guides.</p>
+            </div>
+          </div>
+          <Link to="/about" className="btn-landing-glass" style={{ padding: '0.45rem 1rem', fontSize: '0.84rem' }}>
+            <span>Learn More About Us</span>
+            <ArrowRight size={14} aria-hidden="true" />
+          </Link>
         </div>
       </div>
     </section>

@@ -600,6 +600,14 @@
   flex-direction: column !important;
   gap: 8px !important;
   scrollbar-width: thin;
+
+  &.is-virtualized {
+    overflow-y: hidden !important;
+    overflow-x: hidden !important;
+    padding: 6px 10px 0 10px !important;
+    display: block !important;
+    gap: 0 !important;
+  }
 }
 
 /* ── Transaction Item Cards (MODERNIZED) ────────────────────────── */

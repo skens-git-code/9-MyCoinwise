@@ -4,6 +4,15 @@ import { List } from 'react-window';
 const EMPTY_ROW_PROPS = Object.freeze({});
 
 /**
+ * Top-level static row renderer ensuring 100% stable component identity
+ * so react-window never tears down or remounts DOM nodes during updates.
+ */
+function VirtualizedRowRenderer({ index, style, renderRow, ...rest }) {
+  if (typeof renderRow !== 'function') return null;
+  return renderRow({ index, style, ...rest });
+}
+
+/**
  * High-performance virtualized list adapter wrapping react-window v2 `List`.
  * Provides seamless drop-in API compatibility for <FixedSizeList>
  * while supporting modern React 19 concurrent features.
@@ -20,17 +29,12 @@ export function FixedSizeList({
   overscanCount = 3,
   ...props
 }) {
-  const RowComponent = useMemo(() => {
-    const renderRow = typeof children === 'function' ? children : null;
-    return function VirtualizedRowItem({ index, style: itemStyle }) {
-      if (!renderRow) return null;
-      return renderRow({ index, style: itemStyle });
+  const mergedRowProps = useMemo(() => {
+    return {
+      renderRow: children,
+      ...(rowProps || EMPTY_ROW_PROPS),
     };
-  }, [children]);
-
-  // Stable empty object: a fresh `rowProps={{}}` literal on every render
-  // would re-render every virtualized row.
-  const stableRowProps = rowProps ?? EMPTY_ROW_PROPS;
+  }, [children, rowProps]);
 
   if (!itemCount || itemCount <= 0) return null;
 
@@ -38,8 +42,8 @@ export function FixedSizeList({
     <List
       rowCount={itemCount}
       rowHeight={itemSize}
-      rowComponent={RowComponent}
-      rowProps={stableRowProps}
+      rowComponent={VirtualizedRowRenderer}
+      rowProps={mergedRowProps}
       overscanCount={overscanCount}
       style={{ height, width, ...style }}
       className={className}

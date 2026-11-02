@@ -1682,7 +1682,7 @@ export default function Transactions() {
           </div>
 
           {/* ── List items ── */}
-          <div className="il-scrollable">
+          <div className={`il-scrollable ${filtered.length > 25 ? 'is-virtualized' : ''}`}>
             {transactions.length === 0 ? (
               <div className="il-empty">
                 <Wallet size={36} opacity={0.3} aria-hidden />
@@ -1706,7 +1706,7 @@ export default function Transactions() {
               </div>
             ) : filtered.length > 25 ? (
               <FixedSizeList
-                height={Math.min(filtered.length * 76, 680)}
+                height={isMobile ? Math.min(filtered.length * 76, 436) : Math.min(filtered.length * 76, 680)}
                 itemCount={filtered.length}
                 itemSize={76}
                 width="100%"

@@ -1,20 +1,25 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Heart, Lock } from 'lucide-react';
+import { Shield, Heart, Lock, ArrowUp } from 'lucide-react';
 import { CoinwiseMark, CoinwiseBadge } from '../../components/CoinwiseBrand';
 
 export default function LandingFooter() {
   const currentYear = new Date().getFullYear();
 
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
-    <footer className="landing-footer">
+    <footer className="landing-footer" role="contentinfo">
       <div className="landing-container">
         <div className="footer-top">
+          {/* Brand & Mission Column */}
           <div className="footer-brand-col">
-            <Link 
-              to="/welcome" 
+            <Link
+              to="/welcome"
               className="footer-brand"
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              onClick={scrollToTop}
               aria-label="MyCoinwise Home"
             >
               <CoinwiseBadge size={34} radius={10} variant="surface" aria-hidden="true">
@@ -25,7 +30,7 @@ export default function LandingFooter() {
             <p className="footer-tagline">
               The intelligent, telemetry-driven personal finance operating system designed to elevate net worth, optimize tax liabilities, and protect discretionary budgets.
             </p>
-            <div className="system-status">
+            <div className="system-status" aria-label="System status">
               <span className="status-ping" aria-hidden="true">
                 <span className="ping-dot" />
                 <span className="ping-glow" />
@@ -34,6 +39,7 @@ export default function LandingFooter() {
             </div>
           </div>
 
+          {/* Product Links */}
           <div className="footer-links-col">
             <h4 className="footer-heading">Product</h4>
             <ul className="footer-links">
@@ -45,6 +51,7 @@ export default function LandingFooter() {
             </ul>
           </div>
 
+          {/* Core Architecture */}
           <div className="footer-links-col">
             <h4 className="footer-heading">Features</h4>
             <ul className="footer-links">
@@ -56,6 +63,7 @@ export default function LandingFooter() {
             </ul>
           </div>
 
+          {/* Trust & Security */}
           <div className="footer-links-col">
             <h4 className="footer-heading">Trust & Security</h4>
             <div className="trust-card">
@@ -74,12 +82,22 @@ export default function LandingFooter() {
           </div>
         </div>
 
+        {/* Footer Bottom Bar */}
         <div className="footer-bottom">
           <div className="copyright">
             © {currentYear} MyCoinwise Inc. All rights reserved. Built for clarity and financial freedom.
           </div>
           <div className="footer-meta">
-            <span>Crafted with <Heart className="heart-icon" aria-label="care" size={14} /> for intelligent savers</span>
+            <span>Crafted with care <Heart className="heart-icon" aria-hidden="true" size={14} /> for intelligent savers</span>
+            <button
+              type="button"
+              className="footer-scroll-top-btn"
+              onClick={scrollToTop}
+              aria-label="Scroll back to top"
+            >
+              <ArrowUp size={14} aria-hidden="true" />
+              <span>Back to Top</span>
+            </button>
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Landing from '../pages/Landing/Landing';
 import InteractiveSimulator from '../pages/Landing/InteractiveSimulator';
@@ -54,14 +54,18 @@ describe('Public Landing Page Suite', () => {
     expect(screen.getByText(/All Systems Operational/i)).toBeInTheDocument();
   });
 
-  it('sets document title and restores it on unmount', () => {
+  it('sets document title and restores it on unmount, and enables viewport scrolling', () => {
     const originalTitle = document.title;
     const { unmount } = renderLandingPage();
 
     expect(document.title).toContain('MyCoinwise — Intelligent Personal Finance');
+    expect(document.documentElement.classList.contains('landing-viewport-scrollable')).toBe(true);
+    expect(document.body.classList.contains('landing-viewport-scrollable')).toBe(true);
 
     unmount();
     expect(document.title).toBe(originalTitle);
+    expect(document.documentElement.classList.contains('landing-viewport-scrollable')).toBe(false);
+    expect(document.body.classList.contains('landing-viewport-scrollable')).toBe(false);
   });
 
   it('allows interacting with the Wealth Simulator sliders and recalculates annualized metrics with a11y valuetext', () => {
@@ -154,5 +158,192 @@ describe('Public Landing Page Suite', () => {
     expect(drawer).toBeInTheDocument();
     expect(drawer).toHaveAttribute('aria-modal', 'true');
     expect(drawer).toHaveAttribute('id', 'landing-mobile-drawer');
+  });
+
+  it('renders defensible platform highlights ticker without unsubstantiated claims', () => {
+    renderLandingPage();
+
+    const tickerSection = screen.getByLabelText('Platform Highlights');
+    expect(tickerSection).toBeInTheDocument();
+
+    // Verify verified architectural claims within ticker
+    const utils = within(tickerSection);
+    expect(utils.getByText('Dual-Regime')).toBeInTheDocument();
+    expect(utils.getByText('Tax Engine Ready')).toBeInTheDocument();
+    expect(utils.getByText('Sub-100ms')).toBeInTheDocument();
+    expect(utils.getByText('Local Telemetry')).toBeInTheDocument();
+    expect(utils.getByText('100%')).toBeInTheDocument();
+    expect(utils.getByText('Zero Ad Selling')).toBeInTheDocument();
+    expect(utils.getByText('Automated')).toBeInTheDocument();
+    expect(utils.getByText('Budget Rollovers')).toBeInTheDocument();
+
+    // Fabricated marketing strings must NOT be present
+    expect(screen.queryByText('₹4.8B+')).not.toBeInTheDocument();
+    expect(screen.queryByText('99.98%')).not.toBeInTheDocument();
+    expect(screen.queryByText('4.9 / 5')).not.toBeInTheDocument();
+  });
+
+  it('uses accessible radiogroup patterns for ComparisonSection and FaqSection filters', () => {
+    renderLandingPage();
+
+    // Comparison radiogroup
+    const compRadioGroup = screen.getByRole('radiogroup', { name: /Filter comparison capabilities/i });
+    expect(compRadioGroup).toBeInTheDocument();
+    const allCompRadio = screen.getByRole('radio', { name: /All Capabilities/i });
+    const autoCompRadio = screen.getByRole('radio', { name: /Core Automation/i });
+    const secCompRadio = screen.getByRole('radio', { name: /Security & Privacy/i });
+
+    expect(allCompRadio).toHaveAttribute('aria-checked', 'true');
+    expect(autoCompRadio).toHaveAttribute('aria-checked', 'false');
+    expect(secCompRadio).toHaveAttribute('aria-checked', 'false');
+
+    // Click filter radio
+    fireEvent.click(autoCompRadio);
+    expect(allCompRadio).toHaveAttribute('aria-checked', 'false');
+    expect(autoCompRadio).toHaveAttribute('aria-checked', 'true');
+
+    // FAQ radiogroup
+    const faqRadioGroup = screen.getByRole('radiogroup', { name: /Filter FAQ topics/i });
+    expect(faqRadioGroup).toBeInTheDocument();
+    const allFaqRadio = screen.getByRole('radio', { name: /^All$/i });
+    const secFaqRadio = screen.getByRole('radio', { name: /^Security$/i });
+
+    expect(allFaqRadio).toHaveAttribute('aria-checked', 'true');
+    expect(secFaqRadio).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(secFaqRadio);
+    expect(allFaqRadio).toHaveAttribute('aria-checked', 'false');
+    expect(secFaqRadio).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('provides aria-pressed states on FeaturesBento interactive controls', () => {
+    renderLandingPage();
+
+    // Tax regime buttons
+    const newRegimeBtn = screen.getByRole('button', { name: /New Regime/i });
+    const oldRegimeBtn = screen.getByRole('button', { name: /Old Regime/i });
+    expect(newRegimeBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(oldRegimeBtn).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(oldRegimeBtn);
+    expect(newRegimeBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(oldRegimeBtn).toHaveAttribute('aria-pressed', 'true');
+
+    // Asset category selector buttons
+    const fundsBtn = screen.getByRole('button', { name: /Mutual Funds/i });
+    const goldBtn = screen.getByRole('button', { name: /Gold & Bullion/i });
+    const reBtn = screen.getByRole('button', { name: /Real Estate/i });
+
+    expect(fundsBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(goldBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(reBtn).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(goldBtn);
+    expect(fundsBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(goldBtn).toHaveAttribute('aria-pressed', 'true');
+
+    // Subscription audit toggle
+    const auditBtn = screen.getByRole('button', { name: /Mark Audited/i });
+    expect(auditBtn).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(auditBtn);
+    expect(screen.getByRole('button', { name: /Reset/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('renders footer with accessible decorative heart icon and natural phrasing', () => {
+    renderLandingPage();
+
+    expect(screen.getByText(/Crafted with care/i)).toBeInTheDocument();
+    expect(screen.getByText(/for intelligent savers/i)).toBeInTheDocument();
+    // Care shouldn't be an aria-label on the icon causing stutter
+    expect(screen.queryByLabelText('care')).not.toBeInTheDocument();
+  });
+
+  it('renders the Living Ledger in HeroSection with controls and stage headers', () => {
+    renderLandingPage();
+
+    // Verify stage column headers
+    expect(screen.getByText('1. Inflow')).toBeInTheDocument();
+    expect(screen.getByText('2. Categorized')).toBeInTheDocument();
+    expect(screen.getByText('3. Optimized')).toBeInTheDocument();
+
+    // Verify live telemetry routing counter and clock
+    expect(screen.getByText(/transactions intelligently routed/i)).toBeInTheDocument();
+
+    // Verify pause/resume control
+    const pauseToggle = screen.getByRole('button', { name: /pause living ledger stream/i });
+    expect(pauseToggle).toBeInTheDocument();
+    expect(pauseToggle).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(pauseToggle);
+    expect(screen.getByRole('button', { name: /resume living ledger stream/i })).toBeInTheDocument();
+  });
+
+  it('provides a shareable wealth trajectory button on InteractiveSimulator', () => {
+    render(
+      <MemoryRouter>
+        <InteractiveSimulator />
+      </MemoryRouter>
+    );
+
+    const shareBtn = screen.getByRole('button', { name: /share or copy this custom wealth plan/i });
+    expect(shareBtn).toBeInTheDocument();
+
+    fireEvent.click(shareBtn);
+    expect(screen.getByText(/Plan Link Copied/i)).toBeInTheDocument();
+  });
+
+  it('triggers the secret vault modal when entering the Konami code', () => {
+    renderLandingPage();
+
+    expect(screen.queryByRole('dialog', { name: /Secret Vault Unlocked/i })).not.toBeInTheDocument();
+
+    const sequence = [
+      'ArrowUp',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+      'ArrowLeft',
+      'ArrowRight',
+      'b',
+      'a'
+    ];
+
+    sequence.forEach((key) => {
+      fireEvent.keyDown(window, { key });
+    });
+
+    const vaultDialog = screen.getByRole('dialog', { name: /Founding Member/i });
+    expect(vaultDialog).toBeInTheDocument();
+    expect(screen.getByText(/You Found the Founding Member Protocol/i)).toBeInTheDocument();
+
+    // Close on escape
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: /Founding Member/i })).not.toBeInTheDocument();
+  });
+
+  it('supports interactive tax bracket switching in FeaturesBento', () => {
+    renderLandingPage();
+
+    const bracket12L = screen.getByRole('button', { name: '₹12L' });
+    const bracket20L = screen.getByRole('button', { name: '₹20L' });
+
+    expect(bracket12L).toBeInTheDocument();
+    expect(bracket20L).toBeInTheDocument();
+
+    fireEvent.click(bracket12L);
+    expect(bracket12L).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/At ₹12L: New Regime saves ₹45,500/i)).toBeInTheDocument();
+
+    fireEvent.click(bracket20L);
+    expect(bracket20L).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/At ₹20L: New Regime saves ₹96,200/i)).toBeInTheDocument();
+  });
+
+  it('displays the transparent pricing guarantee in the HeroSection', () => {
+    renderLandingPage();
+
+    expect(screen.getByText(/Free core tier forever · No credit card required · Zero hidden charges/i)).toBeInTheDocument();
   });
 });

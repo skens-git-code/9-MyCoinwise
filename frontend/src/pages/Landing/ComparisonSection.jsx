@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Check, X, Minus } from 'lucide-react';
+import { Check, X, Minus, Sparkles, Shield, Zap, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { CoinwiseMark, CoinwiseBadge } from '../../components/CoinwiseBrand';
 
 const COMPARISON_ROWS = [
   {
@@ -49,17 +51,25 @@ const COMPARISON_ROWS = [
 
 export default function ComparisonSection() {
   const prefersReduced = useReducedMotion();
-  const [filter, setFilter] = React.useState('all'); // 'all' | 'automation' | 'security'
+  const [filter, setFilter] = useState('all'); // 'all' | 'automation' | 'security'
 
-  const filteredRows = React.useMemo(() => {
+  const filteredRows = useMemo(() => {
     if (filter === 'automation') {
       return COMPARISON_ROWS.filter((r) =>
-        ['Automated Budget Rollover & Pipeline Links', 'Smart Subscription Autopilot & Renewal Alerts', 'Multi-Currency Conversion & Liquid Net Worth Tracking'].includes(r.feature)
+        [
+          'Automated Budget Rollover & Pipeline Links',
+          'Smart Subscription Autopilot & Renewal Alerts',
+          'Multi-Currency Conversion & Liquid Net Worth Tracking'
+        ].includes(r.feature)
       );
     }
     if (filter === 'security') {
       return COMPARISON_ROWS.filter((r) =>
-        ['Dual Tax Regime Comparator (Old vs New FY 2024-25)', 'Zero Ads, Zero Third-Party Financial Telemetry', 'Bank-Grade JWT Session Security & Bcrypt Hashing'].includes(r.feature)
+        [
+          'Dual Tax Regime Comparator (Old vs New FY 2024-25)',
+          'Zero Ads, Zero Third-Party Financial Telemetry',
+          'Bank-Grade JWT Session Security & Bcrypt Hashing'
+        ].includes(r.feature)
       );
     }
     return COMPARISON_ROWS;
@@ -91,96 +101,76 @@ export default function ComparisonSection() {
   };
 
   return (
-    <section id="comparison" className="landing-comparison">
+    <section id="comparison" className="landing-comparison" aria-labelledby="comparison-heading">
       <div className="landing-container">
         <div className="section-header">
           <span className="section-pill">Why MyCoinwise</span>
-          <h2>The Modern Standard for Financial Clarity</h2>
+          <h2 id="comparison-heading">The Modern Standard for Financial Clarity</h2>
           <p>
             Traditional banking apps sell you loans. Spreadsheets break under friction. MyCoinwise gives you real-time executive control.
           </p>
 
           {/* Interactive Filter Pills */}
-          <div className="comparison-filter-pills" style={{ display: 'inline-flex', gap: 8, marginTop: '1.25rem', background: 'rgba(255,255,255,0.04)', padding: 4, borderRadius: 999, border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="comparison-filter-pills" role="radiogroup" aria-label="Filter comparison capabilities">
             <button
               type="button"
+              role="radio"
+              aria-checked={filter === 'all'}
               onClick={() => setFilter('all')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 999,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                background: filter === 'all' ? '#10b981' : 'transparent',
-                color: filter === 'all' ? '#ffffff' : '#94a3b8',
-                transition: 'all 0.2s ease'
-              }}
+              className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
             >
               All Capabilities
             </button>
             <button
               type="button"
+              role="radio"
+              aria-checked={filter === 'automation'}
               onClick={() => setFilter('automation')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 999,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                background: filter === 'automation' ? '#10b981' : 'transparent',
-                color: filter === 'automation' ? '#ffffff' : '#94a3b8',
-                transition: 'all 0.2s ease'
-              }}
+              className={`filter-btn ${filter === 'automation' ? 'active' : ''}`}
             >
               Core Automation
             </button>
             <button
               type="button"
+              role="radio"
+              aria-checked={filter === 'security'}
               onClick={() => setFilter('security')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 999,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                background: filter === 'security' ? '#10b981' : 'transparent',
-                color: filter === 'security' ? '#ffffff' : '#94a3b8',
-                transition: 'all 0.2s ease'
-              }}
+              className={`filter-btn ${filter === 'security' ? 'active' : ''}`}
             >
-              Tax & Security
+              Security & Privacy
             </button>
           </div>
         </div>
 
-        <motion.div 
+        {/* Comparison Table Card */}
+        <motion.div
           className="comparison-table-wrapper"
           initial={prefersReduced ? false : { opacity: 0, y: 20 }}
           whileInView={prefersReduced ? undefined : { opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
+          viewport={{ once: true, margin: '-40px' }}
           transition={{ duration: 0.5 }}
         >
           <div className="table-responsive">
-            <table className="comparison-table">
+            <table className="comparison-table" aria-label="Comparison between MyCoinwise, Spreadsheets, and Traditional Banking Apps">
               <thead>
                 <tr>
-                  <th scope="col" className="col-feature">Capability</th>
-                  <th scope="col" className="col-highlight">
+                  <th scope="col" style={{ width: '42%' }}>Capability</th>
+                  <th scope="col" className="col-highlight" style={{ width: '22%' }}>
                     <div className="coinwise-badge">
-                      <span className="brand-dot" aria-hidden="true" />
+                      <CoinwiseBadge size={22} radius={6} variant="surface" aria-hidden="true">
+                        <CoinwiseMark size={13} color="#FC0100" aria-hidden="true" />
+                      </CoinwiseBadge>
                       <span>MyCoinwise</span>
+                      <span className="recommended-tag">Leader</span>
                     </div>
                   </th>
-                  <th scope="col" className="col-competitor">Manual Spreadsheets</th>
-                  <th scope="col" className="col-competitor">Traditional Banking Apps</th>
+                  <th scope="col" style={{ width: '18%' }}>Manual Sheets</th>
+                  <th scope="col" style={{ width: '18%' }}>Banking Apps</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRows.map((row) => (
-                  <tr key={row.feature}>
+                  <tr key={row.feature} className="comparison-row">
                     <td className="row-feature">
                       <strong>{row.feature}</strong>
                       <span className="feature-note">{row.note}</span>
@@ -198,6 +188,18 @@ export default function ComparisonSection() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Table Bottom Action Callout */}
+          <div className="comparison-table-footer">
+            <div className="footer-callout-text">
+              <Sparkles size={16} className="text-emerald" aria-hidden="true" />
+              <span>Ready to upgrade from fragmented spreadsheets to an intelligent operating system?</span>
+            </div>
+            <Link to="/register" className="btn-landing-primary" style={{ padding: '0.55rem 1.25rem', fontSize: '0.88rem' }}>
+              <span>Start Free Today</span>
+              <ArrowRight size={15} aria-hidden="true" />
+            </Link>
           </div>
         </motion.div>
       </div>

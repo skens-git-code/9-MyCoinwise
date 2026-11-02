@@ -44,24 +44,67 @@ import { rafThrottle } from '../utils/performanceOptimizer';
 const CATEGORIES = {
   income: ['Salary', 'Freelance', 'Allowance', 'Job', 'Gift', 'Sale', 'Investment', 'Other'],
   expense: [
-    'Food',
     'Groceries',
-    'Games',
-    'Clothes',
-    'Subscriptions',
-    'Tech',
+    'Food',
     'Transport',
     'Shopping',
+    'Bills',
+    'Rent',
+    'Utilities',
     'Entertainment',
     'Health',
     'Education',
-    'Bills',
-    'Rent',
-    'Travel',
     'Fitness',
-    'Utilities',
+    'Travel',
+    'Subscriptions',
+    'Tech',
+    'Games',
+    'Clothes',
     'Insurance',
     'Other',
+  ],
+};
+
+const CATEGORY_GROUPS = {
+  expense: [
+    {
+      group: 'Everyday Essentials',
+      items: ['Groceries', 'Food', 'Transport', 'Bills', 'Rent', 'Utilities'],
+    },
+    {
+      group: 'Lifestyle & Leisure',
+      items: ['Shopping', 'Entertainment', 'Clothes', 'Games', 'Fitness', 'Travel'],
+    },
+    {
+      group: 'Health & Personal',
+      items: ['Health', 'Insurance', 'Education'],
+    },
+    {
+      group: 'Tech & Subscriptions',
+      items: ['Subscriptions', 'Tech'],
+    },
+    {
+      group: 'General & Custom',
+      items: ['Other'],
+    },
+  ],
+  income: [
+    {
+      group: 'Primary Earnings',
+      items: ['Salary', 'Freelance', 'Job'],
+    },
+    {
+      group: 'Investments & Returns',
+      items: ['Investment', 'Sale'],
+    },
+    {
+      group: 'Transfers & Gifts',
+      items: ['Gift', 'Allowance'],
+    },
+    {
+      group: 'General & Custom',
+      items: ['Other'],
+    },
   ],
 };
 
@@ -144,9 +187,16 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     return '';
   });
 
-  const [category, setCategory] = useState(() => {
-    if (initialData?.category) return initialData.category;
-    return CATEGORIES[initialData?.type || 'expense'][0];
+  const [category, setCategory] = useState(() => initialData?.category || '');
+  const [isCustomCategory, setIsCustomCategory] = useState(() => {
+    if (!initialData?.category) return false;
+    const allStd = [...CATEGORIES.expense, ...CATEGORIES.income];
+    return !allStd.includes(initialData.category);
+  });
+  const [customCategoryInput, setCustomCategoryInput] = useState(() => {
+    if (!initialData?.category) return '';
+    const allStd = [...CATEGORIES.expense, ...CATEGORIES.income];
+    return allStd.includes(initialData.category) ? '' : initialData.category;
   });
 
   // ── Budget Linkage State (Wealth, Subscription, None, or Custom) ──
@@ -159,7 +209,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     return match ? (match.name || match.category) : null;
   }, [budgetId, budgets]);
 
-  const [note, setNote] = useState(initialData?.note || '');
+  const [note, setNote] = useState(() => initialData?.description || initialData?.note || '');
 
   const [date, setDate] = useState(() => {
     if (initialData?.date) {
@@ -203,6 +253,14 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const modalRef = useRef(null);
   const overlayPointerDownRef = useRef(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   /* —————————————————————————————————————
    * Sync Form With initialData Without Cascading Rerenders
@@ -220,8 +278,13 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       const nextType = initialData?.type || 'expense';
       setType(nextType);
       setAmount(initialData?.amount !== undefined && initialData?.amount !== null ? String(initialData.amount) : '');
-      setCategory(initialData?.category || CATEGORIES[nextType][0]);
-      setNote(initialData?.note || '');
+      const initCat = initialData?.category || '';
+      const allStd = [...(CATEGORIES[nextType] || []), ...CATEGORIES.expense, ...CATEGORIES.income];
+      const isCustom = Boolean(initCat && !allStd.includes(initCat));
+      setCategory(initCat);
+      setIsCustomCategory(isCustom);
+      setCustomCategoryInput(isCustom ? initCat : '');
+      setNote(initialData?.description || initialData?.note || '');
       setDate(initialData?.date ? formatDateForInput(initialData.date) : todayStr);
       setMerchant(initialData?.merchant || '');
       setBankName(initialData?.bank_name || '');
@@ -260,8 +323,14 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       setType(nextType);
       if (initialData && initialData.type === nextType && initialData.category) {
         setCategory(initialData.category);
+        const allStd = CATEGORIES[nextType] || [];
+        const isCustom = !allStd.includes(initialData.category);
+        setIsCustomCategory(isCustom);
+        setCustomCategoryInput(isCustom ? initialData.category : '');
       } else {
-        setCategory(CATEGORIES[nextType][0]);
+        setCategory('');
+        setIsCustomCategory(false);
+        setCustomCategoryInput('');
       }
     },
     [type, initialData]
@@ -275,6 +344,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
     const isDirty =
       !isEditMode &&
       (amount !== '' ||
+        category !== '' ||
         note.trim() !== '' ||
         merchant.trim() !== '' ||
         tags.trim() !== '' ||
@@ -292,6 +362,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   }, [
     isEditMode,
     amount,
+    category,
     note,
     merchant,
     tags,
@@ -431,9 +502,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
    * ————————————————————————————————————— */
   const popularCategories = useMemo(() => {
     if (type === 'income') {
-      return ['Salary', 'Freelance', 'Investment', 'Gift', 'Allowance'];
+      return ['Salary', 'Freelance', 'Investment', 'Gift', 'Job'];
     }
-    return ['Food', 'Groceries', 'Transport', 'Shopping', 'Bills', 'Entertainment'];
+    return ['Groceries', 'Food', 'Transport', 'Shopping', 'Bills', 'Subscriptions'];
   }, [type]);
 
   const filledDetailsCount = useMemo(() => {
@@ -473,8 +544,8 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
       setError('Please select a category.');
       return false;
     }
-    if (catStr.length > 60) {
-      setError('Category must be 60 characters or less.');
+    if (catStr.length > 80) {
+      setError('Category must be 80 characters or less.');
       return false;
     }
     if (!date) {
@@ -492,7 +563,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
   const resetForm = useCallback(() => {
     setType('expense');
     setAmount('');
-    setCategory(CATEGORIES.expense[0]);
+    setCategory('');
+    setIsCustomCategory(false);
+    setCustomCategoryInput('');
     setNote('');
     setDate(todayStr);
     setMerchant('');
@@ -526,10 +599,11 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
           _id: initialData?._id || initialData?.id,
           type,
           amount: amt,
-          category,
+          category: category.trim(),
           budget_category: budgetCategory && budgetCategory !== 'auto' ? budgetCategory : null,
           budget_id: budgetId || null,
           note: note.trim(),
+          description: note.trim(),
           date,
           merchant: merchant.trim(),
           bank_name: bankName.trim() || null,
@@ -551,11 +625,14 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
 
         await onSubmit(transactionData);
 
-        const isExistingEdit = Boolean(initialData && (initialData._id || initialData.id));
-        if (!isExistingEdit) {
-          resetForm();
+        if (isMountedRef.current) {
+          const isExistingEdit = Boolean(initialData && (initialData._id || initialData.id));
+          if (!isExistingEdit) {
+            resetForm();
+          }
         }
       } catch (err) {
+        if (!isMountedRef.current) return;
         const errorMsg =
           err?.response?.data?.error ||
           err?.response?.data?.errors?.[0]?.msg ||
@@ -564,7 +641,9 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
         setError(errorMsg);
         console.error('Submit error:', err);
       } finally {
-        setIsSubmitting(false);
+        if (isMountedRef.current) {
+          setIsSubmitting(false);
+        }
       }
     },
     [
@@ -777,23 +856,96 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                       </div>
                     </div>
 
-                    {/* ── Category Quick Chips + Dropdown ── */}
+                    {/* ── Category Option Selector ── */}
                     <div className="form-field tx-category-section">
                       <div className="tx-category-header">
-                        <label htmlFor="tx-category-select">{t?.('category') || 'Category'}</label>
-                        <span className="tx-current-cat-badge">
-                          {CATEGORY_EMOJIS[category] || '🏷️'} {category}
+                        <label htmlFor="tx-category-select">
+                          <Tag size={14} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 5 }} />
+                          {t?.('category') || 'Category'} <span className="tx-required-mark">*</span>
+                        </label>
+                        <span className={`tx-current-cat-badge ${!category ? 'unselected' : 'selected'}`}>
+                          {category ? (
+                            <>
+                              <span className="tx-cat-emoji" aria-hidden="true">
+                                {CATEGORY_EMOJIS[category] || '🏷️'}
+                              </span>
+                              <span>{category}</span>
+                            </>
+                          ) : (
+                            <span>Choose Category</span>
+                          )}
                         </span>
                       </div>
 
-                      {/* Quick category pills */}
+                      {/* Primary Category Option Selector Dropdown */}
+                      <div className="tx-select-wrapper">
+                        <select
+                          id="tx-category-select"
+                          value={isCustomCategory ? '__custom__' : category}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '__custom__') {
+                              setIsCustomCategory(true);
+                              setCategory(customCategoryInput || '');
+                            } else {
+                              setIsCustomCategory(false);
+                              setCategory(val);
+                            }
+                          }}
+                          disabled={isSubmitting}
+                          aria-required="true"
+                          className="tx-select-input"
+                        >
+                          <option value="">
+                            -- {t?.('select_category') || 'Select a category'} --
+                          </option>
+                          {CATEGORY_GROUPS[type].map((groupObj) => (
+                            <optgroup key={groupObj.group} label={groupObj.group}>
+                              {groupObj.items.map((catName) => (
+                                <option key={catName} value={catName}>
+                                  {(CATEGORY_EMOJIS[catName] ? `${CATEGORY_EMOJIS[catName]} ` : '') + catName}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                          {category && !CATEGORIES[type].includes(category) && (
+                            <option value={category}>
+                              🏷️ {category} (Custom)
+                            </option>
+                          )}
+                          <option value="__custom__">✨ + Enter Custom Category...</option>
+                        </select>
+                      </div>
+
+                      {/* Custom Category Input if selected */}
+                      {isCustomCategory && (
+                        <div className="tx-custom-cat-input-row">
+                          <input
+                            type="text"
+                            value={customCategoryInput}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCustomCategoryInput(val);
+                              setCategory(val.trim());
+                            }}
+                            placeholder="Enter custom category name (e.g. Pet Care, Charity)..."
+                            maxLength={80}
+                            disabled={isSubmitting}
+                            autoFocus
+                            className="tx-custom-cat-input"
+                            aria-label="Custom category name"
+                          />
+                        </div>
+                      )}
+
+                      {/* Quick-Pick Category Chips (Without any forced default) */}
                       <div
                         className="tx-cat-chips-scroll"
                         role="radiogroup"
-                        aria-label="Quick category selection"
+                        aria-label="Quick presets"
                       >
                         {popularCategories.map((catName) => {
-                          const isSelected = category === catName;
+                          const isSelected = !isCustomCategory && category === catName;
                           return (
                             <button
                               key={catName}
@@ -801,7 +953,10 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                               role="radio"
                               aria-checked={isSelected}
                               className={`tx-cat-chip ${isSelected ? 'active' : ''} ${type}`}
-                              onClick={() => setCategory(catName)}
+                              onClick={() => {
+                                setIsCustomCategory(false);
+                                setCategory(catName);
+                              }}
                               disabled={isSubmitting}
                             >
                               <span className="tx-cat-emoji" aria-hidden="true">
@@ -811,25 +966,21 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                             </button>
                           );
                         })}
-                      </div>
-
-                      {/* Full category dropdown */}
-                      <div className="tx-select-wrapper">
-                        <select
-                          id="tx-category-select"
-                          value={category}
-                          onChange={(e) => setCategory(e.target.value)}
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={isCustomCategory}
+                          className={`tx-cat-chip ${isCustomCategory ? 'active' : ''} ${type}`}
+                          onClick={() => {
+                            setIsCustomCategory(true);
+                            setCategory(customCategoryInput || '');
+                          }}
                           disabled={isSubmitting}
-                          aria-required="true"
-                          className="tx-select-input"
+                          title="Specify a custom category"
                         >
-                          <option value="">{t?.('category') || 'Select category'}...</option>
-                          {[...new Set([...CATEGORIES[type], category].filter(Boolean))].map((c) => (
-                            <option key={c} value={c}>
-                              {(CATEGORY_EMOJIS[c] ? `${CATEGORY_EMOJIS[c]}  ` : '') + c}
-                            </option>
-                          ))}
-                        </select>
+                          <span className="tx-cat-emoji" aria-hidden="true">✨</span>
+                          <span className="tx-cat-text">+ Custom</span>
+                        </button>
                       </div>
                     </div>
 
@@ -872,7 +1023,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                             disabled={isSubmitting}
                             title="Automatically assign to this transaction's category"
                           >
-                            <span className="tx-cat-text">Auto ({category})</span>
+                            <span className="tx-cat-text">Auto ({category || 'Unassigned'})</span>
                           </button>
 
                           <button
@@ -935,7 +1086,7 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                             disabled={isSubmitting}
                             className="tx-select-input"
                           >
-                            <option value="auto">Auto: Link to "{category}" Budget</option>
+                            <option value="auto">Auto: Link to "{category || 'Category'}" Budget</option>
                             <option value="Wealth">💎 Wealth (Assets / Liabilities / Investments)</option>
                             <option value="Subscriptions">🔁 Subscription (Recurring Services)</option>
                             <option value="none">🚫 Don't link to any budget</option>
@@ -965,71 +1116,72 @@ export default function TransactionForm({ isOpen = true, onClose, onSubmit, init
                       </div>
                     )}
 
-                    {/* ── Date & Description 2-Column Row ── */}
-                    <div className="transaction-form-grid">
-                      {/* Date */}
-                      <div className="form-field">
-                        <div className="tx-field-header-row">
-                          <label htmlFor="tx-date-input">{t?.('date') || 'Date'}</label>
-                          <div className="tx-quick-date-buttons">
-                            <button
-                              type="button"
-                              className={`tx-date-ghost-btn ${isToday ? 'active' : ''}`}
-                              onClick={handleSetToday}
-                              disabled={isSubmitting}
-                            >
-                              Today
-                            </button>
-                            <button
-                              type="button"
-                              className={`tx-date-ghost-btn ${isYesterday ? 'active' : ''}`}
-                              onClick={handleSetYesterday}
-                              disabled={isSubmitting}
-                            >
-                              Yesterday
-                            </button>
-                          </div>
-                        </div>
-                        <div className="tx-input-with-icon">
-                          <CalendarIcon size={16} className="tx-input-lead-icon" aria-hidden="true" />
-                          <input
-                            id="tx-date-input"
-                            type="date"
-                            value={date}
-                            max={todayStr}
-                            onChange={(e) => setDate(e.target.value)}
+                    {/* ── Date Field ── */}
+                    <div className="form-field tx-date-section">
+                      <div className="tx-field-header-row">
+                        <label htmlFor="tx-date-input">
+                          <CalendarIcon size={14} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 5 }} />
+                          {t?.('date') || 'Date'}
+                        </label>
+                        <div className="tx-quick-date-buttons">
+                          <button
+                            type="button"
+                            className={`tx-date-ghost-btn ${isToday ? 'active' : ''}`}
+                            onClick={handleSetToday}
                             disabled={isSubmitting}
-                            aria-required="true"
-                            className="date-input tx-input-pl"
-                          />
+                          >
+                            Today
+                          </button>
+                          <button
+                            type="button"
+                            className={`tx-date-ghost-btn ${isYesterday ? 'active' : ''}`}
+                            onClick={handleSetYesterday}
+                            disabled={isSubmitting}
+                          >
+                            Yesterday
+                          </button>
                         </div>
                       </div>
+                      <div className="tx-input-with-icon">
+                        <CalendarIcon size={16} className="tx-input-lead-icon" aria-hidden="true" />
+                        <input
+                          id="tx-date-input"
+                          type="date"
+                          value={date}
+                          max={todayStr}
+                          onChange={(e) => setDate(e.target.value)}
+                          disabled={isSubmitting}
+                          aria-required="true"
+                          className="date-input tx-input-pl"
+                        />
+                      </div>
+                    </div>
 
-                      {/* Description / Note */}
-                      <div className="form-field">
-                        <div className="tx-field-header-row">
-                          <label htmlFor="tx-note-input">
-                            {t?.('description') || 'Description'}{' '}
-                            <span className="tx-label-hint">({t?.('optional') || 'Optional'})</span>
-                          </label>
-                          {note.length > 0 && (
-                            <span className={`tx-char-counter ${note.length > 50 ? 'warning' : ''}`}>
-                              {note.length}/60
-                            </span>
-                          )}
-                        </div>
-                        <div className="tx-input-with-icon">
-                          <FileText size={16} className="tx-input-lead-icon" aria-hidden="true" />
-                          <input
-                            id="tx-note-input"
-                            value={note}
-                            onChange={(e) => setNote(e.target.value)}
-                            placeholder={t?.('what_was_this_for') || 'What was this for?'}
-                            maxLength={60}
-                            disabled={isSubmitting}
-                            className="tx-input-pl"
-                          />
-                        </div>
+                    {/* ── Detailed Description Field ── */}
+                    <div className="form-field tx-description-section">
+                      <div className="tx-field-header-row">
+                        <label htmlFor="tx-note-input">
+                          <FileText size={14} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 5 }} />
+                          {t?.('description') || 'Description'}{' '}
+                          <span className="tx-label-hint">({t?.('optional') || 'Optional · up to 500 chars'})</span>
+                        </label>
+                        <span className={`tx-char-counter ${note.length > 450 ? 'warning' : ''}`}>
+                          {note.length}/500
+                        </span>
+                      </div>
+                      <div className="tx-textarea-with-icon">
+                        <FileText size={16} className="tx-input-lead-icon" aria-hidden="true" />
+                        <textarea
+                          id="tx-note-input"
+                          name="description"
+                          value={note}
+                          onChange={(e) => setNote(e.target.value)}
+                          placeholder={t?.('what_was_this_for') || 'What was this for? Add details, items, or notes...'}
+                          maxLength={500}
+                          rows={2}
+                          disabled={isSubmitting}
+                          className="tx-input-pl tx-description-textarea"
+                        />
                       </div>
                     </div>
 

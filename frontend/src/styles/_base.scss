@@ -45,6 +45,31 @@ body {
   text-size-adjust: 100%;
 }
 
+/* ── Unconstrain document viewport for Landing & Public pages ── */
+html:has(.landing-page),
+body:has(.landing-page),
+html.landing-viewport-scrollable,
+body.landing-viewport-scrollable {
+  height: auto !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#root:has(.landing-page),
+body.landing-viewport-scrollable #root {
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow-y: visible !important;
+  overflow-x: hidden !important;
+}
+
 .icon-btn {
   width: 36px;
   height: 36px;
