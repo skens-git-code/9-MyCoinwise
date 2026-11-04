@@ -91,6 +91,13 @@ const safeWriteEmail = (email) => {
   } catch { /* ignore */ }
 };
 
+let dashboardPrefetched = false;
+const prefetchDashboard = () => {
+  if (dashboardPrefetched) return;
+  dashboardPrefetched = true;
+  import('./Dashboard').catch(() => { });
+};
+
 const isCancelError = (err) =>
   err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError';
 
@@ -198,10 +205,12 @@ export default function Login() {
 
   const prefersReduced = useReducedMotion();
 
-  // [FIX 10] `tr` is defined against the raw `t` function. If `t` itself is
-  // unstable across renders this callback will cascade into every handler —
-  // but at least the body is cheap and the fallback chain is stable.
-  const tr = useCallback((key, fallback) => (t ? t(key) : null) || fallback, [t]);
+  // [FIX 10] `tr` fallback logic safely preserves intentional empty strings.
+  const tr = useCallback((key, fallback) => {
+    if (!t) return fallback;
+    const translated = t(key);
+    return translated === undefined || translated === null ? fallback : translated;
+  }, [t]);
 
   /* ---------------- Refs ---------------- */
 
@@ -210,6 +219,8 @@ export default function Login() {
 
   // [FIX 6] Guard so repeated focus events don't fire multiple probes.
   const warmedRef = useRef(false);
+  const errorKindRef = useRef(null);
+  const bannerTimerRef = useRef(null);
 
   /* ---------------- State ---------------- */
 
@@ -236,6 +247,11 @@ export default function Login() {
 
   // [FIX 8] After N seconds of `loading`, surface a "waking server" hint.
   const [slowLoginHint, setSlowLoginHint] = useState(false);
+
+  /* ---------------- Sync errorKind ref ---------------- */
+  useEffect(() => {
+    errorKindRef.current = errorKind;
+  }, [errorKind]);
 
   /* ---------------- Viewport scroll ---------------- */
   useEffect(() => {
@@ -266,8 +282,10 @@ export default function Login() {
       setRateLimitSeconds((s) => {
         if (s <= 1) {
           clearInterval(timerId);
-          setError('');
-          setErrorKind(null);
+          if (errorKindRef.current === 'rate') {
+            setError('');
+            setErrorKind(null);
+          }
           return 0;
         }
         return s - 1;
@@ -294,7 +312,10 @@ export default function Login() {
       if (r && typeof r === 'object' && 'ok' in r) return r.ok === true;
       // Legacy shape: null = failed, anything else = success.
       return r != null;
-    } catch {
+    } catch (err) {
+      if (import.meta.env?.DEV) {
+        console.warn('[login] health probe failed', err);
+      }
       return false;
     }
   }, []);
@@ -304,6 +325,10 @@ export default function Login() {
     if (warmedRef.current) return;
     warmedRef.current = true;
     probeHealth(timeoutMs).then((ok) => {
+      if (bannerTimerRef.current) {
+        clearTimeout(bannerTimerRef.current);
+        bannerTimerRef.current = null;
+      }
       setServerWarm(ok);
       setShowConnectingBanner(false);
     });
@@ -314,12 +339,11 @@ export default function Login() {
 
     // Delay the "connecting" banner until the probe has clearly not resolved
     // quickly. If it comes back in 200ms the user never sees the banner.
-    const bannerTimer = setTimeout(() => {
-      if (!cancelled && serverWarm === null) setShowConnectingBanner(true);
+    bannerTimerRef.current = setTimeout(() => {
+      if (!cancelled) setShowConnectingBanner(true);
     }, CONNECTING_BANNER_GRACE_MS);
 
-    // Fire the initial probe with a generous timeout — this is the process
-    // that actually boots a sleeping backend.
+    // Fire the initial probe with a generous timeout — idempotent via ensureServerWarm.
     ensureServerWarm(60_000);
 
     // Prefetch dashboard chunks during idle so sign-in transition is instant.
@@ -327,20 +351,21 @@ export default function Login() {
       ? window.requestIdleCallback
       : (cb) => setTimeout(cb, 800);
     const cancelId = idleCallback(() => {
-      import('./Dashboard').catch(() => { });
+      prefetchDashboard();
       import('../components/AppLayout').catch(() => { });
     });
 
     return () => {
       cancelled = true;
-      clearTimeout(bannerTimer);
+      if (bannerTimerRef.current) {
+        clearTimeout(bannerTimerRef.current);
+        bannerTimerRef.current = null;
+      }
       if (typeof window !== 'undefined' && window.cancelIdleCallback) {
         window.cancelIdleCallback(cancelId);
       }
     };
-    // Intentionally mount-only: the probe is a one-shot wake-up call.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ensureServerWarm]);
 
   /* ---------------- [FIX 8] Slow-login hint timer ---------------- */
   useEffect(() => {
@@ -432,41 +457,43 @@ export default function Login() {
     e.preventDefault();
     if (loading || rateLimitSeconds > 0) return;
 
-    // [FIX 7] Paint the loading state FIRST. This runs synchronously before
-    // any await, so the button flips to "Authenticating…" on the same frame
-    // the click lands. Prevents the "dead button" pattern.
-    setLoading(true);
     setError('');
     setErrorKind(null);
 
-    try {
-      const effectiveEmail = (email || emailInputRef.current?.value || '').trim();
-      const effectivePassword = password || passwordInputRef.current?.value || '';
+    // [FIX 1] Validate FIRST — prevents the submit button from flashing "Authenticating…"
+    // momentarily if validation fails.
+    const effectiveEmail = (email || emailInputRef.current?.value || '').trim();
+    const effectivePassword = password || passwordInputRef.current?.value || '';
 
-      if (effectiveEmail && effectiveEmail !== email) setEmail(effectiveEmail);
-      if (effectivePassword && effectivePassword !== password) setPassword(effectivePassword);
+    const validationErrors = validateForm({
+      email: effectiveEmail,
+      password: effectivePassword,
+    });
 
-      const validationErrors = validateForm({
-        email: effectiveEmail,
-        password: effectivePassword,
+    if (Object.keys(validationErrors).length > 0) {
+      setTouched((prev) => {
+        const next = { ...prev };
+        Object.keys(validationErrors).forEach((k) => { next[k] = true; });
+        return next;
       });
+      const firstError = Object.keys(validationErrors)[0];
+      if (firstError === 'email') emailInputRef.current?.focus();
+      else if (firstError === 'password') passwordInputRef.current?.focus();
+      return;
+    }
 
-      if (Object.keys(validationErrors).length > 0) {
-        setTouched((prev) => {
-          const next = { ...prev };
-          Object.keys(validationErrors).forEach((k) => { next[k] = true; });
-          return next;
-        });
-        const firstError = Object.keys(validationErrors)[0];
-        if (firstError === 'email') emailInputRef.current?.focus();
-        else if (firstError === 'password') passwordInputRef.current?.focus();
-        return;
-      }
+    // [FIX 7] Paint the loading state synchronously before any await so the button
+    // flips to "Authenticating…" on the exact frame the click registers.
+    setLoading(true);
+
+    try {
+      if (effectiveEmail !== email) setEmail(effectiveEmail);
+      if (effectivePassword !== password) setPassword(effectivePassword);
 
       const trimmedEmail = effectiveEmail.toLowerCase();
 
       // [FIX 1] Wrap api.login in a hard 30s timeout regardless of what the
-      // api layer does. This is the single most important fix.
+      // api layer does. This bounds sleeping cold starts.
       const { token, user: loggedUser } = await withTimeout(
         api.login({
           email: trimmedEmail,
@@ -480,15 +507,18 @@ export default function Login() {
       if (rememberMe) safeWriteEmail(trimmedEmail);
       else safeWriteEmail('');
 
-      // [FIX 9] Await the context login — but the context implementation
-      // should NOT do its own network call (see AppContext patch note).
-      // If it does, wrap it with withTimeout inside the context.
-      await login(token, loggedUser, rememberMe);
+      // [FIX 5/9] Protect the context login call with a 15s timeout boundary to ensure
+      // any downstream context state/hydration never induces an unbounded hang.
+      await withTimeout(
+        Promise.resolve(login(token, loggedUser, rememberMe)),
+        15_000,
+        'context-login'
+      );
       // Navigation handled by the redirect effect above.
     } catch (err) {
       if (isCancelError(err)) return;
 
-      // [FIX 2] Timeout — clear message + background warm-up for next try.
+      // [FIX 2] Timeout — clear message + safe background warm-up for next try.
       if (isTimeoutError(err)) {
         setErrorKind('timeout');
         setError(
@@ -497,8 +527,8 @@ export default function Login() {
             'The server is starting up. This can take up to a minute on the first request — please try again in a moment.'
           )
         );
-        // Kick off a background warm-up so the next attempt is instant.
-        api?.healthCheck?.({ timeout: 60_000 }).catch(() => { });
+        // Kick off a safe background warm-up without throwing if healthCheck is unavailable.
+        Promise.resolve(api?.healthCheck?.({ timeout: 60_000 })).catch(() => { });
         return;
       }
 
@@ -635,7 +665,7 @@ export default function Login() {
               animate={{ opacity: 1, y: 0 }}
               exit={prefersReduced ? false : { opacity: 0, y: -8 }}
               transition={prefersReduced ? { duration: 0 } : undefined}
-              style={noticeStyle}
+              style={connectingNoticeStyle}
             >
               <RefreshCw
                 size={13}
@@ -657,7 +687,7 @@ export default function Login() {
               animate={{ opacity: 1, y: 0 }}
               exit={prefersReduced ? false : { opacity: 0, y: -8 }}
               transition={prefersReduced ? { duration: 0 } : undefined}
-              style={noticeStyle}
+              style={coldNoticeStyle}
             >
               <AlertTriangle size={13} aria-hidden="true" style={{ color: '#f59e0b' }} />
               <span>{tr('server_slow', 'Server may be slow. Login might take a moment.')}</span>
@@ -724,7 +754,7 @@ export default function Login() {
                   if (emailInputRef.current?.value && !email) {
                     setEmail(emailInputRef.current.value);
                   }
-                  import('./Dashboard').catch(() => { });
+                  prefetchDashboard();
                 }}
                 onBlur={handleBlur}
                 required
@@ -933,9 +963,9 @@ export default function Login() {
 }
 
 /* ============================================================
- * Shared notice style (used by both connecting + cold banners)
+ * Shared notice styles (used by both connecting + cold banners)
  * ============================================================ */
-const noticeStyle = {
+const connectingNoticeStyle = {
   display: 'flex', alignItems: 'center', gap: 8,
   fontSize: '0.80rem', padding: '8px 12px',
   background: 'rgba(59, 130, 246, 0.08)',
@@ -943,3 +973,10 @@ const noticeStyle = {
   borderRadius: 10, color: 'var(--text-secondary)',
   marginBottom: '0.75rem',
 };
+
+const coldNoticeStyle = {
+  ...connectingNoticeStyle,
+  background: 'rgba(245, 158, 11, 0.08)',
+  border: '1px solid rgba(245, 158, 11, 0.22)',
+};
+
