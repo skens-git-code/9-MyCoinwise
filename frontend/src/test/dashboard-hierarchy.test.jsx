@@ -78,17 +78,21 @@ describe('Dashboard Hierarchy & Correctness (Acceptance Criteria SC-1 to SC-6)',
     expect(sparkline.getAttribute('viewBox')).toBe('0 0 240 48');
   });
 
-  it('SC-2: caps Recent Transactions teaser to exactly 4 items and renders "View all transactions →"', () => {
-    renderDashboard();
+  it('SC-2: caps Recent Transactions teaser to exactly 6 items and renders "View all transactions →"', () => {
+    const sevenTxns = [
+      ...sampleTransactions,
+      { id: '7', amount: 500, type: 'expense', category: 'Coffee', date: '2026-09-07T10:00:00.000Z', is_deleted: false },
+    ];
+    renderDashboard({ transactions: sevenTxns });
     const recentCard = document.querySelector('.bento-recent');
     expect(recentCard).toBeTruthy();
 
     const txItems = recentCard.querySelectorAll('.bt-item');
-    expect(txItems.length).toBe(4);
+    expect(txItems.length).toBe(6);
 
     const viewAllLink = recentCard.querySelector('.bt-view-all-btn');
     expect(viewAllLink).toBeTruthy();
-    expect(viewAllLink.textContent).toContain('View all 6 transactions →');
+    expect(viewAllLink.textContent).toContain('View all 7 transactions →');
     expect(viewAllLink.getAttribute('href')).toBe('/transactions');
   });
 

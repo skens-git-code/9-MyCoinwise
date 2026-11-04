@@ -35,18 +35,33 @@
 .bento-dashboard {
   display: flex !important;
   flex-direction: column !important;
-  gap: 16px !important;
+  gap: 20px !important;
   width: 100% !important;
-  max-width: 1400px !important;
+  max-width: 1440px !important;
   margin: 0 auto !important;
   box-sizing: border-box !important;
   position: relative !important;
   z-index: 1 !important;
+  padding: 24px !important;
+  border-radius: 24px !important;
+  background: transparent !important;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 
   @media (max-width: 900px) {
-    gap: 12px !important;
-    padding-bottom: calc(115px + env(safe-area-inset-bottom, 24px)) !important;
+    gap: 16px !important;
+    padding: 16px 12px calc(115px + env(safe-area-inset-bottom, 24px)) 12px !important;
+    border-radius: 0 !important;
   }
+}
+
+/* Light Theme Dashboard Background */
+[data-theme="light"] .bento-dashboard {
+  background: radial-gradient(circle at 92% 0%, rgba(244, 114, 182, 0.08) 0%, rgba(192, 132, 252, 0.05) 24%, rgba(248, 250, 252, 0.95) 60%, #f1f5f9 100%) !important;
+}
+
+/* AMOLED Theme Dashboard Background */
+[data-theme="amoled"] .bento-dashboard {
+  background: #000000 !important;
 }
 
 /* ── Header ── */
@@ -580,6 +595,89 @@
   }
 }
 
+/* ── Premium 2-Column Grid Architecture (Left 60% / Right 40%) ── */
+.bento-dashboard .premium-dashboard-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) !important;
+  gap: 20px !important;
+  width: 100% !important;
+  align-items: start !important;
+  position: relative !important;
+
+  @media (max-width: 1024px) {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+}
+
+.bento-dashboard .dashboard-column-left {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 20px !important;
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+.dashboard-column-left > *:last-child,
+.dashboard-column-left .bento-spikes,
+.dashboard-column-left .bento-expense-spikes,
+.bento-dashboard .dashboard-column-left > *:last-child,
+.bento-dashboard .dashboard-column-left .bento-spikes,
+.bento-dashboard .dashboard-column-left .bento-expense-spikes {
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+}
+
+@media (max-width: 1440px) {
+  .bbtn-export-label {
+    display: none !important; /* Hide "Export CSV" text, show only icon */
+  }
+  .bento-user-profile .user-name {
+    display: none !important; /* Hide username, show only avatar */
+  }
+  .bento-actions {
+    gap: 6px !important;
+  }
+}
+
+.bento-dashboard .dashboard-column-right {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 20px !important;
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+/* Ensure recharts tooltips & transaction interactions are never clipped */
+.bento-dashboard .bento-chart,
+.bento-dashboard .bento-recent,
+.bento-dashboard .bento-expense-spikes {
+  overflow: visible !important;
+}
+
+/* Quick Stats Pill Color Semantics */
+.bento-dashboard .dqs-pill {
+  .dqs-val.neg {
+    color: #ef4444 !important;
+  }
+  .dqs-val.pos {
+    color: #10b981 !important;
+  }
+
+  .dqs-badge.neg {
+    background: rgba(239, 68, 68, 0.12) !important;
+    color: #ef4444 !important;
+    border: 1px solid rgba(239, 68, 68, 0.28) !important;
+  }
+}
+
+/* Hide transaction notes on mobile to prevent clipping */
+@media (max-width: 640px) {
+  .bento-dashboard .bt-note {
+    display: none !important;
+  }
+}
+
 /* ── Bento Grid Core Polish ── */
 .bento-dashboard .bento-grid {
   display: grid !important;
@@ -599,12 +697,12 @@
 }
 
 /* ── Base Card Architecture ── */
-.bento-dashboard .bento-tile {
-  background: var(--surface-0) !important;
-  border: 1px solid var(--glass-border) !important;
+.bento-dashboard .bento-tile,
+.bento-dashboard .stat-card,
+.bento-dashboard .glass,
+.bento-dashboard .premium-card {
   border-radius: 20px !important;
   padding: 20px !important;
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05) !important;
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
@@ -614,12 +712,28 @@
               border-color 0.25s ease !important;
   position: relative !important;
 
-  &:hover {
-    background: var(--surface-1) !important;
-    border-color: rgba(14, 165, 233, 0.35) !important;
-    box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.1) !important;
-    transform: translateY(-2px) !important;
+  @media (max-width: 640px) {
+    padding: 16px !important;
+    border-radius: 16px !important;
   }
+}
+
+/* Default / Dark Theme Card Aesthetics */
+:is([data-theme="dark"], .dark),
+:root:not([data-theme="light"]):not([data-theme="amoled"]) {
+  --text-primary: #f8fafc;
+  --surface-card: rgba(15, 23, 42, 0.75);
+}
+
+.bento-dashboard .bento-tile,
+.bento-dashboard .stat-card,
+.bento-dashboard .glass,
+.bento-dashboard .premium-card {
+  background: var(--surface-card, rgba(15, 23, 42, 0.75)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
 
   @media (max-width: 640px) {
     padding: 16px !important;
@@ -627,14 +741,178 @@
   }
 }
 
+/* Default / Dark Theme Card Aesthetics */
+.bento-dashboard .bento-tile,
+.bento-dashboard .stat-card,
+.bento-dashboard .glass,
+.bento-dashboard .premium-card {
+  background: var(--surface-card, rgba(15, 23, 42, 0.75)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+
+  &:hover {
+    background: rgba(26, 32, 44, 0.85) !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45) !important;
+    transform: translateY(-2px) !important;
+  }
+}
+
+/* Light Theme Card Aesthetics */
+[data-theme="light"] .bento-dashboard {
+  .bento-tile,
+  .stat-card,
+  .glass,
+  .premium-card {
+    background: rgba(255, 255, 255, 0.78) !important;
+    border: 1px solid rgba(255, 255, 255, 0.8) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.88) !important;
+      border-color: rgba(255, 255, 255, 0.95) !important;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.06) !important;
+      transform: translateY(-2px) !important;
+    }
+  }
+}
+
+/* AMOLED Theme Card Aesthetics */
+[data-theme="amoled"] .bento-dashboard {
+  .bento-tile,
+  .stat-card,
+  .glass,
+  .premium-card {
+    background: #050505 !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+
+    &:hover {
+      background: #0d0d0d !important;
+      border-color: rgba(255, 255, 255, 0.22) !important;
+      transform: translateY(-2px) !important;
+    }
+  }
+}
+
+/* ── Custom Dark Tooltip ── */
+.tooltip-trigger-wrap {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+
+  .custom-dark-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    background: rgba(15, 23, 42, 0.95) !important;
+    color: #f8fafc !important;
+    font-size: 0.76rem !important;
+    font-weight: 500 !important;
+    line-height: 1.4 !important;
+    padding: 8px 12px !important;
+    border-radius: 8px !important;
+    white-space: normal !important;
+    width: 220px !important;
+    text-align: center !important;
+    box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.35) !important;
+    z-index: 100 !important;
+    pointer-events: none !important;
+    transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      margin-left: -5px;
+      border-width: 5px;
+      border-style: solid;
+      border-color: rgba(15, 23, 42, 0.95) transparent transparent transparent;
+    }
+  }
+
+  &:hover .custom-dark-tooltip,
+  &:focus-within .custom-dark-tooltip {
+    visibility: visible !important;
+    opacity: 1 !important;
+    transform: translateX(-50%) translateY(0) !important;
+  }
+}
+
+/* ── User Profile Header Component ── */
+.bento-dashboard .bento-user-profile {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 4px 12px 4px 6px !important;
+  border-radius: 9999px !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+
+  .user-avatar {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50% !important;
+    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important;
+    color: #ffffff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-weight: 700 !important;
+    font-size: 0.85rem !important;
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.3) !important;
+  }
+
+  .user-name {
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    color: var(--text-primary) !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* Light Theme User Profile */
+[data-theme="light"] .bento-dashboard .bento-user-profile {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03) !important;
+
+  &:hover {
+    background: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+  }
+}
+
+/* Dark Theme & AMOLED User Profile */
+:is([data-theme="dark"], [data-theme="amoled"], .dark) .bento-dashboard .bento-user-profile,
+:root:not([data-theme="light"]) .bento-dashboard .bento-user-profile {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.12) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+  }
+}
+
 /* ── Hero Balance Card Redesign (FULL WIDTH ON MOBILE) ── */
 .bento-dashboard .bento-hero {
   grid-column: span 2 !important;
   width: 100% !important;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(14, 165, 233, 0.05) 50%, rgba(99, 102, 241, 0.06) 100%) !important;
-  border: 1px solid rgba(16, 185, 129, 0.25) !important;
-  border-top: 2px solid rgba(16, 185, 129, 0.6) !important;
-  box-shadow: 0 8px 32px -4px rgba(16, 185, 129, 0.12) !important;
   position: relative !important;
   overflow: hidden !important;
   justify-content: space-between !important;
@@ -807,6 +1085,194 @@
     width: 100% !important;
     min-height: auto !important;
   }
+}
+
+/* Light Theme Hero Card */
+[data-theme="light"] .bento-dashboard .bento-hero {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(14, 165, 233, 0.05) 50%, rgba(255, 255, 255, 0.85) 100%) !important;
+  border: 1px solid rgba(16, 185, 129, 0.25) !important;
+  border-top: 2px solid rgba(16, 185, 129, 0.6) !important;
+  box-shadow: 0 8px 32px -4px rgba(16, 185, 129, 0.12) !important;
+}
+
+/* Dark Theme Hero Card */
+:is([data-theme="dark"], .dark) .bento-dashboard .bento-hero,
+:root:not([data-theme="light"]):not([data-theme="amoled"]) .bento-dashboard .bento-hero {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(14, 165, 233, 0.08) 50%, rgba(18, 22, 28, 0.85) 100%) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  border-top: 2px solid rgba(16, 185, 129, 0.7) !important;
+  box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* AMOLED Theme Hero Card */
+[data-theme="amoled"] .bento-dashboard .bento-hero {
+  background: #050505 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-top: 2px solid rgba(16, 185, 129, 0.7) !important;
+  box-shadow: none !important;
+}
+
+/* ── Alert Banner Theme Styling ── */
+.bento-dashboard .dashboard-alert-banner {
+  border-radius: 16px !important;
+  padding: 12px 18px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  transition: all 0.2s ease !important;
+
+  .alert-icon-box {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    border-radius: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #ef4444 !important;
+    flex-shrink: 0 !important;
+  }
+
+  .alert-text {
+    font-size: 0.88rem !important;
+    line-height: 1.4 !important;
+    font-weight: 500 !important;
+  }
+
+  .alert-dismiss-btn {
+    background: transparent !important;
+    border: none !important;
+    cursor: pointer !important;
+    padding: 6px !important;
+    border-radius: 8px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+  }
+}
+
+/* Light Theme Alert Banner */
+[data-theme="light"] .bento-dashboard .dashboard-alert-banner {
+  background: #fff5f5 !important;
+  border: 1px solid #fca5a5 !important;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.06) !important;
+
+  .alert-icon-box {
+    background: rgba(239, 68, 68, 0.12) !important;
+  }
+  .alert-text {
+    color: #991b1b !important;
+    strong { color: #7f1d1d !important; }
+  }
+  .alert-dismiss-btn {
+    color: #991b1b !important;
+    &:hover { background: rgba(239, 68, 68, 0.1) !important; }
+  }
+}
+
+/* Dark Theme & AMOLED Alert Banner */
+:is([data-theme="dark"], [data-theme="amoled"], .dark) .bento-dashboard .dashboard-alert-banner,
+:root:not([data-theme="light"]) .bento-dashboard .dashboard-alert-banner {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(239, 68, 68, 0.32) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+
+  .alert-icon-box {
+    background: rgba(239, 68, 68, 0.2) !important;
+  }
+  .alert-text {
+    color: #fca5a5 !important;
+    strong { color: #f87171 !important; }
+  }
+  .alert-dismiss-btn {
+    color: #fca5a5 !important;
+    &:hover { background: rgba(239, 68, 68, 0.2) !important; }
+  }
+}
+
+/* ── Export Button & Menu ── */
+.bento-dashboard .bbtn-secondary.bbtn-export {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  height: 38px !important;
+  padding: 0 12px !important;
+  border-radius: 12px !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+[data-theme="light"] .bento-dashboard .bbtn-secondary.bbtn-export {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border: 1px solid rgba(203, 213, 225, 0.8) !important;
+  color: #475569 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+
+  &:hover {
+    background: #ffffff !important;
+  }
+}
+
+:is([data-theme="dark"], [data-theme="amoled"], .dark) .bento-dashboard .bbtn-secondary.bbtn-export,
+:root:not([data-theme="light"]) .bento-dashboard .bbtn-secondary.bbtn-export {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #f1f5f9 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.12) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+  }
+}
+
+.bento-dashboard .bento-export-menu {
+  position: absolute !important;
+  top: calc(100% + 6px) !important;
+  right: 0 !important;
+  border-radius: 12px !important;
+  padding: 6px !important;
+  min-width: 150px !important;
+  z-index: 60 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+[data-theme="light"] .bento-dashboard .bento-export-menu {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05) !important;
+
+  button {
+    color: #1e293b !important;
+    &:hover { background: #f1f5f9 !important; }
+  }
+}
+
+:is([data-theme="dark"], [data-theme="amoled"], .dark) .bento-dashboard .bento-export-menu,
+:root:not([data-theme="light"]) .bento-dashboard .bento-export-menu {
+  background: rgba(15, 23, 42, 0.96) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+
+  button {
+    color: #f8fafc !important;
+    &:hover { background: rgba(255, 255, 255, 0.08) !important; }
+  }
+}
+
+/* ── Universal Heading Accent Adaptation ── */
+.bento-dashboard .heading-accent {
+  color: var(--text-primary) !important;
 }
 
 /* ── Stat Cards (Income & Expenses) — ONLY NON-HERO CARDS SPAN 1 ── */
@@ -1448,3 +1914,280 @@
     }
   }
 }
+
+/* ── Alert Banner & Panel Height Fixes ── */
+.bento-dashboard .dashboard-alert-banner {
+  background: #fff5f5 !important;
+  border: 1px solid #fca5a5 !important;
+  border-radius: 16px !important;
+  padding: 12px 18px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.06) !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+
+  .alert-content {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 12px !important;
+  }
+
+  .alert-icon-box {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    border-radius: 8px !important;
+    background: rgba(239, 68, 68, 0.12) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #ef4444 !important;
+    flex-shrink: 0 !important;
+  }
+
+  .alert-text {
+    font-size: 0.88rem !important;
+    color: #991b1b !important;
+    line-height: 1.4 !important;
+    font-weight: 500 !important;
+
+    strong {
+      font-weight: 700 !important;
+    }
+  }
+
+  .alert-dismiss-btn {
+    background: transparent !important;
+    border: none !important;
+    color: #991b1b !important;
+    cursor: pointer !important;
+    padding: 6px !important;
+    border-radius: 8px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: background 0.15s ease !important;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.12) !important;
+    }
+  }
+}
+
+.bento-dashboard .bento-status-badges-panel,
+.bento-dashboard .bento-insights-panel {
+  height: auto !important;
+  flex: 0 0 auto !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVENESS OVERRIDE — Stack Everything Vertically
+   ═══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 900px) {
+  /* 1. Force the premium grid to stack */
+  .bento-dashboard .premium-dashboard-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .bento-dashboard .dashboard-column-left,
+  .bento-dashboard .dashboard-column-right {
+    width: 100% !important;
+    gap: 16px !important;
+  }
+
+  /* 2. Force the bento grid to stack to 1 column */
+  .bento-dashboard .bento-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* 3. Reset ALL span rules so cards go full width */
+  .bento-dashboard .bento-tile,
+  .bento-dashboard .stat-card,
+  .bento-dashboard .bento-hero,
+  .bento-dashboard .bento-income,
+  .bento-dashboard .bento-expense,
+  .bento-dashboard .bento-recent,
+  .bento-dashboard .bento-chart,
+  .bento-dashboard .bento-networth,
+  .bento-dashboard .bento-goal,
+  .bento-dashboard .bento-pie {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* 4. Fix Hero Balance font size */
+  .bento-dashboard .bento-hero .bh-mid .bh-balance-num {
+    font-size: clamp(1.75rem, 8vw, 2.4rem) !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    word-break: break-word !important;
+  }
+
+  /* 5. Fix header — let it wrap naturally */
+  .bento-dashboard .bento-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .bento-dashboard .bento-header .bento-actions {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  /* 6. Fix quick stats strip — stack to 3 columns */
+  .bento-dashboard .dashboard-quick-stats-strip {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 10px !important;
+    padding: 12px 14px !important;
+  }
+
+  .bento-dashboard .dashboard-quick-stats-strip .dqs-divider {
+    display: none !important;
+  }
+
+  /* 7. Fix filter bar — stack to 2 columns */
+  .bento-dashboard .bento-filters {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  .bento-dashboard .bento-filters .dashboard-presets {
+    grid-column: 1 / -1 !important;
+    display: flex !important;
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    padding-bottom: 4px !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+
+  .bento-dashboard .bento-filters .dashboard-presets::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .bento-dashboard .bento-filters .filter-select-wrap {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .bento-dashboard .bento-filters .filter-clear {
+    grid-column: 1 / -1 !important;
+    justify-content: center !important;
+  }
+}
+
+/* Extra-small phones (≤ 480px) */
+@media (max-width: 480px) {
+  .bento-dashboard {
+    padding: 12px 10px calc(100px + env(safe-area-inset-bottom, 20px)) 10px !important;
+    gap: 12px !important;
+    border-radius: 0 !important;
+  }
+
+  .bento-dashboard .bento-header .bento-title-wrap .bento-page-title {
+    font-size: 1.25rem !important;
+  }
+
+  .bento-dashboard .bento-header .bento-actions {
+    gap: 4px !important;
+  }
+
+  .bento-dashboard .bento-header .bento-actions .bbtn-icon,
+  .bento-dashboard .bento-header .bento-actions .export-group .bbtn-export {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    border-radius: 9px !important;
+    padding: 0 !important;
+  }
+
+  .bento-dashboard .bento-header .bento-actions .export-group .bbtn-export .bbtn-export-label {
+    display: none !important;
+  }
+
+  .bento-dashboard .bento-header .bento-actions .bbtn-pri,
+  .bento-dashboard .bento-header .bento-actions .bbtn-pri.bbtn-full {
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 10px !important;
+    font-size: 0.75rem !important;
+  }
+
+  .bento-dashboard .bento-header .bento-actions .bbtn-pri span {
+    display: inline !important;
+  }
+
+  .bento-dashboard .dashboard-quick-stats-strip {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .bento-dashboard .dashboard-quick-stats-strip .dqs-pill:last-child {
+    grid-column: 1 / -1 !important;
+    padding-top: 8px !important;
+    border-top: 1px solid var(--glass-border) !important;
+    margin-top: 4px !important;
+  }
+
+  .bento-dashboard .bento-tile,
+  .bento-dashboard .stat-card {
+    padding: 14px !important;
+    border-radius: 14px !important;
+  }
+
+  .bento-dashboard .bt-item {
+    padding: 8px 10px !important;
+    gap: 8px !important;
+  }
+
+  .bento-dashboard .bt-item .bt-icn {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    border-radius: 9px !important;
+  }
+
+  .bento-dashboard .bt-item .bt-info .bt-cat {
+    font-size: 0.82rem !important;
+  }
+
+  .bento-dashboard .bt-item .bt-amt-group .bt-amt {
+    font-size: 0.85rem !important;
+  }
+
+  .bento-dashboard .bt-item .bt-amt-group .bt-actions .bt-action-btn {
+    width: 24px !important;
+    height: 24px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVENESS OVERRIDE BLOCK (Stacking Guarantee)
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .premium-dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .bento-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .bento-tile, .stat-card {
+    grid-column: 1 / -1 !important;
+  }
+}
+

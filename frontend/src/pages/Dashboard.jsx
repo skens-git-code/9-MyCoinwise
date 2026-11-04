@@ -31,7 +31,7 @@ import {
   Wallet, Sparkles, Zap, Settings, Minus,
   Rocket, LineChart, Tag, RefreshCw, Share2,
   Edit3, Trash2, ChevronDown, AlertTriangle, X, PieChart as PieIcon,
-  Eye, EyeOff, Calendar,
+  Eye, EyeOff, Calendar, Info,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { api } from '../services/api';
@@ -41,6 +41,7 @@ import PropTypes from 'prop-types';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
+  BarChart, Bar,
 } from 'recharts';
 import AnimatedNumber from '../components/AnimatedNumber';
 import { useToast } from '../components/ToastProvider';
@@ -54,7 +55,6 @@ import {
 
 import { dedupeTransactions } from '../utils/transactionIntegrity';
 import { getAppDate } from '../utils/dateUtils';
-import { isMobileTier } from '../utils/deviceTier';
 
 /* ============================================================
  * Constants
@@ -465,6 +465,69 @@ StatCard.propTypes = {
   invertTrendColor: PropTypes.bool,
 };
 
+// ── Cashflow Floating Tooltip Component ──
+const CashflowFloatingTooltip = ({ active, payload, label, safeFmt, currencySymbol }) => {
+  if (!active || !payload || !payload.length) return null;
+  const inc = payload.find((p) => p.dataKey === 'income')?.value || 0;
+  const exp = payload.find((p) => p.dataKey === 'expense')?.value || 0;
+  const net = inc - exp;
+  return (
+    <div
+      style={{
+        background: 'rgba(15, 23, 42, 0.94)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        color: '#f8fafc',
+        padding: '10px 14px',
+        borderRadius: 12,
+        boxShadow: '0 10px 30px -5px rgba(0, 0, 0, 0.4)',
+        border: '1px solid rgba(255, 255, 255, 0.12)',
+        fontSize: '0.8rem',
+        minWidth: 170,
+        pointerEvents: 'none',
+      }}
+    >
+      <div style={{ fontWeight: 700, marginBottom: 6, color: '#e2e8f0', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
+          <span style={{ color: '#10b981', fontWeight: 600 }}>Income</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+            +{formatCurrencyText(inc, safeFmt, currencySymbol)}
+          </span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
+          <span style={{ color: '#ef4444', fontWeight: 600 }}>Expenses</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+            -{formatCurrencyText(exp, safeFmt, currencySymbol)}
+          </span>
+        </div>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 14,
+          borderTop: '1px solid rgba(255,255,255,0.1)',
+          paddingTop: 4,
+          marginTop: 2,
+        }}>
+          <span style={{ color: net >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>Net</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: net >= 0 ? '#10b981' : '#ef4444' }}>
+            {net >= 0 ? '+' : ''}{formatCurrencyText(net, safeFmt, currencySymbol)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+CashflowFloatingTooltip.propTypes = {
+  active: PropTypes.bool,
+  payload: PropTypes.array,
+  label: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  safeFmt: PropTypes.func,
+  currencySymbol: PropTypes.string,
+};
+
 // ── Skeleton placeholder shown while the dashboard is loading ──
 const DashboardSkeleton = () => (
   <div className="bento-dashboard" aria-label="Loading dashboard data" role="status">
@@ -699,8 +762,15 @@ export default function Dashboard() {
   const [hoveredPieIndex, setHoveredPieIndex] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [alertDismissed, setAlertDismissed] = useState(false);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
+
+  // ── Sanitize username: replace underscores with spaces ──
+  const rawUsername = user?.username || user?.name || (user?.email ? user.email.split('@')[0] : 'Username');
+  const sanitizedUsername = useMemo(() => String(rawUsername).replace(/_/g, ' ').trim() || 'Username', [rawUsername]);
+  const userAvatarChar = useMemo(() => sanitizedUsername.charAt(0).toUpperCase() || 'U', [sanitizedUsername]);
   const [showBalance, setShowBalance] = useState(() => {
     const saved = safeGetItem('budgeta_dash_show_balance', 'true');
     return saved !== 'false';
@@ -980,8 +1050,7 @@ export default function Dashboard() {
       }, 0);
     const netAvailable = Math.max(0, spendableBalance - recurringBills);
     const dailyRaw = netAvailable / daysRemaining;
-    const dailyCapped = Math.min(dailyRaw, Math.max(100, spendableBalance * 0.05));
-    return Math.max(0, dailyCapped);
+    return Math.max(0, dailyRaw);
   }, [spendableBalance, subscriptions, displayCurrency, fxRatesToInr]);
 
   // 7. Animated counter completion state for hero card glow
@@ -1199,14 +1268,35 @@ export default function Dashboard() {
     }));
   }, [sortedAscFiltered, locale, safeFmt, currencySymbol, dateFilter]);
 
-  // Clean uniform Y-axis configuration for Spending vs Income
-  const chartYAxisConfig = useMemo(() => {
-    if (chartData.length === 0) return { domain: [0, 'auto'], ticks: undefined };
-    const values = chartData.flatMap((d) => [d.income, d.expense]).filter((v) => Number.isFinite(v) && v > 0);
-    if (values.length === 0) return { domain: [0, 'auto'], ticks: undefined };
-    const maxVal = Math.max(...values);
-    return calculateUniformTicks(0, maxVal, 5);
+  // ── Balanced Y-axis domain calculation: maxIncome * 1.3 ──
+  const maxIncome = useMemo(() => {
+    if (!chartData || chartData.length === 0) return 1000;
+    const max = Math.max(...chartData.map((d) => Number(d.income) || 0), 0);
+    return max > 0 ? max : 1000;
   }, [chartData]);
+
+  // ── Expense Spikes mini-chart dataset (chronological: oldest -> newest) ──
+  const expenseSpikesData = useMemo(() => {
+    if (chartData && chartData.length > 0) {
+      // Pick days that have expenses or recent days, sorted chronologically (oldest -> newest)
+      const nonZero = chartData.filter((d) => d.expense > 0);
+      const points = nonZero.length >= 3 ? nonZero : chartData.slice(-6);
+      return points.slice(-7).map((d) => ({
+        name: d.name,
+        amount: Number(d.expense) || 0,
+      }));
+    }
+    return [
+      { name: 'Mon', amount: 140 },
+      { name: 'Tue', amount: 320 },
+      { name: 'Wed', amount: 890 },
+      { name: 'Thu', amount: 410 },
+      { name: 'Fri', amount: 650 },
+      { name: 'Sat', amount: 230 },
+    ];
+  }, [chartData]);
+
+  const isDeficit = rawBalance < 0 || financialMetrics.netSavings < 0 || savingsRate <= 0;
 
   // 13. Net worth over time (continuous daily running total)
   // The window always extends to today with a minimum 7-day span so that
@@ -1356,9 +1446,9 @@ export default function Dashboard() {
     [pieData]
   );
 
-  // 16. Grouped recent transactions (Clean teaser capped at 4 items)
+  // 16. Grouped recent transactions (Clean teaser capped at 6 items)
   const groupedTxns = useMemo(() => {
-    const list = sortedDescFiltered.slice(0, 4);
+    const list = sortedDescFiltered.slice(0, 6);
     const groups = [];
     let lastLabel = '';
     for (const tx of list) {
@@ -1388,10 +1478,6 @@ export default function Dashboard() {
   }, [t]);
 
   /* ---------------- Theme Colors ---------------- */
-  const balanceHex = rawBalance >= 0
-    ? (isDark ? '#f8fafc' : '#0f172a')
-    : (isDark ? '#f87171' : '#dc2626');
-
   const balanceTrendColor = rawBalance >= 0
     ? (isDark ? '#34d399' : '#10b981')
     : (isDark ? '#f87171' : '#dc2626');
@@ -1656,15 +1742,18 @@ export default function Dashboard() {
   return (
     <ErrorBoundary>
       <div className="bento-dashboard">
-        {/* ===================== Header ===================== */}
+        {/* ===================== Top Header Section ===================== */}
         <div className="bento-header">
           <div className="bento-title-wrap">
-            <h2 className="bento-page-title">{tr('dashboard', 'Dashboard')}</h2>
+            <h1 className="bento-page-title" style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
+              {tr('dashboard', 'Dashboard')}
+            </h1>
             <div className="dashboard-live-badge" title="Live financial overview">
               <span className="live-dot" />
               <span>Live Overview</span>
             </div>
           </div>
+
           <div className="bento-actions">
             {/* ── Refresh ── */}
             <motion.button
@@ -1693,35 +1782,92 @@ export default function Dashboard() {
               <Share2 size={16} />
             </motion.button>
 
-            {/* ── Export CSV ── */}
-            <div className="export-group">
+            {/* ── Grouped Export & CSV Dropdown Button ── */}
+            <div className="bento-export-dropdown-wrap" style={{ position: 'relative' }}>
               <motion.button
                 type="button"
-                className="bbtn-icon bbtn-export"
-                onClick={handleExportCSV}
+                className="bbtn-secondary bbtn-export"
+                onClick={() => setShowExportMenu((prev) => !prev)}
                 disabled={isExporting}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                title={isExporting ? 'Exporting…' : 'Export CSV'}
-                aria-label="Export CSV"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                title="Export data"
+                aria-label="Export options"
               >
-                {isExporting ? <RefreshCw size={15} className="spinning" /> : <Download size={15} />}
-                <span className="bbtn-export-label">CSV</span>
+                <Download size={15} style={{ color: isDark ? '#cbd5e1' : '#64748b' }} />
+                <span className="bbtn-export-label">Export CSV</span>
+                <ChevronDown size={13} style={{ color: isDark ? '#94a3b8' : '#94a3b8' }} />
               </motion.button>
+
+              {showExportMenu && (
+                <div className="bento-export-menu">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowExportMenu(false);
+                      handleExportCSV();
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: 'transparent',
+                      fontSize: '0.82rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      width: '100%',
+                    }}
+                  >
+                    <Download size={14} style={{ color: '#10b981' }} />
+                    <span>Download CSV</span>
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* ── Add transaction ── */}
+            {/* ── Solid Prominent Primary "+ Add Transaction" button ── */}
             <motion.button
               type="button"
-              className="bbtn-pri bbtn-full"
+              className="bbtn-pri bbtn-full bbtn-primary-prominent"
               onClick={handleOpenAddForm}
               title="Ctrl+N"
-              whileHover={{ scale: 1.02 }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                height: 38,
+                padding: '0 16px',
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color: '#ffffff',
+                fontSize: '0.84rem',
+                fontWeight: 700,
+                border: 'none',
+                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              whileHover={{ scale: 1.03, boxShadow: '0 6px 20px rgba(16, 185, 129, 0.45)' }}
               whileTap={{ scale: 0.97 }}
             >
-              <Plus size={16} />
+              <Plus size={16} strokeWidth={2.5} />
               <span>{tr('add_transaction', 'Add Transaction')}</span>
             </motion.button>
+
+            {/* ── User Profile (clean avatar, sanitized username, chevron) ── */}
+            <div className="bento-user-profile" title={`User: ${sanitizedUsername}`} style={{ flexShrink: 0 }}>
+              <div className="user-avatar" aria-hidden="true">
+                {userAvatarChar}
+              </div>
+              <span className="user-name" style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {sanitizedUsername}
+              </span>
+              <ChevronDown size={14} style={{ color: '#64748b', flexShrink: 0 }} />
+            </div>
           </div>
         </div>
 
@@ -1731,21 +1877,21 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          {/* ── Savings rate ── */}
           <div className="dqs-pill">
             <span className="dqs-label">
-              <TrendingUp size={13} style={{ color: '#10b981' }} aria-hidden="true" />
+              <TrendingUp size={13} style={{ color: savingsRate < 0 ? '#ef4444' : '#10b981' }} aria-hidden="true" />
               Savings Rate:
             </span>
-            <span className="dqs-val">{savingsRate.toFixed(1)}%</span>
-            <span className={`dqs-badge ${savingsRate >= 20 ? 'pos' : 'neutral'}`}>
-              {savingsRate >= 20 ? 'Healthy' : savingsRate > 0 ? 'Active' : 'Low'}
+            <span className={`dqs-val ${savingsRate < 0 ? 'neg' : savingsRate >= 20 ? 'pos' : ''}`}>
+              {savingsRate.toFixed(1)}%
+            </span>
+            <span className={`dqs-badge ${savingsRate < 0 ? 'neg' : savingsRate >= 20 ? 'pos' : 'neutral'}`}>
+              {savingsRate < 0 ? 'Deficit' : savingsRate >= 20 ? 'Healthy' : savingsRate > 0 ? 'Active' : 'Low'}
             </span>
           </div>
 
           <div className="dqs-divider" />
 
-          {/* ── Top expense category ── */}
           <div className="dqs-pill">
             <span className="dqs-label">
               <Tag size={13} style={{ color: '#0ea5e9' }} aria-hidden="true" />
@@ -1765,7 +1911,6 @@ export default function Dashboard() {
 
           <div className="dqs-divider" />
 
-          {/* ── Daily average spend (30d) ── */}
           <div className="dqs-pill">
             <span className="dqs-label">
               <Zap size={13} style={{ color: '#f59e0b' }} aria-hidden="true" />
@@ -1788,7 +1933,6 @@ export default function Dashboard() {
           role="search"
           aria-label="Filter transactions"
         >
-          {/* ── Quick Preset Pills ── */}
           <div className="dashboard-presets">
             {[
               { id: 'all', label: tr('all_time', 'All Time') },
@@ -1807,7 +1951,6 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* ── Date filter select (responsive & accessible) ── */}
           <div className="filter-select-wrap">
             <span className="filter-select-icon" aria-hidden="true">
               <Calendar size={13} />
@@ -1828,7 +1971,6 @@ export default function Dashboard() {
             </span>
           </div>
 
-          {/* ── Category filter select ── */}
           <div className="filter-select-wrap">
             <span className="filter-select-icon" aria-hidden="true">
               <Tag size={13} />
@@ -1847,7 +1989,6 @@ export default function Dashboard() {
             </span>
           </div>
 
-          {/* ── Clear filters (only when a filter is active) ── */}
           {(dateFilter !== 'all' || categoryFilter !== 'all') && (
             <button
               type="button"
@@ -1861,834 +2002,1010 @@ export default function Dashboard() {
           )}
         </motion.div>
 
-        {/* ===================== Bento grid ===================== */}
-        <motion.div className="bento-grid" variants={STAGGER} initial="hidden" animate="show">
-          {/* ── Ambient decorative orbs (Desktop only) ── */}
-          {!isMobileTier() && (
-            <>
-              <div className="ambient-orb orb-chart" style={{ top: '15%', right: '5%' }} aria-hidden="true" />
-              <div className="ambient-orb orb-goal" style={{ bottom: '10%', left: '10%' }} aria-hidden="true" />
-              <div className="ambient-orb orb-ai" style={{ bottom: '2%', right: '2%' }} aria-hidden="true" />
-            </>
-          )}
-
-          {/* ===================== Hero — Total Balance ===================== */}
-          <motion.div
-            variants={CARD_VARIANTS}
-            className={`bento-tile bento-hero stat-card glass ${balanceDone ? 'numberGlow' : ''}`}
-            role="region"
-            aria-label={`Total balance: ${formatCurrencyText(rawBalance, safeFmt, currencySymbol)}`}
-            aria-live="polite"
-          >
-            <div
-              className="blob-glow"
-              style={{
-                background: rawBalance >= 0
-                  ? 'rgba(16, 185, 129, 0.16)'
-                  : 'rgba(239, 68, 68, 0.16)',
-              }}
-            />
-            <div className="bh-top">
-              <span className="bh-label">
-                <span className="bh-indicator-dot" style={{ background: rawBalance >= 0 ? '#10b981' : '#ef4444' }} aria-hidden="true" />
-                {tr('total_balance', 'Total Balance')}
-              </span>
-              <div className="bh-top-actions">
+        {/* ===================== Premium 2-Column Grid (Left ~60% / Right ~40%) ===================== */}
+        <motion.div className="premium-dashboard-grid" variants={STAGGER} initial="hidden" animate="show">
+          {/* ───────────────── Column 1 (Left - Charts & Alerts ~60%) ───────────────── */}
+          <div className="dashboard-column-left">
+            {/* Alert Banner (Top) */}
+            {!alertDismissed && (
+              <div className="dashboard-alert-banner" role="alert">
+                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+                  <div className="alert-icon-box" aria-hidden="true">
+                    <AlertTriangle size={16} />
+                  </div>
+                  <div className="alert-text">
+                    <strong>Deficit</strong> — Your savings rate is in deficit. Consider reducing expenses.
+                  </div>
+                </div>
                 <button
                   type="button"
-                  className="bh-eye-btn"
-                  onClick={toggleShowBalance}
-                  title={showBalance ? 'Hide balance' : 'Show balance'}
-                  aria-label={showBalance ? 'Hide balance' : 'Show balance'}
+                  className="alert-dismiss-btn"
+                  onClick={() => setAlertDismissed(true)}
+                  aria-label="Dismiss alert"
+                  title="Dismiss alert"
                 >
-                  {showBalance ? <Eye size={16} /> : <EyeOff size={16} />}
+                  <X size={16} />
                 </button>
-                <div className="bh-icon-wrap" aria-hidden="true">
-                  <Wallet size={18} strokeWidth={2} />
-                </div>
               </div>
-            </div>
-            <div className="bh-mid">
-              <h2
-                className="bh-balance-num"
-                style={{
-                  fontSize: 'clamp(2.4rem, 5.5vw, 3.4rem)',
-                  fontWeight: 800,
-                  color: balanceHex,
-                  margin: '4px 0 8px',
-                  fontVariantNumeric: 'tabular-nums',
-                  letterSpacing: '-0.03em',
-                  lineHeight: 1.05,
-                }}
-              >
-                <span style={{ fontSize: 'inherit', color: 'inherit', fontWeight: 'inherit' }}>
-                  {loading && !hasLoadedOnce ? (
-                    <span className="balance-placeholder" style={{ opacity: 0.6 }}>--</span>
-                  ) : !showBalance ? (
-                    <span>••••••••</span>
+            )}
+
+            {/* Monthly Cashflow Chart */}
+            <motion.div variants={CARD_VARIANTS} className="bento-tile bento-chart glass">
+              <div className="bt-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h3 className="heading-accent" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                    Monthly Cashflow
+                  </h3>
+                  {(dateFilter !== 'all' || categoryFilter !== 'all') && (
+                    <span
+                      className="bt-badge"
+                      style={{
+                        background: 'rgba(245,158,11,0.12)',
+                        color: '#d97706',
+                        border: '1px solid rgba(245,158,11,0.25)',
+                        padding: '2px 8px',
+                        borderRadius: 9999,
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      filtered view
+                    </span>
+                  )}
+                </div>
+                <span className="bt-badge" style={{ fontSize: '0.74rem', color: isDark ? '#94a3b8' : '#64748b' }}>
+                  {tr('daily_trend', 'Daily Trend')}
+                </span>
+              </div>
+
+              <div className="bt-chart-wrap" style={{ flex: '1 1 auto', width: '100%', minHeight: 220, position: 'relative' }}>
+                {chartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200}>
+                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id={gInId} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#10b981" stopOpacity={0.32} />
+                          <stop offset="65%" stopColor="#10b981" stopOpacity={0.08} />
+                          <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id={gExId} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#ef4444" stopOpacity={0.28} />
+                          <stop offset="65%" stopColor="#ef4444" stopOpacity={0.06} />
+                          <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'} vertical={false} />
+                      <XAxis
+                        dataKey="name"
+                        interval={chartData.length > 8 ? Math.ceil(chartData.length / 5) : 0}
+                        tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 11 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        domain={[0, (dataMax) => Math.max(dataMax, maxIncome * 1.3)]}
+                        tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 10 }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={40}
+                        tickFormatter={(val) => {
+                          if (val === 0) return '0';
+                          const abs = Math.abs(val);
+                          const sign = val < 0 ? '-' : '';
+                          if (abs >= 1000) {
+                            const k = abs / 1000;
+                            return `${sign}${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+                          }
+                          return String(val);
+                        }}
+                      />
+                      <Tooltip content={<CashflowFloatingTooltip safeFmt={safeFmt} currencySymbol={currencySymbol} />} />
+                      <Legend
+                        wrapperStyle={{ paddingTop: 6, paddingBottom: 2, fontSize: '0.78rem', fontWeight: 700 }}
+                        formatter={(value) => (
+                          <span style={{ color: '#64748b' }}>
+                            {value === 'income' ? tr('income_label', 'Income') : tr('expense_label', 'Expenses')}
+                          </span>
+                        )}
+                      />
+                      <Area
+                        isAnimationActive={!prefersReducedMotion && !loading}
+                        animationBegin={100}
+                        animationDuration={900}
+                        animationEasing="ease-out"
+                        type="monotone"
+                        dataKey="income"
+                        stroke="#10b981"
+                        fill={`url(#${gInId})`}
+                        strokeWidth={2.5}
+                        strokeLinecap="round"
+                        dot={chartData.length <= 4 ? { r: 3, strokeWidth: 1.5, fill: '#10b981' } : { r: 0 }}
+                        activeDot={{ r: 6, strokeWidth: 0, fill: '#10b981' }}
+                      />
+                      <Area
+                        isAnimationActive={!prefersReducedMotion && !loading}
+                        animationBegin={100}
+                        animationDuration={900}
+                        animationEasing="ease-out"
+                        type="monotone"
+                        dataKey="expense"
+                        stroke="#ef4444"
+                        fill={`url(#${gExId})`}
+                        strokeWidth={2.5}
+                        strokeLinecap="round"
+                        dot={chartData.length <= 4 ? { r: 3, strokeWidth: 1.5, fill: '#ef4444' } : { r: 0 }}
+                        activeDot={{ r: 6, strokeWidth: 0, fill: '#ef4444' }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="bento-empty">
+                    <span className="bento-empty-icon" aria-hidden="true">
+                      <LineChart size={42} strokeWidth={1.5} opacity={0.5} />
+                    </span>
+                    <p className="bento-empty-title">{tr('story_starts', 'Your story starts here')}</p>
+                    <p className="bento-empty-sub">{tr('add_tx_timeline', 'Add transactions to see your spending timeline.')}</p>
+                  </div>
+                )}
+              </div>
+
+              {chartData.length > 0 && (
+                <div className="bt-chart-summary" role="note" style={{ marginTop: 10, fontSize: '0.82rem', color: '#64748b' }}>
+                  {periodExpenseGreaterThanIncome
+                    ? periodIncome > 0
+                      ? `⚠️ You spent ${expenseOfIncome.toFixed(0)}% of your income this period`
+                      : `⚠️ You had ${formatCurrencyText(periodExpense, safeFmt, currencySymbol)} in expenses with no income this period`
+                    : periodIncome > 0
+                      ? `✅ You saved ${savingsRate.toFixed(1)}% of your income this period`
+                      : 'Add income transactions to see your savings rate'}
+                </div>
+              )}
+            </motion.div>
+
+            {/* Income + Expense Row */}
+            <div className="dashboard-stats-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+              <StatCard
+                icon={ArrowUpRight}
+                label={tr('total_income', 'Total Income')}
+                value={
+                  loading && !hasLoadedOnce ? (
+                    <span style={{ opacity: 0.6 }}>--</span>
                   ) : (
                     <AnimatedNumber
-                      value={rawBalance}
-                      duration={900}
+                      value={rawIncome}
+                      duration={800}
                       format={formatAnimatedCurrency}
-                      onComplete={handleBalanceComplete}
                       skipAnimationOnMount
                     />
-                  )}
-                </span>
-              </h2>
-
-              {/* ── Sparkline (net trajectory) ── */}
-              {sparklineSvgPath && (
-                <div className="bh-sparkline-wrap" title="Net trajectory">
-                  <svg className="bh-sparkline-svg" viewBox="0 0 240 48" aria-hidden="true" style={{ width: '100%', height: '100%' }}>
-                    <path
-                      d={sparklineSvgPath}
-                      fill="none"
-                      stroke={balanceTrendColor}
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
+                  )
+                }
+                valueText={formatCurrencyText(rawIncome, safeFmt, currencySymbol)}
+                colorRgb={isDark ? '52, 211, 153' : '16, 185, 129'}
+                accentColor={isDark ? '#34d399' : '#10b981'}
+                subtitle={dateFilter === 'thisMonth' ? 'This Month' : dateFilter === '7days' ? 'Last 7 Days' : dateFilter === '30days' ? 'Last 30 Days' : 'Net Cashflow'}
+                trend={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.dir}
+                trendVal={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.val}
+                className="bento-income"
+              />
+              <StatCard
+                icon={ArrowDownRight}
+                label={tr('total_expenses', 'Total Expenses')}
+                value={
+                  loading && !hasLoadedOnce ? (
+                    <span style={{ opacity: 0.6 }}>--</span>
+                  ) : (
+                    <AnimatedNumber
+                      value={rawExpense}
+                      duration={800}
+                      format={formatAnimatedCurrency}
+                      skipAnimationOnMount
                     />
-                  </svg>
+                  )
+                }
+                valueText={formatCurrencyText(rawExpense, safeFmt, currencySymbol)}
+                colorRgb={isDark ? '248, 113, 113' : '220, 38, 38'}
+                accentColor={isDark ? '#f87171' : '#dc2626'}
+                subtitle={dateFilter === 'thisMonth' ? 'This Month' : dateFilter === '7days' ? 'Last 7 Days' : dateFilter === '30days' ? 'Last 30 Days' : 'Net Cashflow'}
+                trend={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.dir}
+                trendVal={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.val}
+                className="bento-expense"
+                invertTrendColor
+              />
+            </div>
+
+            {/* Expense Spikes Mini-Chart (Bottom Left) */}
+            <motion.div variants={CARD_VARIANTS} className="bento-tile bento-expense-spikes bento-spikes glass" style={{ width: '100%', boxSizing: 'border-box' }}>
+              <div className="bt-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h3 className="heading-accent" style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>
+                    Expense Spikes
+                  </h3>
+                  <span
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: 9999,
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      color: '#ef4444',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                    }}
+                  >
+                    Spikes
+                  </span>
+                </div>
+              </div>
+              <div className="bt-chart-wrap" style={{ height: 160, minHeight: 140, width: '100%' }}>
+                <ResponsiveContainer width="100%" height={160}>
+                  <BarChart data={expenseSpikesData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'} vertical={false} />
+                    <XAxis dataKey="name" tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis
+                      tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 9 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={35}
+                      tickFormatter={(val) => {
+                        if (val === 0) return '0';
+                        const abs = Math.abs(val);
+                        if (abs >= 1000) return `${(abs / 1000).toFixed(0)}k`;
+                        return String(val);
+                      }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: 'rgba(15, 23, 42, 0.92)',
+                        borderRadius: 8,
+                        color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        fontSize: '0.78rem',
+                        padding: '6px 10px',
+                      }}
+                      formatter={(val) => [formatCurrencyText(val, safeFmt, currencySymbol), 'Expense']}
+                    />
+                    <Bar
+                      dataKey="amount"
+                      fill="#ef4444"
+                      radius={[6, 6, 0, 0]}
+                      barSize={24}
+                      maxBarSize={32}
+                      isAnimationActive={!prefersReducedMotion}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+
+            {/* Net Worth Over Time Chart */}
+            <motion.div variants={CARD_VARIANTS} className="bento-tile bento-networth glass">
+              <div className="bt-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 className="heading-accent" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                  Net Worth Over Time
+                </h3>
+                <LineChart size={16} className="bt-icon-muted" aria-hidden="true" style={{ color: isDark ? '#94a3b8' : '#64748b' }} />
+              </div>
+
+              {isNetWorthFlat ? (
+                <div className="bento-empty" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, height: 'calc(100% - 36px)' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', fontSize: '0.82rem', fontWeight: 700, color: 'var(--brand-primary)' }}>
+                    <TrendingUp size={13} /> Steady at {formatCurrencyText(rawBalance, safeFmt, currencySymbol)}
+                  </div>
+                  <p className="bento-empty-sub" style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+                    Net worth has remained steady this period.
+                  </p>
+                </div>
+              ) : (
+                <div className="bt-chart-wrap" style={{ height: NETWORTH_CHART_HEIGHT, minHeight: 160 }}>
+                  <ResponsiveContainer width="100%" height={NETWORTH_CHART_HEIGHT} minWidth={1} minHeight={160}>
+                    <AreaChart data={netWorthData} margin={{ top: 5, right: 8, left: -5, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id={gNWId} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={balanceTrendColor} stopOpacity={0.2} />
+                          <stop offset="95%" stopColor={balanceTrendColor} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 9 }} axisLine={false} tickLine={false} />
+                      <YAxis
+                        domain={netWorthYAxisConfig.domain}
+                        ticks={netWorthYAxisConfig.ticks}
+                        tick={{ fill: '#64748b', fontSize: 9 }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={40}
+                        tickFormatter={(val) => {
+                          if (val === 0) return '0';
+                          const abs = Math.abs(val);
+                          const sign = val < 0 ? '-' : '';
+                          if (abs >= 1000) {
+                            const k = abs / 1000;
+                            return `${sign}${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+                          }
+                          return String(val);
+                        }}
+                      />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        formatter={(val) => formatCurrencyText(val, safeFmt, currencySymbol)}
+                      />
+                      <Area
+                        isAnimationActive={!prefersReducedMotion && !loading}
+                        animationBegin={100}
+                        animationDuration={900}
+                        animationEasing="ease-out"
+                        type="monotone"
+                        dataKey="balance"
+                        stroke={balanceTrendColor}
+                        fill={`url(#${gNWId})`}
+                        strokeWidth={2}
+                        dot={{ r: 2 }}
+                        activeDot={{ r: 5 }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
               )}
+            </motion.div>
 
-              {/* ── Net position + month-over-month trend ── */}
-              <div className="bh-bottom-meta">
-                <span className="bh-net-label">
-                  {tr('net_position', 'Net Position')}
-                </span>
-                {momMetrics.balance.val !== 'New' && dateFilter !== 'all' && (
-                  <div className={`bh-trend ${momMetrics.balance.dir}`}>
-                    {momMetrics.balance.dir === 'up' && <ArrowUpRight size={13} aria-hidden="true" />}
-                    {momMetrics.balance.dir === 'down' && <ArrowDownRight size={13} aria-hidden="true" />}
-                    {momMetrics.balance.dir === 'neutral' && <Minus size={13} aria-hidden="true" />}
-                    <span>{momMetrics.balance.val} vs last month</span>
+            {/* Recent Transactions */}
+            <motion.div variants={CARD_VARIANTS} className="bento-tile bento-recent glass">
+              <div className="bt-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 className="heading-accent" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {tr('recent_transactions', 'Recent Transactions')}
+                  </h3>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <NavLink to="/transactions" className="bt-link" title="View all transactions">View all →</NavLink>
+                    <button
+                      type="button"
+                      className="bt-icon-btn"
+                      onClick={handleOpenAddForm}
+                      title="Add transaction"
+                      aria-label="Add transaction"
+                    >
+                      <Plus size={16} />
+                    </button>
                   </div>
-                )}
               </div>
-            </div>
-          </motion.div>
 
-          {/* ===================== Income card ===================== */}
-          <StatCard
-            icon={ArrowUpRight}
-            label={tr('total_income', 'Total Income')}
-            value={
-              loading && !hasLoadedOnce ? (
-                <span style={{ opacity: 0.6 }}>--</span>
+              {parsedTransactions.length === 0 ? (
+                <EmptyTransactionState onAddClick={handleOpenAddForm} />
               ) : (
-                <AnimatedNumber
-                  value={rawIncome}
-                  duration={800}
-                  format={formatAnimatedCurrency}
-                  skipAnimationOnMount
-                />
-              )
-            }
-            valueText={formatCurrencyText(rawIncome, safeFmt, currencySymbol)}
-            colorRgb={isDark ? '52, 211, 153' : '16, 185, 129'}
-            accentColor={isDark ? '#34d399' : '#10b981'}
-            subtitle={tr('all_time', 'All time')}
-            trend={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.dir}
-            trendVal={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.val}
-            className="bento-income"
-          />
-
-          {/* ===================== Expense card ===================== */}
-          {/* Expense card — truthful trend direction; sentiment in CSS */}
-          <StatCard
-            icon={ArrowDownRight}
-            label={tr('total_expenses', 'Total Expenses')}
-            value={
-              loading && !hasLoadedOnce ? (
-                <span style={{ opacity: 0.6 }}>--</span>
-              ) : (
-                <AnimatedNumber
-                  value={rawExpense}
-                  duration={800}
-                  format={formatAnimatedCurrency}
-                  skipAnimationOnMount
-                />
-              )
-            }
-            valueText={formatCurrencyText(rawExpense, safeFmt, currencySymbol)}
-            colorRgb={isDark ? '248, 113, 113' : '220, 38, 38'}
-            accentColor={isDark ? '#f87171' : '#dc2626'}
-            subtitle={tr('all_time', 'All time')}
-            trend={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.dir}
-            trendVal={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.val}
-            className="bento-expense"
-            invertTrendColor
-          />
-
-          {/* ===================== Recent transactions ===================== */}
-          <motion.div variants={CARD_VARIANTS} className="bento-tile bento-recent glass">
-            <div className="bt-header">
-              <h3 className="heading-accent">{tr('recent_transactions', 'Recent Transactions')}</h3>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <NavLink to="/transactions" className="bt-link" title="View all transactions">View all →</NavLink>
-                <button
-                  type="button"
-                  className="bt-icon-btn"
-                  onClick={handleOpenAddForm}
-                  title="Add transaction"
-                  aria-label="Add transaction"
-                >
-                  <Plus size={16} />
-                </button>
-              </div>
-            </div>
-
-            {parsedTransactions.length === 0 ? (
-              <EmptyTransactionState onAddClick={handleOpenAddForm} />
-            ) : (
-              <>
-                {/* ── Grouped list (header rows + tx rows) ── */}
-                <div className="bt-list" role="list">
-                  {groupedTxns.map((item) => {
-                    if (item.type === 'header') {
+                <>
+                  <div className="bt-list" role="list">
+                    {groupedTxns.map((item) => {
+                      if (item.type === 'header') {
+                        return (
+                          <div key={item.key} className="bt-date-group" role="heading" aria-level={4}>
+                            {item.label}
+                          </div>
+                        );
+                      }
+                      const tx = item.data;
                       return (
-                        <div key={item.key} className="bt-date-group" role="heading" aria-level={4}>
-                          {item.label}
+                        <div key={item.key} className="bt-item" role="listitem">
+                          <div className={`bt-icn ${tx.type}`}>
+                            <span className="bt-cat-emoji" aria-hidden="true">
+                              {getCategoryEmojiOrIcon(tx.category, tx.type)}
+                            </span>
+                          </div>
+                          <div className="bt-info">
+                            <span className="bt-cat">{tx.category || 'Uncategorized'}</span>
+                            <span className="bt-date">{getDateLabel(tx.date, locale)}</span>
+                            {tx.note && tx.note.trim().toLowerCase() !== String(tx.category || '').trim().toLowerCase() && (
+                              <span className="bt-note">{tx.note}</span>
+                            )}
+                          </div>
+                          <div className="bt-amt-group">
+                            <div className={`bt-amt ${tx.type}`}>
+                              {tx.type === 'income' ? '+' : '-'}
+                              {formatCurrencyNode(tx.displayAmount, safeFmt, currencySymbol)}
+                            </div>
+                            <div className="bt-actions">
+                              <button
+                                type="button"
+                                className="bt-action-btn"
+                                onClick={() => handleEditTransaction(tx)}
+                                aria-label={`Edit transaction ${tx.category || ''}`.trim()}
+                                title="Edit"
+                              >
+                                <Edit3 size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                className="bt-action-btn danger"
+                                onClick={() => requestDeleteTransaction(tx)}
+                                aria-label={`Delete transaction ${tx.category || ''}`.trim()}
+                                title="Delete"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       );
-                    }
-                    const tx = item.data;
-                    return (
-                      <div key={item.key} className="bt-item" role="listitem">
-                        <div className={`bt-icn ${tx.type}`}>
-                          <span className="bt-cat-emoji" aria-hidden="true">
-                            {getCategoryEmojiOrIcon(tx.category, tx.type)}
-                          </span>
-                        </div>
-                        <div className="bt-info">
-                          <span className="bt-cat">{tx.category || 'Uncategorized'}</span>
-                          <span className="bt-date">{getDateLabel(tx.date, locale)}</span>
-                          {tx.note && tx.note.trim().toLowerCase() !== String(tx.category || '').trim().toLowerCase() && (
-                            <span className="bt-note">{tx.note}</span>
-                          )}
-                        </div>
-                        <div className="bt-amt-group">
-                          {/* ── Signed amount ── */}
-                          <div className={`bt-amt ${tx.type}`}>
-                            {tx.type === 'income' ? '+' : '-'}
-                            {formatCurrencyNode(tx.displayAmount, safeFmt, currencySymbol)}
-                          </div>
-
-                          {/* ── Edit / delete actions ── */}
-                          <div className="bt-actions">
-                            <button
-                              type="button"
-                              className="bt-action-btn"
-                              onClick={() => handleEditTransaction(tx)}
-                              aria-label={`Edit transaction ${tx.category || ''}`.trim()}
-                              title="Edit"
-                            >
-                              <Edit3 size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              className="bt-action-btn danger"
-                              onClick={() => requestDeleteTransaction(tx)}
-                              aria-label={`Delete transaction ${tx.category || ''}`.trim()}
-                              title="Delete"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* ── "View all" footer when more than 4 transactions exist ── */}
-                {sortedDescFiltered.length > 4 && (
-                  <div className="bt-footer-action">
-                    <NavLink
-                      to="/transactions"
-                      className="bt-view-all-btn"
-                    >
-                      View all {sortedDescFiltered.length} transactions →
-                    </NavLink>
+                    })}
                   </div>
-                )}
-              </>
-            )}
-          </motion.div>
 
-          {/* ===================== Spending vs Income chart ===================== */}
-          <motion.div variants={CARD_VARIANTS} className="bento-tile bento-chart glass">
-            <div className="bt-header">
-              <h3 className="heading-accent">{tr('spending_vs_income', 'Spending vs Income')}</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {/* ── Filter-active hint ── */}
-                {(dateFilter !== 'all' || categoryFilter !== 'all') && (
-                  <span
-                    className="bt-badge"
-                    style={{
-                      background: 'rgba(245,158,11,0.15)',
-                      color: 'var(--warning)',
-                      border: '1px solid rgba(245,158,11,0.3)',
-                    }}
-                  >
-                    filtered view
-                  </span>
-                )}
-                <span className="bt-badge">{tr('daily_trend', 'Daily Trend')}</span>
-              </div>
-            </div>
-
-            <div className="bt-chart-wrap" style={{ flex: '1 1 auto', width: '100%', minHeight: 220, position: 'relative' }}>
-              {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200}>
-                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
-                    <defs>
-                      {/* ── Income area gradient ── */}
-                      <linearGradient id={gInId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.32} />
-                        <stop offset="65%" stopColor="#10b981" stopOpacity={0.08} />
-                        <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                      </linearGradient>
-
-                      {/* ── Expense area gradient ── */}
-                      <linearGradient id={gExId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#ef4444" stopOpacity={0.28} />
-                        <stop offset="65%" stopColor="#ef4444" stopOpacity={0.06} />
-                        <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'} vertical={false} />
-                    <XAxis
-                      dataKey="name"
-                      interval={chartData.length > 8 ? Math.ceil(chartData.length / 5) : 0}
-                      tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      domain={chartYAxisConfig.domain}
-                      ticks={chartYAxisConfig.ticks}
-                      tick={{ fill: 'var(--text-secondary)', fontSize: 10 }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={40}
-                      tickFormatter={(val) => {
-                        if (val === 0) return '0';
-                        const abs = Math.abs(val);
-                        const sign = val < 0 ? '-' : '';
-                        if (abs >= 1000) {
-                          const k = abs / 1000;
-                          return `${sign}${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
-                        }
-                        return String(val);
-                      }}
-                    />
-                    <Tooltip
-                      contentStyle={tooltipStyle}
-                      labelFormatter={(label, payload) => {
-                        const detail = payload?.[0]?.payload?.detail;
-                        return detail ? `${label} · ${detail}` : label;
-                      }}
-                      formatter={(val, name) => [
-                        formatCurrencyText(val, safeFmt, currencySymbol),
-                        name === 'income' ? tr('income_label', 'Income') : tr('expense_label', 'Expenses'),
-                      ]}
-                    />
-                    <Legend
-                      wrapperStyle={{ paddingTop: 6, paddingBottom: 2, fontSize: '0.78rem', fontWeight: 700 }}
-                      formatter={(value) => (
-                        <span style={{ color: 'var(--text-secondary)' }}>
-                          {value === 'income' ? tr('income_label', 'Income') : tr('expense_label', 'Expenses')}
-                        </span>
-                      )}
-                    />
-
-                    {/* ── Income series ── */}
-                    <Area
-                      isAnimationActive={!prefersReducedMotion && !loading}
-                      animationBegin={100}
-                      animationDuration={900}
-                      animationEasing="ease-out"
-                      type="monotone"
-                      dataKey="income"
-                      stroke="#10b981"
-                      fill={`url(#${gInId})`}
-                      strokeWidth={2.5}
-                      strokeLinecap="round"
-                      dot={chartData.length <= 4 ? { r: 3, strokeWidth: 1.5, fill: '#10b981' } : { r: 0 }}
-                      activeDot={{ r: 6, strokeWidth: 0, fill: '#10b981' }}
-                    />
-
-                    {/* ── Expense series ── */}
-                    <Area
-                      isAnimationActive={!prefersReducedMotion && !loading}
-                      animationBegin={100}
-                      animationDuration={900}
-                      animationEasing="ease-out"
-                      type="monotone"
-                      dataKey="expense"
-                      stroke="#ef4444"
-                      fill={`url(#${gExId})`}
-                      strokeWidth={2.5}
-                      strokeLinecap="round"
-                      dot={chartData.length <= 4 ? { r: 3, strokeWidth: 1.5, fill: '#ef4444' } : { r: 0 }}
-                      activeDot={{ r: 6, strokeWidth: 0, fill: '#ef4444' }}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                /* ── Empty state when there is no chart data ── */
-                <div className="bento-empty">
-                  <span className="bento-empty-icon" aria-hidden="true">
-                    <LineChart size={42} strokeWidth={1.5} opacity={0.5} />
-                  </span>
-                  <p className="bento-empty-title">{tr('story_starts', 'Your story starts here')}</p>
-                  <p className="bento-empty-sub">{tr('add_tx_timeline', 'Add transactions to see your spending timeline.')}</p>
-                </div>
-              )}
-            </div>
-
-            {/* ── Insight summary under the chart ── */}
-            {chartData.length > 0 && (
-              <div className="bt-chart-summary" role="note">
-                {periodExpenseGreaterThanIncome
-                  ? periodIncome > 0
-                    ? `⚠️ You spent ${expenseOfIncome.toFixed(0)}% of your income this period`
-                    : `⚠️ You had ${formatCurrencyText(periodExpense, safeFmt, currencySymbol)} in expenses with no income this period`
-                  : periodIncome > 0
-                    ? `✅ You saved ${savingsRate.toFixed(1)}% of your income this period`
-                    : 'Add income transactions to see your savings rate'}
-              </div>
-            )}
-          </motion.div>
-
-          {/* ===================== Net worth over time ===================== */}
-          <motion.div variants={CARD_VARIANTS} className="bento-tile bento-networth glass">
-            <div className="bt-header">
-              <h3 className="heading-accent">Net Worth Over Time</h3>
-              <LineChart size={16} className="bt-icon-muted" aria-hidden="true" />
-            </div>
-
-            {isNetWorthFlat ? (
-              /* ── Steady state: flat net worth ── */
-              <div className="bento-empty" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, height: 'calc(100% - 36px)' }}>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', fontSize: '0.82rem', fontWeight: 700, color: 'var(--brand-primary)' }}>
-                  <TrendingUp size={13} /> Steady at {formatCurrencyText(rawBalance, safeFmt, currencySymbol)}
-                </div>
-                <p className="bento-empty-sub" style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
-                  Net worth has remained steady this period.
-                </p>
-              </div>
-            ) : (
-              /* ── Net worth chart ── */
-              <div className="bt-chart-wrap" style={{ height: NETWORTH_CHART_HEIGHT, minHeight: 160 }}>
-                <ResponsiveContainer width="100%" height={NETWORTH_CHART_HEIGHT} minWidth={1} minHeight={160}>
-                  <AreaChart data={netWorthData} margin={{ top: 5, right: 8, left: -5, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id={gNWId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={balanceTrendColor} stopOpacity={0.2} />
-                        <stop offset="95%" stopColor={balanceTrendColor} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <YAxis
-                      domain={netWorthYAxisConfig.domain}
-                      ticks={netWorthYAxisConfig.ticks}
-                      tick={{ fill: 'var(--text-secondary)', fontSize: 9 }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={40}
-                      tickFormatter={(val) => {
-                        if (val === 0) return '0';
-                        const abs = Math.abs(val);
-                        const sign = val < 0 ? '-' : '';
-                        if (abs >= 1000) {
-                          const k = abs / 1000;
-                          return `${sign}${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
-                        }
-                        return String(val);
-                      }}
-                    />
-                    <Tooltip
-                      contentStyle={tooltipStyle}
-                      formatter={(val) => formatCurrencyText(val, safeFmt, currencySymbol)}
-                    />
-                    <Area
-                      isAnimationActive={!prefersReducedMotion && !loading}
-                      animationBegin={100}
-                      animationDuration={900}
-                      animationEasing="ease-out"
-                      type="monotone"
-                      dataKey="balance"
-                      stroke={balanceTrendColor}
-                      fill={`url(#${gNWId})`}
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                      activeDot={{ r: 5 }}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </motion.div>
-
-          {/* ===================== Savings goal ===================== */}
-          <motion.div variants={CARD_VARIANTS} className="bento-tile bento-goal glass">
-            <div className="bt-header">
-              <h3 className="heading-accent">{primaryGoal?.name || tr('savings_goal', 'Savings Goal')}</h3>
-              <Target size={16} className="bt-icon-muted" aria-hidden="true" />
-            </div>
-
-            {hasSavingsGoal ? (
-              <>
-                {/* ── Goal HUD: percentage + overflow badge + fraction ── */}
-                <div className="bg-hud">
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                    <span className="bg-pct">
-                      {`${activeGoalTarget > 0 ? Math.floor((activeGoalSaved / activeGoalTarget) * 100) : 0}%`}
-                    </span>
-                    {activeGoalSaved > activeGoalTarget && (
-                      <span
-                        className="bg-overflow-badge"
-                        style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          padding: '2px 8px',
-                          borderRadius: 999,
-                          background: 'rgba(16, 185, 129, 0.18)',
-                          color: '#10b981',
-                          border: '1px solid rgba(16, 185, 129, 0.35)',
-                        }}
+                  {sortedDescFiltered.length > 6 && (
+                    <div className="bt-footer-action">
+                      <NavLink
+                        to="/transactions"
+                        className="bt-view-all-btn"
                       >
-                        +{Math.floor((activeGoalSaved / activeGoalTarget) * 100) - 100}% surplus
-                      </span>
-                    )}
-                  </div>
-                  <span className="bg-frac">
-                    {formatCurrencyNode(Math.max(0, activeGoalSaved), safeFmt, currencySymbol)} / {formatCurrencyNode(activeGoalTarget, safeFmt, currencySymbol)}
-                  </span>
-                </div>
-
-                {/* ── Animated progress bar ── */}
-                <div className="bg-track" style={{ position: 'relative', overflow: 'visible' }}>
-                  <motion.div
-                    className={`bg-fill ${goalProgress < 15 ? 'breathing' : ''}`}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(100, goalProgress)}%` }}
-                    transition={{
-                      duration: prefersReducedMotion ? 0 : 1.5,
-                      delay: prefersReducedMotion ? 0 : 0.5,
-                    }}
-                  >
-                    <div className="bg-glow-dot" />
-                  </motion.div>
-
-                  {/* ── Overflow glow when the goal is exceeded ── */}
-                  {activeGoalSaved > activeGoalTarget && (
-                    <div
-                      className="bg-overflow-glow"
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        right: 0,
-                        bottom: 0,
-                        width: 24,
-                        background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.7))',
-                        pointerEvents: 'none',
-                      }}
-                    />
+                        View all {sortedDescFiltered.length} transactions →
+                      </NavLink>
+                    </div>
                   )}
-                </div>
+                </>
+              )}
+            </motion.div>
+          </div>
 
-                {/* ── Goal nudge + top-up button ── */}
-                <div className="bg-goal-actions-row">
-                  <p className="bg-nudge">
-                    {activeGoalSaved > activeGoalTarget
-                      ? `Goal met · +${formatCurrencyText(activeGoalSaved - activeGoalTarget, safeFmt, currencySymbol)} surplus`
-                      : goalProgress >= 100
-                        ? '🎉 Target achieved!'
-                        : goalProgress < 15
-                          ? 'Every bit counts. Keep going!'
-                          : `${(100 - goalProgress).toFixed(0)}% to reach target`}
-                  </p>
-                  <NavLink
-                    to="/goals"
-                    className="bg-topup-btn"
-                    style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                    title="Manage savings goals"
-                  >
-                    <Plus size={12} /> Top Up
-                  </NavLink>
-                </div>
-
-                {/* ── Safe-to-spend footer ── */}
-                <p className="bg-safe-spend">
-                  Safe to spend: <strong>{formatCurrencyText(safeToSpend, safeFmt, currencySymbol)}</strong> / day after recurring bills
-                </p>
-              </>
-            ) : (
-              /* ── Empty state: no savings goal set ── */
-              <div className="bento-empty">
-                <span className="bento-empty-icon" aria-hidden="true">
-                  <Target size={42} strokeWidth={1.5} opacity={0.5} />
-                </span>
-                <p className="bento-empty-title">{tr('set_savings_goal', 'Set a savings goal')}</p>
-                <p className="bento-empty-sub">{tr('track_progress_target', 'Track your progress toward a savings target.')}</p>
-                <NavLink
-                  to="/goals"
-                  className="bento-empty-cta pulse-encouragement"
-                  style={{ textDecoration: 'none' }}
-                >
-                  <Target size={13} /> {tr('set_goal_cta', 'Set Goal →')}
-                </NavLink>
-              </div>
-            )}
-          </motion.div>
-
-          {/* ===================== Pie chart (category breakdown) ===================== */}
-          <motion.div variants={CARD_VARIANTS} className="bento-tile bento-pie glass">
-            <div className="bt-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <h3 className="heading-accent">{tr('breakdown', 'Breakdown')}</h3>
-                {pieTotal > 0 && (
+          {/* ───────────────── Column 2 (Right - Summary & Insights ~40%) ───────────────── */}
+          <div className="dashboard-column-right">
+            {/* Net Position Card (Hero) */}
+            <motion.div
+              variants={CARD_VARIANTS}
+              className={`bento-tile bento-hero stat-card glass ${balanceDone ? 'numberGlow' : ''}`}
+              role="region"
+              aria-label={`Net Position: ${formatCurrencyText(rawBalance, safeFmt, currencySymbol)}`}
+              aria-live="polite"
+            >
+              <div
+                className="blob-glow"
+                style={{
+                  background: rawBalance >= 0
+                    ? 'rgba(16, 185, 129, 0.12)'
+                    : 'rgba(239, 68, 68, 0.14)',
+                }}
+              />
+              <div className="bh-top">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div className="tooltip-trigger-wrap">
+                    <span className="bh-label" style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span className="bh-indicator-dot" style={{ background: isDeficit ? '#ef4444' : '#10b981' }} aria-hidden="true" />
+                      {tr('net_cashflow', 'Net Cashflow')}
+                      <Info size={14} className="info-icon" style={{ color: isDark ? '#94a3b8' : '#64748b', cursor: 'pointer' }} aria-label="Net Cashflow Information" />
+                    </span>
+                    <div className="custom-dark-tooltip">
+                      This figure excludes incoming savings. It indicates your net cash flow.
+                    </div>
+                  </div>
                   <span
                     style={{
                       fontSize: '0.72rem',
                       fontWeight: 700,
                       padding: '2px 8px',
-                      borderRadius: 999,
-                      background: 'rgba(239, 68, 68, 0.12)',
-                      color: '#ef4444',
-                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                      borderRadius: 9999,
+                      background: isDeficit ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                      color: isDeficit ? '#ef4444' : '#10b981',
+                      border: `1px solid ${isDeficit ? 'rgba(239, 68, 68, 0.28)' : 'rgba(16, 185, 129, 0.28)'}`,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
                     }}
                   >
-                    {formatCurrencyText(pieTotal, safeFmt, currencySymbol)}
+                    {isDeficit ? 'Deficit' : 'Surplus'}
                   </span>
-                )}
-                {categoryFilter !== 'all' && (
+                </div>
+
+                <div className="bh-top-actions">
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCategoryFilter('all');
-                    }}
+                    className="bh-eye-btn"
+                    onClick={toggleShowBalance}
+                    title={showBalance ? 'Hide balance' : 'Show balance'}
+                    aria-label={showBalance ? 'Hide balance' : 'Show balance'}
+                  >
+                    {showBalance ? <Eye size={16} /> : <EyeOff size={16} />}
+                  </button>
+                  <div className="bh-icon-wrap" aria-hidden="true" style={{ color: isDeficit ? '#ef4444' : '#10b981' }}>
+                    <Wallet size={18} strokeWidth={2} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bh-mid">
+                <h2
+                  className="bh-balance-num"
+                  style={{
+                    fontSize: 'clamp(2.4rem, 5.5vw, 3.4rem)',
+                    fontWeight: 800,
+                    color: isDeficit ? '#ef4444' : '#10b981',
+                    margin: '6px 0 8px',
+                    fontVariantNumeric: 'tabular-nums',
+                    letterSpacing: '-0.03em',
+                    lineHeight: 1.05,
+                  }}
+                >
+                  <span style={{ fontSize: 'inherit', color: 'inherit', fontWeight: 'inherit' }}>
+                    {loading && !hasLoadedOnce ? (
+                      <span className="balance-placeholder" style={{ opacity: 0.6 }}>--</span>
+                    ) : !showBalance ? (
+                      <span>••••••••</span>
+                    ) : (
+                      <AnimatedNumber
+                        value={rawBalance}
+                        duration={900}
+                        format={formatAnimatedCurrency}
+                        onComplete={handleBalanceComplete}
+                        skipAnimationOnMount
+                      />
+                    )}
+                  </span>
+                </h2>
+
+                {sparklineSvgPath && (
+                  <div className="bh-sparkline-wrap" title="Net trajectory">
+                    <svg className="bh-sparkline-svg" viewBox="0 0 240 48" aria-hidden="true" style={{ width: '100%', height: '100%' }}>
+                      <path
+                        d={sparklineSvgPath}
+                        fill="none"
+                        stroke={isDeficit ? '#ef4444' : '#10b981'}
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                )}
+
+                <div className="bh-bottom-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                  <span className="bh-net-label" style={{ fontSize: '0.82rem', color: isDark ? '#94a3b8' : '#64748b', fontWeight: 600 }}>
+                    {dateFilter === 'thisMonth' ? 'This Month'
+                      : dateFilter === '7days' ? 'Last 7 Days'
+                        : dateFilter === '30days' ? 'Last 30 Days'
+                          : 'Net Cashflow'}
+                  </span>
+                  {momMetrics.balance.val !== 'New' && dateFilter !== 'all' && (
+                    <div className={`bh-trend ${momMetrics.balance.dir}`}>
+                      {momMetrics.balance.dir === 'up' && <ArrowUpRight size={13} aria-hidden="true" />}
+                      {momMetrics.balance.dir === 'down' && <ArrowDownRight size={13} aria-hidden="true" />}
+                      {momMetrics.balance.dir === 'neutral' && <Minus size={13} aria-hidden="true" />}
+                      <span>{momMetrics.balance.val} vs last month</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Insights Panel */}
+            <motion.div variants={CARD_VARIANTS} className="bento-tile bento-insights-panel glass">
+              <div className="bt-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <h3 className="heading-accent" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                  Insights
+                </h3>
+                <Sparkles size={16} style={{ color: '#6366f1' }} aria-hidden="true" />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 14px',
+                  borderRadius: 14,
+                  background: isDark ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.08)',
+                  border: isDark ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(16, 185, 129, 0.18)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 10, background: 'rgba(16, 185, 129, 0.16)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981',
+                    }}>
+                      <TrendingUp size={16} strokeWidth={2.4} />
+                    </div>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Income:</span>
+                  </div>
+                  <span style={{ fontSize: '1rem', fontWeight: 700, color: '#10b981', fontVariantNumeric: 'tabular-nums' }}>
+                    +{formatCurrencyText(periodIncome, safeFmt, currencySymbol)}
+                  </span>
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 14px',
+                  borderRadius: 14,
+                  background: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+                  border: isDark ? '1px solid rgba(239, 68, 68, 0.25)' : '1px solid rgba(239, 68, 68, 0.18)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 10, background: 'rgba(239, 68, 68, 0.16)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444',
+                    }}>
+                      <TrendingDown size={16} strokeWidth={2.4} />
+                    </div>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Expenses:</span>
+                  </div>
+                  <span style={{ fontSize: '1rem', fontWeight: 700, color: '#ef4444', fontVariantNumeric: 'tabular-nums' }}>
+                    -{formatCurrencyText(periodExpense, safeFmt, currencySymbol)}
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Status Badges Panel */}
+            <motion.div variants={CARD_VARIANTS} className="bento-tile bento-status-badges-panel glass">
+              <div className="bt-header" style={{ marginBottom: 14 }}>
+                <h3 className="heading-accent" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                  Status badges
+                </h3>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Income</span>
+                  <span style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    padding: '3px 12px',
+                    borderRadius: 9999,
+                    background: periodIncome > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(148, 163, 184, 0.12)',
+                    color: periodIncome > 0 ? '#10b981' : 'var(--text-muted)',
+                    border: periodIncome > 0 ? '1px solid rgba(16, 185, 129, 0.28)' : '1px solid rgba(148, 163, 184, 0.28)',
+                  }}>
+                    {periodIncome > 0 ? 'Good' : 'Zero'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderTop: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(226, 232, 240, 0.8)' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Expenses</span>
+                  <span style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    padding: '3px 12px',
+                    borderRadius: 9999,
+                    background: periodExpense > periodIncome ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                    color: periodExpense > periodIncome ? '#ef4444' : '#10b981',
+                    border: periodExpense > periodIncome ? '1px solid rgba(239, 68, 68, 0.28)' : '1px solid rgba(16, 185, 129, 0.28)',
+                  }}>
+                    {periodExpense > periodIncome ? 'High' : 'Normal'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderTop: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(226, 232, 240, 0.8)' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{isDeficit ? 'Deficit' : 'Surplus'}</span>
+                  <span style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    padding: '3px 12px',
+                    borderRadius: 9999,
+                    background: isDeficit ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                    color: isDeficit ? '#ef4444' : '#10b981',
+                    border: isDeficit ? '1px solid rgba(239, 68, 68, 0.28)' : '1px solid rgba(16, 185, 129, 0.28)',
+                  }}>
+                    {isDeficit ? 'Deficit' : 'Surplus'}
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Savings Goal Progress */}
+            <motion.div variants={CARD_VARIANTS} className="bento-tile bento-goal glass">
+              <div className="bt-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 className="heading-accent" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                  {primaryGoal?.name || tr('savings_goal', 'Savings Goal')}
+                </h3>
+                <Target size={16} className="bt-icon-muted" aria-hidden="true" style={{ color: isDark ? '#94a3b8' : '#64748b' }} />
+              </div>
+
+              {hasSavingsGoal ? (
+                <>
+                  <div className="bg-hud">
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                      <span className="bg-pct">
+                        {`${activeGoalTarget > 0 ? Math.floor((activeGoalSaved / activeGoalTarget) * 100) : 0}%`}
+                      </span>
+                      {activeGoalSaved > activeGoalTarget && (
+                        <span
+                          className="bg-overflow-badge"
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 999,
+                            background: 'rgba(16, 185, 129, 0.18)',
+                            color: '#10b981',
+                            border: '1px solid rgba(16, 185, 129, 0.35)',
+                          }}
+                        >
+                          +{Math.floor((activeGoalSaved / activeGoalTarget) * 100) - 100}% surplus
+                        </span>
+                      )}
+                    </div>
+                    <span className="bg-frac">
+                      {formatCurrencyNode(Math.max(0, activeGoalSaved), safeFmt, currencySymbol)} / {formatCurrencyNode(activeGoalTarget, safeFmt, currencySymbol)}
+                    </span>
+                  </div>
+
+                  <div className="bg-track" style={{ position: 'relative', overflow: 'visible' }}>
+                    <motion.div
+                      className={`bg-fill ${goalProgress < 15 ? 'breathing' : ''}`}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(100, goalProgress)}%` }}
+                      transition={{
+                        duration: prefersReducedMotion ? 0 : 1.5,
+                        delay: prefersReducedMotion ? 0 : 0.5,
+                      }}
+                    >
+                      <div className="bg-glow-dot" />
+                    </motion.div>
+
+                    {activeGoalSaved > activeGoalTarget && (
+                      <div
+                        className="bg-overflow-glow"
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          right: 0,
+                          bottom: 0,
+                          width: 24,
+                          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.7))',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  <div className="bg-goal-actions-row">
+                    <p className="bg-nudge">
+                      {activeGoalSaved > activeGoalTarget
+                        ? `Goal met · +${formatCurrencyText(activeGoalSaved - activeGoalTarget, safeFmt, currencySymbol)} surplus`
+                        : goalProgress >= 100
+                          ? '🎉 Target achieved!'
+                          : goalProgress < 15
+                            ? 'Every bit counts. Keep going!'
+                            : `${(100 - goalProgress).toFixed(0)}% to reach target`}
+                    </p>
+                    <NavLink
+                      to="/goals"
+                      className="bg-topup-btn"
+                      style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      title="Manage savings goals"
+                    >
+                      <Plus size={12} /> Top Up
+                    </NavLink>
+                  </div>
+
+                  <p className="bg-safe-spend">
+                    Safe to spend: <strong>{formatCurrencyText(safeToSpend, safeFmt, currencySymbol)}</strong> / day after recurring bills
+                  </p>
+                </>
+              ) : (
+                <div className="bento-empty">
+                  <span className="bento-empty-icon" aria-hidden="true">
+                    <Target size={42} strokeWidth={1.5} opacity={0.5} />
+                  </span>
+                  <p className="bento-empty-title">{tr('set_savings_goal', 'Set a savings goal')}</p>
+                  <p className="bento-empty-sub">{tr('track_progress_target', 'Track your progress toward a savings target.')}</p>
+                  <NavLink
+                    to="/goals"
+                    className="bento-empty-cta pulse-encouragement"
+                    style={{ textDecoration: 'none' }}
+                  >
+                    <Target size={13} /> {tr('set_goal_cta', 'Set Goal →')}
+                  </NavLink>
+                </div>
+              )}
+            </motion.div>
+
+            {/* Category Breakdown Donut */}
+            <motion.div variants={CARD_VARIANTS} className="bento-tile bento-pie glass">
+              <div className="bt-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <h3 className="heading-accent" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                    {tr('breakdown', 'Breakdown')}
+                  </h3>
+                  {pieTotal > 0 && (
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        color: '#ef4444',
+                        border: '1px solid rgba(239, 68, 68, 0.25)',
+                      }}
+                    >
+                      {formatCurrencyText(pieTotal, safeFmt, currencySymbol)}
+                    </span>
+                  )}
+                  {categoryFilter !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCategoryFilter('all');
+                      }}
+                      style={{
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        padding: '2px 7px',
+                        borderRadius: 999,
+                        background: 'rgba(99, 102, 241, 0.15)',
+                        color: 'var(--brand-primary, #6366f1)',
+                        border: '1px solid rgba(99, 102, 241, 0.3)',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 3,
+                      }}
+                      title="Clear category filter"
+                    >
+                      {categoryFilter} <X size={10} />
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <NavLink
+                    to="/analytics"
                     style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                      padding: '2px 7px',
-                      borderRadius: 999,
-                      background: 'rgba(99, 102, 241, 0.15)',
-                      color: 'var(--brand-primary, #6366f1)',
-                      border: '1px solid rgba(99, 102, 241, 0.3)',
-                      cursor: 'pointer',
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 3,
+                      gap: 4,
+                      color: 'var(--text-muted, #94a3b8)',
+                      textDecoration: 'none',
                     }}
-                    title="Clear category filter"
+                    className="hover-brand"
+                    title="View detailed category analytics"
                   >
-                    {categoryFilter} <X size={10} />
-                  </button>
-                )}
+                    <PieIcon size={16} className="bt-icon-muted" aria-hidden="true" />
+                  </NavLink>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingTx({ type: 'expense' });
-                    setFormInstanceId((prev) => prev + 1);
-                    setShowForm(true);
-                  }}
-                  className="bg-topup-btn"
-                  style={{
-                    textDecoration: 'none',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 3,
-                    padding: '3px 8px',
-                    fontSize: '0.72rem',
-                    borderRadius: 6,
-                    border: '1px solid var(--border-color, rgba(148, 163, 184, 0.2))',
-                    background: 'var(--surface-hover, rgba(255, 255, 255, 0.06))',
-                    color: 'var(--text-secondary, #94a3b8)',
-                    cursor: 'pointer',
-                  }}
-                  title="Add an expense in breakdown"
-                >
-                  <Plus size={12} /> Add
-                </button>
-                <NavLink
-                  to="/analytics"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    color: 'var(--text-muted, #94a3b8)',
-                    textDecoration: 'none',
-                  }}
-                  className="hover-brand"
-                  title="View detailed category analytics"
-                >
-                  <PieIcon size={16} className="bt-icon-muted" aria-hidden="true" />
-                </NavLink>
-              </div>
-            </div>
-            <div className="bt-pie-wrap" style={{ height: 235, minHeight: 200, position: 'relative' }}>
-              {pieData.length > 0 ? (
-                <>
-                  <ResponsiveContainer width="100%" height={235} minWidth={1} minHeight={200}>
-                    <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                      <Pie
-                        isAnimationActive={!prefersReducedMotion && !loading}
-                        animationBegin={100}
-                        animationDuration={900}
-                        animationEasing="ease-out"
-                        data={pieData}
-                        cx="50%"
-                        cy="40%"
-                        startAngle={90}
-                        endAngle={-270}
-                        innerRadius="50%"
-                        outerRadius="74%"
-                        paddingAngle={pieData.length > 1 ? 4 : 0}
-                        cornerRadius={pieData.length > 1 ? 5 : 0}
-                        dataKey="value"
-                        nameKey="name"
-                        stroke={pieData.length > 1 ? "var(--surface-card, #ffffff)" : "none"}
-                        strokeWidth={pieData.length > 1 ? 2 : 0}
-                        onMouseEnter={(_, index) => setHoveredPieIndex(index)}
-                        onMouseLeave={() => setHoveredPieIndex(null)}
-                        onClick={(entry) => {
-                          const catName = entry?.name;
-                          if (catName) {
-                            setCategoryFilter((prev) => (prev.toLowerCase() === catName.toLowerCase() ? 'all' : catName));
-                          }
-                        }}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        {pieData.map((entry, i) => (
-                          <Cell
-                            key={`cell-${String(entry.name || i).replace(/\s+/g, '-')}-${i}`}
-                            fill={PIE_COLORS[i % PIE_COLORS.length]}
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={tooltipStyle}
-                        formatter={(val, name) => {
-                          const amount = Number(val) || 0;
-                          const rawPct = pieTotal > 0 ? (amount / pieTotal) * 100 : 0;
-                          const pct = rawPct > 0 && rawPct < 0.1 ? '<0.1' : rawPct.toFixed(1);
-                          return [`${formatCurrencyText(amount, safeFmt, currencySymbol)} (${pct}%)`, name];
-                        }}
-                      />
-                      <Legend
-                        verticalAlign="bottom"
-                        iconType="circle"
-                        iconSize={8}
-                        wrapperStyle={{ fontSize: '0.74rem', fontWeight: 600, paddingTop: 6, lineHeight: '1.4', cursor: 'pointer' }}
-                        onClick={(e) => {
-                          const catName = e?.value;
-                          if (catName) {
-                            setCategoryFilter((prev) => (prev.toLowerCase() === catName.toLowerCase() ? 'all' : catName));
-                          }
-                        }}
-                        formatter={(value) => {
-                          const item = pieData.find((p) => p.name === value);
-                          let pct = '';
-                          if (item && pieTotal > 0) {
-                            const rawPct = (item.value / pieTotal) * 100;
-                            if (rawPct > 0 && rawPct < 1) {
-                              pct = ' (<1%)';
-                            } else {
-                              pct = ` (${Math.round(rawPct)}%)`;
-                            }
-                          }
-                          const isSelected = categoryFilter.toLowerCase() === String(value || '').toLowerCase();
-                          return (
-                            <span style={{
-                              color: isSelected ? 'var(--brand-primary, #6366f1)' : 'var(--text-secondary)',
-                              fontWeight: isSelected ? 700 : 600,
-                            }}>
-                              {value}{pct}
-                            </span>
-                          );
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
 
-                  {/* ── Donut Center Badge (Category / Total Amount) ── */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '40%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      textAlign: 'center',
-                      pointerEvents: 'none',
-                      userSelect: 'none',
-                      maxWidth: '42%',
-                      overflow: 'hidden',
-                    }}
-                  >
+              <div className="bt-pie-wrap" style={{ height: 235, minHeight: 200, position: 'relative' }}>
+                {pieData.length > 0 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={235} minWidth={1} minHeight={200}>
+                      <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                        <Pie
+                          isAnimationActive={!prefersReducedMotion && !loading}
+                          animationBegin={100}
+                          animationDuration={900}
+                          animationEasing="ease-out"
+                          data={pieData}
+                          cx="50%"
+                          cy="40%"
+                          startAngle={90}
+                          endAngle={-270}
+                          innerRadius="50%"
+                          outerRadius="74%"
+                          paddingAngle={pieData.length > 1 ? 4 : 0}
+                          cornerRadius={pieData.length > 1 ? 5 : 0}
+                          dataKey="value"
+                          nameKey="name"
+                          stroke={pieData.length > 1 ? "var(--surface-card, #ffffff)" : "none"}
+                          strokeWidth={pieData.length > 1 ? 2 : 0}
+                          onMouseEnter={(_, index) => setHoveredPieIndex(index)}
+                          onMouseLeave={() => setHoveredPieIndex(null)}
+                          onClick={(entry) => {
+                            const catName = entry?.name;
+                            if (catName) {
+                              setCategoryFilter((prev) => (prev.toLowerCase() === catName.toLowerCase() ? 'all' : catName));
+                            }
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {pieData.map((entry, i) => (
+                            <Cell
+                              key={`cell-${String(entry.name || i).replace(/\s+/g, '-')}-${i}`}
+                              fill={PIE_COLORS[i % PIE_COLORS.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          formatter={(val, name) => {
+                            const amount = Number(val) || 0;
+                            const rawPct = pieTotal > 0 ? (amount / pieTotal) * 100 : 0;
+                            const pct = rawPct > 0 && rawPct < 0.1 ? '<0.1' : rawPct.toFixed(1);
+                            return [`${formatCurrencyText(amount, safeFmt, currencySymbol)} (${pct}%)`, name];
+                          }}
+                        />
+                        <Legend
+                          verticalAlign="bottom"
+                          iconType="circle"
+                          iconSize={8}
+                          wrapperStyle={{ fontSize: '0.74rem', fontWeight: 600, paddingTop: 6, lineHeight: '1.4', cursor: 'pointer' }}
+                          onClick={(e) => {
+                            const catName = e?.value;
+                            if (catName) {
+                              setCategoryFilter((prev) => (prev.toLowerCase() === catName.toLowerCase() ? 'all' : catName));
+                            }
+                          }}
+                          formatter={(value) => {
+                            const item = pieData.find((p) => p.name === value);
+                            let pct = '';
+                            if (item && pieTotal > 0) {
+                              const rawPct = (item.value / pieTotal) * 100;
+                              if (rawPct > 0 && rawPct < 1) {
+                                pct = ' (<1%)';
+                              } else {
+                                pct = ` (${Math.round(rawPct)}%)`;
+                              }
+                            }
+                            const isSelected = categoryFilter.toLowerCase() === String(value || '').toLowerCase();
+                            return (
+                              <span style={{
+                                color: isSelected ? 'var(--brand-primary, #6366f1)' : 'var(--text-secondary)',
+                                fontWeight: isSelected ? 700 : 600,
+                              }}>
+                                {value}{pct}
+                              </span>
+                            );
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+
                     <div
                       style={{
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.04em',
-                        color: 'var(--text-muted, #94a3b8)',
-                        whiteSpace: 'nowrap',
-                        textOverflow: 'ellipsis',
+                        position: 'absolute',
+                        top: '40%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        textAlign: 'center',
+                        pointerEvents: 'none',
+                        userSelect: 'none',
+                        maxWidth: '42%',
                         overflow: 'hidden',
                       }}
                     >
-                      {hoveredPieIndex !== null && pieData[hoveredPieIndex]
-                        ? pieData[hoveredPieIndex].name
-                        : pieData.length === 1
-                          ? pieData[0].name
-                          : tr('total', 'Total')}
+                      <div
+                        style={{
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                          color: 'var(--text-muted, #94a3b8)',
+                          whiteSpace: 'nowrap',
+                          textOverflow: 'ellipsis',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {hoveredPieIndex !== null && pieData[hoveredPieIndex]
+                          ? pieData[hoveredPieIndex].name
+                          : pieData.length === 1
+                            ? pieData[0].name
+                            : tr('total', 'Total')}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '0.92rem',
+                          fontWeight: 800,
+                          color: 'var(--text-primary, #0f172a)',
+                          fontVariantNumeric: 'tabular-nums',
+                          lineHeight: 1.15,
+                          marginTop: 1,
+                        }}
+                      >
+                        {hoveredPieIndex !== null && pieData[hoveredPieIndex]
+                          ? formatCurrencyText(pieData[hoveredPieIndex].value, safeFmt, currencySymbol)
+                          : formatCurrencyText(pieTotal, safeFmt, currencySymbol)}
+                      </div>
                     </div>
-                    <div
-                      style={{
-                        fontSize: '0.92rem',
-                        fontWeight: 800,
-                        color: 'var(--text-primary, #0f172a)',
-                        fontVariantNumeric: 'tabular-nums',
-                        lineHeight: 1.15,
-                        marginTop: 1,
-                      }}
+                  </>
+                ) : (
+                  <div className="bento-empty">
+                    <span className="bento-empty-icon" aria-hidden="true">
+                      <Tag size={42} strokeWidth={1.5} opacity={0.5} />
+                    </span>
+                    <p className="bento-empty-title">{tr('no_exp_yet', 'No expenses yet')}</p>
+                    <p className="bento-empty-sub">{tr('track_spend_breakdown', 'Track spending to see category breakdown.')}</p>
+                    <button
+                      type="button"
+                      className="bento-empty-cta pulse-encouragement"
+                      onClick={handleOpenAddForm}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer' }}
                     >
-                      {hoveredPieIndex !== null && pieData[hoveredPieIndex]
-                        ? formatCurrencyText(pieData[hoveredPieIndex].value, safeFmt, currencySymbol)
-                        : formatCurrencyText(pieTotal, safeFmt, currencySymbol)}
-                    </div>
+                      <Plus size={13} /> {tr('add_expense', 'Add Expense')}
+                    </button>
                   </div>
-                </>
-              ) : (
-                /* ── Empty state when there are no expenses yet ── */
-                <div className="bento-empty">
-                  <span className="bento-empty-icon" aria-hidden="true">
-                    <Tag size={42} strokeWidth={1.5} opacity={0.5} />
-                  </span>
-                  <p className="bento-empty-title">{tr('no_exp_yet', 'No expenses yet')}</p>
-                  <p className="bento-empty-sub">{tr('track_spend_breakdown', 'Track spending to see category breakdown.')}</p>
-                  <button
-                    type="button"
-                    className="bento-empty-cta pulse-encouragement"
-                    onClick={handleOpenAddForm}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-                  >
-                    <Plus size={13} /> {tr('add_expense', 'Add Expense')}
-                  </button>
-                </div>
-              )}
-            </div>
-          </motion.div>
+                )}
+              </div>
+            </motion.div>
+          </div>
         </motion.div>
 
         {/* ===================== Transaction form ===================== */}

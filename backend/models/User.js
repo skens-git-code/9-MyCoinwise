@@ -128,6 +128,16 @@ const userSchema = new mongoose.Schema({
     maxlength: 10
   },
 
+  // ── Starting / initial balance ──
+  starting_balance: {
+    type: Number,
+    default: 0.00
+  },
+  startingBalance: {
+    type: Number,
+    default: 0.00
+  },
+
   /* —————————————————————————————————————
    * Appearance & Localization
    * ————————————————————————————————————— */
