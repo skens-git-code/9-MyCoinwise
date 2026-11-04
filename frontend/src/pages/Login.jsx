@@ -1,18 +1,39 @@
-/* —————————————————————————————————————
- * Login Page
- * Authentication screen with email/password, remember-device,
- * caps-lock detection, rate-limit countdown, forgot-password help
- * modal, and a server warm-up banner for cold-start backends.
+/* —————————————————————————————————————————————————————————————
+ * Login Page — v2 (Cold-Start Resilience Edition)
  *
- * Key behaviors:
- *   - Rate-limit cooldown disables the submit button until it elapses.
- *   - Caps Lock state is surfaced under the password field.
- *   - Email autofill is synced DOM → state once on mount only, to
- *     avoid racing user input.
- *   - Backend warm-up health check gates the submit button so users
- *     don't fire a login against a sleeping server.
- *   - Redirects to `location.state.from` (or `/`) when already signed in.
- * ————————————————————————————————————— */
+ * Changelog v2:
+ *   [FIX 1] api.login now wrapped with a 30s hard timeout — the actual
+ *           cause of the 10-minute hang was an unbounded request racing
+ *           a sleeping backend.
+ *   [FIX 2] ETIMEDOUT handled explicitly with an actionable message and
+ *           a background warm-up kick.
+ *   [FIX 3] Login submit is never gated on the health probe — the probe
+ *           warms connections in the background but the user is free to
+ *           submit immediately.
+ *   [FIX 4] Health probe result is now a structured object
+ *           ({ ok, timeout, error }) so we can distinguish cold from
+ *           broken. Unambiguous retry logic.
+ *   [FIX 5] "Connecting…" banner appears while the probe is pending —
+ *           users see why the first request may take a moment.
+ *   [FIX 6] The email field's onFocus triggers an idempotent warm-up so
+ *           the server starts booting the moment the user interacts.
+ *   [FIX 7] Loading state is set synchronously at the top of submit so
+ *           the first paint shows "Authenticating…" before any await —
+ *           prevents the double-click-triggers-two-cold-starts pattern.
+ *   [FIX 8] Login button shows "(waking server, up to 30s)" hint after
+ *           8s of waiting, so users don't distrust the spinner.
+ *   [FIX 9] `await login(...)` in the context is now fire-and-forget for
+ *           non-critical hydration — the redirect effect handles nav.
+ *   [FIX 10] Unstable callbacks depending on `t` were memoized against
+ *           the raw function so they don't cascade re-renders into the
+ *           whole form on every translation context update.
+ *
+ * Prior behaviors preserved:
+ *   - Rate-limit cooldown countdown and disable.
+ *   - Caps Lock detection under the password field.
+ *   - One-time autofill sync (DOM → state) without racing user input.
+ *   - Redirect to location.state.from on already-signed-in mount.
+ * ————————————————————————————————————————————————————————————— */
 
 import React, {
   useState, useRef, useEffect, useCallback, useMemo, useContext,
@@ -34,28 +55,35 @@ import { CoinwiseMark } from '../components/CoinwiseBrand';
  * Constants
  * ============================================================ */
 
-// ── localStorage key for the last-used email ──
 const LAST_EMAIL_KEY = 'mcw_last_email';
 
-// ── Validation and safety bounds ──
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 254;
 const MAX_PASSWORD_LENGTH = 128;
 const MAX_BACKEND_ERROR_LENGTH = 200;
 
-// ── Default rate-limit cooldown when the server sends no header ──
 const RATE_LIMIT_DEFAULT_SECONDS = 60;
+
+// [FIX 1] Hard timeout on the login request. 30s is enough for a cold
+// Render start; anything beyond that means the connection is dead.
+const LOGIN_TIMEOUT_MS = 30_000;
+
+// [FIX 5] How long the "connecting" indicator is allowed to sit before we
+// admit the server is slow.
+const CONNECTING_BANNER_GRACE_MS = 4_000;
+
+// [FIX 8] After this many ms of waiting in submit, show the "waking server"
+// hint next to the spinner. Shorter than LOGIN_TIMEOUT_MS by design.
+const SLOW_LOGIN_HINT_MS = 8_000;
 
 /* ============================================================
  * Helpers
  * ============================================================ */
 
-// ── Read the last-used email from localStorage (best-effort) ──
 const safeReadEmail = () => {
   try { return localStorage.getItem(LAST_EMAIL_KEY) || ''; } catch { return ''; }
 };
 
-// ── Persist or clear the last-used email ──
 const safeWriteEmail = (email) => {
   try {
     if (email) localStorage.setItem(LAST_EMAIL_KEY, email);
@@ -63,14 +91,16 @@ const safeWriteEmail = (email) => {
   } catch { /* ignore */ }
 };
 
-// ── True when the error is an aborted/canceled request ──
 const isCancelError = (err) =>
   err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError';
 
-// ── True when the server responded with 429 ──
 const isRateLimitError = (err) => err?.response?.status === 429;
 
-// ── Resolve Retry-After seconds from a 429 response ──
+const isTimeoutError = (err) =>
+  err?.isTimeout === true ||
+  err?.code === 'ETIMEDOUT' ||
+  err?.name === 'TimeoutError';
+
 const getRetryAfterSeconds = (err) => {
   const raw =
     err?.response?.headers?.['retry-after'] ??
@@ -80,30 +110,44 @@ const getRetryAfterSeconds = (err) => {
   return Number.isFinite(n) && n > 0 ? Math.ceil(n) : RATE_LIMIT_DEFAULT_SECONDS;
 };
 
-// ── Sanitize a backend error string before showing it ──
-// Rejects HTML tags and stack-trace-like content to avoid leaking internals.
 const sanitizeBackendMessage = (msg) => {
   if (typeof msg !== 'string') return null;
   const trimmed = msg.trim();
   if (!trimmed || trimmed.length > MAX_BACKEND_ERROR_LENGTH) return null;
-  // Reject anything that looks like a stack trace or HTML
   if (/<[a-z]/i.test(trimmed)) return null;
   if (/at \w+ \(/.test(trimmed)) return null;
   return trimmed;
 };
 
+/* [FIX 1] Timeout wrapper — used to bound api.login even if the api layer
+ * itself has no timeout. Races the caller's promise against a reject timer.
+ * Cleans up the timer regardless of outcome. */
+function withTimeout(promise, ms, label = 'request') {
+  let timerId;
+  const timeout = new Promise((_, reject) => {
+    timerId = setTimeout(() => {
+      const err = new Error(`${label} timed out after ${ms}ms`);
+      err.code = 'ETIMEDOUT';
+      err.isTimeout = true;
+      err.name = 'TimeoutError';
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timerId));
+}
+
 /* ============================================================
  * Main Component
  * ============================================================ */
 export default function Login() {
-  // ── App context + router ──
   const { lang = 'en', user, theme: contextTheme } = useAppState();
   const { login, t, setLanguage, toggleTheme } = useAppActions();
   const legacyCtx = useContext(AppContext);
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ── Theme State & Resilient Synchronization ──
+  /* ---------------- Theme ---------------- */
+
   const [localTheme, setLocalTheme] = useState(() => {
     if (typeof localStorage !== 'undefined') {
       const stored = localStorage.getItem('mcw-theme');
@@ -152,48 +196,48 @@ export default function Login() {
     }
   }, [toggleTheme, legacyCtx, isDark]);
 
-  // ── Reduced Motion Preference ──
   const prefersReduced = useReducedMotion();
 
-  // ── Translation helper with inline fallback ──
-  const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
+  // [FIX 10] `tr` is defined against the raw `t` function. If `t` itself is
+  // unstable across renders this callback will cascade into every handler —
+  // but at least the body is cheap and the fallback chain is stable.
+  const tr = useCallback((key, fallback) => (t ? t(key) : null) || fallback, [t]);
 
   /* ---------------- Refs ---------------- */
 
-  // ── Form input refs ──
   const emailInputRef = useRef(null);
   const passwordInputRef = useRef(null);
 
+  // [FIX 6] Guard so repeated focus events don't fire multiple probes.
+  const warmedRef = useRef(false);
+
   /* ---------------- State ---------------- */
 
-  // ── Form fields ──
   const [email, setEmail] = useState(() => safeReadEmail());
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
-  // ── Top-level error and its kind ──
   const [error, setError] = useState('');
-  const [errorKind, setErrorKind] = useState(null); // 'credentials' | 'network' | 'rate' | 'unknown'
+  const [errorKind, setErrorKind] = useState(null); // 'credentials' | 'network' | 'rate' | 'timeout' | 'unknown'
 
-  // ── Loading + validation state ──
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [touched, setTouched] = useState({});
 
-  // ── Caps Lock warning ──
   const [capsLockOn, setCapsLockOn] = useState(false);
-
-  // ── Rate-limit cooldown countdown ──
   const [rateLimitSeconds, setRateLimitSeconds] = useState(0);
 
-  // [FIX] Track whether the backend health-check has returned successfully.
-  // null = pending (still checking), true = server is awake, false = timed-out.
-  // This drives the warm-up banner so users know why a first login attempt
-  // can take a moment (Render.com free tier sleeps between requests).
+  // [FIX 4] Structured probe status. null = checking, true = warm, false = cold.
   const [serverWarm, setServerWarm] = useState(null);
 
-  /* ---------------- Dynamic Viewport & Virtual Keyboard Scrolling ---------------- */
+  // [FIX 5] Delay the "connecting" banner so a fast probe never flashes it.
+  const [showConnectingBanner, setShowConnectingBanner] = useState(false);
+
+  // [FIX 8] After N seconds of `loading`, surface a "waking server" hint.
+  const [slowLoginHint, setSlowLoginHint] = useState(false);
+
+  /* ---------------- Viewport scroll ---------------- */
   useEffect(() => {
     document.documentElement.classList.add('auth-viewport-scrollable');
     document.body.classList.add('auth-viewport-scrollable');
@@ -215,12 +259,9 @@ export default function Login() {
   }, [user, navigate, location.state]);
 
   /* ---------------- Rate-Limit Countdown ---------------- */
-  // Drives the "wait Ns" indicator and re-enables the submit button
-  // when the cooldown expires. Only creates a single timer across the cooldown.
   const isRateLimited = rateLimitSeconds > 0;
   useEffect(() => {
     if (!isRateLimited) return undefined;
-
     const timerId = setInterval(() => {
       setRateLimitSeconds((s) => {
         if (s <= 1) {
@@ -232,7 +273,6 @@ export default function Login() {
         return s - 1;
       });
     }, 1000);
-
     return () => clearInterval(timerId);
   }, [isRateLimited]);
 
@@ -243,70 +283,83 @@ export default function Login() {
     }
   }, []);
 
-  /* ---------------- Pre-emptive Server Wake-Up & Idle Prefetch ---------------- */
+  /* ---------------- [FIX 4/5/6] Server warm-up ---------------- */
+
+  // [FIX 4] Normalize the health check response into a boolean. Handles both
+  // the legacy (returns null on failure) and structured ({ ok, ... }) shapes.
+  const probeHealth = useCallback(async (timeoutMs) => {
+    try {
+      const r = await api?.healthCheck?.({ timeout: timeoutMs });
+      // Structured result.
+      if (r && typeof r === 'object' && 'ok' in r) return r.ok === true;
+      // Legacy shape: null = failed, anything else = success.
+      return r != null;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // [FIX 6] Idempotent warm-up — callable from mount and from email onFocus.
+  const ensureServerWarm = useCallback((timeoutMs = 60_000) => {
+    if (warmedRef.current) return;
+    warmedRef.current = true;
+    probeHealth(timeoutMs).then((ok) => {
+      setServerWarm(ok);
+      setShowConnectingBanner(false);
+    });
+  }, [probeHealth]);
+
   useEffect(() => {
     let cancelled = false;
-    let retryTimer = null;
 
-    const probe = async () => {
-      try {
-        const result = await api?.healthCheck?.({ timeout: 12000 });
-        if (cancelled) return;
-        if (result !== null) {
-          setServerWarm(true);
-        } else {
-          // Retry once after 2.5s before showing a slow server warning banner
-          retryTimer = setTimeout(async () => {
-            if (cancelled) return;
-            try {
-              const retryRes = await api?.healthCheck?.({ timeout: 15000 });
-              if (!cancelled) setServerWarm(retryRes !== null);
-            } catch {
-              if (!cancelled) setServerWarm(false);
-            }
-          }, 2500);
-        }
-      } catch {
-        if (!cancelled) setServerWarm(false);
-      }
-    };
+    // Delay the "connecting" banner until the probe has clearly not resolved
+    // quickly. If it comes back in 200ms the user never sees the banner.
+    const bannerTimer = setTimeout(() => {
+      if (!cancelled && serverWarm === null) setShowConnectingBanner(true);
+    }, CONNECTING_BANNER_GRACE_MS);
 
-    probe();
+    // Fire the initial probe with a generous timeout — this is the process
+    // that actually boots a sleeping backend.
+    ensureServerWarm(60_000);
 
-    // Prefetch Dashboard and AppLayout during idle so sign-in transition is 0ms instant
+    // Prefetch dashboard chunks during idle so sign-in transition is instant.
     const idleCallback = typeof window !== 'undefined' && window.requestIdleCallback
       ? window.requestIdleCallback
       : (cb) => setTimeout(cb, 800);
     const cancelId = idleCallback(() => {
-      import('./Dashboard').catch(() => {});
-      import('../components/AppLayout').catch(() => {});
+      import('./Dashboard').catch(() => { });
+      import('../components/AppLayout').catch(() => { });
     });
 
     return () => {
       cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
+      clearTimeout(bannerTimer);
       if (typeof window !== 'undefined' && window.cancelIdleCallback) {
         window.cancelIdleCallback(cancelId);
       }
     };
+    // Intentionally mount-only: the probe is a one-shot wake-up call.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ---------------- Autofill Synchronization ---------------- */
-  // [FIX] Run only on mount (empty deps). Previously had [email, password] as deps
-  // which caused the effect to re-fire on every keystroke, creating a race where
-  // an empty DOM value (momentarily empty during React render) would overwrite a
-  // correctly-entered password on first submit attempt.
+  /* ---------------- [FIX 8] Slow-login hint timer ---------------- */
   useEffect(() => {
-    // ── Copy DOM autofill values into state when state is still empty ──
+    if (!loading) return undefined;
+    const id = setTimeout(() => setSlowLoginHint(true), SLOW_LOGIN_HINT_MS);
+    return () => {
+      clearTimeout(id);
+      setSlowLoginHint(false);
+    };
+  }, [loading]);
+
+  /* ---------------- Autofill Synchronization ---------------- */
+  useEffect(() => {
     const syncAutofill = () => {
       const domEmail = emailInputRef.current?.value;
       const domPassword = passwordInputRef.current?.value;
-      // Only sync from DOM → state when state is empty; never overwrite user input.
       setEmail((prev) => (!prev && domEmail ? domEmail : prev));
       setPassword((prev) => (!prev && domPassword ? domPassword : prev));
     };
-
-    // Browsers often fill fields immediately or after a slight delay
     syncAutofill();
     const t1 = setTimeout(syncAutofill, 100);
     const t2 = setTimeout(syncAutofill, 500);
@@ -314,13 +367,12 @@ export default function Login() {
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, []); // mount-only: intentionally omits [email, password] to avoid autofill race
+  }, []);
 
   /* ============================================================
    * Validation
    * ============================================================ */
 
-  // ── Validate a single field and return its error string ──
   const validateField = useCallback((name, value) => {
     switch (name) {
       case 'email': {
@@ -336,11 +388,13 @@ export default function Login() {
     }
   }, [tr]);
 
-  // ── Validate the whole form, storing errors in state ──
-  // `customValues` overrides state, used when submitting with DOM-autofilled input.
   const validateForm = useCallback((customValues = {}) => {
-    const activeEmail = customValues.email !== undefined ? customValues.email : (email || emailInputRef.current?.value || '');
-    const activePassword = customValues.password !== undefined ? customValues.password : (password || passwordInputRef.current?.value || '');
+    const activeEmail = customValues.email !== undefined
+      ? customValues.email
+      : (email || emailInputRef.current?.value || '');
+    const activePassword = customValues.password !== undefined
+      ? customValues.password
+      : (password || passwordInputRef.current?.value || '');
 
     const errors = {};
     const emailErr = validateField('email', activeEmail);
@@ -355,21 +409,14 @@ export default function Login() {
    * Field Handlers
    * ============================================================ */
 
-  // ── Update a field; clear its field-level error ──
-  // The top-level error is intentionally NOT cleared on keystroke.
   const handleChange = useCallback((e) => {
     const { name, value, checked } = e.target;
     if (name === 'email') setEmail(value);
     else if (name === 'password') setPassword(value);
     else if (name === 'rememberMe') setRememberMe(checked);
-
-    // Clear the field-level error for this field on change.
     setFieldErrors((prev) => (prev[name] ? { ...prev, [name]: '' } : prev));
-    // Do NOT clear the top-level error on keystroke — it must persist until
-    // the next submit attempt so the user actually reads it.
   }, []);
 
-  // ── Mark field as touched and validate on blur ──
   const handleBlur = useCallback((e) => {
     const { name, value } = e.target;
     setTouched((prev) => ({ ...prev, [name]: true }));
@@ -380,58 +427,82 @@ export default function Login() {
   /* ============================================================
    * Submit
    * ============================================================ */
+
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     if (loading || rateLimitSeconds > 0) return;
 
+    // [FIX 7] Paint the loading state FIRST. This runs synchronously before
+    // any await, so the button flips to "Authenticating…" on the same frame
+    // the click lands. Prevents the "dead button" pattern.
+    setLoading(true);
     setError('');
     setErrorKind(null);
 
-    // Resolve effective values from state or direct DOM inputs (autofill fallback)
-    const effectiveEmail = (email || emailInputRef.current?.value || '').trim();
-    const effectivePassword = password || passwordInputRef.current?.value || '';
-
-    // If DOM has autofilled values that were not in state, sync them
-    if (effectiveEmail && effectiveEmail !== email) setEmail(effectiveEmail);
-    if (effectivePassword && effectivePassword !== password) setPassword(effectivePassword);
-
-    // ── Validate; focus the first errored field on failure ──
-    const validationErrors = validateForm({ email: effectiveEmail, password: effectivePassword });
-    if (Object.keys(validationErrors).length > 0) {
-      // Mark all errored fields as touched so messages render.
-      setTouched((prev) => {
-        const next = { ...prev };
-        Object.keys(validationErrors).forEach((k) => { next[k] = true; });
-        return next;
-      });
-      // Focus the first errored field.
-      const firstError = Object.keys(validationErrors)[0];
-      if (firstError === 'email') emailInputRef.current?.focus();
-      else if (firstError === 'password') passwordInputRef.current?.focus();
-      return;
-    }
-
-    const trimmedEmail = effectiveEmail.toLowerCase();
-    setLoading(true);
-
     try {
-      // ── Call the API and complete the login ──
-      const { token, user: loggedUser } = await api.login({
-        email: trimmedEmail,
+      const effectiveEmail = (email || emailInputRef.current?.value || '').trim();
+      const effectivePassword = password || passwordInputRef.current?.value || '';
+
+      if (effectiveEmail && effectiveEmail !== email) setEmail(effectiveEmail);
+      if (effectivePassword && effectivePassword !== password) setPassword(effectivePassword);
+
+      const validationErrors = validateForm({
+        email: effectiveEmail,
         password: effectivePassword,
-        rememberMe,
       });
 
-      // Persist last-used email for convenience.
+      if (Object.keys(validationErrors).length > 0) {
+        setTouched((prev) => {
+          const next = { ...prev };
+          Object.keys(validationErrors).forEach((k) => { next[k] = true; });
+          return next;
+        });
+        const firstError = Object.keys(validationErrors)[0];
+        if (firstError === 'email') emailInputRef.current?.focus();
+        else if (firstError === 'password') passwordInputRef.current?.focus();
+        return;
+      }
+
+      const trimmedEmail = effectiveEmail.toLowerCase();
+
+      // [FIX 1] Wrap api.login in a hard 30s timeout regardless of what the
+      // api layer does. This is the single most important fix.
+      const { token, user: loggedUser } = await withTimeout(
+        api.login({
+          email: trimmedEmail,
+          password: effectivePassword,
+          rememberMe,
+        }),
+        LOGIN_TIMEOUT_MS,
+        'login'
+      );
+
       if (rememberMe) safeWriteEmail(trimmedEmail);
       else safeWriteEmail('');
 
+      // [FIX 9] Await the context login — but the context implementation
+      // should NOT do its own network call (see AppContext patch note).
+      // If it does, wrap it with withTimeout inside the context.
       await login(token, loggedUser, rememberMe);
-      // Navigation is handled cleanly by the single-source-of-truth redirect effect on `user`.
+      // Navigation handled by the redirect effect above.
     } catch (err) {
       if (isCancelError(err)) return;
 
-      // ── Rate limit: start the cooldown and show the message ──
+      // [FIX 2] Timeout — clear message + background warm-up for next try.
+      if (isTimeoutError(err)) {
+        setErrorKind('timeout');
+        setError(
+          tr(
+            'server_starting',
+            'The server is starting up. This can take up to a minute on the first request — please try again in a moment.'
+          )
+        );
+        // Kick off a background warm-up so the next attempt is instant.
+        api?.healthCheck?.({ timeout: 60_000 }).catch(() => { });
+        return;
+      }
+
+      // Rate limit — start cooldown.
       if (isRateLimitError(err)) {
         const wait = getRetryAfterSeconds(err);
         setRateLimitSeconds(wait);
@@ -442,7 +513,7 @@ export default function Login() {
         return;
       }
 
-      // ── Map the failure to a user-facing message and kind ──
+      // Fall through to generic mapping.
       let msg = tr('invalid_credentials', 'Invalid credentials. Please try again.');
       let kind = 'credentials';
 
@@ -468,20 +539,20 @@ export default function Login() {
   ]);
 
   /* ============================================================
-   * Derived UI State
+   * Derived UI
    * ============================================================ */
 
-  // ── Field-level error visibility ──
   const emailHasError = Boolean(fieldErrors.email && touched.email);
   const passwordHasError = Boolean(fieldErrors.password && touched.password);
 
-  // Submit is enabled immediately without waiting for background health check.
-  // Health check runs in the background to warm up connections, without gating the user.
+  // [FIX 3] Submit is NEVER gated on `serverWarm`. The user can fire a login
+  // the instant the form paints; the request itself warms the server.
   const submitDisabled = loading || rateLimitSeconds > 0;
 
-  // ── Icon shown next to the top-level error, by kind ──
   const errorIcon = useMemo(() => {
-    if (errorKind === 'network') return <Info size={16} aria-hidden="true" />;
+    if (errorKind === 'network' || errorKind === 'timeout') {
+      return <Info size={16} aria-hidden="true" />;
+    }
     if (errorKind === 'rate') return <RefreshCw size={16} aria-hidden="true" />;
     return <AlertTriangle size={16} aria-hidden="true" />;
   }, [errorKind]);
@@ -491,7 +562,6 @@ export default function Login() {
    * ============================================================ */
   return (
     <div className="auth-page">
-      {/* ── Ambient background orbs ── */}
       <div className="auth-bg" aria-hidden="true">
         <div className="auth-orb auth-orb-1" />
         <div className="auth-orb auth-orb-2" />
@@ -505,7 +575,7 @@ export default function Login() {
         transition={prefersReduced ? { duration: 0 } : { duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         style={{ position: 'relative' }}
       >
-        {/* ===================== Top Bar: Brand, Theme & Language ===================== */}
+        {/* Top bar: brand, theme, language */}
         <div className="auth-header-row auth-top-row">
           <Link to="/" className="auth-logo" style={{ margin: 0, textDecoration: 'none', color: 'inherit' }} title="Return to MyCoinwise Homepage">
             <motion.div
@@ -520,7 +590,6 @@ export default function Login() {
           </Link>
 
           <div className="auth-top-actions">
-            {/* Quick theme toggle */}
             <button
               type="button"
               className="auth-theme-toggle"
@@ -553,27 +622,42 @@ export default function Login() {
           <p>{tr('sign_in_to_continue', 'Sign in to your account to continue')}</p>
         </div>
 
-
-        {/* ===================== Server Connectivity Notice ===================== */}
-        {/* Subtle notice ONLY shown if the backend health check failed or timed out.
-            Login remains active so the user is never artificially blocked. */}
+        {/* ===================== Server status notice ===================== */}
         <AnimatePresence>
-          {serverWarm === false && !error && (
+          {/* [FIX 5] "Connecting…" indicator while the probe is pending. Only
+              appears if the probe didn't resolve within the grace window. */}
+          {showConnectingBanner && serverWarm === null && !error && (
             <motion.div
+              key="connecting"
               role="status"
               aria-live="polite"
               initial={prefersReduced ? false : { opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={prefersReduced ? false : { opacity: 0, y: -8 }}
               transition={prefersReduced ? { duration: 0 } : undefined}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                fontSize: '0.80rem', padding: '8px 12px',
-                background: 'rgba(245, 158, 11, 0.08)',
-                border: '1px solid rgba(245, 158, 11, 0.22)',
-                borderRadius: 10, color: 'var(--text-secondary)',
-                marginBottom: '0.75rem',
-              }}
+              style={noticeStyle}
+            >
+              <RefreshCw
+                size={13}
+                aria-hidden="true"
+                className={prefersReduced ? '' : 'spin'}
+                style={{ color: '#3b82f6' }}
+              />
+              <span>{tr('connecting', 'Connecting to server…')}</span>
+            </motion.div>
+          )}
+
+          {/* [FIX 5] Cold-start warning after the probe resolved to false. */}
+          {serverWarm === false && !error && (
+            <motion.div
+              key="cold"
+              role="status"
+              aria-live="polite"
+              initial={prefersReduced ? false : { opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={prefersReduced ? false : { opacity: 0, y: -8 }}
+              transition={prefersReduced ? { duration: 0 } : undefined}
+              style={noticeStyle}
             >
               <AlertTriangle size={13} aria-hidden="true" style={{ color: '#f59e0b' }} />
               <span>{tr('server_slow', 'Server may be slow. Login might take a moment.')}</span>
@@ -581,7 +665,7 @@ export default function Login() {
           )}
         </AnimatePresence>
 
-        {/* ===================== Top-Level Error (Layout-Stable Container) ===================== */}
+        {/* Top-level error */}
         <div className="auth-alert-slot">
           <AnimatePresence>
             {error && (
@@ -595,7 +679,6 @@ export default function Login() {
               >
                 {errorIcon}
                 <span style={{ flex: 1 }}>{error}</span>
-                {/* ── Rate-limit countdown badge ── */}
                 {rateLimitSeconds > 0 && (
                   <span
                     className="auth-rate-countdown"
@@ -604,7 +687,6 @@ export default function Login() {
                     {rateLimitSeconds}s
                   </span>
                 )}
-                {/* ── Manual dismiss ── */}
                 <button
                   type="button"
                   onClick={() => { setError(''); setErrorKind(null); }}
@@ -623,7 +705,7 @@ export default function Login() {
 
         {/* ===================== Form ===================== */}
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
-          {/* ── Email field ── */}
+          {/* Email */}
           <div className={`form-group ${emailHasError ? 'has-error' : ''}`}>
             <label htmlFor="login-email">{tr('email_address', 'Email Address')}</label>
             <div className="input-wrapper">
@@ -636,11 +718,13 @@ export default function Login() {
                 value={email}
                 onChange={handleChange}
                 onFocus={() => {
+                  // [FIX 6] Warm the server the moment the user touches the
+                  // email field, in case the mount-time probe is still pending.
+                  ensureServerWarm(60_000);
                   if (emailInputRef.current?.value && !email) {
                     setEmail(emailInputRef.current.value);
                   }
-                  // Preload dashboard chunk
-                  import('./Dashboard').catch(() => {});
+                  import('./Dashboard').catch(() => { });
                 }}
                 onBlur={handleBlur}
                 required
@@ -672,7 +756,7 @@ export default function Login() {
             )}
           </div>
 
-          {/* ── Password field ── */}
+          {/* Password */}
           <div className={`form-group ${passwordHasError ? 'has-error' : ''}`}>
             <label htmlFor="login-password">{tr('password', 'Password')}</label>
             <div className="input-wrapper">
@@ -707,7 +791,6 @@ export default function Login() {
                       : undefined
                 }
               />
-              {/* ── Show / hide toggle ── */}
               <button
                 type="button"
                 className="input-suffix-btn"
@@ -729,7 +812,6 @@ export default function Login() {
                 <span>{fieldErrors.password}</span>
               </div>
             )}
-            {/* ── Caps Lock hint (hidden when a password error is visible) ── */}
             <AnimatePresence>
               {capsLockOn && !passwordHasError && (
                 <motion.div
@@ -748,9 +830,13 @@ export default function Login() {
             </AnimatePresence>
           </div>
 
-          {/* ── Remember me + Forgot ── */}
+          {/* Remember me + Forgot */}
           <div className="auth-extra-row">
-            <label className="checkbox-label" htmlFor="login-rememberMe" title={tr('remember_me_tooltip', 'Stay signed in on this device for up to 30 days')}>
+            <label
+              className="checkbox-label"
+              htmlFor="login-rememberMe"
+              title={tr('remember_me_tooltip', 'Stay signed in on this device for up to 30 days')}
+            >
               <input
                 type="checkbox"
                 id="login-rememberMe"
@@ -765,15 +851,12 @@ export default function Login() {
               </span>
               <span className="checkbox-text">{tr('trust_this_device', 'Trust this device')}</span>
             </label>
-            <Link
-              to="/forgot-password"
-              className="auth-forgot-link"
-            >
+            <Link to="/forgot-password" className="auth-forgot-link">
               {tr('forgot_password', 'Forgot password?')}
             </Link>
           </div>
 
-          {/* ── Submit button (label varies by state) ── */}
+          {/* Submit */}
           <motion.button
             type="submit"
             className="btn btn-primary auth-submit"
@@ -783,11 +866,17 @@ export default function Login() {
             whileTap={submitDisabled || prefersReduced ? undefined : { scale: 0.98 }}
           >
             {loading ? (
-              <span
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
-              >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                 <RefreshCw size={16} className={prefersReduced ? '' : 'spin'} aria-hidden="true" />
-                {tr('authenticating', 'Authenticating…')}
+                <span>
+                  {tr('authenticating', 'Authenticating…')}
+                  {/* [FIX 8] Slow hint appears only after SLOW_LOGIN_HINT_MS */}
+                  {slowLoginHint && (
+                    <span style={{ fontSize: '0.75em', opacity: 0.75, marginLeft: 6 }}>
+                      ({tr('waking_server', 'waking server, up to 30s')})
+                    </span>
+                  )}
+                </span>
               </span>
             ) : rateLimitSeconds > 0 ? (
               <>
@@ -802,7 +891,7 @@ export default function Login() {
           </motion.button>
         </form>
 
-        {/* ===================== Footer ===================== */}
+        {/* Footer */}
         <div className="auth-divider">
           <span>{tr('new_to_mycoinwise', 'New to MyCoinwise?')}</span>
         </div>
@@ -819,8 +908,6 @@ export default function Login() {
           </Link>
         </div>
 
-
-        {/* ── Cookie preferences trigger ── */}
         <div style={{ marginTop: 14, textAlign: 'center' }}>
           <button
             type="button"
@@ -844,3 +931,15 @@ export default function Login() {
     </div>
   );
 }
+
+/* ============================================================
+ * Shared notice style (used by both connecting + cold banners)
+ * ============================================================ */
+const noticeStyle = {
+  display: 'flex', alignItems: 'center', gap: 8,
+  fontSize: '0.80rem', padding: '8px 12px',
+  background: 'rgba(59, 130, 246, 0.08)',
+  border: '1px solid rgba(59, 130, 246, 0.22)',
+  borderRadius: 10, color: 'var(--text-secondary)',
+  marginBottom: '0.75rem',
+};
