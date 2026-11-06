@@ -188,7 +188,13 @@ function useFocusTrap(ref, isActive, onEscape) {
         node.querySelectorAll(
           'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
         )
-      ).filter((el) => el.offsetParent !== null);
+      ).filter((el) => {
+        if (el.offsetParent !== null) return true;
+        // Fallback for position: fixed elements where offsetParent can be null in some engines
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      });
 
     // ── Initial focus ──
     const focusables = getFocusable();
@@ -347,7 +353,6 @@ const ReAuthModalContent = ({ onClose, onConfirmed, actionLabel, isLoading }) =>
             value={password}
             onChange={(e) => { setPassword(e.target.value); if (error) setError(''); }}
             placeholder="Your current password"
-            autoFocus
             autoComplete="current-password"
             onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm(); }}
             aria-invalid={Boolean(error)}
@@ -1076,7 +1081,7 @@ const SessionManagement = ({ userId, showMessage }) => {
 
   // ── Revoke a single session (never the current one) ──
   const revokeSession = async (sessionId) => {
-    const session = sessions.find((s) => s.id === sessionId);
+    const session = sessions.find((s) => String(s?.id || s?._id) === String(sessionId));
     if (session?.isCurrent) {
       showMessage('error', 'Cannot revoke your current session');
       return;
@@ -1155,48 +1160,51 @@ const SessionManagement = ({ userId, showMessage }) => {
 
       {/* ── Session rows ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {sessions.map((session) => (
-          <div
-            key={session.id}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: 12, background: 'var(--glass-2)', borderRadius: 12,
-              flexWrap: 'wrap', gap: 12,
-            }}
-          >
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Smartphone size={16} aria-hidden />
-                <strong>{session.device || 'Unknown Device'}</strong>
-                {session.isCurrent && (
-                  <span
-                    style={{
-                      fontSize: '0.7rem', background: '#10b981', color: 'white',
-                      padding: '2px 8px', borderRadius: 12,
-                    }}
-                  >
-                    Current
-                  </span>
-                )}
+        {sessions.map((session) => {
+          const sid = session.id || session._id;
+          return (
+            <div
+              key={sid}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: 12, background: 'var(--glass-2)', borderRadius: 12,
+                flexWrap: 'wrap', gap: 12,
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Smartphone size={16} aria-hidden />
+                  <strong>{session.device || 'Unknown Device'}</strong>
+                  {session.isCurrent && (
+                    <span
+                      style={{
+                        fontSize: '0.7rem', background: '#10b981', color: 'white',
+                        padding: '2px 8px', borderRadius: 12,
+                      }}
+                    >
+                      Current
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  Location: {session.location || 'Unknown'} · Last active:{' '}
+                  {new Date(session.lastActive).toLocaleString()}
+                </div>
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                Location: {session.location || 'Unknown'} · Last active:{' '}
-                {new Date(session.lastActive).toLocaleString()}
-              </div>
+              {!session.isCurrent && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => revokeSession(sid)}
+                  style={{ padding: '6px 12px' }}
+                  aria-label={`Revoke session on ${session.device || 'unknown device'}`}
+                >
+                  Revoke
+                </button>
+              )}
             </div>
-            {!session.isCurrent && (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => revokeSession(session.id)}
-                style={{ padding: '6px 12px' }}
-                aria-label={`Revoke session on ${session.device || 'unknown device'}`}
-              >
-                Revoke
-              </button>
-            )}
-          </div>
-        ))}
+          );
+        })}
 
         {sessions.length === 0 && !loading && (
           <p style={{ color: 'var(--text-muted)' }}>No other active sessions found.</p>
@@ -1805,59 +1813,59 @@ const LanguageTab = React.memo(({ lang, setLanguage, showMessage, t, user, USER_
   const hoverAnim = prefersReducedMotion ? undefined : { x: 4, scale: 1.01 };
 
   return (
-  <>
-    {/* ── Header ── */}
-    <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-      <div
-        className="idp-hero-icon"
-        style={{
-          width: 64, height: 64, marginBottom: 16,
-          background: 'rgba(251,191,36,0.1)', color: 'var(--warning)',
-          border: '1px solid rgba(251,191,36,0.3)',
-        }}
-        aria-hidden
-      >
-        <Globe size={28} />
-      </div>
-      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
-        {t?.('language') || 'Language'}
-      </h3>
-      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>MyCoinwise speaks your language.</p>
-    </div>
-
-    {/* ── Language option buttons ── */}
-    <div className="idp-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {Object.entries(LANGUAGES || {}).map(([code, info]) => (
-        <motion.button
-          key={code}
-          type="button"
-          onClick={() => {
-            setLanguage(code);
-            const targetId = USER_ID || user?._id || user?.id;
-            if (targetId) {
-              api.updateSettings(targetId, { language: code }).catch(console.error);
-            }
-            showMessage('success', t?.('language_updated') || 'Language updated successfully');
-          }}
-          whileHover={hoverAnim}
-          aria-pressed={lang === code}
+    <>
+      {/* ── Header ── */}
+      <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
+        <div
+          className="idp-hero-icon"
           style={{
-            display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px',
-            borderRadius: 16,
-            border: lang === code ? '2px solid var(--brand-primary)' : '1px solid var(--glass-border)',
-            background: lang === code ? 'rgba(var(--brand-primary-rgb), 0.08)' : 'var(--surface-1)',
-            cursor: 'pointer', color: 'var(--text-primary)',
-            fontWeight: lang === code ? 800 : 600, transition: 'all 0.2s',
-            boxShadow: lang === code ? '0 8px 24px rgba(var(--brand-primary-rgb), 0.15)' : 'none',
+            width: 64, height: 64, marginBottom: 16,
+            background: 'rgba(251,191,36,0.1)', color: 'var(--warning)',
+            border: '1px solid rgba(251,191,36,0.3)',
           }}
+          aria-hidden
         >
-          <span style={{ fontSize: '1.5rem' }} aria-hidden>{info.flag || '🌐'}</span>
-          <span style={{ flex: 1, textAlign: 'left', fontSize: '1.05rem' }}>{info.name}</span>
-          {lang === code && <CheckCircle size={20} color="var(--brand-primary)" aria-hidden />}
-        </motion.button>
-      ))}
-    </div>
-  </>
+          <Globe size={28} />
+        </div>
+        <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+          {t?.('language') || 'Language'}
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>MyCoinwise speaks your language.</p>
+      </div>
+
+      {/* ── Language option buttons ── */}
+      <div className="idp-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {Object.entries(LANGUAGES || {}).map(([code, info]) => (
+          <motion.button
+            key={code}
+            type="button"
+            onClick={() => {
+              setLanguage(code);
+              const targetId = USER_ID || user?._id || user?.id;
+              if (targetId) {
+                api.updateSettings(targetId, { language: code }).catch(console.error);
+              }
+              showMessage('success', t?.('language_updated') || 'Language updated successfully');
+            }}
+            whileHover={hoverAnim}
+            aria-pressed={lang === code}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px',
+              borderRadius: 16,
+              border: lang === code ? '2px solid var(--brand-primary)' : '1px solid var(--glass-border)',
+              background: lang === code ? 'rgba(var(--brand-primary-rgb), 0.08)' : 'var(--surface-1)',
+              cursor: 'pointer', color: 'var(--text-primary)',
+              fontWeight: lang === code ? 800 : 600, transition: 'all 0.2s',
+              boxShadow: lang === code ? '0 8px 24px rgba(var(--brand-primary-rgb), 0.15)' : 'none',
+            }}
+          >
+            <span style={{ fontSize: '1.5rem' }} aria-hidden>{info.flag || '🌐'}</span>
+            <span style={{ flex: 1, textAlign: 'left', fontSize: '1.05rem' }}>{info.name}</span>
+            {lang === code && <CheckCircle size={20} color="var(--brand-primary)" aria-hidden />}
+          </motion.button>
+        ))}
+      </div>
+    </>
   );
 });
 LanguageTab.displayName = 'LanguageTab';
@@ -2199,14 +2207,14 @@ const CookieSettingsSection = React.memo(({ showMessage }) => {
               consent === 'accepted'
                 ? 'rgba(16, 185, 129, 0.15)'
                 : consent === 'rejected'
-                ? 'rgba(239, 68, 68, 0.15)'
-                : 'rgba(255, 255, 255, 0.08)',
+                  ? 'rgba(239, 68, 68, 0.15)'
+                  : 'rgba(255, 255, 255, 0.08)',
             color:
               consent === 'accepted'
                 ? 'var(--success, #10b981)'
                 : consent === 'rejected'
-                ? 'var(--danger, #ef4444)'
-                : 'var(--text-secondary, #94a3b8)',
+                  ? 'var(--danger, #ef4444)'
+                  : 'var(--text-secondary, #94a3b8)',
           }}
         >
           {consent === 'accepted' ? 'Opted-In (Active)' : consent === 'rejected' ? 'Opted-Out (Blocked)' : 'Not Decided'}
@@ -2260,120 +2268,120 @@ CookieSettingsSection.displayName = 'CookieSettingsSection';
 const DataTab = React.memo(({ setModals, handleExcelExport, handlePDFExport, excelLoading, pdfLoading, showMessage, t }) => {
   const navigate = useNavigate();
   return (
-  <>
-    {/* ── Header ── */}
-    <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
-      <div className="idp-hero-icon expense" style={{ width: 64, height: 64, marginBottom: 16 }} aria-hidden>
-        <Database size={28} />
-      </div>
-      <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
-        {t?.('data_security') || 'Data & Security'}
-      </h3>
-      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
-        {t?.('data_security_desc') || 'Export your data, backup your transactions, or manage your data vaults.'}
-      </p>
-    </div>
-
-    <div className="idp-body" style={{ background: 'transparent', border: 'none', padding: 0 }}>
-      {/* ── Official A4 Statement & Reports Hub Hero Card ── */}
-      <div
-        className="idp-section"
-        style={{
-          background: 'linear-gradient(135deg, rgba(15,23,42,0.06) 0%, rgba(5,150,105,0.08) 100%)',
-          border: '1px solid rgba(5,150,105,0.25)',
-          padding: 24,
-          borderRadius: 20,
-          marginBottom: 24,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ maxWidth: 480 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <FileCheck size={20} style={{ color: 'var(--brand-primary)' }} />
-            <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-              {t?.('official_statements_hub') || 'Official Statements & Report Center'}
-            </h4>
-          </div>
-          <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            {t?.('official_statements_hub_desc') || 'Generate and download print-perfect A4 financial statements, itemized ledgers, and audit-ready tax reports.'}
-          </p>
+    <>
+      {/* ── Header ── */}
+      <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
+        <div className="idp-hero-icon expense" style={{ width: 64, height: 64, marginBottom: 16 }} aria-hidden>
+          <Database size={28} />
         </div>
-        <motion.button
-          type="button"
-          className="btn-primary"
-          onClick={() => navigate('/reports')}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          style={{ padding: '12px 20px', fontSize: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: 8 }}
-        >
-          <span>{t?.('open_statement_hub') || 'Open Statements Hub'}</span>
-          <ArrowRight size={16} />
-        </motion.button>
-      </div>
-
-      {/* ── Export buttons ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 30 }}>
-        <motion.button
-          type="button"
-          onClick={handleExcelExport}
-          disabled={excelLoading}
-          className="btn-secondary"
-          whileHover={{ scale: 1.03, y: -2 }}
-          style={{ flexDirection: 'column', gap: 12, padding: '24px 16px', background: 'var(--glass-2)' }}
-        >
-          <div style={{ padding: 12, background: 'rgba(16,185,129,0.1)', borderRadius: 12, color: 'var(--success)' }} aria-hidden>
-            <Download size={24} />
-          </div>
-          <span style={{ fontWeight: 800 }}>{excelLoading ? (t?.('exporting') || 'Exporting…') : (t?.('download_excel') || 'Download Excel')}</span>
-        </motion.button>
-        <motion.button
-          type="button"
-          onClick={handlePDFExport}
-          disabled={pdfLoading}
-          className="btn-secondary"
-          whileHover={{ scale: 1.03, y: -2 }}
-          style={{ flexDirection: 'column', gap: 12, padding: '24px 16px', background: 'var(--glass-2)' }}
-        >
-          <div style={{ padding: 12, background: 'rgba(56,189,248,0.1)', borderRadius: 12, color: 'var(--brand-secondary)' }} aria-hidden>
-            <FileText size={24} />
-          </div>
-          <span style={{ fontWeight: 800 }}>{pdfLoading ? (t?.('exporting') || 'Generating…') : (t?.('download_pdf') || 'Download PDF')}</span>
-        </motion.button>
-      </div>
-
-      {/* ── Cookie & Analytics Preferences ── */}
-      <CookieSettingsSection showMessage={showMessage} />
-
-      {/* ── Danger zone: factory reset ── */}
-      <div
-        className="idp-section"
-        style={{
-          background: 'rgba(239,68,68,0.05)', padding: 24, borderRadius: 20,
-          border: '1px solid rgba(239,68,68,0.2)',
-        }}
-      >
-        <h4 style={{ color: 'var(--danger)', fontSize: '1.2rem', fontWeight: 800, margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ShieldAlert size={20} aria-hidden /> {t?.('danger_zone') || 'Danger Zone'}
-        </h4>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20, lineHeight: 1.6 }}>
-          {t?.('reset_warning') || 'This will delete ALL your transactions and reset your balance to zero. This action cannot be undone.'}
+        <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+          {t?.('data_security') || 'Data & Security'}
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+          {t?.('data_security_desc') || 'Export your data, backup your transactions, or manage your data vaults.'}
         </p>
-        <motion.button
-          type="button"
-          className="btn-primary"
-          onClick={() => setModals((prev) => ({ ...prev, resetConfirm: true }))}
-          whileHover={{ scale: 1.02 }}
-          style={{ background: 'var(--danger)', width: 'max-content' }}
-        >
-          <ShieldAlert size={16} aria-hidden /> {t?.('factory_reset') || 'Factory Reset Account'}
-        </motion.button>
       </div>
-    </div>
-  </>
+
+      <div className="idp-body" style={{ background: 'transparent', border: 'none', padding: 0 }}>
+        {/* ── Official A4 Statement & Reports Hub Hero Card ── */}
+        <div
+          className="idp-section"
+          style={{
+            background: 'linear-gradient(135deg, rgba(15,23,42,0.06) 0%, rgba(5,150,105,0.08) 100%)',
+            border: '1px solid rgba(5,150,105,0.25)',
+            padding: 24,
+            borderRadius: 20,
+            marginBottom: 24,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 16,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ maxWidth: 480 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <FileCheck size={20} style={{ color: 'var(--brand-primary)' }} />
+              <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                {t?.('official_statements_hub') || 'Official Statements & Report Center'}
+              </h4>
+            </div>
+            <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              {t?.('official_statements_hub_desc') || 'Generate and download print-perfect A4 financial statements, itemized ledgers, and audit-ready tax reports.'}
+            </p>
+          </div>
+          <motion.button
+            type="button"
+            className="btn-primary"
+            onClick={() => navigate('/reports')}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            style={{ padding: '12px 20px', fontSize: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+          >
+            <span>{t?.('open_statement_hub') || 'Open Statements Hub'}</span>
+            <ArrowRight size={16} />
+          </motion.button>
+        </div>
+
+        {/* ── Export buttons ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 30 }}>
+          <motion.button
+            type="button"
+            onClick={handleExcelExport}
+            disabled={excelLoading}
+            className="btn-secondary"
+            whileHover={{ scale: 1.03, y: -2 }}
+            style={{ flexDirection: 'column', gap: 12, padding: '24px 16px', background: 'var(--glass-2)' }}
+          >
+            <div style={{ padding: 12, background: 'rgba(16,185,129,0.1)', borderRadius: 12, color: 'var(--success)' }} aria-hidden>
+              <Download size={24} />
+            </div>
+            <span style={{ fontWeight: 800 }}>{excelLoading ? (t?.('exporting') || 'Exporting…') : (t?.('download_excel') || 'Download Excel')}</span>
+          </motion.button>
+          <motion.button
+            type="button"
+            onClick={handlePDFExport}
+            disabled={pdfLoading}
+            className="btn-secondary"
+            whileHover={{ scale: 1.03, y: -2 }}
+            style={{ flexDirection: 'column', gap: 12, padding: '24px 16px', background: 'var(--glass-2)' }}
+          >
+            <div style={{ padding: 12, background: 'rgba(56,189,248,0.1)', borderRadius: 12, color: 'var(--brand-secondary)' }} aria-hidden>
+              <FileText size={24} />
+            </div>
+            <span style={{ fontWeight: 800 }}>{pdfLoading ? (t?.('exporting') || 'Generating…') : (t?.('download_pdf') || 'Download PDF')}</span>
+          </motion.button>
+        </div>
+
+        {/* ── Cookie & Analytics Preferences ── */}
+        <CookieSettingsSection showMessage={showMessage} />
+
+        {/* ── Danger zone: factory reset ── */}
+        <div
+          className="idp-section"
+          style={{
+            background: 'rgba(239,68,68,0.05)', padding: 24, borderRadius: 20,
+            border: '1px solid rgba(239,68,68,0.2)',
+          }}
+        >
+          <h4 style={{ color: 'var(--danger)', fontSize: '1.2rem', fontWeight: 800, margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ShieldAlert size={20} aria-hidden /> {t?.('danger_zone') || 'Danger Zone'}
+          </h4>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20, lineHeight: 1.6 }}>
+            {t?.('reset_warning') || 'This will delete ALL your transactions and reset your balance to zero. This action cannot be undone.'}
+          </p>
+          <motion.button
+            type="button"
+            className="btn-primary"
+            onClick={() => setModals((prev) => ({ ...prev, resetConfirm: true }))}
+            whileHover={{ scale: 1.02 }}
+            style={{ background: 'var(--danger)', width: 'max-content' }}
+          >
+            <ShieldAlert size={16} aria-hidden /> {t?.('factory_reset') || 'Factory Reset Account'}
+          </motion.button>
+        </div>
+      </div>
+    </>
   );
 });
 DataTab.displayName = 'DataTab';
@@ -3153,16 +3161,25 @@ function SettingsInner({ context }) {
       if (formState.isDirty) {
         const { isValid: isGoalValid, value: goalValue } = validateGoal(formState.monthlyGoal);
         showMessage('info', 'Auto-saving changes before switching…');
-        await api.updateSettings(activeUserId, {
-          username: sanitizeInput(formState.fullName || formState.firstName || ''),
-          last_name: '',
-          profession: sanitizeInput(formState.profession || ''),
-          monthly_goal: isGoalValid ? goalValue : (user?.monthly_goal || 0),
-          currency: formState.currency,
-          profile_avatar: formState.avatar,
-          profile_color: formState.avatarColor,
-        });
-        dispatch({ type: 'CLEAR_DIRTY' });
+        try {
+          await api.updateSettings(activeUserId, {
+            username: sanitizeInput(formState.fullName || formState.firstName || ''),
+            last_name: '',
+            profession: sanitizeInput(formState.profession || ''),
+            monthly_goal: isGoalValid ? goalValue : (user?.monthly_goal || 0),
+            currency: formState.currency,
+            language: lang || formState.language || 'en',
+            profile_avatar: formState.avatar,
+            profile_color: formState.avatarColor,
+            notification_prefs: formState.notificationPrefs,
+            advanced_prefs: formState.advancedPrefs,
+          });
+          dispatch({ type: 'CLEAR_DIRTY' });
+        } catch (saveErr) {
+          const saveMsg = saveErr?.response?.data?.error || saveErr?.message || 'Unknown save error';
+          showMessage('error', `Failed to save changes before switching: ${saveMsg}`);
+          return;
+        }
       }
 
       const isSelfSwitch = String(switchId) === String(activeUserId);
@@ -3179,7 +3196,7 @@ function SettingsInner({ context }) {
     } finally {
       if (isMounted.current) setLoadingStates((prev) => ({ ...prev, switch: null }));
     }
-  }, [modals.switchConfirm, allUsers, switchUser, showMessage, formState, activeUserId, user, switchPassword]);
+  }, [modals.switchConfirm, allUsers, switchUser, showMessage, formState, activeUserId, user, switchPassword, lang]);
 
   /* ============================================================
    * Theme
@@ -3647,45 +3664,46 @@ function SettingsInner({ context }) {
             ? (modals.switchConfirm?.id || modals.switchConfirm?._id)
             : modals.switchConfirm
         ) !== String(activeUserId || USER_ID) && (
-          <div style={{ marginTop: 16 }}>
-            <label
-              htmlFor="switch-profile-password"
-              style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}
-            >
-              Password for this profile
-            </label>
-            <input
-              id="switch-profile-password"
-              type="password"
-              value={switchPassword}
-              onChange={(e) => setSwitchPassword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && switchPassword) handleSwitchUser();
-              }}
-              autoComplete="current-password"
-              enterKeyHint="go"
-              disabled={!!loadingStates.switch}
-              placeholder="Enter the profile's password"
-              aria-describedby="switch-profile-password-help"
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                fontSize: '1rem',
-                borderRadius: 8,
-                border: '1px solid var(--border-color, rgba(148, 163, 184, 0.35))',
-                background: 'var(--surface-2, rgba(15, 23, 42, 0.4))',
-                color: 'var(--text-primary)',
-                boxSizing: 'border-box',
-              }}
-            />
-            <p
-              id="switch-profile-password-help"
-              style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', margin: '6px 0 0' }}
-            >
-              Required to prevent one household member from opening another's account.
-            </p>
-          </div>
-        )}
+            <div style={{ marginTop: 16 }}>
+              <label
+                htmlFor="switch-profile-password"
+                style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}
+              >
+                Password for this profile
+              </label>
+              <input
+                id="switch-profile-password"
+                type="password"
+                autoFocus
+                value={switchPassword}
+                onChange={(e) => setSwitchPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && switchPassword) handleSwitchUser();
+                }}
+                autoComplete="current-password"
+                enterKeyHint="go"
+                disabled={!!loadingStates.switch}
+                placeholder="Enter the profile's password"
+                aria-describedby="switch-profile-password-help"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  fontSize: '1rem',
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color, rgba(148, 163, 184, 0.35))',
+                  background: 'var(--surface-2, rgba(15, 23, 42, 0.4))',
+                  color: 'var(--text-primary)',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <p
+                id="switch-profile-password-help"
+                style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', margin: '6px 0 0' }}
+              >
+                Required to prevent one household member from opening another's account.
+              </p>
+            </div>
+          )}
 
         {/* ── Unsaved-changes notice ── */}
         {formState.isDirty && (

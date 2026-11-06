@@ -22,7 +22,7 @@
 import React, {
   useState, useMemo, useCallback, useEffect, useRef, useId,
 } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
@@ -31,7 +31,7 @@ import {
   Wallet, Sparkles, Zap, Settings, Minus,
   Rocket, LineChart, Tag, RefreshCw, Share2,
   Edit3, Trash2, ChevronDown, AlertTriangle, X, PieChart as PieIcon,
-  Eye, EyeOff, Calendar, Info,
+  Eye, EyeOff, Calendar, Info, LogOut,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { api } from '../services/api';
@@ -55,6 +55,7 @@ import {
 
 import { dedupeTransactions } from '../utils/transactionIntegrity';
 import { getAppDate } from '../utils/dateUtils';
+import { getCurrencySymbol } from '../utils/currencyUtils';
 
 /* ============================================================
  * Constants
@@ -494,13 +495,13 @@ const CashflowFloatingTooltip = ({ active, payload, label, safeFmt, currencySymb
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
           <span style={{ color: '#10b981', fontWeight: 600 }}>Income</span>
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-            +{formatCurrencyText(inc, safeFmt, currencySymbol)}
+            +{formatCurrencyText(Math.abs(inc), safeFmt, currencySymbol)}
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
           <span style={{ color: '#ef4444', fontWeight: 600 }}>Expenses</span>
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-            -{formatCurrencyText(exp, safeFmt, currencySymbol)}
+            -{formatCurrencyText(Math.abs(exp), safeFmt, currencySymbol)}
           </span>
         </div>
         <div style={{
@@ -513,7 +514,7 @@ const CashflowFloatingTooltip = ({ active, payload, label, safeFmt, currencySymb
         }}>
           <span style={{ color: net >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>Net</span>
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: net >= 0 ? '#10b981' : '#ef4444' }}>
-            {net >= 0 ? '+' : ''}{formatCurrencyText(net, safeFmt, currencySymbol)}
+            {net > 0 ? '+' : (net < 0 ? '-' : '')}{formatCurrencyText(Math.abs(net), safeFmt, currencySymbol)}
           </span>
         </div>
       </div>
@@ -666,8 +667,10 @@ export default function Dashboard() {
     fmt,
     t,
     fetchTransactions,
+    logout,
   } = useAppActions();
 
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const prefersReducedMotion = usePrefersReducedMotion();
 
@@ -722,7 +725,7 @@ export default function Dashboard() {
   }, [accounts, displayCurrency]);
 
   // ── Safe currency formatter with locale/currency fallback ──
-  const currencySymbol = currencyInfo?.symbol || '$';
+  const currencySymbol = currencyInfo?.symbol || getCurrencySymbol(displayCurrency);
   const safeFmt = useCallback(
     (val) => {
       const num = toNumber(val, 0);
@@ -763,25 +766,76 @@ export default function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [alertDismissed, setAlertDismissed] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const alertDismissedKey = useMemo(() => userScopedKey('deficit_alert_dismissed', USER_ID), [USER_ID]);
+  const [alertDismissed, setAlertDismissed] = useState(() => safeGetItem(alertDismissedKey, 'false') === 'true');
+  const dismissAlert = useCallback(() => {
+    setAlertDismissed(true);
+    safeSetItem(alertDismissedKey, 'true');
+  }, [alertDismissedKey]);
+  const userMenuRef = useRef(null);
+  const exportMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!showUserMenu && !showExportMenu) return;
+    const handleOutsideClick = (e) => {
+      if (showUserMenu && userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowUserMenu(false);
+      }
+      if (showExportMenu && exportMenuRef.current && !exportMenuRef.current.contains(e.target)) {
+        setShowExportMenu(false);
+      }
+    };
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        setShowUserMenu(false);
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showUserMenu, showExportMenu]);
+
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
+
+  // ── Track current day to auto-recompute date-dependent calculations at midnight / on focus ──
+  const [currentDay, setCurrentDay] = useState(() => getAppDate().toDateString());
+  useEffect(() => {
+    const checkDay = () => {
+      const today = getAppDate().toDateString();
+      setCurrentDay((prev) => (prev !== today ? today : prev));
+    };
+    window.addEventListener('focus', checkDay);
+    document.addEventListener('visibilitychange', checkDay);
+    const interval = setInterval(checkDay, 60000);
+    return () => {
+      window.removeEventListener('focus', checkDay);
+      document.removeEventListener('visibilitychange', checkDay);
+      clearInterval(interval);
+    };
+  }, []);
 
   // ── Sanitize username: replace underscores with spaces ──
   const rawUsername = user?.username || user?.name || (user?.email ? user.email.split('@')[0] : 'Username');
   const sanitizedUsername = useMemo(() => String(rawUsername).replace(/_/g, ' ').trim() || 'Username', [rawUsername]);
   const userAvatarChar = useMemo(() => sanitizedUsername.charAt(0).toUpperCase() || 'U', [sanitizedUsername]);
+  const showBalanceKey = useMemo(() => userScopedKey('dash_show_balance', USER_ID), [USER_ID]);
   const [showBalance, setShowBalance] = useState(() => {
-    const saved = safeGetItem('budgeta_dash_show_balance', 'true');
+    const saved = safeGetItem(showBalanceKey, 'true');
     return saved !== 'false';
   });
   const toggleShowBalance = useCallback(() => {
     setShowBalance((prev) => {
       const next = !prev;
-      safeSetItem('budgeta_dash_show_balance', String(next));
+      safeSetItem(showBalanceKey, String(next));
       return next;
     });
-  }, []);
+  }, [showBalanceKey]);
   const hasLoadedOnceRef = useRef(!loading);
   useEffect(() => {
     if (!loading) {
@@ -796,21 +850,26 @@ export default function Dashboard() {
     setShowForm(true);
   }, []);
 
-  /* ---------------- Reload filters when USER_ID changes ---------------- */
-  const prevDateKeyRef = useRef(dateFilterKey);
-  if (prevDateKeyRef.current !== dateFilterKey) {
-    prevDateKeyRef.current = dateFilterKey;
-    setDateFilter(safeGetItem(dateFilterKey, 'all'));
-  }
-  const prevCatKeyRef = useRef(categoryFilterKey);
-  if (prevCatKeyRef.current !== categoryFilterKey) {
-    prevCatKeyRef.current = categoryFilterKey;
-    setCategoryFilter(safeGetItem(categoryFilterKey, 'all'));
-  }
+  /* ---------------- Sync & Persist filters per user ---------------- */
+  const activeDateKeyRef = useRef(dateFilterKey);
+  useEffect(() => {
+    if (activeDateKeyRef.current !== dateFilterKey) {
+      activeDateKeyRef.current = dateFilterKey;
+      setDateFilter(safeGetItem(dateFilterKey, 'all'));
+    } else {
+      safeSetItem(dateFilterKey, dateFilter);
+    }
+  }, [dateFilterKey, dateFilter]);
 
-  /* ---------------- Persist filters ---------------- */
-  useEffect(() => { safeSetItem(dateFilterKey, dateFilter); }, [dateFilterKey, dateFilter]);
-  useEffect(() => { safeSetItem(categoryFilterKey, categoryFilter); }, [categoryFilterKey, categoryFilter]);
+  const activeCatKeyRef = useRef(categoryFilterKey);
+  useEffect(() => {
+    if (activeCatKeyRef.current !== categoryFilterKey) {
+      activeCatKeyRef.current = categoryFilterKey;
+      setCategoryFilter(safeGetItem(categoryFilterKey, 'all'));
+    } else {
+      safeSetItem(categoryFilterKey, categoryFilter);
+    }
+  }, [categoryFilterKey, categoryFilter]);
 
   /* ============================================================
    * Data Processing
@@ -956,13 +1015,13 @@ export default function Dashboard() {
   // Goal progress is monthly by definition. Using all-time net savings here
   // made a small monthly target look like an inverted 100%+ ratio.
   const monthlyNetSavings = useMemo(() => {
-    const now = getAppDate();
+    const now = currentDay ? getAppDate() : getAppDate();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     return allParsed.reduce((sum, transaction) => {
       if (transaction.parsedDate < monthStart) return sum;
       return sum + (transaction.type === 'income' ? transaction.displayAmount : -transaction.displayAmount);
     }, 0);
-  }, [allParsed]);
+  }, [allParsed, currentDay]);
 
   // Primary active goal fallback from user goals collection
   const primaryGoal = useMemo(() => {
@@ -1032,7 +1091,7 @@ export default function Dashboard() {
   // ── Safe-to-spend daily amount (after recurring bills, capped) ──
   const safeToSpend = useMemo(() => {
     if (spendableBalance <= 0) return 0;
-    const today = getAppDate();
+    const today = currentDay ? getAppDate() : getAppDate();
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const daysRemaining = Math.max(1, monthEnd.getDate() - today.getDate() + 1);
     const recurringBills = (Array.isArray(subscriptions) ? subscriptions : [])
@@ -1051,7 +1110,7 @@ export default function Dashboard() {
     const netAvailable = Math.max(0, spendableBalance - recurringBills);
     const dailyRaw = netAvailable / daysRemaining;
     return Math.max(0, dailyRaw);
-  }, [spendableBalance, subscriptions, displayCurrency, fxRatesToInr]);
+  }, [spendableBalance, subscriptions, displayCurrency, fxRatesToInr, currentDay]);
 
   // 7. Animated counter completion state for hero card glow
   const [balanceDone, setBalanceDone] = useState(false);
@@ -1064,7 +1123,7 @@ export default function Dashboard() {
   // 9. Daily average spend over the last 30 days
   const dailyAverageSpend = useMemo(() => {
     if (!Array.isArray(allParsed) || allParsed.length === 0) return 0;
-    const cutoff = getAppDate();
+    const cutoff = currentDay ? getAppDate() : getAppDate();
     cutoff.setHours(0, 0, 0, 0);
     cutoff.setDate(cutoff.getDate() - 30);
     let total = 0;
@@ -1075,11 +1134,11 @@ export default function Dashboard() {
       total += Number(t.displayAmount ?? t.amount) || 0;
     }
     return total / 30;
-  }, [allParsed]);
+  }, [allParsed, currentDay]);
 
   // 10. Month-over-month (with upper bound = now)
   const momMetrics = useMemo(() => {
-    const now = getAppDate();
+    const now = currentDay ? getAppDate() : getAppDate();
     const nowMs = now.getTime();
     const currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -1121,7 +1180,7 @@ export default function Dashboard() {
       expense: pct(curExpense, prevExpense),
       balance: pct(curIncome - curExpense, prevIncome - prevExpense),
     };
-  }, [allParsed]);
+  }, [allParsed, currentDay]);
 
   // 11. Sparkline (day-bucketed, baseline-aware)
   const sparklineSvgPath = useMemo(() => {
@@ -1190,7 +1249,7 @@ export default function Dashboard() {
     }
 
     // ── Determine the full day range based on the active date filter ──
-    const now = getAppDate();
+    const now = currentDay ? getAppDate() : getAppDate();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const firstTxDate = sortedAscFiltered[0].parsedDate;
@@ -1266,7 +1325,7 @@ export default function Dashboard() {
         month: 'short', day: 'numeric', ...(spansMultipleYears ? { year: 'numeric' } : {}),
       }),
     }));
-  }, [sortedAscFiltered, locale, safeFmt, currencySymbol, dateFilter]);
+  }, [sortedAscFiltered, locale, safeFmt, currencySymbol, dateFilter, currentDay]);
 
   // ── Balanced Y-axis domain calculation: maxIncome * 1.3 ──
   const maxIncome = useMemo(() => {
@@ -1277,26 +1336,18 @@ export default function Dashboard() {
 
   // ── Expense Spikes mini-chart dataset (chronological: oldest -> newest) ──
   const expenseSpikesData = useMemo(() => {
-    if (chartData && chartData.length > 0) {
-      // Pick days that have expenses or recent days, sorted chronologically (oldest -> newest)
-      const nonZero = chartData.filter((d) => d.expense > 0);
-      const points = nonZero.length >= 3 ? nonZero : chartData.slice(-6);
-      return points.slice(-7).map((d) => ({
-        name: d.name,
-        amount: Number(d.expense) || 0,
-      }));
-    }
-    return [
-      { name: 'Mon', amount: 140 },
-      { name: 'Tue', amount: 320 },
-      { name: 'Wed', amount: 890 },
-      { name: 'Thu', amount: 410 },
-      { name: 'Fri', amount: 650 },
-      { name: 'Sat', amount: 230 },
-    ];
+    if (!chartData || chartData.length === 0) return [];
+    // Pick days that have expenses or recent days, sorted chronologically (oldest -> newest)
+    const nonZero = chartData.filter((d) => d.expense > 0);
+    const points = nonZero.length >= 3 ? nonZero : chartData.slice(-6);
+    return points.slice(-7).map((d) => ({
+      name: d.name,
+      amount: Number(d.expense) || 0,
+    }));
   }, [chartData]);
 
   const isDeficit = rawBalance < 0 || financialMetrics.netSavings < 0 || savingsRate <= 0;
+  const showDeficitBanner = !alertDismissed && financialMetrics.netSavings < 0 && (financialMetrics.expense > 0 || allParsed.length > 0);
 
   // 13. Net worth over time (continuous daily running total)
   // The window always extends to today with a minimum 7-day span so that
@@ -1316,7 +1367,7 @@ export default function Dashboard() {
 
     const firstTxDate = sortedAscAll[0].parsedDate;
     const lastTxDate = sortedAscAll[sortedAscAll.length - 1].parsedDate;
-    const now = getAppDate();
+    const now = currentDay ? getAppDate() : getAppDate();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     let start = new Date(firstTxDate.getFullYear(), firstTxDate.getMonth(), firstTxDate.getDate());
     let end = new Date(lastTxDate.getFullYear(), lastTxDate.getMonth(), lastTxDate.getDate());
@@ -1367,7 +1418,7 @@ export default function Dashboard() {
         month: 'short', day: 'numeric', ...(spansMultipleYears ? { year: 'numeric' } : {}),
       }),
     }));
-  }, [sortedAscAll, locale, startingBalance]);
+  }, [sortedAscAll, locale, startingBalance, currentDay]);
 
   // ── Net worth flatness check ──
   // Only hide the chart when there are fewer than 2 points. A constant
@@ -1783,7 +1834,7 @@ export default function Dashboard() {
             </motion.button>
 
             {/* ── Grouped Export & CSV Dropdown Button ── */}
-            <div className="bento-export-dropdown-wrap" style={{ position: 'relative' }}>
+            <div className="bento-export-dropdown-wrap" ref={exportMenuRef} style={{ position: 'relative' }}>
               <motion.button
                 type="button"
                 className="bbtn-secondary bbtn-export"
@@ -1793,16 +1844,26 @@ export default function Dashboard() {
                 whileTap={{ scale: 0.98 }}
                 title="Export data"
                 aria-label="Export options"
+                aria-haspopup="menu"
+                aria-expanded={showExportMenu}
               >
                 <Download size={15} style={{ color: isDark ? '#cbd5e1' : '#64748b' }} />
                 <span className="bbtn-export-label">Export CSV</span>
-                <ChevronDown size={13} style={{ color: isDark ? '#94a3b8' : '#94a3b8' }} />
+                <ChevronDown
+                  size={13}
+                  style={{
+                    color: isDark ? '#94a3b8' : '#94a3b8',
+                    transform: showExportMenu ? 'rotate(180deg)' : 'none',
+                    transition: 'transform 0.2s ease',
+                  }}
+                />
               </motion.button>
 
               {showExportMenu && (
-                <div className="bento-export-menu">
+                <div className="bento-export-menu" role="menu">
                   <button
                     type="button"
+                    role="menuitem"
                     onClick={() => {
                       setShowExportMenu(false);
                       handleExportCSV();
@@ -1835,38 +1896,94 @@ export default function Dashboard() {
               className="bbtn-pri bbtn-full bbtn-primary-prominent"
               onClick={handleOpenAddForm}
               title="Ctrl+N"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                height: 38,
-                padding: '0 16px',
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: '#ffffff',
-                fontSize: '0.84rem',
-                fontWeight: 700,
-                border: 'none',
-                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-              whileHover={{ scale: 1.03, boxShadow: '0 6px 20px rgba(16, 185, 129, 0.45)' }}
+              whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
             >
               <Plus size={16} strokeWidth={2.5} />
               <span>{tr('add_transaction', 'Add Transaction')}</span>
             </motion.button>
 
-            {/* ── User Profile (clean avatar, sanitized username, chevron) ── */}
-            <div className="bento-user-profile" title={`User: ${sanitizedUsername}`} style={{ flexShrink: 0 }}>
-              <div className="user-avatar" aria-hidden="true">
-                {userAvatarChar}
-              </div>
-              <span className="user-name" style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {sanitizedUsername}
-              </span>
-              <ChevronDown size={14} style={{ color: '#64748b', flexShrink: 0 }} />
+            {/* ── User Profile (clickable button with dropdown menu) ── */}
+            <div className="bento-user-menu-wrap" ref={userMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
+              <button
+                type="button"
+                className="bento-user-profile"
+                title={`User: ${sanitizedUsername}`}
+                onClick={() => setShowUserMenu((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={showUserMenu}
+                style={{
+                  border: 'none',
+                  background: 'inherit',
+                  font: 'inherit',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <div className="user-avatar" aria-hidden="true">
+                  {userAvatarChar}
+                </div>
+                <span className="user-name" style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {sanitizedUsername}
+                </span>
+                <ChevronDown
+                  size={14}
+                  style={{
+                    color: '#64748b',
+                    flexShrink: 0,
+                    transform: showUserMenu ? 'rotate(180deg)' : 'none',
+                    transition: 'transform 0.2s ease',
+                  }}
+                />
+              </button>
+
+              {showUserMenu && (
+                <div className="bento-user-dropdown-menu" role="menu" aria-label="User profile options">
+                  <div className="user-menu-header">
+                    <span className="umh-name">{sanitizedUsername}</span>
+                    {user?.email && <span className="umh-email">{user.email}</span>}
+                  </div>
+                  <div className="user-menu-divider" />
+                  <button
+                    type="button"
+                    className="user-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      navigate('/settings');
+                    }}
+                  >
+                    <Settings size={15} style={{ color: '#0ea5e9' }} />
+                    <span>Account Settings</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="user-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      navigate('/analytics');
+                    }}
+                  >
+                    <LineChart size={15} style={{ color: '#8b5cf6' }} />
+                    <span>Analytics</span>
+                  </button>
+                  <div className="user-menu-divider" />
+                  <button
+                    type="button"
+                    className="user-menu-item text-danger"
+                    role="menuitem"
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      if (typeof logout === 'function') logout();
+                      navigate('/login', { replace: true });
+                    }}
+                  >
+                    <LogOut size={15} />
+                    <span>Log Out</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2007,7 +2124,7 @@ export default function Dashboard() {
           {/* ───────────────── Column 1 (Left - Charts & Alerts ~60%) ───────────────── */}
           <div className="dashboard-column-left">
             {/* Alert Banner (Top) */}
-            {!alertDismissed && (
+            {showDeficitBanner && (
               <div className="dashboard-alert-banner" role="alert">
                 <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
                   <div className="alert-icon-box" aria-hidden="true">
@@ -2020,7 +2137,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   className="alert-dismiss-btn"
-                  onClick={() => setAlertDismissed(true)}
+                  onClick={dismissAlert}
                   aria-label="Dismiss alert"
                   title="Dismiss alert"
                 >
@@ -2083,7 +2200,7 @@ export default function Dashboard() {
                         tickLine={false}
                       />
                       <YAxis
-                        domain={[0, (dataMax) => Math.max(dataMax, maxIncome * 1.3)]}
+                        domain={[0, (dataMax) => Math.max(Number.isFinite(dataMax) ? dataMax : 0, Math.ceil(maxIncome * 1.3))]}
                         tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 10 }}
                         axisLine={false}
                         tickLine={false}
@@ -2236,43 +2353,61 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="bt-chart-wrap" style={{ height: 160, minHeight: 140, width: '100%' }}>
-                <ResponsiveContainer width="100%" height={160}>
-                  <BarChart data={expenseSpikesData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'} vertical={false} />
-                    <XAxis dataKey="name" tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis
-                      tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 9 }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={35}
-                      tickFormatter={(val) => {
-                        if (val === 0) return '0';
-                        const abs = Math.abs(val);
-                        if (abs >= 1000) return `${(abs / 1000).toFixed(0)}k`;
-                        return String(val);
-                      }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: 'rgba(15, 23, 42, 0.92)',
-                        borderRadius: 8,
-                        color: '#fff',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        fontSize: '0.78rem',
-                        padding: '6px 10px',
-                      }}
-                      formatter={(val) => [formatCurrencyText(val, safeFmt, currencySymbol), 'Expense']}
-                    />
-                    <Bar
-                      dataKey="amount"
-                      fill="#ef4444"
-                      radius={[6, 6, 0, 0]}
-                      barSize={24}
-                      maxBarSize={32}
-                      isAnimationActive={!prefersReducedMotion}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+                {expenseSpikesData.length > 0 && expenseSpikesData.some((d) => d.amount > 0) ? (
+                  <ResponsiveContainer width="100%" height={160}>
+                    <BarChart data={expenseSpikesData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'} vertical={false} />
+                      <XAxis dataKey="name" tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <YAxis
+                        tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 9 }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={35}
+                        tickFormatter={(val) => {
+                          if (val === 0) return '0';
+                          const abs = Math.abs(val);
+                          if (abs >= 1000) return `${(abs / 1000).toFixed(0)}k`;
+                          return String(val);
+                        }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: 'rgba(15, 23, 42, 0.92)',
+                          borderRadius: 8,
+                          color: '#fff',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          fontSize: '0.78rem',
+                          padding: '6px 10px',
+                        }}
+                        formatter={(val) => [formatCurrencyText(val, safeFmt, currencySymbol), 'Expense']}
+                      />
+                      <Bar
+                        dataKey="amount"
+                        fill="#ef4444"
+                        radius={[6, 6, 0, 0]}
+                        barSize={24}
+                        maxBarSize={32}
+                        isAnimationActive={!prefersReducedMotion}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div
+                    style={{
+                      height: '100%',
+                      minHeight: 140,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      color: isDark ? '#94a3b8' : '#64748b',
+                      fontSize: '0.84rem',
+                    }}
+                  >
+                    <span>No expenses recorded yet.</span>
+                  </div>
+                )}
               </div>
             </motion.div>
 
@@ -2349,21 +2484,21 @@ export default function Dashboard() {
             {/* Recent Transactions */}
             <motion.div variants={CARD_VARIANTS} className="bento-tile bento-recent glass">
               <div className="bt-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <h3 className="heading-accent" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {tr('recent_transactions', 'Recent Transactions')}
-                  </h3>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <NavLink to="/transactions" className="bt-link" title="View all transactions">View all →</NavLink>
-                    <button
-                      type="button"
-                      className="bt-icon-btn"
-                      onClick={handleOpenAddForm}
-                      title="Add transaction"
-                      aria-label="Add transaction"
-                    >
-                      <Plus size={16} />
-                    </button>
-                  </div>
+                <h3 className="heading-accent" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {tr('recent_transactions', 'Recent Transactions')}
+                </h3>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <NavLink to="/transactions" className="bt-link" title="View all transactions">View all →</NavLink>
+                  <button
+                    type="button"
+                    className="bt-icon-btn"
+                    onClick={handleOpenAddForm}
+                    title="Add transaction"
+                    aria-label="Add transaction"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
               </div>
 
               {parsedTransactions.length === 0 ? (
@@ -2550,12 +2685,9 @@ export default function Dashboard() {
 
                 <div className="bh-bottom-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
                   <span className="bh-net-label" style={{ fontSize: '0.82rem', color: isDark ? '#94a3b8' : '#64748b', fontWeight: 600 }}>
-                    {dateFilter === 'thisMonth' ? 'This Month'
-                      : dateFilter === '7days' ? 'Last 7 Days'
-                        : dateFilter === '30days' ? 'Last 30 Days'
-                          : 'Net Cashflow'}
+                    {tr('total_available_cashflow', 'Total Available Cashflow')}
                   </span>
-                  {momMetrics.balance.val !== 'New' && dateFilter !== 'all' && (
+                  {momMetrics.balance.val !== 'New' && (
                     <div className={`bh-trend ${momMetrics.balance.dir}`}>
                       {momMetrics.balance.dir === 'up' && <ArrowUpRight size={13} aria-hidden="true" />}
                       {momMetrics.balance.dir === 'down' && <ArrowDownRight size={13} aria-hidden="true" />}
