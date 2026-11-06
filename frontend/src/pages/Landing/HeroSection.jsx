@@ -151,8 +151,8 @@ export default function HeroSection() {
         </h1>
 
         <p className="hero-subhead">
-          Personal wealth telemetry, intelligent cashflow forecasting, automated budget tracking,
-          and dual tax regime planning — engineered for people who value absolute financial clarity.
+          Built for high achievers: master your budgets, optimize your taxes,
+          and forecast your wealth — all in one secure, ad-free workspace.
         </p>
 
         <div className="hero-actions" onMouseMove={handleCtaMouseMove} onMouseLeave={handleCtaMouseLeave}>
@@ -168,6 +168,19 @@ export default function HeroSection() {
           <Link to="/login" className="btn-landing-glass btn-lg" id="landing-hero-cta-login">
             <span>Explore Your Workspace</span>
           </Link>
+        </div>
+
+        {/* Social Proof Community */}
+        <div className="hero-social-proof">
+          <div className="hero-avatar-stack" aria-hidden="true">
+            <span className="hero-avatar avatar-1">👨‍💼</span>
+            <span className="hero-avatar avatar-2">👩‍💻</span>
+            <span className="hero-avatar avatar-3">👨‍🔬</span>
+            <span className="hero-avatar avatar-4">👩‍🚀</span>
+          </div>
+          <div className="hero-social-proof-text">
+            <strong>Join 5,000+ users</strong> mastering their wealth with zero financial chaos.
+          </div>
         </div>
 
         {/* Transparent Pricing & Trust Guarantee */}
@@ -303,6 +316,10 @@ export default function HeroSection() {
           {/* Signature Moment: The Living Ledger */}
           {activeTab === 'ledger' && (
             <div id="hero-panel-ledger" role="tabpanel" aria-labelledby="hero-tab-ledger" className="mockup-tab-content living-ledger-view">
+              <div className="ledger-explainer-banner" aria-hidden="true">
+                <span className="explainer-dot" />
+                <span>Real-Time Inflow Telemetry · Watch salary split automatically into budgets & wealth</span>
+              </div>
               <LivingLedger prefersReduced={prefersReduced} />
             </div>
           )}

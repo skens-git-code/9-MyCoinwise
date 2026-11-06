@@ -16,24 +16,17 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Prevent any child from forcing horizontal scroll */
-  *,
-  *::before,
-  *::after {
+  /* Prevent block containers from forcing horizontal scroll while exempting code/embeds/charts */
+  div, section, article, main, aside, header, footer, nav, form, p, ul, ol, li {
     max-width: 100%;
     box-sizing: border-box;
   }
 
-  /* Recharts v3 renders its chart, legend, and tooltips inside/around a
-     zero-size measuring div (see getInnerDivStyle). The guard above would
-     resolve max-width:100% against 0px and collapse every chart, its legend
-     text, and tooltips to zero width on mobile. These internals manage their
-     own sizing (fixed px from the measured container), so exempt them. */
-  .recharts-wrapper,
-  .recharts-surface,
-  .recharts-legend-wrapper,
-  .recharts-tooltip-wrapper {
-    max-width: none;
+  /* Universal exemption for code, embeds, and charting libraries */
+  pre, code, iframe, video, canvas, svg, img,
+  .recharts-wrapper, .recharts-surface, .recharts-legend-wrapper, .recharts-tooltip-wrapper,
+  .chartjs-container, .d3-chart, .table-scroll table, .tax-data-table {
+    max-width: none !important;
   }
 
   /* ─── STANDARDIZED PAGE PADDING ─── */
@@ -79,7 +72,7 @@
   }
 
   .bento-dashboard {
-    padding: 0 0 calc(115px + env(safe-area-inset-bottom, 24px)) 0 !important;
+    padding: 0 0 calc(140px + env(safe-area-inset-bottom, 24px)) 0 !important;
     margin: 0 !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
@@ -97,9 +90,9 @@
     position: relative !important;
     top: auto !important;
     z-index: 50 !important;
-    background: color-mix(in srgb, var(--ambient-base) 88%, transparent) !important;
-    backdrop-filter: blur(18px) !important;
-    -webkit-backdrop-filter: blur(18px) !important;
+    background: var(--surface-card, var(--ambient-base, #ffffff)) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     border-radius: 16px !important;
   }
 
@@ -167,6 +160,19 @@
     padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px)) !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
+    background: var(--surface-card, #ffffff) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid var(--c-border, var(--glass-border, rgba(0, 0, 0, 0.08))) !important;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08) !important;
+  }
+
+  [data-theme="dark"] .mobile-bottom-dock,
+  .dark-theme .mobile-bottom-dock,
+  [data-theme="amoled"] .mobile-bottom-dock {
+    background: var(--surface-card, #0f172a) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.45) !important;
   }
 
   .dock-item {
@@ -309,7 +315,7 @@
       justify-content: center !important;
       flex-shrink: 0 !important;
       background: var(--surface-1) !important;
-      border: 1px solid var(--c-border) !important;
+      border: 1px solid var(--c-border, var(--glass-border, rgba(255, 255, 255, 0.12))) !important;
       color: var(--text-secondary) !important;
       box-shadow: none !important;
       transform: none !important;
@@ -340,12 +346,20 @@
       }
     }
 
-    .bbtn-pri,
+    .bbtn-pri {
+      flex: 0 1 auto !important;
+      padding: 0 16px !important;
+    }
+
     .bbtn-sec {
       flex: 1 1 auto !important;
+      padding: 0 14px !important;
+    }
+
+    .bbtn-pri,
+    .bbtn-sec {
       height: 40px !important;
       min-height: 40px !important;
-      padding: 0 14px !important;
       border-radius: 10px !important;
       font-size: 0.86rem !important;
       font-weight: 600 !important;
@@ -354,6 +368,18 @@
       justify-content: center !important;
       gap: 6px !important;
       white-space: nowrap !important;
+    }
+
+    @media (max-width: 380px) {
+      .bbtn-pri span {
+        display: none !important;
+      }
+      .bbtn-pri {
+        width: 40px !important;
+        min-width: 40px !important;
+        padding: 0 !important;
+        border-radius: 50% !important;
+      }
     }
   }
 
@@ -371,7 +397,7 @@
     scrollbar-width: none !important;
     border-radius: 12px !important;
     background: var(--surface-1) !important;
-    border: 1px solid var(--c-border) !important;
+    border: 1px solid var(--c-border, var(--glass-border, rgba(255, 255, 255, 0.12))) !important;
     width: 100% !important;
 
     &::-webkit-scrollbar {
@@ -426,7 +452,7 @@
       font-size: 0.85rem !important;
       border-radius: 10px !important;
       background: var(--surface-1) !important;
-      border: 1px solid var(--c-border) !important;
+      border: 1px solid var(--c-border, var(--glass-border, rgba(255, 255, 255, 0.12))) !important;
       color: var(--text-primary) !important;
       box-shadow: none !important;
     }
@@ -468,22 +494,23 @@
     width: 100% !important;
     box-sizing: border-box !important;
     border-radius: 14px !important;
-    border: 1px solid var(--c-border) !important;
+    border: 1px solid var(--c-border, var(--glass-border, rgba(255, 255, 255, 0.12))) !important;
     background: var(--surface-1) !important;
   }
 
   .bento-income,
   .bento-expense {
     grid-row: auto !important;
-    min-height: 0 !important;
-    padding: 12px 14px !important;
+    min-height: 110px !important;
+    padding: 14px !important;
     display: flex !important;
     flex-direction: column !important;
-    justify-content: space-between !important;
+    justify-content: flex-start !important;
+    gap: 6px !important;
     width: 100% !important;
     box-sizing: border-box !important;
     border-radius: 14px !important;
-    border: 1px solid var(--c-border) !important;
+    border: 1px solid var(--c-border, var(--glass-border, rgba(255, 255, 255, 0.12))) !important;
     background: var(--surface-1) !important;
   }
 
@@ -497,15 +524,19 @@
 
   .bento-hero {
     min-height: auto !important;
-    padding: 16px 18px !important;
+    padding: 16px !important;
     border-radius: 14px !important;
 
     .bh-top {
       display: flex !important;
       justify-content: space-between !important;
       align-items: center !important;
-      margin-bottom: 8px !important;
+      margin-bottom: 4px !important;
       width: 100% !important;
+    }
+
+    .bh-mid h2 {
+      margin-bottom: 0 !important;
     }
 
     .bh-label {
@@ -519,10 +550,20 @@
       font-weight: 800 !important;
       letter-spacing: -0.02em !important;
       line-height: 1.15 !important;
+      margin: 4px 0 0 0 !important;
+    }
+
+    .bh-sparkline-wrap {
+      height: 40px !important;
+      margin: 8px 0 !important;
+    }
+
+    .bh-bottom-meta {
+      margin-top: 0 !important;
     }
 
     .bh-bottom {
-      margin-top: 6px !important;
+      margin-top: 4px !important;
       font-size: 0.78rem !important;
       color: var(--text-muted) !important;
     }
@@ -534,7 +575,7 @@
       display: flex !important;
       justify-content: space-between !important;
       align-items: center !important;
-      margin-bottom: 6px !important;
+      margin-bottom: 4px !important;
     }
 
     .stat-label {
@@ -564,6 +605,7 @@
       font-weight: 700 !important;
       line-height: 1.2 !important;
       letter-spacing: -0.01em !important;
+      margin: 4px 0 !important;
     }
 
     .stat-bottom-row {
@@ -607,7 +649,7 @@
       gap: 10px !important;
       margin-bottom: 6px !important;
       background: var(--surface-2, rgba(255, 255, 255, 0.04)) !important;
-      border: 1px solid var(--c-border) !important;
+      border: 1px solid var(--c-border, var(--glass-border, rgba(255, 255, 255, 0.12))) !important;
     }
 
     .bt-icn {
@@ -656,6 +698,10 @@
     min-height: 280px !important;
   }
 
+  .bento-pie .bt-pie-wrap {
+    height: clamp(180px, 60vw, 235px) !important;
+  }
+
   .bbtn-icon {
     min-width: 40px !important;
     min-height: 40px !important;
@@ -663,7 +709,7 @@
     height: 40px !important;
     border-radius: 10px !important;
     background: var(--surface-1) !important;
-    border: 1px solid var(--c-border) !important;
+    border: 1px solid var(--c-border, var(--glass-border, rgba(255, 255, 255, 0.12))) !important;
     color: var(--text-secondary) !important;
     box-shadow: none !important;
     display: inline-flex !important;
@@ -682,7 +728,7 @@
     justify-content: center !important;
     border-radius: 10px !important;
     background: var(--surface-1) !important;
-    border: 1px solid var(--c-border) !important;
+    border: 1px solid var(--c-border, var(--glass-border, rgba(255, 255, 255, 0.12))) !important;
     color: var(--text-secondary) !important;
     cursor: pointer !important;
     padding: 0 !important;
@@ -1098,15 +1144,15 @@
   }
 
   /* ─── FORM ELEMENTS ─── */
-  input,
-  select,
+  input:not(.compact-input):not(.filter-select):not(.settings-search-input):not(.cal-quick-input),
+  select:not(.compact-select):not(.filter-select):not(.currency-select-compact),
   textarea,
-  input[type='text'],
+  input[type='text']:not(.compact-input):not(.filter-select):not(.settings-search-input),
   input[type='email'],
   input[type='password'],
-  input[type='number'],
+  input[type='number']:not(.compact-input),
   input[type='date'],
-  input[type='search'],
+  input[type='search']:not(.settings-search-input),
   input[type='tel'] {
     font-size: max(16px, 1rem) !important;
     max-width: 100% !important;
@@ -1287,8 +1333,8 @@
   /* ─── MODALS — RESPONSIVE CENTERING & SCROLLING ON MOBILE ─── */
   .modal-overlay,
   .tax-modal-backdrop {
-    padding: 12px !important;
-    align-items: center !important;
+    padding: max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) 12px !important;
+    align-items: flex-start !important;
     justify-content: center !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
@@ -1296,13 +1342,14 @@
 
   .modal-overlay.modal-overlay-centered,
   .modal-overlay:has(.modal-confirm) {
-    align-items: center !important;
+    align-items: flex-start !important;
     justify-content: center !important;
-    padding: 16px !important;
+    padding: max(16px, env(safe-area-inset-top, 16px)) 16px max(16px, env(safe-area-inset-bottom, 16px)) 16px !important;
   }
 
   .modal-box {
     margin: auto !important;
+    max-height: calc(100vh - 32px) !important;
     max-height: calc(100dvh - 32px) !important;
     border-radius: 20px !important;
     width: 100% !important;
@@ -1317,7 +1364,8 @@
     margin: auto !important;
     max-width: 440px !important;
     width: 100% !important;
-    max-height: 85dvh !important;
+    max-height: calc(100vh - 32px) !important;
+    max-height: calc(100dvh - 32px) !important;
     overflow: auto !important;
   }
 
@@ -1326,6 +1374,7 @@
   .tax-modal {
     width: 100% !important;
     max-width: 100% !important;
+    max-height: calc(100vh - 36px) !important;
     max-height: calc(100dvh - 36px) !important;
     border-radius: 20px !important;
     padding: 18px 16px !important;
@@ -1392,7 +1441,7 @@
   }
 
   .section-title {
-    font-size: 0.68rem !important;
+    font-size: 0.75rem !important;
   }
 
   /* ─── TOASTS — CENTERED ON MOBILE ─── */
@@ -1635,6 +1684,7 @@
   }
 
   /* ─── PROFILE AVATAR + PIC ROW ─── */
+  .idp-avatar-row,
   .idp-body > div[style*="display: flex"][style*="gap: 30"] {
     display: flex !important;
     flex-direction: column !important;
@@ -1643,6 +1693,7 @@
     width: 100% !important;
   }
 
+  .idp-avatar-controls,
   .idp-body > div[style*="flex: 1"][style*="minWidth: 240"] {
     flex: 1 1 100% !important;
     width: 100% !important;
@@ -1863,7 +1914,9 @@
   html:has(.auth-page),
   body:has(.auth-page),
   html.auth-viewport-scrollable,
-  body.auth-viewport-scrollable {
+  body.auth-viewport-scrollable,
+  html.auth-active,
+  body.auth-active {
     height: auto !important;
     min-height: 100vh !important;
     min-height: 100dvh !important;
@@ -1874,7 +1927,8 @@
   }
 
   #root:has(.auth-page),
-  body.auth-viewport-scrollable #root {
+  body.auth-viewport-scrollable #root,
+  body.auth-active #root {
     min-height: 100vh !important;
     min-height: 100dvh !important;
     height: auto !important;

@@ -1,4 +1,4 @@
-import React, { useState, useId } from 'react';
+import React, { useState, useId, useRef, useEffect } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { DollarSign, Percent, Award, ArrowRight, TrendingUp, Sparkles, Shield, Compass, Share2, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -96,6 +96,14 @@ export default function InteractiveSimulator() {
     setSavingsRate(preset.rate);
   };
 
+  const copyTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
+
   const handleSharePlan = async () => {
     try {
       const url = `${window.location.origin}${window.location.pathname}?plan=${monthlyIncome}-${savingsRate}#simulator`;
@@ -106,10 +114,12 @@ export default function InteractiveSimulator() {
         await navigator.clipboard.writeText(url);
       }
       setCopied(true);
-      setTimeout(() => setCopied(false), 2400);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2400);
     } catch {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2400);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2400);
     }
   };
 
@@ -321,7 +331,10 @@ export default function InteractiveSimulator() {
             </div>
 
             <div className="simulator-cta">
-              <Link to="/register" className="btn-landing-primary btn-block btn-lg">
+              <Link
+                to={`/register?income=${monthlyIncome}&rate=${savingsRate}`}
+                className="btn-landing-primary btn-block btn-lg"
+              >
                 <span>Lock In This Trajectory</span>
                 <ArrowRight aria-hidden="true" size={17} />
               </Link>

@@ -191,6 +191,19 @@ export default function LivingLedger({ prefersReduced = false }) {
 
     let lastSpawnTime = performance.now();
     let isTabVisible = true;
+    let isVisible = true;
+
+    // Pause animation when off-screen to preserve mobile battery
+    let intersectionObserver = null;
+    if (typeof IntersectionObserver !== 'undefined') {
+      intersectionObserver = new IntersectionObserver(
+        ([entry]) => {
+          isVisible = Boolean(entry && entry.isIntersecting);
+        },
+        { threshold: 0.05 }
+      );
+      intersectionObserver.observe(canvas);
+    }
 
     // Freeze animation when tab is inactive to guarantee zero CPU draw
     const unregisterPause = onPagePause(() => {
@@ -202,7 +215,7 @@ export default function LivingLedger({ prefersReduced = false }) {
     });
 
     const loop = (time) => {
-      if (!isTabVisible || isPausedRef.current) {
+      if (!isTabVisible || isPausedRef.current || !isVisible) {
         animFrameRef.current = requestAnimationFrame(loop);
         return;
       }
@@ -227,8 +240,11 @@ export default function LivingLedger({ prefersReduced = false }) {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Spawn new tokens from left at ~1.6s intervals
-      if (time - lastSpawnTime > 1400 / speedRef.current && tokensRef.current.length < 35) {
+      // Spawn new tokens from left with responsive throttle on mobile
+      const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+      const maxTokens = isMobile ? 14 : 32;
+      const spawnInterval = (isMobile ? 2200 : 1400) / speedRef.current;
+      if (time - lastSpawnTime > spawnInterval && tokensRef.current.length < maxTokens) {
         tokensRef.current.push(createToken(width, height));
         lastSpawnTime = time;
       }
@@ -347,6 +363,7 @@ export default function LivingLedger({ prefersReduced = false }) {
 
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (intersectionObserver) intersectionObserver.disconnect();
       resizeObserver.disconnect();
       unregisterPause();
       unregisterResume();

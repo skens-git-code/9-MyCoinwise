@@ -1564,7 +1564,7 @@ const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMess
         </div>
 
         {/* ── Avatar + color picker ── */}
-        <div style={{ display: 'flex', gap: 30, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="idp-avatar-row" style={{ display: 'flex', gap: 30, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* ── Avatar preview ── */}
           <motion.div
             whileHover={{ scale: 1.05 }}
@@ -1582,7 +1582,7 @@ const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMess
             )}
           </motion.div>
 
-          <div style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="idp-avatar-controls" style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* ── Emoji / image chooser ── */}
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>

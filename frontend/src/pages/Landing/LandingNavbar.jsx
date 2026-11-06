@@ -130,10 +130,10 @@ export default function LandingNavbar() {
             <span>256-bit Secure</span>
           </div>
 
-          {/* Theme Switch Toggle (Quick access on desktop and mobile) */}
+          {/* Theme Switch Toggle (Desktop quick access; mobile handled inside drawer) */}
           <button
             type="button"
-            className="theme-toggle-btn"
+            className="theme-toggle-btn d-none-mobile"
             onClick={handleToggleTheme}
             aria-label={`Switch to ${isDark ? 'Light' : 'Dark'} theme`}
             title={`Switch to ${isDark ? 'Light' : 'Dark'} theme`}
@@ -203,7 +203,10 @@ export default function LandingNavbar() {
             <button
               type="button"
               className="btn-landing-glass btn-block"
-              onClick={handleToggleTheme}
+              onClick={() => {
+                handleToggleTheme();
+                closeMenu();
+              }}
               aria-label={`Switch to ${isDark ? 'Light' : 'Dark'} theme`}
             >
               {isDark ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}

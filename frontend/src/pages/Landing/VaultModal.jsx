@@ -2,20 +2,33 @@ import React, { useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { Sparkles, X, ArrowRight, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useReducedMotion } from 'framer-motion';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 export default function VaultModal({ isOpen, onClose }) {
   const dialogRef = useRef(null);
   const canvasRef = useRef(null);
+  const prefersReduced = useReducedMotion();
 
-  // Close on Escape key and focus trap
+  // Accessible focus trap, Escape key dismiss, and scroll management
+  useFocusTrap({
+    isOpen,
+    onClose,
+    containerRef: dialogRef,
+  });
+
+  // Window-level Escape listener (ensures Escape works even when window has focus or in test runners)
   useEffect(() => {
     if (!isOpen) return;
-
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
     };
-
     window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen || prefersReduced) return;
 
     // Confetti burst on canvas
     const canvas = canvasRef.current;
@@ -26,15 +39,17 @@ export default function VaultModal({ isOpen, onClose }) {
       ctx = null;
     }
     if (ctx) {
+      const width = document.documentElement.clientWidth || window.innerWidth;
+      const height = document.documentElement.clientHeight || window.innerHeight;
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
       ctx.scale(dpr, dpr);
 
       const colors = ['#10b981', '#38bdf8', '#f59e0b', '#ec4899', '#8b5cf6'];
       const particles = Array.from({ length: 70 }, () => ({
-        x: window.innerWidth / 2,
-        y: window.innerHeight / 2,
+        x: width / 2,
+        y: height / 2,
         vx: (Math.random() - 0.5) * 14,
         vy: (Math.random() - 0.8) * 14,
         size: Math.random() * 6 + 4,
@@ -46,7 +61,7 @@ export default function VaultModal({ isOpen, onClose }) {
 
       let animId;
       const render = () => {
-        ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+        ctx.clearRect(0, 0, width, height);
         let alive = false;
         particles.forEach((p) => {
           p.x += p.vx;
@@ -74,13 +89,10 @@ export default function VaultModal({ isOpen, onClose }) {
 
       animId = requestAnimationFrame(render);
       return () => {
-        window.removeEventListener('keydown', handleKeyDown);
         if (animId) cancelAnimationFrame(animId);
       };
     }
-
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, prefersReduced]);
 
   if (!isOpen) return null;
 

@@ -36,6 +36,11 @@ export default function FaqSection() {
   const [openQuestion, setOpenQuestion] = useState(FAQ_ITEMS[0].question);
   const [categoryFilter, setCategoryFilter] = useState('All');
 
+  const handleFilterChange = (cat) => {
+    setCategoryFilter(cat);
+    setOpenQuestion(null);
+  };
+
   const filteredItems = useMemo(() => {
     if (categoryFilter === 'Security') {
       return FAQ_ITEMS.filter((item) => item.category === 'Security');
@@ -68,7 +73,7 @@ export default function FaqSection() {
                 type="button"
                 role="radio"
                 aria-checked={categoryFilter === cat}
-                onClick={() => setCategoryFilter(cat)}
+                onClick={() => handleFilterChange(cat)}
                 className={`filter-btn ${categoryFilter === cat ? 'active' : ''}`}
               >
                 {cat}

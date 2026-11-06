@@ -48,6 +48,7 @@
   .d3-ambient__shard,
   .particles,
   .animated-bg,
+  .ambient-currency-particles,
   .bento-hero::after,
   .bento-tile::after,
   .stat-card::after {
@@ -116,7 +117,6 @@
   /* Safe clearance is handled on .site-footer. Keep page containers clean with no dead gaps. */
   .page-content,
   .inbox-layout-page,
-  [class*="layout"],
   .island-page,
   .subscriptions-page-wrap,
   .goals-page-wrap,
@@ -131,6 +131,13 @@
     &:not(.modal-box):not(.modal-overlay):not(.shortcuts-modal):not(.shortcuts-backdrop):not(.tax-modal):not(.tax-modal-backdrop):not(.command-palette-backdrop) {
       padding-bottom: 0 !important;
     }
+  }
+
+  /* Safe fallback clearance when .site-footer is not present in the DOM */
+  :not(:has(.site-footer)) .page-content,
+  :not(:has(.site-footer)) .inbox-layout-page,
+  :not(:has(.site-footer)) .island-page {
+    padding-bottom: calc(95px + env(safe-area-inset-bottom, 20px)) !important;
   }
 
   /* ── GLITCH #6: Transactions filter dropdown responsive layout ── */
@@ -154,23 +161,29 @@
   /* ── GLITCH #8: Goals summary carousel cards clipping fix ── */
   @media (max-width: 768px) {
     .goals-page-wrap .carousel-wrapper {
-      overflow-x: visible !important;
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      scrollbar-width: none !important;
       width: 100% !important;
       margin: 0 !important;
       padding: 0 !important;
+
+      &::-webkit-scrollbar {
+        display: none !important;
+      }
     }
 
     .goals-page-wrap .carousel-track {
-      display: grid !important;
-      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      display: flex !important;
+      flex-wrap: nowrap !important;
       width: 100% !important;
       min-width: 0 !important;
       gap: 8px !important;
     }
 
     .goals-page-wrap .carousel-item {
-      flex: 1 1 0 !important;
-      min-width: 0 !important;
+      flex: 0 0 calc(33.333% - 6px) !important;
+      min-width: 95px !important;
       width: 100% !important;
       padding: 10px 6px !important;
       gap: 6px !important;

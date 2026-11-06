@@ -10,10 +10,13 @@
 
 /* ── Keyframe Animations ── */
 @keyframes dashboard-pulse-glow {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
     opacity: 0.16;
   }
+
   50% {
     transform: scale(1.1);
     opacity: 0.28;
@@ -21,10 +24,13 @@
 }
 
 @keyframes live-dot-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }
+
   50% {
     transform: scale(1.4);
     opacity: 0.5;
@@ -49,7 +55,7 @@
 
   @media (max-width: 900px) {
     gap: 16px !important;
-    padding: 16px 12px calc(115px + env(safe-area-inset-bottom, 24px)) 12px !important;
+    padding: 16px 12px calc(140px + env(safe-area-inset-bottom, 24px)) 12px !important;
     border-radius: 20px !important;
   }
 }
@@ -143,6 +149,7 @@
 
       &.bbtn-refresh {
         color: #38bdf8 !important;
+
         &:hover {
           background: rgba(56, 189, 248, 0.12) !important;
           border-color: rgba(56, 189, 248, 0.3) !important;
@@ -151,6 +158,7 @@
 
       &.bbtn-share {
         color: #a78bfa !important;
+
         &:hover {
           background: rgba(167, 139, 250, 0.12) !important;
           border-color: rgba(167, 139, 250, 0.3) !important;
@@ -159,6 +167,7 @@
 
       &.bbtn-export {
         color: #34d399 !important;
+
         &:hover {
           background: rgba(52, 211, 153, 0.12) !important;
           border-color: rgba(52, 211, 153, 0.3) !important;
@@ -411,9 +420,11 @@
       .dqs-label {
         font-size: 0.66rem !important;
       }
+
       .dqs-val {
         font-size: 0.98rem !important;
       }
+
       .dqs-badge {
         font-size: 0.64rem !important;
         padding: 1px 6px !important;
@@ -430,9 +441,11 @@
         font-size: 0.62rem !important;
         letter-spacing: 0.03em !important;
       }
+
       .dqs-val {
         font-size: 0.88rem !important;
       }
+
       .dqs-badge {
         font-size: 0.6rem !important;
         padding: 1px 5px !important;
@@ -641,11 +654,15 @@
 
 @media (max-width: 900px) {
   .bbtn-export-label {
-    display: none !important; /* Hide "Export CSV" text on mobile, show only icon */
+    display: none !important;
+    /* Hide "Export CSV" text on mobile, show only icon */
   }
+
   .bento-user-profile .user-name {
-    display: none !important; /* Hide username on mobile, show avatar pill */
+    display: none !important;
+    /* Hide username on mobile, show avatar pill */
   }
+
   .bento-actions {
     gap: 6px !important;
   }
@@ -674,6 +691,7 @@
   .dqs-val.neg {
     color: #ef4444 !important;
   }
+
   .dqs-val.pos {
     color: #10b981 !important;
   }
@@ -721,8 +739,8 @@
   overflow: hidden !important;
   box-sizing: border-box !important;
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.25s ease,
-              border-color 0.25s ease !important;
+    box-shadow 0.25s ease,
+    border-color 0.25s ease !important;
   position: relative !important;
 
   @media (max-width: 640px) {
@@ -757,6 +775,7 @@
 
 /* Light Theme Card Aesthetics */
 [data-theme="light"] .bento-dashboard {
+
   .bento-tile,
   .stat-card,
   .premium-card {
@@ -777,6 +796,7 @@
 
 /* AMOLED Theme Card Aesthetics */
 [data-theme="amoled"] .bento-dashboard {
+
   .bento-tile,
   .stat-card,
   .premium-card {
@@ -976,6 +996,7 @@
 
     &.text-danger {
       color: #ef4444 !important;
+
       &:hover {
         background: rgba(239, 68, 68, 0.12) !important;
       }
@@ -994,7 +1015,10 @@
 
   .user-menu-item:not(.text-danger) {
     color: #1e293b !important;
-    &:hover { background: #f1f5f9 !important; }
+
+    &:hover {
+      background: #f1f5f9 !important;
+    }
   }
 }
 
@@ -1012,7 +1036,10 @@
 
     .user-menu-item:not(.text-danger) {
       color: #f8fafc !important;
-      &:hover { background: rgba(255, 255, 255, 0.08) !important; }
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.08) !important;
+      }
     }
   }
 }
@@ -1028,7 +1055,10 @@
 
   .user-menu-item:not(.text-danger) {
     color: #f8fafc !important;
-    &:hover { background: #141414 !important; }
+
+    &:hover {
+      background: #141414 !important;
+    }
   }
 }
 
@@ -1286,13 +1316,21 @@
   .alert-icon-box {
     background: rgba(239, 68, 68, 0.12) !important;
   }
+
   .alert-text {
     color: #991b1b !important;
-    strong { color: #7f1d1d !important; }
+
+    strong {
+      color: #7f1d1d !important;
+    }
   }
+
   .alert-dismiss-btn {
     color: #991b1b !important;
-    &:hover { background: rgba(239, 68, 68, 0.1) !important; }
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.1) !important;
+    }
   }
 }
 
@@ -1306,13 +1344,21 @@
   .alert-icon-box {
     background: rgba(239, 68, 68, 0.2) !important;
   }
+
   .alert-text {
     color: #fca5a5 !important;
-    strong { color: #f87171 !important; }
+
+    strong {
+      color: #f87171 !important;
+    }
   }
+
   .alert-dismiss-btn {
     color: #fca5a5 !important;
-    &:hover { background: rgba(239, 68, 68, 0.2) !important; }
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.2) !important;
+    }
   }
 }
 
@@ -1374,7 +1420,10 @@
 
   button {
     color: #1e293b !important;
-    &:hover { background: #f1f5f9 !important; }
+
+    &:hover {
+      background: #f1f5f9 !important;
+    }
   }
 }
 
@@ -1387,7 +1436,10 @@
 
   button {
     color: #f8fafc !important;
-    &:hover { background: rgba(255, 255, 255, 0.08) !important; }
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08) !important;
+    }
   }
 }
 
@@ -2018,6 +2070,7 @@
         &.income {
           color: #34d399 !important;
         }
+
         &.expense {
           color: #f87171 !important;
         }
@@ -2038,6 +2091,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 @media (max-width: 900px) {
+
   /* 1. Force the premium grid to stack */
   .bento-dashboard .premium-dashboard-grid {
     grid-template-columns: 1fr !important;
@@ -2142,7 +2196,7 @@
 /* Extra-small phones (≤ 480px) */
 @media (max-width: 480px) {
   .bento-dashboard {
-    padding: 12px 10px calc(100px + env(safe-area-inset-bottom, 20px)) 10px !important;
+    padding: 12px 10px calc(140px + env(safe-area-inset-bottom, 24px)) 10px !important;
     gap: 12px !important;
     border-radius: 16px !important;
   }
@@ -2231,11 +2285,13 @@
   .premium-dashboard-grid {
     grid-template-columns: 1fr !important;
   }
+
   .bento-grid {
     grid-template-columns: 1fr !important;
   }
-  .bento-tile, .stat-card {
+
+  .bento-tile,
+  .stat-card {
     grid-column: 1 / -1 !important;
   }
 }
-
