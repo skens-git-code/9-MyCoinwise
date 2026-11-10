@@ -20,7 +20,7 @@
  * ————————————————————————————————————— */
 
 import React, {
-  useState, useMemo, useDeferredValue, useRef, useEffect, useCallback,
+  useState, useMemo, useDeferredValue, useRef, useEffect, useCallback, useId,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -52,7 +52,7 @@ const DEFAULT_CATEGORIES = [
   'Food', 'Groceries', 'Transport', 'Shopping', 'Entertainment',
   'Health', 'Education', 'Bills', 'Salary', 'Freelance', 'Gift',
   'Rent', 'Travel', 'Fitness', 'Subscriptions', 'Utilities',
-  'Insurance', 'Investment', 'Transfer', 'Other', 'Allowance',
+  'Insurance', 'Investment', 'Income', 'Refund', 'Transfer', 'Other', 'Allowance',
 ];
 
 // ── App language → locale map ──
@@ -129,7 +129,7 @@ const parseLocalDateToTimestamp = (dateInput) => {
 /** CSV escape + injection prevention (RFC 4180). */
 const escapeCsvField = (raw) => {
   const str = raw == null ? '' : String(raw);
-  const needsPrefix = /^[=+\-@\t\r]/.test(str);
+  const needsPrefix = /^[=+\-@\t\r]/.test(str.trimStart());
   const escaped = str.replace(/"/g, '""');
   const prefixed = needsPrefix ? `'${escaped}` : escaped;
   const needsQuotes = needsPrefix || /[",\n\r\t]/.test(prefixed);
@@ -307,7 +307,11 @@ export default function Transactions() {
   const [pdfPasswordPrompt, setPdfPasswordPrompt] = useState(null);
   const [pdfPasswordInput, setPdfPasswordInput] = useState('');
   const [pdfPasswordError, setPdfPasswordError] = useState('');
+  const [statementFileCtx, setStatementFileCtx] = useState(null);
+  const [statementDateFormat, setStatementDateFormat] = useState('');
+  const [isDragActive, setIsDragActive] = useState(false);
   const fileInputRef = useRef(null);
+  const statementInputId = useId();
 
   /* ---------------- Export State ---------------- */
 
@@ -388,12 +392,13 @@ export default function Transactions() {
    * Categories + Tags (derived from data)
    * ============================================================ */
 
-  // ── Union of default categories and categories seen in transactions ──
+  // ── Union of default categories and categories seen in transactions / statement preview ──
   const categories = useMemo(() => {
     const set = new Set(DEFAULT_CATEGORIES);
     transactions.forEach((tx) => { if (tx.category) set.add(String(tx.category)); });
+    statementRows.forEach((row) => { if (row.category) set.add(String(row.category)); });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [transactions]);
+  }, [transactions, statementRows]);
 
   // ── All tags seen in transactions ──
   const allTags = useMemo(() => {
@@ -954,59 +959,80 @@ export default function Transactions() {
   }, [user, filtered, selectedIds, currencyInfo, locale, showToast, tr, isExporting]);
 
   /* ============================================================
+   * Excel Export (streaming .xlsx via backend)
+   * ============================================================ */
+  const handleExportExcel = useCallback(async () => {
+    setShowExportMenu(false);
+    if (isExporting || !USER_ID) return;
+    setIsExporting(true);
+    try {
+      await api.exportToExcel(USER_ID);
+      showToast('success', tr('excel_generated', 'Excel workbook exported!'));
+    } catch (err) {
+      console.error(err);
+      showToast('error', err?.message || err?.response?.data?.error || tr('excel_failed', 'Failed to export Excel workbook'));
+    } finally {
+      setIsExporting(false);
+    }
+  }, [USER_ID, isExporting, showToast, tr]);
+
+  /* ============================================================
    * Bank Statement Import (CSV, Excel, PDF)
    * ============================================================ */
-  const handleFileUpload = useCallback(async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const applyStatementPreview = useCallback((analysis) => {
+    if (!analysis || !Array.isArray(analysis.transactions)) {
+      showToast('error', tr('statement_failed', 'Could not analyze this statement. The file may be corrupted or unsupported.'));
+      return;
+    }
+    const rows = analysis.transactions.map((row) => ({
+      ...row,
+      selected: !row.duplicate,
+      id: row.id || `${row.date}-${row.merchant}-${row.amount}-${Math.random().toString(36).slice(2, 8)}`,
+    }));
+
+    setImportSummary(analysis.summary || null);
+    setWalletUsage({
+      current: analysis.summary?.currentTxCount ?? analysis.currentCount ?? transactions.length,
+      limit: analysis.summary?.maxLimit ?? analysis.userLimit ?? 1000,
+      available: analysis.summary?.remainingSlots ?? analysis.availableSlots ?? Math.max(0, 1000 - transactions.length),
+    });
+
+    setStatementRows(rows);
+    setShowImportModal(true);
+    showToast('success', tr(
+      'statement_detected',
+      `${analysis.summary?.detected || rows.length} transactions detected. Review before adding.`
+    ));
+  }, [showToast, tr, transactions.length]);
+
+  const handleOpenImportPicker = useCallback(() => {
+    if (isAnalyzingStatement) return;
+    const input = fileInputRef.current;
+    if (!input) return;
+    // Clear previous selection synchronously so re-selecting the same file still fires onChange.
+    input.value = '';
+    input.click();
+  }, [isAnalyzingStatement]);
+
+  const processStatementFile = useCallback(async (file) => {
+    if (!file || isAnalyzingStatement) return;
     if (file.size > 10 * 1024 * 1024) {
       showToast('error', tr('file_too_large', 'Please choose a file smaller than 10 MB.'));
-      e.target.value = '';
       return;
     }
     setIsAnalyzingStatement(true);
+    setStatementDateFormat('');
+    setStatementFileCtx({ file, filename: file.name, password: null });
     try {
-      const fileData = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
       const analysis = await api.previewBankStatement({
-        fileData,
+        file,
         filename: file.name,
-        fileType: file.type || '',
       });
-
-      const rows = (analysis.transactions || []).map((row) => ({
-        ...row,
-        selected: !row.duplicate,
-        id: row.id || `${row.date}-${row.merchant}-${row.amount}-${Math.random().toString(36).slice(2, 8)}`,
-      }));
-
-      setImportSummary(analysis.summary || null);
-      setWalletUsage({
-        current: analysis.currentCount ?? transactions.length,
-        limit: analysis.userLimit ?? 1000,
-        available: analysis.availableSlots ?? Math.max(0, 1000 - transactions.length),
-      });
-
-      setStatementRows(rows);
-      setShowImportModal(true);
-      showToast('success', tr(
-        'statement_detected',
-        `${analysis.summary?.detected || rows.length} transactions detected. Review before adding.`
-      ));
+      applyStatementPreview(analysis);
     } catch (error) {
       if (error?.response?.data?.code === 'PDF_PASSWORD_REQUIRED') {
-        const fileData = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.readAsDataURL(file);
-        });
         setPdfPasswordPrompt({
-          fileData,
+          file,
           filename: file.name,
           fileType: file.type || '',
         });
@@ -1014,15 +1040,84 @@ export default function Transactions() {
         setPdfPasswordInput('');
         return;
       }
-      showToast('error', error?.response?.data?.error || tr(
+      if (error?.response?.data?.ocr_required || error?.response?.data?.code === 'PDF_OCR_REQUIRED') {
+        showToast('error', tr(
+          'pdf_ocr_required',
+          'This PDF appears to be a scanned image with no selectable text. Please export as CSV/XLSX or enable OCR.'
+        ));
+        return;
+      }
+      const errMessage = String(error?.response?.data?.error || error?.message || '');
+      if (/anchors/i.test(errMessage)) {
+        showToast('error', tr(
+          'statement_unsupported_layout',
+          'This file has an unsupported layout. Please export as CSV if the issue persists.'
+        ));
+        return;
+      }
+      showToast('error', errMessage || tr(
         'statement_failed',
         'Could not analyze this statement. Supported formats: CSV, Excel (.xlsx, .xls), and PDF (Paytm, GPay, PhonePe, BharatPe, Banks).'
       ));
     } finally {
       setIsAnalyzingStatement(false);
-      e.target.value = '';
     }
-  }, [showToast, tr, transactions.length]);
+  }, [applyStatementPreview, isAnalyzingStatement, showToast, tr]);
+
+  const handleFileUpload = useCallback(async (e) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      await processStatementFile(file);
+    } finally {
+      input.value = '';
+    }
+  }, [processStatementFile]);
+
+  const handlePageDragOver = useCallback((e) => {
+    if (!e.dataTransfer?.types?.includes?.('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!isDragActive) setIsDragActive(true);
+  }, [isDragActive]);
+
+  const handlePageDragLeave = useCallback((e) => {
+    if (e.currentTarget && e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDragActive(false);
+  }, []);
+
+  const handlePageDrop = useCallback(async (e) => {
+    if (!e.dataTransfer?.files?.length) return;
+    e.preventDefault();
+    setIsDragActive(false);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      await processStatementFile(file);
+    }
+  }, [processStatementFile]);
+
+  // ── Re-analyze current statement with explicit dateFormat (DMY vs MDY) ──
+  const handleReanalyzeDateFormat = useCallback(async (nextFormat) => {
+    if (!statementFileCtx?.file || isAnalyzingStatement) return;
+    const previousFormat = statementDateFormat;
+    setStatementDateFormat(nextFormat);
+    setIsAnalyzingStatement(true);
+    try {
+      const analysis = await api.previewBankStatement({
+        file: statementFileCtx.file,
+        filename: statementFileCtx.filename,
+        password: statementFileCtx.password || undefined,
+        dateFormat: nextFormat || undefined,
+      });
+      applyStatementPreview(analysis);
+    } catch (error) {
+      setStatementDateFormat(previousFormat);
+      showToast('error', error?.response?.data?.error || tr('statement_failed', 'Could not re-analyze statement.'));
+    } finally {
+      setIsAnalyzingStatement(false);
+    }
+  }, [statementFileCtx, isAnalyzingStatement, statementDateFormat, applyStatementPreview, showToast, tr]);
 
   // ── Unlock and analyze password-protected PDF statement ──
   const handleUnlockPdf = useCallback(async (e) => {
@@ -1031,35 +1126,33 @@ export default function Transactions() {
     setIsAnalyzingStatement(true);
     setPdfPasswordError('');
     try {
+      const pwd = pdfPasswordInput.trim();
       const analysis = await api.previewBankStatement({
+        file: pdfPasswordPrompt.file,
         fileData: pdfPasswordPrompt.fileData,
         filename: pdfPasswordPrompt.filename,
         fileType: pdfPasswordPrompt.fileType,
-        password: pdfPasswordInput.trim(),
+        password: pwd,
       });
 
-      const rows = (analysis.transactions || []).map((row) => ({
-        ...row,
-        selected: !row.duplicate,
-        id: row.id || `${row.date}-${row.merchant}-${row.amount}-${Math.random().toString(36).slice(2, 8)}`,
-      }));
-
-      setImportSummary(analysis.summary || null);
-      setWalletUsage({
-        current: analysis.currentCount ?? transactions.length,
-        limit: analysis.userLimit ?? 1000,
-        available: analysis.availableSlots ?? Math.max(0, 1000 - transactions.length),
+      setStatementFileCtx({
+        file: pdfPasswordPrompt.file,
+        filename: pdfPasswordPrompt.filename,
+        password: pwd,
       });
-
-      setStatementRows(rows);
       setPdfPasswordPrompt(null);
       setPdfPasswordInput('');
-      setShowImportModal(true);
-      showToast('success', tr(
-        'statement_detected',
-        `${analysis.summary?.detected || rows.length} transactions detected. Review before adding.`
-      ));
+      applyStatementPreview(analysis);
     } catch (error) {
+      if (error?.response?.data?.ocr_required || error?.response?.data?.code === 'PDF_OCR_REQUIRED') {
+        setPdfPasswordPrompt(null);
+        setPdfPasswordInput('');
+        showToast('error', tr(
+          'pdf_ocr_required',
+          'This PDF appears to be a scanned image with no selectable text. Please export as CSV/XLSX or enable OCR.'
+        ));
+        return;
+      }
       setPdfPasswordError(
         error?.response?.data?.error ||
         tr('pdf_password_incorrect', 'Incorrect password for this protected PDF statement.')
@@ -1067,7 +1160,7 @@ export default function Transactions() {
     } finally {
       setIsAnalyzingStatement(false);
     }
-  }, [pdfPasswordInput, pdfPasswordPrompt, showToast, tr, transactions.length]);
+  }, [pdfPasswordInput, pdfPasswordPrompt, applyStatementPreview, showToast, tr]);
 
   // ── Update a single statement row during review ──
   const updateStatementRow = useCallback((id, patch) => {
@@ -1162,8 +1255,8 @@ export default function Transactions() {
 
       const file = new File([blob], fileName, { type: 'image/png' });
       const canWebShare = typeof navigator !== 'undefined' &&
-                          typeof navigator.canShare === 'function' &&
-                          navigator.canShare({ files: [file] });
+        typeof navigator.canShare === 'function' &&
+        navigator.canShare({ files: [file] });
 
       if (canWebShare) {
         try {
@@ -1306,16 +1399,24 @@ export default function Transactions() {
    * ============================================================ */
 
   return (
-    <div className="inbox-layout-page tx-page">
-
-      {/* ── Hidden file input for statement import ── */}
+    <div
+      className={`inbox-layout-page tx-page ${isDragActive ? 'tx-drop-active' : ''}`}
+      onDragOver={handlePageDragOver}
+      onDragLeave={handlePageDragLeave}
+      onDrop={handlePageDrop}
+    >
+      {/* ── Visually-hidden file input for statement import (avoids display:none picker blocks) ── */}
       <input
+        id={statementInputId}
         type="file"
         ref={fileInputRef}
-        accept=".csv,.xlsx,.xls,.pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/pdf"
-        style={{ display: 'none' }}
+        className="sr-only"
+        accept=".csv,.tsv,.xlsx,.xlsm,.xls,.pdf,text/csv,application/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12,application/vnd.ms-excel,application/pdf"
+        style={{
+          position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+          overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0, zIndex: -1,
+        }}
         onChange={handleFileUpload}
-        aria-hidden="true"
         tabIndex={-1}
       />
 
@@ -1347,7 +1448,8 @@ export default function Transactions() {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             className="btn-secondary tx-import-btn"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handleOpenImportPicker}
+            aria-controls={statementInputId}
             title={tr('import_title', 'Import bank statements or PDF receipts (CSV, Excel, PDF from Paytm, GPay, PhonePe, BharatPe, Banks)')}
             disabled={isAnalyzingStatement}
           >
@@ -1381,6 +1483,10 @@ export default function Transactions() {
                 >
                   <button type="button" role="menuitem" className="tx-export-item" onClick={() => handleExportCSV(false)}>
                     <FileSpreadsheet size={15} className="text-success" aria-hidden /> {tr('export_csv', 'Export CSV (Excel)')}
+                  </button>
+                  <button type="button" role="menuitem" className="tx-export-item" onClick={handleExportExcel} disabled={isExporting || !USER_ID}>
+                    {isExporting ? <Loader2 size={15} className="spin" /> : <FileSpreadsheet size={15} className="text-success" aria-hidden />}
+                    {tr('export_xlsx', 'Export Excel (.xlsx)')}
                   </button>
                   <button type="button" role="menuitem" className="tx-export-item" onClick={handleExportPDF} disabled={isExporting}>
                     {isExporting ? <Loader2 size={15} className="spin" /> : <FileText size={15} className="text-danger" aria-hidden />}
@@ -1687,14 +1793,24 @@ export default function Transactions() {
               <div className="il-empty">
                 <Wallet size={36} opacity={0.3} aria-hidden />
                 <p>{tr('no_transactions', 'No transactions yet')}</p>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={handleOpenAdd}
-                  style={{ marginTop: 10 }}
-                >
-                  <Plus size={14} aria-hidden /> {tr('add_first_transaction', 'Add First Transaction')}
-                </button>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center', marginTop: 10 }}>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleOpenAdd}
+                  >
+                    <Plus size={14} aria-hidden /> {tr('add_first_transaction', 'Add First Transaction')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary tx-import-btn"
+                    onClick={handleOpenImportPicker}
+                    disabled={isAnalyzingStatement}
+                  >
+                    {isAnalyzingStatement ? <Loader2 size={14} className="spin" /> : <Upload size={14} aria-hidden />}
+                    <span>{isAnalyzingStatement ? tr('analyzing', 'Analyzing…') : tr('import_statement_btn', 'Import CSV / Excel / PDF')}</span>
+                  </button>
+                </div>
               </div>
             ) : filtered.length === 0 ? (
               <div className="il-empty">
@@ -1983,8 +2099,8 @@ export default function Transactions() {
                             {tx.budget_category === 'none'
                               ? tr('unlinked', 'None (Unlinked)')
                               : (tx.budget_category && tx.budget_category !== 'auto'
-                                  ? tx.budget_category
-                                  : `${tx.category || 'General'} (Auto)`)}
+                                ? tx.budget_category
+                                : `${tx.category || 'General'} (Auto)`)}
                           </span>
                         </div>
                       )}
@@ -2414,6 +2530,7 @@ export default function Transactions() {
             setImportSummary(null);
           }
         }}
+        size="wide"
         title={tr('import_review_title', `Review ${statementRows.length} detected transactions`)}
         confirmText={tr('import_confirm', `Add ${selectedStatementCount} to Wallet`)}
         onConfirm={handleConfirmImport}
@@ -2445,24 +2562,79 @@ export default function Transactions() {
             <span style={{ color: 'var(--brand-primary)', fontWeight: 600 }}>
               {importSummary?.detectedBank || importSummary?.detectedFormat?.toUpperCase() || 'Bank Statement'}
             </span>
+            {importSummary?.diagnostics?.ocrUsed && (
+              <span style={{ marginLeft: 6, padding: '2px 6px', borderRadius: 6, background: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)', fontSize: '0.72rem', fontWeight: 600 }}>
+                OCR
+              </span>
+            )}
             {importSummary && (
               <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
                 ({importSummary.credits || 0} Credits: +{fmt(importSummary.totalCreditAmount || 0)} · {importSummary.debits || 0} Debits: -{fmt(importSummary.totalDebitAmount || 0)})
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span>{tr('wallet_capacity', 'Wallet Capacity')}:</span>
-            <span
-              style={{
-                fontWeight: 700,
-                color: (walletUsage.current + selectedStatementCount) > walletUsage.limit ? 'var(--danger)' : 'var(--text-primary)',
-              }}
-            >
-              {walletUsage.current} / {walletUsage.limit} used ({Math.max(0, walletUsage.limit - walletUsage.current)} slots left)
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {statementFileCtx?.file && (
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                <span>{tr('date_order', 'Date Format')}:</span>
+                <select
+                  aria-label={tr('date_order', 'Date Format')}
+                  value={statementDateFormat}
+                  disabled={isAnalyzingStatement}
+                  onChange={(event) => handleReanalyzeDateFormat(event.target.value)}
+                  style={{
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    border: '1px solid var(--glass-border)',
+                    background: 'var(--glass-1)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.76rem',
+                  }}
+                >
+                  <option value="">Auto</option>
+                  <option value="DMY">DD/MM/YYYY</option>
+                  <option value="MDY">MM/DD/YYYY</option>
+                </select>
+              </label>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>{tr('wallet_capacity', 'Wallet Capacity')}:</span>
+              <span
+                style={{
+                  fontWeight: 700,
+                  color: (walletUsage.current + selectedStatementCount) > walletUsage.limit ? 'var(--danger)' : 'var(--text-primary)',
+                }}
+              >
+                {walletUsage.current} / {walletUsage.limit} used ({Math.max(0, walletUsage.limit - walletUsage.current)} slots left)
+              </span>
+            </div>
           </div>
         </div>
+
+        {/* Parser Warnings (skipped rows, truncation, quoting recovery) */}
+        {Array.isArray(importSummary?.warnings) && importSummary.warnings.length > 0 && (
+          <div
+            style={{
+              padding: '8px 12px',
+              marginBottom: 10,
+              borderRadius: 8,
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              color: 'var(--warning, #f59e0b)',
+              fontSize: '0.78rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            {importSummary.warnings.map((w, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                <span>{w}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Warning if selections exceed 1,000 user limit */}
         {(walletUsage.current + selectedStatementCount) > walletUsage.limit && (
@@ -2494,6 +2666,13 @@ export default function Transactions() {
           <span>{selectedStatementCount} {tr('selected', 'selected')}</span>
           <button
             type="button"
+            onClick={handleOpenImportPicker}
+            disabled={isAnalyzingStatement || isImporting}
+          >
+            {tr('choose_another_file', 'Choose another file')}
+          </button>
+          <button
+            type="button"
             onClick={() => setStatementRows((rows) => rows.map((row) => ({ ...row, selected: !row.duplicate })))}
           >
             {tr('add_all_new', 'Add all new')}
@@ -2505,80 +2684,96 @@ export default function Transactions() {
             {tr('ignore_all', 'Ignore all')}
           </button>
         </div>
-        <div className="csv-preview-table-wrap statement-review-wrap">
-          <table className="csv-preview-table statement-review-table">
-            <thead>
-              <tr>
-                {STATEMENT_COLUMNS.map((column) => (
-                  <th key={column.key} scope="col">{tr(column.i18nKey, column.fallback)}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {statementRows.map((row) => (
-                <tr key={row.id} className={row.selected ? '' : 'statement-row-ignored'}>
-                  <td data-label={tr(STATEMENT_COLUMNS[0].i18nKey, STATEMENT_COLUMNS[0].fallback)}>
-                    <button
-                      type="button"
-                      className={`statement-choice ${row.selected ? 'selected' : ''}`}
-                      onClick={() => updateStatementRow(row.id, { selected: !row.selected })}
-                      aria-pressed={row.selected}
-                    >
-                      {row.selected ? tr('add_to_wallet', 'Add to Wallet') : tr('ignore', 'Ignore')}
-                    </button>
-                  </td>
-                  <td data-label={tr(STATEMENT_COLUMNS[1].i18nKey, STATEMENT_COLUMNS[1].fallback)}>{row.date}</td>
-                  <td data-label={tr(STATEMENT_COLUMNS[2].i18nKey, STATEMENT_COLUMNS[2].fallback)}>
-                    <strong>{row.merchant || tr('bank_transaction', 'Bank transaction')}</strong>
-                    <small>
-                      {row.bank_name ? `🏦 ${row.bank_name}` : (row.payment_method || 'bank_transfer').replace('_', ' ')}
-                      {row.transaction_number ? ` · ID: ${row.transaction_number}` : ''}
-                    </small>
-                  </td>
-                  <td data-label={tr(STATEMENT_COLUMNS[3].i18nKey, STATEMENT_COLUMNS[3].fallback)}>
-                    {row.sender_name && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>From:</span> <strong>{row.sender_name}</strong>
-                      </div>
-                    )}
-                    {row.receiver_name && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>To:</span> <strong>{row.receiver_name}</strong>
-                      </div>
-                    )}
-                    {!row.sender_name && !row.receiver_name && (
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
-                    )}
-                  </td>
-                  <td data-label={tr(STATEMENT_COLUMNS[4].i18nKey, STATEMENT_COLUMNS[4].fallback)}>
-                    <select
-                      aria-label={`${tr('category_for', 'Category for')} ${row.merchant || ''}`.trim()}
-                      value={row.category}
-                      onChange={(event) => updateStatementRow(row.id, { category: event.target.value })}
-                    >
-                      {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </td>
-                  <td data-label={tr(STATEMENT_COLUMNS[5].i18nKey, STATEMENT_COLUMNS[5].fallback)} style={{ whiteSpace: 'nowrap', color: row.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
-                    <div style={{ fontWeight: 600 }}>{row.type === 'income' ? '+' : '-'}{fmt(row.amount)}</div>
-                    <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', opacity: 0.8 }}>
-                      {row.type === 'income' ? 'Credit' : 'Debit'}
-                    </div>
-                  </td>
-                  <td data-label={tr(STATEMENT_COLUMNS[6].i18nKey, STATEMENT_COLUMNS[6].fallback)}>
-                    {row.duplicate ? (
-                      <span className="statement-status duplicate">{tr('possible_duplicate', 'Possible duplicate')}</span>
-                    ) : (
-                      <span className={`statement-status ${row.confidence || ''}`}>
-                        {row.confidence || tr('detected', 'detected')}
-                      </span>
-                    )}
-                  </td>
+        {statementRows.length === 0 ? (
+          <div style={{ padding: '24px 16px', textAlign: 'center', borderRadius: 10, background: 'var(--glass-2)', border: '1px solid var(--glass-border)' }}>
+            <p style={{ margin: '0 0 10px', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+              {tr('no_rows_detected', 'No valid transactions matched in this file. Try switching Date Format above or uploading another CSV, Excel (.xlsx/.xls), or PDF statement.')}
+            </p>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleOpenImportPicker}
+              disabled={isAnalyzingStatement || isImporting}
+            >
+              <Upload size={14} aria-hidden /> {tr('choose_another_file', 'Choose another file')}
+            </button>
+          </div>
+        ) : (
+          <div className="csv-preview-table-wrap statement-review-wrap">
+            <table className="csv-preview-table statement-review-table">
+              <thead>
+                <tr>
+                  {STATEMENT_COLUMNS.map((column) => (
+                    <th key={column.key} scope="col">{tr(column.i18nKey, column.fallback)}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {statementRows.map((row) => (
+                  <tr key={row.id} className={row.selected ? '' : 'statement-row-ignored'}>
+                    <td data-label={tr(STATEMENT_COLUMNS[0].i18nKey, STATEMENT_COLUMNS[0].fallback)}>
+                      <button
+                        type="button"
+                        className={`statement-choice ${row.selected ? 'selected' : ''}`}
+                        onClick={() => updateStatementRow(row.id, { selected: !row.selected })}
+                        aria-pressed={row.selected}
+                      >
+                        {row.selected ? tr('add_to_wallet', 'Add to Wallet') : tr('ignore', 'Ignore')}
+                      </button>
+                    </td>
+                    <td data-label={tr(STATEMENT_COLUMNS[1].i18nKey, STATEMENT_COLUMNS[1].fallback)}>{row.date}</td>
+                    <td data-label={tr(STATEMENT_COLUMNS[2].i18nKey, STATEMENT_COLUMNS[2].fallback)}>
+                      <strong>{row.merchant || tr('bank_transaction', 'Bank transaction')}</strong>
+                      <small>
+                        {row.bank_name ? `🏦 ${row.bank_name}` : (row.payment_method || 'bank_transfer').replace('_', ' ')}
+                        {row.transaction_number ? ` · ID: ${row.transaction_number}` : ''}
+                      </small>
+                    </td>
+                    <td data-label={tr(STATEMENT_COLUMNS[3].i18nKey, STATEMENT_COLUMNS[3].fallback)}>
+                      {row.sender_name && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          <span style={{ color: 'var(--text-muted)' }}>From:</span> <strong>{row.sender_name}</strong>
+                        </div>
+                      )}
+                      {row.receiver_name && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          <span style={{ color: 'var(--text-muted)' }}>To:</span> <strong>{row.receiver_name}</strong>
+                        </div>
+                      )}
+                      {!row.sender_name && !row.receiver_name && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
+                      )}
+                    </td>
+                    <td data-label={tr(STATEMENT_COLUMNS[4].i18nKey, STATEMENT_COLUMNS[4].fallback)}>
+                      <select
+                        aria-label={`${tr('category_for', 'Category for')} ${row.merchant || ''}`.trim()}
+                        value={row.category}
+                        onChange={(event) => updateStatementRow(row.id, { category: event.target.value })}
+                      >
+                        {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </td>
+                    <td data-label={tr(STATEMENT_COLUMNS[5].i18nKey, STATEMENT_COLUMNS[5].fallback)} style={{ whiteSpace: 'nowrap', color: row.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
+                      <div style={{ fontWeight: 600 }}>{row.type === 'income' ? '+' : '-'}{fmt(row.amount)}</div>
+                      <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', opacity: 0.8 }}>
+                        {row.type === 'income' ? 'Credit' : 'Debit'}
+                      </div>
+                    </td>
+                    <td data-label={tr(STATEMENT_COLUMNS[6].i18nKey, STATEMENT_COLUMNS[6].fallback)}>
+                      {row.duplicate ? (
+                        <span className="statement-status duplicate">{tr('possible_duplicate', 'Possible duplicate')}</span>
+                      ) : (
+                        <span className={`statement-status ${row.confidence || ''}`}>
+                          {row.confidence || tr('detected', 'detected')}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Modal>
 
       {/* ===================== Undo Bar ===================== */}

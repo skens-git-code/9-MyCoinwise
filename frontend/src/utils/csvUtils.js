@@ -46,8 +46,8 @@ function createCellEscaper(delimiter) {
     let str = type === 'string' ? value : String(value);
     if (str === '') return '';
 
-    // 3. Neutralise formula injection without breaking real negative numbers.
-    if (FORMULA_PREFIX.test(str) && !NUMERIC_LIKE.test(str)) {
+    // 3. Neutralise formula injection (including leading spaces) without breaking real negative numbers.
+    if (FORMULA_PREFIX.test(str.trimStart()) && !NUMERIC_LIKE.test(str)) {
       str = `'${str}`;
     }
 

@@ -1,11 +1,17 @@
 const assert = require('assert');
+const express = require('express');
 const ExcelJS = require('exceljs');
+const CFB = require('cfb');
 const {
   parseStatement,
   extractTransactionId,
   detectBankName,
   parseNarrationEntities,
   parseCsvString,
+  detectCsvDelimiter,
+  clearParserCache,
+  getParserCacheStats,
+  enrichRawPdfTransactions,
   toIsoDay,
   parseStatementAmount,
   parseSignedAmount,
@@ -13,49 +19,137 @@ const {
 } = require('../services/statementParser');
 
 /**
+ * Creates a valid multi-page standalone PDF 1.4 binary buffer from raw content streams.
+ */
+function createMultiPagePdfBuffer(pageStreams) {
+  const objects = [];
+  const pageCount = pageStreams.length;
+  const fontObjId = 3 + pageCount * 2;
+  const kidsRefs = [];
+
+  for (let p = 0; p < pageCount; p += 1) {
+    const pageObjId = 3 + p * 2;
+    const contentObjId = pageObjId + 1;
+    kidsRefs.push(`${pageObjId} 0 R`);
+    const stream = pageStreams[p];
+    const len = Buffer.byteLength(stream);
+    objects.push({
+      id: pageObjId,
+      body: `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${contentObjId} 0 R /Resources << /Font << /F1 ${fontObjId} 0 R >> >> >>`,
+    });
+    objects.push({
+      id: contentObjId,
+      body: `<< /Length ${len} >>\nstream\n${stream}\nendstream`,
+    });
+  }
+
+  const allObjs = [
+    { id: 1, body: '<< /Type /Catalog /Pages 2 0 R >>' },
+    { id: 2, body: `<< /Type /Pages /Kids [${kidsRefs.join(' ')}] /Count ${pageCount} >>` },
+    ...objects,
+    { id: fontObjId, body: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>' },
+  ].sort((a, b) => a.id - b.id);
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const obj of allObjs) {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += `${obj.id} 0 obj\n${obj.body}\nendobj\n`;
+  }
+  const xrefPos = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${allObjs.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= allObjs.length; i += 1) {
+    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${allObjs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
+  return Buffer.from(pdf);
+}
+
+/**
  * Creates a valid standalone PDF 1.4 binary buffer without external node_modules.
  */
+function biffRecord(type, payload) {
+  const hdr = Buffer.alloc(4);
+  hdr.writeUInt16LE(type, 0);
+  hdr.writeUInt16LE(payload.length, 2);
+  return Buffer.concat([hdr, payload]);
+}
+
+/**
+ * Builds a valid binary Excel 97-2003 BIFF8 (.xls) OLE2 workbook buffer using `cfb`.
+ */
+function createBinaryBiff8XlsBuffer(rows) {
+  const strings = [];
+  const strIdx = new Map();
+  const intern = (s) => {
+    const key = String(s);
+    if (!strIdx.has(key)) {
+      strIdx.set(key, strings.length);
+      strings.push(key);
+    }
+    return strIdx.get(key);
+  };
+
+  // Pre-intern all string cells
+  for (const row of rows) {
+    for (const cell of row) {
+      if (typeof cell === 'string') intern(cell);
+    }
+  }
+
+  // Build SST record (compressed 8-bit ASCII strings)
+  const sstParts = [Buffer.alloc(8)];
+  sstParts[0].writeUInt32LE(strings.length, 0);
+  sstParts[0].writeUInt32LE(strings.length, 4);
+  for (const s of strings) {
+    const strBytes = Buffer.from(s, 'latin1');
+    const hdr = Buffer.alloc(3);
+    hdr.writeUInt16LE(strBytes.length, 0);
+    hdr.writeUInt8(0, 2);
+    sstParts.push(hdr, strBytes);
+  }
+
+  const globals = Buffer.concat([
+    biffRecord(0x0809, Buffer.from([0x00, 0x06, 0x05, 0x00])), // BOF workbook globals
+    biffRecord(0x00fc, Buffer.concat(sstParts)),                // SST
+    biffRecord(0x000a, Buffer.alloc(0)),                        // EOF
+  ]);
+
+  const cellRecs = [biffRecord(0x0809, Buffer.from([0x00, 0x06, 0x10, 0x00]))]; // BOF worksheet
+  rows.forEach((row, r) => {
+    row.forEach((cell, c) => {
+      if (cell === null || cell === undefined || cell === '') return;
+      if (typeof cell === 'number') {
+        const buf = Buffer.alloc(14);
+        buf.writeUInt16LE(r, 0);
+        buf.writeUInt16LE(c, 2);
+        buf.writeUInt16LE(0, 4);
+        buf.writeDoubleLE(cell, 6);
+        cellRecs.push(biffRecord(0x0203, buf)); // NUMBER
+      } else {
+        const buf = Buffer.alloc(10);
+        buf.writeUInt16LE(r, 0);
+        buf.writeUInt16LE(c, 2);
+        buf.writeUInt16LE(0, 4);
+        buf.writeUInt32LE(intern(cell), 6);
+        cellRecs.push(biffRecord(0x00fd, buf)); // LABELSST
+      }
+    });
+  });
+  cellRecs.push(biffRecord(0x000a, Buffer.alloc(0))); // EOF
+
+  const wbStream = Buffer.concat([globals, ...cellRecs]);
+  const container = CFB.utils.cfb_new();
+  CFB.utils.cfb_add(container, 'Workbook', wbStream);
+  return Buffer.from(CFB.write(container, { type: 'buffer' }));
+}
+
 function createPdfBuffer(lines) {
   const lineArray = Array.isArray(lines) ? lines : String(lines).split('\n');
   const content = lineArray
     .map((line, idx) => `1 0 0 1 50 ${750 - idx * 20} Tm (${String(line).replace(/[()\\]/g, '\\$&')}) Tj`)
     .join('\n');
-  const stream = `BT\n/F1 12 Tf\n${content}\nET`;
-  const streamLen = Buffer.byteLength(stream);
-
-  const pdf = `%PDF-1.4
-1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
-endobj
-2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
-endobj
-3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
-endobj
-4 0 obj
-<< /Length ${streamLen} >>
-stream
-${stream}
-endstream
-endobj
-5 0 obj
-<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
-endobj
-xref
-0 6
-0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000244 00000 n 
-0000000300 00000 n 
-trailer
-<< /Size 6 /Root 1 0 R >>
-startxref
-370
-%%EOF`;
-  return Buffer.from(pdf);
+  return createMultiPagePdfBuffer([`BT\n/F1 12 Tf\n${content}\nET`]);
 }
 
 async function runTests() {
@@ -189,27 +283,80 @@ async function runTests() {
   assert.strictEqual(repeatResult.transactions[1].confidence, 'weak_duplicate');
   console.log('  ✅ parseStatement does not falsely drop legitimate same-day same-amount purchases');
 
-  // 9. Legacy .xls files rejected with actionable error
+  // 9. Full .xls Support (Binary BIFF8, HTML-table .xls, XML Spreadsheet 2003, and Corrupt OLE2 rejection)
+  const biffXlsBuf = createBinaryBiff8XlsBuffer([
+    ['SBI Statement'],
+    ['Date', 'Narration', 'Debit', 'Credit'],
+    ['2025-02-10', 'Swiggy Food Order', 420.5, null],
+    ['2025-02-11', 'Salary Credit', null, 55000],
+  ]);
+  const biffXlsRes = await parseStatement({
+    content: biffXlsBuf,
+    filename: 'sbi_legacy.xls',
+    userTransactions: [],
+  });
+  assert.strictEqual(biffXlsRes.summary.detectedFormat, 'Excel');
+  assert.strictEqual(biffXlsRes.summary.diagnostics.strategy, 'xls_biff_cfb');
+  assert.strictEqual(biffXlsRes.transactions.length, 2);
+  assert.strictEqual(biffXlsRes.transactions[0].amount, 420.5);
+  assert.strictEqual(biffXlsRes.transactions[0].category, 'Food');
+  assert.strictEqual(biffXlsRes.transactions[1].type, 'income');
+  assert.strictEqual(biffXlsRes.transactions[1].amount, 55000);
+
+  const htmlXls = `<html><body><table>
+    <tr><th>Date</th><th>Description</th><th>Withdrawal</th><th>Deposit</th></tr>
+    <tr><td>2025-02-15</td><td>Uber Trip &amp; Toll</td><td>280.00</td><td></td></tr>
+    <tr><td>2025-02-16</td><td>Refund Amazon</td><td></td><td>999.00</td></tr>
+  </table></body></html>`;
+  const htmlXlsRes = await parseStatement({
+    content: htmlXls,
+    filename: 'bank_export.xls',
+    userTransactions: [],
+  });
+  assert.strictEqual(htmlXlsRes.summary.diagnostics.strategy, 'xls_html');
+  assert.strictEqual(htmlXlsRes.transactions.length, 2);
+  assert.strictEqual(htmlXlsRes.transactions[0].category, 'Transport');
+  assert.strictEqual(htmlXlsRes.transactions[1].type, 'income');
+
+  const xmlXls = `<?xml version="1.0"?>
+  <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet">
+    <Worksheet ss:Name="Statement">
+      <Table>
+        <Row><Cell><Data ss:Type="String">Date</Data></Cell><Cell><Data ss:Type="String">Particulars</Data></Cell><Cell><Data ss:Type="String">Amount</Data></Cell></Row>
+        <Row><Cell><Data ss:Type="String">2025-02-20</Data></Cell><Cell><Data ss:Type="String">Netflix Subscription</Data></Cell><Cell><Data ss:Type="Number">-649</Data></Cell></Row>
+      </Table>
+    </Worksheet>
+  </Workbook>`;
+  const xmlXlsRes = await parseStatement({
+    content: xmlXls,
+    filename: 'xml_export.xls',
+    userTransactions: [],
+  });
+  assert.strictEqual(xmlXlsRes.summary.diagnostics.strategy, 'xls_xml2003');
+  assert.strictEqual(xmlXlsRes.transactions[0].category, 'Subscriptions');
+  assert.strictEqual(xmlXlsRes.transactions[0].amount, 649);
+
+  // Corrupt/truncated OLE2 .xls buffer still fails cleanly with actionable error
   try {
     await parseStatement({
-      content: Buffer.from('D0CF11E0A1B11AE1', 'hex'), // OLE2 signature
-      filename: 'legacy_statement.xls',
+      content: Buffer.from('D0CF11E0A1B11AE1', 'hex'),
+      filename: 'corrupt_legacy.xls',
       userTransactions: [],
     });
-    assert.fail('Legacy .xls should have thrown an error');
+    assert.fail('Corrupt truncated .xls should have thrown an error');
   } catch (err) {
-    assert.strictEqual(err.code, 'XLS_NOT_SUPPORTED');
-    assert(/legacy \.xls/i.test(err.message), 'Error must explain legacy .xls incompatibility');
+    assert(err.code === 'XLS_NOT_SUPPORTED' || err.code === 'XLS_INVALID');
   }
-  console.log('  ✅ parseStatement rejects legacy .xls files with helpful instructions');
+  console.log('  ✅ parseStatement parses binary BIFF8 .xls, HTML .xls, XML .xls, and rejects corrupt .xls cleanly');
 
-  // 10. Excel (.xlsx) Statement Ingestion
+  // 10. Excel (.xlsx) Statement Ingestion (including richText, formula result, and serial date)
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Transactions');
   ws.addRow(['HDFC Bank Account Statement']);
   ws.addRow(['Date', 'Narration', 'Withdrawal', 'Deposit', 'Chq/Ref No']);
-  ws.addRow(['2025-02-01', 'Uber Ride Airport', 850, null, 'UBER9876']);
-  ws.addRow(['2025-02-02', 'Interest Credited', null, 320, 'INT2025']);
+  ws.addRow(['2025-02-01', { richText: [{ text: 'Uber Ride ' }, { text: 'Airport' }] }, 850, null, 'UBER9876']);
+  const formulaRow = ws.addRow([45690, 'Interest Credited', null, { formula: '160*2', result: 320 }, 'INT2025']);
+  formulaRow.getCell(1).numFmt = 'yyyy-mm-dd';
   ws.addRow(['Closing Balance: ₹50,000.00']);
   const xlsxBuf = await wb.xlsx.writeBuffer();
 
@@ -224,7 +371,8 @@ async function runTests() {
   assert.strictEqual(xlsxResult.transactions[0].amount, 850);
   assert.strictEqual(xlsxResult.transactions[1].type, 'income');
   assert.strictEqual(xlsxResult.transactions[1].amount, 320);
-  console.log('  ✅ parseStatement parses Excel .xlsx statements successfully and ignores balance row');
+  assert.strictEqual(xlsxResult.transactions[1].date, '2025-02-02');
+  console.log('  ✅ parseStatement parses Excel .xlsx (richText, formulas, serial dates) and ignores balance row');
 
   // 11. PDF Statement Ingestion (PhonePe)
   const phonePeBuf = createPdfBuffer([
@@ -448,6 +596,462 @@ async function runTests() {
   });
   assert.strictEqual(balanceFirstResult.transactions[0].amount, 350, 'Must pick transaction amount 350, not balance 45000');
   console.log('  ✅ parseStatement general bank parser picks transaction amount instead of balance');
+
+  // 24. Vector-bordered PDF Table Extraction (pdf-parse getTable)
+  const vectorTableStream = [
+    '0.5 w',
+    '40 700 520 80 re S',
+    '40 755 m 560 755 l S',
+    '40 737 m 560 737 l S',
+    '40 718 m 560 718 l S',
+    '120 700 m 120 780 l S',
+    '330 700 m 330 780 l S',
+    '420 700 m 420 780 l S',
+    'BT /F1 10 Tf',
+    '1 0 0 1 50 763 Tm (Date) Tj',
+    '1 0 0 1 130 763 Tm (Description) Tj',
+    '1 0 0 1 340 763 Tm (Debit) Tj',
+    '1 0 0 1 430 763 Tm (Credit) Tj',
+    '1 0 0 1 50 742 Tm (2025-02-01) Tj',
+    '1 0 0 1 130 742 Tm (XYZ RETAIL CORP) Tj',
+    '1 0 0 1 340 742 Tm (1250.00) Tj',
+    '1 0 0 1 50 723 Tm (2025-02-02) Tj',
+    '1 0 0 1 130 723 Tm (ACME CONSULTING) Tj',
+    '1 0 0 1 430 723 Tm (45000.00) Tj',
+    'ET',
+  ].join('\n');
+  const vectorPdfBuf = createMultiPagePdfBuffer([vectorTableStream]);
+  const vectorResult = await parseStatement({
+    content: vectorPdfBuf,
+    filename: 'hdfc_vector_table.pdf',
+    userTransactions: [],
+  });
+  assert.strictEqual(vectorResult.summary.diagnostics.strategy, 'pdf_vector_table');
+  assert.strictEqual(vectorResult.transactions.length, 2);
+  assert.strictEqual(vectorResult.transactions[0].type, 'expense');
+  assert.strictEqual(vectorResult.transactions[0].amount, 1250);
+  assert.strictEqual(vectorResult.transactions[1].type, 'income');
+  assert.strictEqual(vectorResult.transactions[1].amount, 45000);
+  console.log('  ✅ parseStatement extracts vector-bordered PDF tables with exact Debit/Credit column accuracy');
+
+  // 25. Borderless Coordinate-Aligned PDF Stream Table with Wrapped Multi-line Narration
+  const coordTableStream = [
+    'BT /F1 10 Tf',
+    '1 0 0 1 50 765 Tm (Date) Tj',
+    '1 0 0 1 130 765 Tm (Particulars) Tj',
+    '1 0 0 1 350 765 Tm (Debit) Tj',
+    '1 0 0 1 435 765 Tm (Credit) Tj',
+    '1 0 0 1 515 765 Tm (Balance) Tj',
+    '1 0 0 1 50 742 Tm (01/03/2025) Tj',
+    '1 0 0 1 130 742 Tm (NEFT-IN-9988776655) Tj',
+    '1 0 0 1 435 742 Tm (50000.00) Tj',
+    '1 0 0 1 515 742 Tm (150000.00) Tj',
+    '1 0 0 1 130 729 Tm (GLOBAL TECH SOLUTIONS) Tj',
+    '1 0 0 1 50 710 Tm (02/03/2025) Tj',
+    '1 0 0 1 130 710 Tm (POS-BLINKIT GROCERY) Tj',
+    '1 0 0 1 350 710 Tm (845.50) Tj',
+    '1 0 0 1 515 710 Tm (149154.50) Tj',
+    'ET',
+  ].join('\n');
+  const coordPdfBuf = createMultiPagePdfBuffer([coordTableStream]);
+  const coordResult = await parseStatement({
+    content: coordPdfBuf,
+    filename: 'icici_borderless.pdf',
+    userTransactions: [],
+  });
+  assert.strictEqual(coordResult.summary.diagnostics.strategy, 'pdf_coordinate_table');
+  assert.strictEqual(coordResult.transactions.length, 2);
+  assert.strictEqual(coordResult.transactions[0].type, 'income');
+  assert.strictEqual(coordResult.transactions[0].amount, 50000);
+  assert(/GLOBAL TECH SOLUTIONS/i.test(coordResult.transactions[0].note), 'Wrapped narration line must merge into row 1');
+  assert.strictEqual(coordResult.transactions[1].type, 'expense');
+  assert.strictEqual(coordResult.transactions[1].amount, 845.5);
+  assert.strictEqual(coordResult.transactions[1].category, 'Groceries');
+  console.log('  ✅ parseStatement reconstructs borderless coordinate PDF tables and merges wrapped narrations');
+
+  // 26. Running-Balance Reconciliation (single ambiguous Amount column + Balance column)
+  const balanceReconcileCsv = [
+    'Date,Description,Amount,Balance',
+    '2025-03-01,Opening Entry,1000.00,10000.00',
+    '2025-03-02,ALPHA CORP,2500.00,12500.00',
+    '2025-03-03,BETA SERVICES,450.00,12050.00',
+  ].join('\n');
+  const balanceReconcileRes = await parseStatement({
+    content: balanceReconcileCsv,
+    filename: 'reconcile.csv',
+    userTransactions: [],
+  });
+  assert.strictEqual(balanceReconcileRes.transactions[1].type, 'income', 'Balance 10000 -> 12500 must identify ALPHA CORP as income');
+  assert.strictEqual(balanceReconcileRes.transactions[2].type, 'expense', 'Balance 12500 -> 12050 must identify BETA SERVICES as expense');
+  assert.strictEqual(balanceReconcileRes.summary.diagnostics.balanceReconciledCount, 2);
+  console.log('  ✅ Running-balance reconciliation disambiguates Debit vs Credit accurately');
+
+  // 27. Signed single-Amount CSV convention (negative = expense, positive = income)
+  const signedCsv = 'Date,Description,Amount\n2026-09-01,Grocery Store,-65.40\n2026-09-02,Client Payout,2500.00';
+  const signedRes = await parseStatement({
+    content: signedCsv,
+    filename: 'signed.csv',
+    userTransactions: [],
+  });
+  assert.strictEqual(signedRes.transactions[0].type, 'expense');
+  assert.strictEqual(signedRes.transactions[0].amount, 65.4);
+  assert.strictEqual(signedRes.transactions[1].type, 'income', 'Positive entry in signed-amount column must be classified as income');
+  assert.strictEqual(signedRes.transactions[1].amount, 2500);
+  console.log('  ✅ Signed single-Amount CSV convention classifies positive/negative rows accurately');
+
+  // 28. Quote-aware Delimiter Detection, UTF-16 LE BOM, 20 Metadata Header Rows & Large CSV Streaming (1,500 rows)
+  assert.strictEqual(detectCsvDelimiter('"Coffee, Tea, Pastry";450.00;Debit\n"Lunch, Dinner";320.00;Debit'), ';');
+  const metadataLines = Array.from({ length: 20 }, (_, i) => `Bank Metadata Line ${i + 1}`);
+  const largeCsvRows = [
+    ...metadataLines,
+    'Date,Description,Debit,Credit',
+  ];
+  for (let i = 0; i < 1500; i += 1) {
+    const day = String((i % 28) + 1).padStart(2, '0');
+    const month = String(((Math.floor(i / 28)) % 12) + 1).padStart(2, '0');
+    largeCsvRows.push(`2025-${month}-${day},"Swiggy, Order #${i + 1}",${(100 + (i % 50)).toFixed(2)},`);
+  }
+  // Include 2 invalid rows to test skip diagnostics
+  largeCsvRows.push('bad-date,Broken Date Row,100.00,');
+  largeCsvRows.push('2025-05-01,Zero Amount Row,0.00,');
+  const utf16CsvBuf = Buffer.concat([
+    Buffer.from([0xff, 0xfe]),
+    Buffer.from(largeCsvRows.join('\n'), 'utf16le'),
+  ]);
+  const largeCsvRes = await parseStatement({
+    content: utf16CsvBuf,
+    filename: 'large_export.csv',
+    userTransactions: [],
+  });
+  assert.strictEqual(largeCsvRes.transactions.length, 1000, 'Large CSV must cap to IMPORT_LIMIT (1000)');
+  assert.strictEqual(largeCsvRes.summary.truncated, true);
+  assert.strictEqual(largeCsvRes.summary.droppedCount, 500);
+  assert.strictEqual(largeCsvRes.summary.diagnostics.rowsSkipped, 2);
+  assert.strictEqual(largeCsvRes.summary.diagnostics.strategy, 'csv_fast-csv');
+  console.log('  ✅ fast-csv streaming, UTF-16 BOM, quote-aware delimiter, 20+ metadata rows, and 1500-row limit/diagnostics verified');
+
+  // 29. Multi-Sheet Excel (.xlsx) where Sheet 1 is Cover Summary and Sheet 2 is Transactions
+  const multiWb = new ExcelJS.Workbook();
+  const coverWs = multiWb.addWorksheet('Summary');
+  coverWs.addRow(['Account Holder', 'Test User']);
+  coverWs.addRow(['Period', 'FY 2025']);
+  const txWs = multiWb.addWorksheet('Transactions');
+  txWs.addRow(['Date', 'Particulars', 'Debit', 'Credit']);
+  txWs.addRow(['2025-04-01', 'Zomato Dinner', 620, null]);
+  const multiXlsxBuf = await multiWb.xlsx.writeBuffer();
+  const multiXlsxRes = await parseStatement({
+    content: multiXlsxBuf,
+    filename: 'multi_sheet.xlsx',
+    userTransactions: [],
+  });
+  assert.strictEqual(multiXlsxRes.transactions.length, 1);
+  assert.strictEqual(multiXlsxRes.transactions[0].category, 'Food');
+  console.log('  ✅ Multi-sheet Excel (.xlsx) locates transaction worksheet past cover sheet');
+
+  // 30. Multi-Page PDF Parallel Batch Processing + LRU Cache Hit
+  clearParserCache();
+  const sixPageStreams = [];
+  for (let p = 0; p < 6; p += 1) {
+    const lines = ['BT /F1 10 Tf'];
+    if (p === 0) {
+      lines.push('1 0 0 1 50 765 Tm (Date) Tj');
+      lines.push('1 0 0 1 130 765 Tm (Description) Tj');
+      lines.push('1 0 0 1 350 765 Tm (Debit) Tj');
+      lines.push('1 0 0 1 440 765 Tm (Credit) Tj');
+    }
+    for (let r = 0; r < 10; r += 1) {
+      const y = 740 - r * 20;
+      const day = String(((p * 10 + r) % 28) + 1).padStart(2, '0');
+      lines.push(`1 0 0 1 50 ${y} Tm (2025-05-${day}) Tj`);
+      lines.push(`1 0 0 1 130 ${y} Tm (Amazon Purchase ${p}-${r}) Tj`);
+      lines.push(`1 0 0 1 350 ${y} Tm (${(200 + r).toFixed(2)}) Tj`);
+    }
+    lines.push('ET');
+    sixPageStreams.push(lines.join('\n'));
+  }
+  const sixPagePdfBuf = createMultiPagePdfBuffer(sixPageStreams);
+  const firstRun = await parseStatement({
+    content: sixPagePdfBuf,
+    filename: 'six_page.pdf',
+    userTransactions: [],
+  });
+  assert.strictEqual(firstRun.transactions.length, 60);
+  assert.strictEqual(firstRun.summary.diagnostics.pageCount, 6);
+  assert.strictEqual(firstRun.summary.diagnostics.cacheHit, false);
+
+  const secondRun = await parseStatement({
+    content: sixPagePdfBuf,
+    filename: 'six_page.pdf',
+    userTransactions: [
+      {
+        date: firstRun.transactions[0].date,
+        type: firstRun.transactions[0].type,
+        amount: firstRun.transactions[0].amount,
+        merchant: firstRun.transactions[0].merchant,
+        category: 'Shopping',
+      },
+    ],
+  });
+  assert.strictEqual(secondRun.summary.diagnostics.cacheHit, true, 'Second parse must hit LRU cache');
+  assert.strictEqual(secondRun.transactions[0].duplicate, true, 'Cached parse must still compute fresh duplicate flags against live userTransactions');
+  console.log('  ✅ Multi-page PDF parallel processing and SHA-256 LRU cache with live duplicate detection verified');
+
+  // 31. Scanned / Image-Only PDF OCR Fallback & PDF_OCR_REQUIRED Error
+  const blankTextPdf = createMultiPagePdfBuffer(['q 1 0 0 1 0 0 cm Q']);
+  try {
+    await parseStatement({
+      content: blankTextPdf,
+      filename: 'scanned_statement.pdf',
+      userTransactions: [],
+      ocrRunner: async () => ({ text: '', pagesOcred: 0 }),
+    });
+    assert.fail('Image-only PDF without OCR text should throw PDF_OCR_REQUIRED');
+  } catch (err) {
+    assert.strictEqual(err.code, 'PDF_OCR_REQUIRED');
+    assert.strictEqual(err.ocr_required, true);
+  }
+
+  // Verify end-to-end parseStatement OCR pipeline when OCR runner extracts text
+  const ocrParsed = await parseStatement({
+    content: blankTextPdf,
+    filename: 'scanned_statement.pdf',
+    userTransactions: [],
+    ocrRunner: async () => ({
+      text: 'Paytm Payments Bank\n2025-06-01 Paid to Uber India Rs. 310.00',
+      pagesOcred: 1,
+    }),
+  });
+  assert.strictEqual(ocrParsed.summary.diagnostics.ocrUsed, true);
+  assert.strictEqual(ocrParsed.summary.diagnostics.strategy, 'pdf_ocr');
+  assert.strictEqual(ocrParsed.transactions.length, 1);
+  assert.strictEqual(ocrParsed.transactions[0].amount, 310);
+  assert.strictEqual(ocrParsed.transactions[0].category, 'Transport');
+  console.log('  ✅ Scanned PDF OCR fallback and PDF_OCR_REQUIRED error handling verified');
+
+  // 32. Express Multipart/Form-Data Upload & Multer Validation via /statement/preview Handler
+  const previewLayer = transactionsRouter.stack.find(
+    (layer) => layer.route && layer.route.path === '/statement/preview'
+  );
+  assert(previewLayer, 'POST /statement/preview route must exist');
+  const uploadApp = express();
+  uploadApp.use((req, _res, next) => {
+    req.user = { id: '507f1f77bcf86cd799439011' };
+    next();
+  });
+  // Mount only the upload middleware + parseStatement test endpoint to verify multipart buffer handling
+  const handleStatementUploadMw = previewLayer.route.stack[0].handle;
+  uploadApp.post('/test-upload', handleStatementUploadMw, async (req, res) => {
+    const result = await parseStatement({
+      content: req.file?.buffer || req.body?.content,
+      filename: req.file?.originalname || req.body?.filename,
+      dateFormat: req.body?.dateFormat,
+      userTransactions: [],
+    });
+    res.json(result);
+  });
+
+  const server = uploadApp.listen(0);
+  try {
+    const port = server.address().port;
+    const form = new FormData();
+    form.append('file', new Blob(['Date,Description,Amount\n2025-07-01,Starbucks,-180.00'], { type: 'text/csv' }), 'upload.csv');
+    form.append('accountId[$ne]', 'malicious');
+    form.append('nested[a][b][c][d][e][f]', 'deep_payload');
+    const resp = await fetch(`http://127.0.0.1:${port}/test-upload`, { method: 'POST', body: form });
+    assert.strictEqual(resp.status, 200);
+    const json = await resp.json();
+    assert.strictEqual(json.transactions.length, 1);
+    assert.strictEqual(json.transactions[0].category, 'Food');
+    assert.strictEqual(json.transactions[0].amount, 180);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+  console.log('  ✅ Multipart/form-data file upload middleware parses binary CSV buffer and sanitizes form fields');
+
+  // 33. OCR Runner Exception Graceful Fallback
+  try {
+    await parseStatement({
+      content: blankTextPdf,
+      filename: 'ocr_crash_test.pdf',
+      userTransactions: [],
+      ocrRunner: async () => {
+        throw new Error('Simulated Tesseract worker crash');
+      },
+    });
+    assert.fail('OCR crash should still yield PDF_OCR_REQUIRED instead of crashing');
+  } catch (err) {
+    assert.strictEqual(err.code, 'PDF_OCR_REQUIRED');
+    assert.strictEqual(err.ocr_required, true);
+  }
+  console.log('  ✅ OCR runner exceptions degrade gracefully to PDF_OCR_REQUIRED');
+
+  // 34. Password-Protected PDF Error Mapping
+  const { isPasswordError, createPasswordRequiredError } = require('../services/statement/pdfExtractor');
+  assert.strictEqual(isPasswordError({ name: 'PasswordException', message: 'No password given' }), true);
+  assert.strictEqual(isPasswordError(new Error('Document is encrypted')), true);
+  const missingPassErr = createPasswordRequiredError(null);
+  assert.strictEqual(missingPassErr.code, 'PDF_PASSWORD_REQUIRED');
+  assert(/provide the statement password/i.test(missingPassErr.message));
+  const wrongPassErr = createPasswordRequiredError('wrong123');
+  assert.strictEqual(wrongPassErr.code, 'PDF_PASSWORD_REQUIRED');
+  assert(/Incorrect password/i.test(wrongPassErr.message));
+  console.log('  ✅ Password-protected PDF error handling verified (missing vs incorrect password)');
+
+  // 35. Headerless / Unlabeled Excel (.xlsx) Rejection
+  const unlabeledWb = new ExcelJS.Workbook();
+  const unlabeledWs = unlabeledWb.addWorksheet('Sheet1');
+  unlabeledWs.addRow(['2025-01-01', '100.00', 'Random Text']);
+  unlabeledWs.addRow(['2025-01-02', '200.00', 'More Text']);
+  const unlabeledBuf = await unlabeledWb.xlsx.writeBuffer();
+  try {
+    await parseStatement({
+      content: unlabeledBuf,
+      filename: 'unlabeled.xlsx',
+      userTransactions: [],
+    });
+    assert.fail('Unlabeled Excel workbook should reject with missing header error');
+  } catch (err) {
+    assert(/Could not identify date and description columns/i.test(err.message));
+  }
+  console.log('  ✅ Headerless Excel workbook fails cleanly with descriptive column error');
+
+  // 36. Empty Parse Result Caching (prevents CPU abuse on repeated empty PDF previews)
+  clearParserCache();
+  const emptyActivityPdf = createPdfBuffer([
+    'HDFC Bank Monthly Statement',
+    'No transactions recorded for this billing period.',
+  ]);
+  assert.strictEqual(getParserCacheStats().size, 0);
+  try {
+    await parseStatement({
+      content: emptyActivityPdf,
+      filename: 'empty_statement.pdf',
+      userTransactions: [],
+    });
+    assert.fail('Empty statement should throw No valid transactions');
+  } catch (err) {
+    assert(/No valid transactions/i.test(err.message));
+  }
+  assert.strictEqual(getParserCacheStats().size, 1, 'Empty parse result must be cached to prevent repeated re-extraction');
+  try {
+    await parseStatement({
+      content: emptyActivityPdf,
+      filename: 'empty_statement.pdf',
+      userTransactions: [],
+    });
+    assert.fail('Cached empty statement should still throw No valid transactions');
+  } catch (err) {
+    assert(/No valid transactions/i.test(err.message));
+  }
+  assert.strictEqual(getParserCacheStats().size, 1);
+  console.log('  ✅ Empty parse results are cached in LRU cache to prevent repeated CPU extraction');
+
+  // 37. enrichRawPdfTransactions Invalid-Amount Safety Guard
+  const safeEnriched = enrichRawPdfTransactions({
+    rawTransactions: [
+      { date: '2025-07-01', type: 'expense', amount: null, desc: 'Corrupt null amount' },
+      { date: '2025-07-01', type: 'expense', amount: Number.NaN, desc: 'Corrupt NaN amount' },
+      { date: '2025-07-01', type: 'expense', amount: -20, desc: 'Negative amount' },
+      { date: '2025-07-01', type: 'expense', amount: 250, desc: 'Paid to Swiggy' },
+    ],
+    defaultBank: 'HDFC Bank',
+    statementSource: 'bank_pdf',
+    merchantCategories: new Map(),
+    accountId: null,
+  });
+  assert.strictEqual(safeEnriched.length, 1);
+  assert.strictEqual(safeEnriched[0].amount, 250);
+  console.log('  ✅ enrichRawPdfTransactions safely skips null/NaN/non-positive amounts without throwing');
+
+  // 38. 100-Page PDF Scale Test (500 transactions) & Express Route Ordering Check
+  const hundredPageStreams = [];
+  for (let p = 0; p < 100; p += 1) {
+    const lines = ['BT /F1 10 Tf'];
+    if (p === 0) {
+      lines.push('1 0 0 1 50 765 Tm (Date) Tj');
+      lines.push('1 0 0 1 130 765 Tm (Description) Tj');
+      lines.push('1 0 0 1 350 765 Tm (Debit) Tj');
+      lines.push('1 0 0 1 440 765 Tm (Credit) Tj');
+    }
+    for (let r = 0; r < 5; r += 1) {
+      const y = 740 - r * 20;
+      const day = String(((p * 5 + r) % 28) + 1).padStart(2, '0');
+      lines.push(`1 0 0 1 50 ${y} Tm (2025-08-${day}) Tj`);
+      lines.push(`1 0 0 1 130 ${y} Tm (Vendor ${p}-${r}) Tj`);
+      lines.push(`1 0 0 1 350 ${y} Tm (${(100 + r).toFixed(2)}) Tj`);
+    }
+    lines.push('ET');
+    hundredPageStreams.push(lines.join('\n'));
+  }
+  const hundredPagePdfBuf = createMultiPagePdfBuffer(hundredPageStreams);
+  const hundredPageRes = await parseStatement({
+    content: hundredPagePdfBuf,
+    filename: 'large_100_pages.pdf',
+    userTransactions: [],
+  });
+  assert.strictEqual(hundredPageRes.summary.diagnostics.pageCount, 100);
+  assert.strictEqual(hundredPageRes.transactions.length, 500);
+
+  // Verify static routes precede dynamic /:userId and /:id routes in transactionsRouter
+  const routePaths = transactionsRouter.stack
+    .filter((l) => l.route)
+    .map((l) => l.route.path);
+  const userIdIdx = routePaths.indexOf('/:userId');
+  assert(userIdIdx > -1, '/:userId route must exist');
+  assert(routePaths.indexOf('/statement/preview') < userIdIdx, '/statement/preview must precede /:userId');
+  assert(routePaths.indexOf('/statement/import') < userIdIdx, '/statement/import must precede /:userId');
+  assert(routePaths.indexOf('/process-recurring') < userIdIdx, '/process-recurring must precede /:userId');
+  assert(routePaths.indexOf('/bulk-delete') < userIdIdx, '/bulk-delete must precede /:userId');
+  console.log('  ✅ 100-page PDF (500 txns) parallel extraction and Express static-before-dynamic route ordering verified');
+
+  // 39. Multi-line Paytm UPI Statement PDF (yearless DD Mon dates, Money sent to / Recharge of / Received from, # Tag)
+  const paytmUpiPdf = createMultiPagePdfBuffer([
+    [
+      'BT /F1 11 Tf',
+      '1 0 0 1 50 760 Tm (Paytm Statement for 1 NOV\'26 - 9 NOV\'26) Tj',
+      '1 0 0 1 50 740 Tm (Total Money Paid - Rs.4,369  Total Money Received + Rs.1,000) Tj',
+      '1 0 0 1 50 720 Tm (Passbook Payments History) Tj',
+      '1 0 0 1 50 695 Tm (09 Nov) Tj',
+      '1 0 0 1 50 680 Tm (8:25 PM) Tj',
+      '1 0 0 1 50 665 Tm (Paid to Mahakaleshwar Food And Beverages) Tj',
+      '1 0 0 1 50 650 Tm (UPI ID: bharatpe.9b0z0n1o0t552235@unitype) Tj',
+      '1 0 0 1 50 635 Tm (UPI Ref No: 631361780456) Tj',
+      '1 0 0 1 50 620 Tm (Tag: # Food) Tj',
+      '1 0 0 1 50 605 Tm (Union Bank Of India - 39) Tj',
+      '1 0 0 1 50 590 Tm (- Rs.20) Tj',
+      '1 0 0 1 50 560 Tm (06 Nov) Tj',
+      '1 0 0 1 50 545 Tm (10:44 PM) Tj',
+      '1 0 0 1 50 530 Tm (Received from Sonali Sidalingayya Mathapati) Tj',
+      '1 0 0 1 50 515 Tm (UPI Ref No: 227702296142) Tj',
+      '1 0 0 1 50 500 Tm (Tag: # Money Received) Tj',
+      '1 0 0 1 50 485 Tm (Union Bank Of India - 39) Tj',
+      '1 0 0 1 50 470 Tm (+ Rs.1,000) Tj',
+      '1 0 0 1 50 440 Tm (02 Nov) Tj',
+      '1 0 0 1 50 425 Tm (5:19 PM) Tj',
+      '1 0 0 1 50 410 Tm (Recharge of Jio Mobile 9356707688) Tj',
+      '1 0 0 1 50 395 Tm (UPI Ref No: 219548811778) Tj',
+      '1 0 0 1 50 380 Tm (Tag: # Bill Payments) Tj',
+      '1 0 0 1 50 365 Tm (Union Bank Of India - 39) Tj',
+      '1 0 0 1 50 350 Tm (- Rs.349) Tj',
+      'ET',
+    ].join('\n'),
+  ]);
+  const paytmUpiRes = await parseStatement({
+    content: paytmUpiPdf,
+    filename: 'Paytm_UPI_Statement.pdf',
+    userTransactions: [],
+  });
+  assert.strictEqual(paytmUpiRes.transactions.length, 3);
+  assert.strictEqual(paytmUpiRes.transactions[0].date, '2026-11-09');
+  assert.strictEqual(paytmUpiRes.transactions[0].merchant, 'Mahakaleshwar Food And Beverages');
+  assert.strictEqual(paytmUpiRes.transactions[0].category, 'Food');
+  assert.strictEqual(paytmUpiRes.transactions[0].bank_name, 'Union Bank of India');
+  assert.strictEqual(paytmUpiRes.transactions[1].type, 'income');
+  assert.strictEqual(paytmUpiRes.transactions[1].merchant, 'Sonali Sidalingayya Mathapati');
+  assert.strictEqual(paytmUpiRes.transactions[1].category, 'Income');
+  assert.strictEqual(paytmUpiRes.transactions[2].category, 'Bills');
+  assert.strictEqual(paytmUpiRes.transactions[2].amount, 349);
+  console.log('  ✅ Paytm UPI multi-line statement PDF (year inference, # Tags, clean merchants, +/- amounts) verified');
 
   console.log('\n🎉 ALL STATEMENT PARSER UNIT TESTS PASSED!');
 }

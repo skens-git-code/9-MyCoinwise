@@ -50,6 +50,8 @@ const Modal = ({
   confirmDisabled,
   cancelText,
   processingText,
+  size = 'default',
+  className = '',
 }) => {
   // ── Stable id for aria-labelledby ──
   const modalId = useId();
@@ -93,6 +95,10 @@ const Modal = ({
   };
 
   const isConfirmDialog = Boolean(confirmText && onConfirm);
+  const sizeClass = size === 'wide' ? 'modal-wide' : '';
+  const boxClassName = ['modal-box', 'glass', isConfirmDialog ? 'modal-confirm' : '', sizeClass, className]
+    .filter(Boolean)
+    .join(' ');
 
   return createPortal(
     <AnimatePresence>
@@ -116,7 +122,7 @@ const Modal = ({
           <motion.div
             id={modalId}
             ref={panelRef}
-            className={`modal-box glass ${isConfirmDialog ? 'modal-confirm' : ''}`}
+            className={boxClassName}
             /* `tabIndex={-1}` lets the trap focus the panel itself when it has no
                focusable children (e.g. a pure confirmation), instead of leaving
                focus behind the dialog. */
@@ -129,19 +135,19 @@ const Modal = ({
             style={danger ? { borderColor: 'rgba(239,68,68,0.4)', boxShadow: '0 8px 32px rgba(239,68,68,0.2)' } : {}}
           >
             {/* ── Header: title and close button ── */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexShrink: 0 }}>
               <h3 id={`${modalId}-title`} style={danger ? { color: 'var(--danger)' } : {}}>
                 {title}
               </h3>
               {!isLoading && (
-                <button onClick={onClose} aria-label="Close modal" className="icon-btn">
+                <button type="button" onClick={onClose} aria-label="Close modal" className="icon-btn">
                   <X size={18} />
                 </button>
               )}
             </div>
 
             {/* ── Body content ── */}
-            {children}
+            <div className="modal-body">{children}</div>
 
             {/* ── Action bar (only when confirmText + onConfirm are provided) ── */}
             {confirmText && onConfirm && (

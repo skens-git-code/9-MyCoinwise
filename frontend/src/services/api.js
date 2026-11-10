@@ -426,6 +426,67 @@ export const api = {
 
   // ── Analyze a bank statement (CSV, Excel, or PDF) and return classified rows ──
   previewBankStatement: async (payload, fallbackFilename = 'statement.csv') => {
+    const readAsBase64 = (file) =>
+      new Promise((resolve, reject) => {
+        if (typeof FileReader !== 'undefined') {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = typeof reader.result === 'string' ? reader.result : '';
+            const commaIdx = result.indexOf(',');
+            resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+          };
+          reader.onerror = () => reject(reader.error || new Error('Failed to read statement file.'));
+          reader.readAsDataURL(file);
+          return;
+        }
+        if (typeof file?.arrayBuffer === 'function') {
+          file.arrayBuffer().then((buf) => {
+            const bytes = new Uint8Array(buf);
+            let binary = '';
+            const chunk = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunk) {
+              binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+            }
+            resolve(btoa(binary));
+          }).catch(reject);
+          return;
+        }
+        reject(new Error('Unsupported file upload runtime.'));
+      });
+
+    if (typeof FormData !== 'undefined' && payload instanceof FormData) {
+      const res = await apiClient.post(`${API_URL}/transactions/statement/preview`, payload);
+      return res.data;
+    }
+    if (payload && typeof payload === 'object' && payload.file && typeof FormData !== 'undefined') {
+      const filename = payload.filename || payload.file.name || fallbackFilename;
+      const formData = new FormData();
+      formData.append('file', payload.file);
+      formData.append('filename', filename);
+      if (payload.password) formData.append('password', payload.password);
+      if (payload.dateFormat) formData.append('dateFormat', payload.dateFormat);
+      if (payload.accountId) formData.append('accountId', payload.accountId);
+      try {
+        const res = await apiClient.post(`${API_URL}/transactions/statement/preview`, formData);
+        return res.data;
+      } catch (err) {
+        const errMsg = String(err?.response?.data?.error || '');
+        const shouldFallbackToJson =
+          err?.response?.status === 400 &&
+          /upload a statement file/i.test(errMsg);
+        if (!shouldFallbackToJson) throw err;
+
+        // Fallback for backends/proxies without multipart multer parsing
+        const fileData = await readAsBase64(payload.file);
+        const fallbackBody = { fileData, filename };
+        if (payload.password) fallbackBody.password = payload.password;
+        if (payload.dateFormat) fallbackBody.dateFormat = payload.dateFormat;
+        if (payload.accountId) fallbackBody.accountId = payload.accountId;
+        const res = await apiClient.post(`${API_URL}/transactions/statement/preview`, fallbackBody);
+        return res.data;
+      }
+    }
+
     let body = {};
     if (typeof payload === 'string') {
       body = { content: payload, filename: fallbackFilename };
@@ -598,6 +659,17 @@ export const api = {
       responseType: 'blob',
       params,
     });
+
+    if (res.data instanceof Blob && String(res.data.type || '').includes('application/json')) {
+      const errText = await res.data.text().catch(() => '');
+      let errMsg = 'Export failed.';
+      try {
+        errMsg = JSON.parse(errText)?.error || errMsg;
+      } catch {
+        // Ignore non-JSON error payloads
+      }
+      throw new Error(errMsg);
+    }
 
     const isXlsx = format === 'xlsx';
     const ext = isXlsx ? 'xlsx' : 'csv';

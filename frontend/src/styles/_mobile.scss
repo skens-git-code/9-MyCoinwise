@@ -1366,7 +1366,11 @@
     width: 100% !important;
     max-height: calc(100vh - 32px) !important;
     max-height: calc(100dvh - 32px) !important;
-    overflow: auto !important;
+    overflow: hidden !important;
+
+    &.modal-wide {
+      max-width: calc(100vw - 24px) !important;
+    }
   }
 
   .modal-panel,

@@ -4752,10 +4752,23 @@
     font-family: var(--font-head);
     letter-spacing: -0.3px;
   }
+
+  &.modal-wide {
+    max-width: min(980px, calc(100vw - 32px));
+  }
+}
+
+.modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 .modal-actions {
   display: flex;
+  flex-shrink: 0;
   gap: 12px;
   margin-top: 4px;
 

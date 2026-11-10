@@ -41,8 +41,8 @@ const isFutureTransaction = (value, now = new Date()) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return false;
   const endOfGracePeriod = new Date(now);
-  endOfGracePeriod.setDate(endOfGracePeriod.getDate() + 1);
-  endOfGracePeriod.setHours(23, 59, 59, 999);
+  endOfGracePeriod.setUTCDate(endOfGracePeriod.getUTCDate() + 1);
+  endOfGracePeriod.setUTCHours(23, 59, 59, 999);
   return date.getTime() > endOfGracePeriod.getTime();
 };
 

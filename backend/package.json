@@ -20,6 +20,7 @@
     "@sentry/node": "^11.7.0",
     "axios": "^1.20.0",
     "bcryptjs": "^3.0.3",
+    "cfb": "^1.2.2",
     "compression": "^1.8.2",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -29,14 +30,21 @@
     "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^8.7.1",
     "express-validator": "^7.3.2",
+    "fast-csv": "^5.0.8",
     "helmet": "^8.3.0",
+    "jszip": "^3.10.2",
     "jsonwebtoken": "^9.0.3",
     "lru-cache": "^10.4.3",
     "mongoose": "^8.24.5",
     "morgan": "^1.12.1",
+    "multer": "^2.5.0",
     "nodemailer": "^10.1.1",
     "pdf-parse": "^2.4.5",
+    "tesseract.js": "^6.0.1",
     "winston": "^3.19.0"
+  },
+  "overrides": {
+    "wasm-feature-detect": "1.6.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

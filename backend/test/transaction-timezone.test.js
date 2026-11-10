@@ -151,6 +151,19 @@ const recurrenceFuture = validateTransactionPayload({
   recurrence_ends_at: '2026-07-01',
 });
 assert.strictEqual(recurrenceFuture.error, undefined, 'recurrence_ends_at after transaction date must be accepted');
+assert.strictEqual(
+  recurrenceFuture.parsedDate.toISOString(),
+  '2026-06-01T12:00:00.000Z',
+  'YYYY-MM-DD must parse to UTC noon to prevent host-timezone day shifts'
+);
 
-console.log('✅ ALL 11 TRANSACTION TIMEZONE, AMOUNT & RECURRENCE TESTS PASSED CLEANLY!\n');
+const invalidCalendar = validateTransactionPayload({
+  type: 'expense',
+  category: 'Bills',
+  amount: '50.00',
+  date: '2024-02-30',
+});
+assert(invalidCalendar.error, 'Invalid calendar date 2024-02-30 must be rejected');
+
+console.log('✅ ALL 12 TRANSACTION TIMEZONE, AMOUNT & RECURRENCE TESTS PASSED CLEANLY!\n');
 process.exit(0);

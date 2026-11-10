@@ -51,6 +51,8 @@ const SYNTAX_CHECK_FILES = ['server.js', 'db.js'];
  */
 const TEST_FILES = [
   'test/statementParser.test.js',
+  'test/statement-pipeline.test.js',
+  'test/export-routes.test.js',
   'test/request-sanitize.test.js',
   'test/transaction-timezone.test.js',
   'test/budget-model.test.js',

@@ -37,8 +37,9 @@ describe('csvUtils', () => {
     expect(escapeCsvCell('Hello "World"')).toBe('"Hello ""World"""');
   });
 
-  it('sanitizes formula injection prefixes', () => {
+  it('sanitizes formula injection prefixes including leading whitespace', () => {
     expect(escapeCsvCell('=SUM(A1:A10)')).toBe("'=SUM(A1:A10)");
+    expect(escapeCsvCell(' =CMD()')).toBe("' =CMD()");
     expect(escapeCsvCell('+cmd|')).toBe("'+cmd|");
     expect(escapeCsvCell('-cmd|')).toBe("'-cmd|");
     expect(escapeCsvCell('@cmd|')).toBe("'@cmd|");

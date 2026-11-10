@@ -59,7 +59,7 @@
 // ── Load dependencies ──
 const express = require('express');
 const mongoose = require('mongoose');
-const crypto = require('crypto');
+const multer = require('multer');
 const { LRUCache } = require('lru-cache');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
@@ -68,10 +68,58 @@ const checkOwnership = require('../middleware/ownership');
 const auth = require('../middleware/auth');
 const { logger } = require('../utils/logger');
 const { dedupeTransactions } = require('../utils/transactionIntegrity');
-const { parseStatement, IMPORT_LIMIT } = require('../services/statementParser');
+const { normalizeCurrency, convertToCurrency } = require('../utils/currency');
+const { parseStatement, IMPORT_LIMIT, toIsoDay } = require('../services/statementParser');
 
 // ── Create router ──
 const router = express.Router();
+
+// ── Multipart memory uploader for statement files (10 MB max) ──
+const statementUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+    files: 1,
+  },
+});
+
+const sanitizeMultipartBody = (value, depth = 0) => {
+  if (!value || typeof value !== 'object' || depth > 4) {
+    return depth > 4 ? undefined : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeMultipartBody(item, depth + 1)).filter((item) => item !== undefined);
+  }
+  for (const key of Object.keys(value)) {
+    if (key.startsWith('$') || key.includes('.')) {
+      delete value[key];
+      continue;
+    }
+    const sanitized = sanitizeMultipartBody(value[key], depth + 1);
+    if (sanitized === undefined) {
+      delete value[key];
+    } else {
+      value[key] = sanitized;
+    }
+  }
+  return value;
+};
+
+const handleStatementUpload = (req, res, next) => {
+  if (!req.is('multipart/form-data')) return next();
+  return statementUpload.single('file')(req, res, (err) => {
+    if (!err) {
+      if (req.body && typeof req.body === 'object') {
+        sanitizeMultipartBody(req.body);
+      }
+      return next();
+    }
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'Statement file must be smaller than 10 MB.' });
+    }
+    return res.status(400).json({ error: err.message || 'Invalid file upload payload.' });
+  });
+};
 
 // ── Per-user maximum transaction cap ──
 const USER_TRANSACTION_LIMIT = 1000;
@@ -95,13 +143,6 @@ const MAX_AMOUNT = 999_999_999.99;
 // ── Safety cap on recurring instances generated per template ──
 const RECURRING_SAFETY_CAP = 240;
 
-// ── Fallback FX rates to INR (used when no live rate is available) ──
-const FALLBACK_RATES_TO_INR = Object.freeze({
-  INR: 1, USD: 83.5, EUR: 90.2, GBP: 105.8, JPY: 0.56, CAD: 61.2,
-  AUD: 53.8, SGD: 61.5, AED: 22.7, CHF: 95, CNY: 11.5, MXN: 4.9,
-  BRL: 16.4, KRW: 0.063, THB: 2.35,
-});
-
 /* —————————————————————————————————————
  * Text / Amount / Date Parsing Helpers
  * ————————————————————————————————————— */
@@ -112,17 +153,6 @@ const cleanText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 // ── Normalize a string for fuzzy merchant matching ──
 const normalizeForMatch = (value) =>
   cleanText(value).toLowerCase().replace(/[^a-z0-9@]/g, '');
-
-// ── Parse an amount out of a raw statement cell ──
-// Handles currency symbols, thousands separators, parenthesised
-// negatives, and blank/null markers.
-const parseStatementAmount = (value) => {
-  const raw = cleanText(value).replace(/[₹$€£,\s]/g, '');
-  if (!raw || raw === '-' || raw.toLowerCase() === 'null') return null;
-  const normalized = raw.replace(/^\((.*)\)$/, '-$1');
-  const amount = Number(normalized);
-  return Number.isFinite(amount) && amount !== 0 ? Math.abs(amount) : null;
-};
 
 // ── Validate and normalize a transaction amount ──
 // Enforces at most two decimals using an epsilon tolerance (see the
@@ -145,8 +175,8 @@ const parseTransactionAmount = (value) => {
 };
 
 // ── Parse a transaction date (defaults to now when absent) ──
-// `YYYY-MM-DD` is interpreted as a noon-local date so timezone shifts
-// never move it to the previous/next day.
+// `YYYY-MM-DD` is interpreted as UTC noon so calendar dates never shift
+// across day boundaries regardless of the host server's local timezone.
 const parseTransactionDate = (value) => {
   if (value === undefined || value === null || value === '') return new Date();
   const dateOnly = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -154,11 +184,11 @@ const parseTransactionDate = (value) => {
     const year = Number(dateOnly[1]);
     const month = Number(dateOnly[2]);
     const day = Number(dateOnly[3]);
-    const date = new Date(year, month - 1, day, 12);
+    const date = new Date(Date.UTC(year, month - 1, day, 12));
     if (
-      date.getFullYear() !== year ||
-      date.getMonth() !== month - 1 ||
-      date.getDate() !== day
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() !== month - 1 ||
+      date.getUTCDate() !== day
     ) return null;
     return date;
   }
@@ -172,242 +202,9 @@ const parseTransactionDate = (value) => {
 const isFutureDate = (date) => {
   if (!date) return false;
   const endOfGracePeriod = new Date();
-  endOfGracePeriod.setDate(endOfGracePeriod.getDate() + 1);
-  endOfGracePeriod.setHours(23, 59, 59, 999);
+  endOfGracePeriod.setUTCDate(endOfGracePeriod.getUTCDate() + 1);
+  endOfGracePeriod.setUTCHours(23, 59, 59, 999);
   return date.getTime() > endOfGracePeriod.getTime();
-};
-
-// ── Normalize a currency code (uppercase, default fallback) ──
-const normalizeCurrency = (value, fallback = 'INR') => {
-  const normalized = String(value || '').trim().toUpperCase();
-  return normalized || fallback;
-};
-
-// ── Convert an amount between currencies using fallback rates ──
-const convertToCurrency = (amount, fromCurrency, toCurrency) => {
-  const from = normalizeCurrency(fromCurrency);
-  const to = normalizeCurrency(toCurrency);
-  if (from === to) return Number(amount) || 0;
-  const fromRate = FALLBACK_RATES_TO_INR[from];
-  const toRate = FALLBACK_RATES_TO_INR[to];
-  if (!fromRate || !toRate) return Number(amount) || 0;
-  return (Number(amount) || 0) * fromRate / toRate;
-};
-
-/* —————————————————————————————————————
- * CSV Parsing
- * ————————————————————————————————————— */
-
-// ── Parse CSV text into a 2D array of trimmed cells ──
-// Auto-detects comma vs. semicolon delimiter, honours quoted fields
-// with "" escapes, and strips a leading BOM.
-const parseCsv = (content) => {
-  const rows = [];
-  let row = [], field = '', quoted = false;
-  const text = String(content || '').replace(/^\uFEFF/, '');
-  const linesSample = text.split(/\r?\n/).slice(0, 5).join('\n');
-  const delimiter =
-    (linesSample.match(/;/g) || []).length >
-    (linesSample.match(/,/g) || []).length
-      ? ';'
-      : ',';
-
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    if (char === '"') {
-      if (quoted && text[i + 1] === '"') { field += '"'; i += 1; }
-      else quoted = !quoted;
-    } else if (char === delimiter && !quoted) {
-      row.push(field.trim());
-      field = '';
-    } else if ((char === '\n' || char === '\r') && !quoted) {
-      if (char === '\r' && text[i + 1] === '\n') i += 1;
-      row.push(field.trim());
-      if (row.some(Boolean)) rows.push(row);
-      row = [];
-      field = '';
-    } else {
-      field += char;
-    }
-  }
-  row.push(field.trim());
-  if (row.some(Boolean)) rows.push(row);
-  return rows;
-};
-
-// ── Normalize a header cell for column matching ──
-const headerKey = (value) => cleanText(value).toLowerCase().replace(/[^a-z0-9]/g, '');
-
-// ── Find the first header index matching one of the given names ──
-const findColumn = (headers, names) => headers.findIndex((h) => names.includes(h));
-
-// ── Convert a date cell into an ISO YYYY-MM-DD string ──
-// Handles DD/MM/YYYY vs MM/DD/YYYY ambiguity: Indian bank statements predominantly
-// use DD/MM/YYYY. When one number exceeds 12, it is unambiguously the day.
-// Includes round-trip validation to prevent invalid days (e.g., 05/45/2024) from rolling over.
-const toIsoDay = (value, preferredFormat = 'DMY') => {
-  const source = cleanText(value);
-  if (!source) return null;
-  const match = source.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
-  if (!match) {
-    const direct = new Date(source);
-    return Number.isNaN(direct.getTime()) ? null : direct.toISOString().slice(0, 10);
-  }
-  const [, first, second, yearRaw] = match;
-  const year = Number(yearRaw.length === 2 ? `20${yearRaw}` : yearRaw);
-  const n1 = Number(first);
-  const n2 = Number(second);
-  let dayNum, monthNum;
-  if (n1 > 12 && n2 <= 12) {
-    dayNum = n1;
-    monthNum = n2;
-  } else if (n2 > 12 && n1 <= 12) {
-    dayNum = n2;
-    monthNum = n1;
-  } else {
-    // Both <= 12: use preferred format hint ('MDY' for US, 'DMY' default for India)
-    if (String(preferredFormat).toUpperCase() === 'MDY') {
-      dayNum = n2;
-      monthNum = n1;
-    } else {
-      dayNum = n1;
-      monthNum = n2;
-    }
-  }
-  const parsed = new Date(Date.UTC(year, monthNum - 1, dayNum, 12));
-  if (Number.isNaN(parsed.getTime())) return null;
-  // Round-trip validation to prevent silent date rollover
-  if (parsed.getUTCFullYear() !== year) return null;
-  if (parsed.getUTCMonth() !== monthNum - 1) return null;
-  if (parsed.getUTCDate() !== dayNum) return null;
-  return parsed.toISOString().slice(0, 10);
-};
-
-/* —————————————————————————————————————
- * Classification Rules
- * ————————————————————————————————————— */
-
-// ── Payment-method detection rules (ordered by precedence) ──
-const PAYMENT_RULES = [
-  ['upi', /\bupi\b|@\w+|gpay|google pay|phonepe|phone pe|bhim/],
-  ['card', /\b(pos|card|visa|mastercard|rupay|amex)\b/],
-  ['bank_transfer', /\b(neft|imps|rtgs|ach|ecs|bank transfer)\b/],
-  ['wallet', /paytm|mobikwik|freecharge|amazon pay/],
-];
-
-// ── Category detection rules (ordered by precedence) ──
-const CATEGORY_RULES = [
-  ['Groceries', /grocery|supermarket|mart|bigbasket|blinkit|zepto|dmart/],
-  ['Food', /restaurant|cafe|coffee|swiggy|zomato|food|dining/],
-  ['Transport', /uber|ola|metro|fuel|petrol|diesel|parking|rapido/],
-  ['Shopping', /amazon|flipkart|myntra|meesho|store/],
-  ['Bills', /electricity|water bill|gas bill|broadband|mobile recharge|jio|airtel|vi /],
-  ['Subscriptions', /netflix|spotify|youtube|prime|hotstar|subscription/],
-  ['Health', /hospital|clinic|pharmacy|medical|apollo/],
-  ['Rent', /\brent\b/],
-  ['Travel', /airline|hotel|irctc|makemytrip|booking\.com/],
-  ['Education', /school|college|course|udemy|coursera/],
-  ['Investment', /mutual fund|zerodha|groww|sip|investment/],
-];
-
-// ── Extract UPI handle / IFSC / account number from a description ──
-const extractBankDetails = (description) => {
-  const upiHandle = description.match(/@([a-z0-9._-]+)/i)?.[1];
-  const ifsc = description.match(/\b[A-Z]{4}0[A-Z0-9]{6}\b/i)?.[0];
-  const account = description.match(
-    /(?:a\/c|account)\s*(?:no\.?|#)?\s*(\*{2,}\d{3,6}|\d{4,})/i
-  )?.[1];
-  return (
-    cleanText(
-      [
-        upiHandle && `UPI: @${upiHandle}`,
-        ifsc && `IFSC: ${ifsc}`,
-        account && `A/C: ${account}`,
-      ]
-        .filter(Boolean)
-        .join(' · ')
-    ) || null
-  );
-};
-
-// ── Extract a merchant name from a raw description ──
-const extractMerchant = (description) => {
-  const value = cleanText(description)
-    .replace(/\b(upi|imps|neft|rtgs|pos|dr|cr|debit|credit|transfer|payment|txn|transaction)\b/gi, ' ')
-    .replace(/\b\d{8,}\b/g, ' ');
-  const parts = value
-    .split(/[\/:|,-]+/)
-    .map(cleanText)
-    .filter((part) => part && !/^\d+$/.test(part));
-  const candidate =
-    parts.find((part) => part.length > 2 && !/^(to|from|ref|by|at|via)$/i.test(part)) ||
-    value;
-  return cleanText(candidate).slice(0, 150) || 'Bank transaction';
-};
-
-// ── Classify a single CSV row into a normalized transaction ──
-// Returns null when the row is unusable (missing description, amount,
-// or date).
-const classifyStatementRow = (row, columns, merchantCategories) => {
-  const description = cleanText(
-    row[columns.description] ||
-      row[columns.narration] ||
-      row[columns.particulars] ||
-      ''
-  );
-  const debit = parseStatementAmount(row[columns.debit]);
-  const credit = parseStatementAmount(row[columns.credit]);
-  const genericAmount = parseStatementAmount(row[columns.amount]);
-  const typeHint = cleanText(row[columns.type]).toLowerCase();
-  const isIncome =
-    credit !== null ||
-    (!debit && /credit|\bcr\b|deposit|received/.test(typeHint + description.toLowerCase()));
-  const amount = debit ?? credit ?? genericAmount;
-  if (!description || !amount || amount <= 0) return null;
-
-  const merchant = extractMerchant(description);
-  const normalizedMerchant = normalizeForMatch(merchant);
-  const savedCategory = merchantCategories.get(normalizedMerchant);
-  const categoryRule = CATEGORY_RULES.find(([, rule]) =>
-    rule.test(description.toLowerCase())
-  );
-  const category = isIncome
-    ? /(salary|payroll)/i.test(description)
-      ? 'Salary'
-      : 'Other'
-    : savedCategory || categoryRule?.[0] || 'Other';
-  const paymentMethod =
-    PAYMENT_RULES.find(([, rule]) => rule.test(description.toLowerCase()))?.[0] ||
-    'bank_transfer';
-  const date = toIsoDay(row[columns.date] || row[columns.valueDate]);
-  if (!date) return null;
-  const reference = cleanText(row[columns.reference] || row[columns.ref] || '');
-  const fingerprint = crypto
-    .createHash('sha256')
-    .update(
-      [
-        date,
-        isIncome ? 'income' : 'expense',
-        amount.toFixed(2),
-        normalizedMerchant,
-        normalizeForMatch(reference),
-      ].join('|')
-    )
-    .digest('hex');
-
-  return {
-    date,
-    type: isIncome ? 'income' : 'expense',
-    amount,
-    category,
-    merchant,
-    payment_method: paymentMethod,
-    counterparty_bank: extractBankDetails(description),
-    external_reference: reference || null,
-    note: description.slice(0, 500),
-    import_fingerprint: fingerprint,
-    confidence: savedCategory ? 'high' : categoryRule ? 'medium' : 'low',
-  };
 };
 
 /* —————————————————————————————————————
@@ -717,6 +514,7 @@ const processRecurringForUser = async (userId) => {
   }).select('+recurrence_instance_key');
 
   let created = 0;
+  let hasMore = false;
   const affectedAccountIds = new Set();
   let userTxCount = await Transaction.countDocuments({
     user_id: userId,
@@ -783,13 +581,23 @@ const processRecurringForUser = async (userId) => {
       occurrence = nextOccurrence(occurrence, template.recurrence_interval);
       safety += 1;
     }
+
+    if (
+      safety >= RECURRING_SAFETY_CAP &&
+      occurrence &&
+      occurrence <= now &&
+      userTxCount < USER_TRANSACTION_LIMIT &&
+      (!template.recurrence_ends_at || occurrence <= template.recurrence_ends_at)
+    ) {
+      hasMore = true;
+    }
   }
 
   if (created > 0) {
     await syncUserBalance(userId);
     await syncAccountBalances(userId, [...affectedAccountIds]);
   }
-  return created;
+  return { created, hasMore };
 };
 
 /* —————————————————————————————————————
@@ -839,33 +647,38 @@ router.use((req, res, next) => {
  * Automatically extracts credited/debited amounts, transaction IDs,
  * bank names, sender names, and receiver names.
  * ————————————————————————————————————— */
-router.post('/statement/preview', async (req, res) => {
+router.post('/statement/preview', handleStatementUpload, async (req, res) => {
   try {
-    const content = req.body?.content;
+    const fileBuffer = req.file?.buffer || null;
+    const content = fileBuffer || req.body?.content;
     const fileData = req.body?.fileData;
-    const filename = req.body?.filename || 'statement.csv';
-    const password = req.body?.password || null;
+    const rawFilename = req.file?.originalname || req.body?.filename || 'statement.csv';
+    const filename = typeof rawFilename === 'string' ? rawFilename.slice(0, 255) : 'statement.csv';
+    const password = typeof req.body?.password === 'string' && req.body.password.length > 0 ? req.body.password : null;
+    const rawDateFormat = req.body?.dateFormat ?? req.query?.dateFormat;
+    const dateFormat = typeof rawDateFormat === 'string' ? rawDateFormat : null;
+    const rawAccountId = req.body?.account_id ?? req.query?.account_id ?? req.body?.accountId ?? req.query?.accountId ?? null;
+    const accountId = typeof rawAccountId === 'string' ? rawAccountId : null;
 
     if (!content && !fileData) {
       return res.status(400).json({ error: 'Upload a statement file.' });
     }
 
-    // ── Load user history to inform classification and dedup ──
-    const userTransactions = await Transaction.find({
-      user_id: req.userId,
-      is_deleted: { $ne: true },
-    })
-      .select('merchant receiver_name sender_name bank_name category note date type amount import_fingerprint account_id')
-      .sort({ date: -1 })
-      .limit(5000)
-      .lean();
-
-    const currentTxCount = await Transaction.countDocuments({
-      user_id: req.userId,
-      is_deleted: { $ne: true },
-    });
-
-    const accountId = req.body?.account_id || req.query?.account_id || req.body?.accountId || req.query?.accountId || null;
+    // ── Load user history and current count in parallel ──
+    const [userTransactions, currentTxCount] = await Promise.all([
+      Transaction.find({
+        user_id: req.userId,
+        is_deleted: { $ne: true },
+      })
+        .select('merchant receiver_name sender_name bank_name category note date type amount import_fingerprint account_id')
+        .sort({ date: -1 })
+        .limit(5000)
+        .lean(),
+      Transaction.countDocuments({
+        user_id: req.userId,
+        is_deleted: { $ne: true },
+      }),
+    ]);
 
     const parsed = await parseStatement({
       content,
@@ -873,7 +686,7 @@ router.post('/statement/preview', async (req, res) => {
       filename,
       userTransactions,
       password,
-      dateFormat: req.body?.dateFormat || req.query?.dateFormat,
+      dateFormat,
       accountId,
     });
 
@@ -889,7 +702,13 @@ router.post('/statement/preview', async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error('Statement preview failed:', error);
+    logger.error('Statement preview failed', {
+      message: error?.message,
+      code: error?.code,
+      filename: req.file?.originalname || req.body?.filename || 'unknown',
+      hasFileBuffer: Boolean(req.file?.buffer),
+      stack: error?.stack,
+    });
     return res.status(400).json({
       error: error.message || 'Could not analyze this statement.',
       code: error.code || undefined,
@@ -927,26 +746,25 @@ router.post('/statement/import', async (req, res) => {
       });
     }
 
-    // ── Look up fingerprints already present for this user ──
+    // ── Look up fingerprints and owner currency in parallel ──
     const fingerprints = requested
       .map((item) => String(item.import_fingerprint || ''))
       .filter(Boolean);
 
-    const existing = new Set(
-      (
-        await Transaction.find({
-          user_id: req.userId,
-          import_fingerprint: { $in: fingerprints },
-        })
-          .select('import_fingerprint')
-          .lean()
-      ).map((tx) => tx.import_fingerprint)
-    );
+    const [existingDocs, owner] = await Promise.all([
+      Transaction.find({
+        user_id: req.userId,
+        import_fingerprint: { $in: fingerprints },
+      })
+        .select('import_fingerprint')
+        .lean(),
+      User.findById(req.userId).select('currency').lean(),
+    ]);
+    const existing = new Set(existingDocs.map((tx) => tx.import_fingerprint));
 
     // ── Filter and normalize the batch ──
     const batchKeys = new Set();
     const accepted = [];
-    const owner = await User.findById(req.userId).select('currency').lean();
     const defaultCurrency = normalizeCurrency(owner?.currency);
     let skipped = 0;
 
@@ -1074,19 +892,19 @@ router.post('/statement/import', async (req, res) => {
       if (Array.isArray(insertError.insertedDocs)) {
         created = insertError.insertedDocs;
       }
-      logger.warn(
-        { userId: req.userId, err: insertError.message },
-        'Statement import: insertMany encountered partial failure'
-      );
+      logger.warn('Statement import: insertMany encountered partial failure', {
+        userId: req.userId,
+        err: insertError.message,
+      });
     }
 
     const insertFailures = newTransactions.length - created.length;
     if (insertFailures > 0) {
       skipped += insertFailures;
-      logger.warn(
-        { userId: req.userId, insertFailures },
-        'Statement import: insertMany partially failed'
-      );
+      logger.warn('Statement import: insertMany partially failed', {
+        userId: req.userId,
+        insertFailures,
+      });
     }
 
     const balance = await syncUserBalance(req.userId);
@@ -1103,6 +921,7 @@ router.post('/statement/import', async (req, res) => {
       created: created.length,
       skipped,
       balance,
+      userLimitReached: (currentCount + created.length) >= USER_TRANSACTION_LIMIT,
       message: `${created.length} transaction(s) added to wallet.${skipped ? ` (${skipped} skipped)` : ''}`,
     });
   } catch (error) {
@@ -1149,6 +968,77 @@ const decodeCursor = (cursorStr) => {
 };
 
 /* —————————————————————————————————————
+ * POST /process-recurring
+ * Force-process recurring transactions for the authenticated user.
+ * Registered before dynamic /:userId and /:id routes.
+ * ————————————————————————————————————— */
+router.post('/process-recurring', async (req, res) => {
+  try {
+    // ── Reset the cooldown since this was an explicit request ──
+    lastRecurringProcessMap.set(String(req.userId), Date.now());
+
+    // ── Process and report ──
+    const { created, hasMore } = await processRecurringForUser(req.userId);
+    return res.json({
+      created,
+      hasMore,
+      message: created
+        ? `Generated ${created} recurring transaction(s).`
+        : 'Recurring transactions are up to date.',
+    });
+  } catch (error) {
+    logger.error('[Transactions] process-recurring error:', error);
+    return res.status(500).json({ error: 'Failed to process recurring transactions.' });
+  }
+});
+
+/* —————————————————————————————————————
+ * POST /bulk-delete
+ * Permanently delete many transactions owned by the authenticated user.
+ * All matched documents are fully removed from the database.
+ * ————————————————————————————————————— */
+router.post('/bulk-delete', async (req, res) => {
+  const { ids } = req.body || {};
+
+  // ── Validate the request shape ──
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'Array of transaction IDs is required' });
+  }
+
+  try {
+    // ── Filter to valid ObjectIds ──
+    const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
+    if (validIds.length === 0) {
+      return res.status(400).json({ error: 'No valid transaction IDs provided' });
+    }
+
+    // ── Snapshot affected accounts before removal ──
+    const affectedAccountIds = await Transaction.find({
+      _id: { $in: validIds },
+      user_id: req.userId,
+    }).distinct('account_id');
+
+    // ── Permanently delete all matching documents ──
+    const result = await Transaction.deleteMany(
+      { _id: { $in: validIds }, user_id: req.userId }
+    );
+
+    // ── Refresh balances ──
+    const balance = await syncUserBalance(req.userId);
+    await syncAccountBalances(req.userId, affectedAccountIds);
+
+    return res.json({
+      balance,
+      deletedCount: result.deletedCount,
+      message: `${result.deletedCount} transactions permanently deleted`,
+    });
+  } catch (error) {
+    logger.error('[Transactions] bulk-delete error:', error);
+    return res.status(500).json({ error: 'Unable to delete transactions.' });
+  }
+});
+
+/* —————————————————————————————————————
  * GET /:userId
  * List a user's transactions with cursor pagination.
  * Supports ?legacy=true for backward compatibility.
@@ -1167,7 +1057,10 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
     try {
       if (shouldProcessRecurring(req.params.userId)) {
         try {
-          await processRecurringForUser(req.params.userId);
+          const { hasMore: moreRecurring } = await processRecurringForUser(req.params.userId);
+          if (moreRecurring) {
+            lastRecurringProcessMap.delete(String(req.params.userId));
+          }
         } catch (err) {
           logger.error('[Transactions] Recurring process error:', err);
         }
@@ -1213,7 +1106,10 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   try {
     if (shouldProcessRecurring(req.params.userId)) {
       try {
-        await processRecurringForUser(req.params.userId);
+        const { hasMore: moreRecurring } = await processRecurringForUser(req.params.userId);
+        if (moreRecurring) {
+          lastRecurringProcessMap.delete(String(req.params.userId));
+        }
       } catch (err) {
         logger.error('[Transactions] Recurring process error:', err);
       }
@@ -1264,29 +1160,6 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   } catch (error) {
     logger.error('[Transactions] list error:', error);
     return res.status(500).json({ error: 'Unable to load transactions.' });
-  }
-});
-
-/* —————————————————————————————————————
- * POST /process-recurring
- * Force-process recurring transactions for the authenticated user.
- * ————————————————————————————————————— */
-router.post('/process-recurring', async (req, res) => {
-  try {
-    // ── Reset the cooldown since this was an explicit request ──
-    lastRecurringProcessMap.set(String(req.userId), Date.now());
-
-    // ── Process and report ──
-    const created = await processRecurringForUser(req.userId);
-    return res.json({
-      created,
-      message: created
-        ? `Generated ${created} recurring transaction(s).`
-        : 'Recurring transactions are up to date.',
-    });
-  } catch (error) {
-    logger.error('[Transactions] process-recurring error:', error);
-    return res.status(500).json({ error: 'Failed to process recurring transactions.' });
   }
 });
 
@@ -1613,52 +1486,6 @@ router.delete('/:id', async (req, res) => {
   } catch (error) {
     logger.error('[Transactions] delete error:', error);
     return res.status(500).json({ error: 'Unable to delete transaction.' });
-  }
-});
-
-/* —————————————————————————————————————
- * POST /bulk-delete
- * Permanently delete many transactions owned by the authenticated user.
- * All matched documents are fully removed from the database.
- * ————————————————————————————————————— */
-router.post('/bulk-delete', async (req, res) => {
-  const { ids } = req.body || {};
-
-  // ── Validate the request shape ──
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ error: 'Array of transaction IDs is required' });
-  }
-
-  try {
-    // ── Filter to valid ObjectIds ──
-    const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
-    if (validIds.length === 0) {
-      return res.status(400).json({ error: 'No valid transaction IDs provided' });
-    }
-
-    // ── Snapshot affected accounts before removal ──
-    const affectedAccountIds = await Transaction.find({
-      _id: { $in: validIds },
-      user_id: req.userId,
-    }).distinct('account_id');
-
-    // ── Permanently delete all matching documents ──
-    const result = await Transaction.deleteMany(
-      { _id: { $in: validIds }, user_id: req.userId }
-    );
-
-    // ── Refresh balances ──
-    const balance = await syncUserBalance(req.userId);
-    await syncAccountBalances(req.userId, affectedAccountIds);
-
-    return res.json({
-      balance,
-      deletedCount: result.deletedCount,
-      message: `${result.deletedCount} transactions permanently deleted`,
-    });
-  } catch (error) {
-    logger.error('[Transactions] bulk-delete error:', error);
-    return res.status(500).json({ error: 'Unable to delete transactions.' });
   }
 });
 

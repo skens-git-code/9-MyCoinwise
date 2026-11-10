@@ -16,6 +16,12 @@
     gap: 12px;
     padding-bottom: 85px !important;
   }
+
+  &.tx-drop-active {
+    outline: 2px dashed var(--brand-primary, #0ea5e9);
+    outline-offset: 4px;
+    border-radius: 16px;
+  }
 }
 
 /* ── Header ────────────────────────────────────────────────────── */

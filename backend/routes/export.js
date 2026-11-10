@@ -1,39 +1,21 @@
 /* —————————————————————————————————————
- * Data Export Routes (Excel + JSON backup)
- * Generates downloadable exports of a user's financial data.
+ * Data Export Routes (Excel + CSV + JSON backup)
+ * Generates streaming downloadable exports of a user's financial data.
  *
  * Endpoints:
- *   GET /:userId        Excel export of transactions
  *   GET /backup/:userId Full JSON backup of all user data
+ *   GET /:userId        Streaming Excel (.xlsx) or CSV export of transactions
  *
  * Key behaviors:
  *   - Router-level rate limit (exportLimiter) and auth apply to all.
- *   - Cache-Control is applied to every response.
- *   - Excel export is capped at MAX_EXPORT_ROWS (default 50,000);
- *     overflow is detected with a +1 limit and reported in the
- *     Summary sheet.
- *   - Filenames use the user's local date (no UTC shift).
- *   - Soft-deleted rows are filtered where the model supports it.
- *   - Mongoose lean() docs are stripped of __v before backup.
- *
- * Fixes applied vs. the previous version:
- *   - validationResult is now actually checked — previously the
- *     express-validator rules were dead code; invalid user IDs fell
- *     through to Mongoose and produced CastErrors.
- *   - Local `query` variable no longer shadows the express-validator
- *     `query` import.
- *   - Explicit auth middleware applied at the router level.
- *   - Consistent logger usage (was console.error).
- *   - Local date used in filenames — no more UTC shift.
- *   - All soft-deletable collections filtered by is_deleted.
- *   - Streaming-safe guards: skips rows with invalid dates or
- *     non-finite amounts, but still reports the actual exported count.
- *   - Row cap on Excel export to avoid freezing the server on huge
- *     datasets (default 50 000 rows; override via MAX_EXPORT_ROWS).
- *   - Backup response filtered to remove __v and other internal fields.
+ *   - Static /backup/:userId route is registered before dynamic /:userId.
+ *   - Both CSV and Excel exports stream directly from a Mongoose cursor
+ *     with client-disconnect abort handling for O(1) memory usage.
+ *   - Mixed-currency transactions are converted into the user's display
+ *     currency when computing Excel Summary totals.
+ *   - CSV and Excel cell values are hardened against formula injection.
  * ————————————————————————————————————— */
 
-// ── Load dependencies ──
 const express = require('express');
 const { config } = require('../config/env');
 const { param, query: queryValidator, validationResult } = require('express-validator');
@@ -56,44 +38,18 @@ const TaxDocument = require('../models/TaxDocument');
 const checkOwnership = require('../middleware/ownership');
 const auth = require('../middleware/auth');
 const { logger } = require('../utils/logger');
+const { CURRENCIES, normalizeCurrency, convertToCurrency } = require('../utils/currency');
 
-// ── Create router ──
 const router = express.Router();
 
-/* —————————————————————————————————————
- * Constants
- * ————————————————————————————————————— */
-
-// ── Currency symbol map for the Excel sheet ──
-const CURRENCIES = {
-  USD: { symbol: '$',   code: 'USD' },
-  INR: { symbol: '₹',   code: 'INR' },
-  EUR: { symbol: '€',   code: 'EUR' },
-  GBP: { symbol: '£',   code: 'GBP' },
-  JPY: { symbol: '¥',   code: 'JPY' },
-  CAD: { symbol: 'CA$', code: 'CAD' },
-  AUD: { symbol: 'A$',  code: 'AUD' },
-  SGD: { symbol: 'S$',  code: 'SGD' },
-  AED: { symbol: 'د.إ', code: 'AED' },
-  CHF: { symbol: 'Fr',  code: 'CHF' },
-  CNY: { symbol: '¥',   code: 'CNY' },
-  MXN: { symbol: '$',   code: 'MXN' },
-  BRL: { symbol: 'R$',  code: 'BRL' },
-  KRW: { symbol: '₩',   code: 'KRW' },
-  THB: { symbol: '฿',   code: 'THB' },
-};
-
-// ── Hard caps on export sizes ──
-// Bounds come from the validated config so a malformed value fails loudly at
-// boot instead of silently falling back to these constants at request time.
-const MAX_EXPORT_ROWS = config.MAX_EXPORT_ROWS;
-const MAX_BACKUP_DOCS_PER_COLLECTION = config.MAX_BACKUP_DOCS;
+// ── Hard caps on export sizes with defensive fallbacks ──
+const MAX_EXPORT_ROWS = Number(config.MAX_EXPORT_ROWS) > 0 ? Number(config.MAX_EXPORT_ROWS) : 50_000;
+const MAX_BACKUP_DOCS_PER_COLLECTION = Number(config.MAX_BACKUP_DOCS) > 0 ? Number(config.MAX_BACKUP_DOCS) : 100_000;
 
 /* —————————————————————————————————————
  * Router Middleware
  * ————————————————————————————————————— */
 
-// ── Rate limiter: caps export requests per IP ──
 const exportLimiter = rateLimit({
   identifier: 'export-router',
   windowMs: 15 * 60 * 1000,
@@ -106,11 +62,9 @@ const exportLimiter = rateLimit({
   },
 });
 
-// ── Apply rate limit + auth to every route on this router ──
 router.use(exportLimiter);
 router.use(auth);
 
-// ── Disable caching on every response, including errors ──
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   next();
@@ -120,7 +74,6 @@ router.use((req, res, next) => {
  * Helpers
  * ————————————————————————————————————— */
 
-// ── Local YYYY-MM-DD (no UTC shift for users east/west of UTC) ──
 const localDateStamp = (date = new Date()) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -128,236 +81,44 @@ const localDateStamp = (date = new Date()) => {
   return `${y}-${m}-${d}`;
 };
 
-// ── Strip internal-only fields from a Mongoose lean() document ──
 const stripInternalFields = (doc) => {
   if (!doc || typeof doc !== 'object') return doc;
   const { __v, ...rest } = doc;
   return rest;
 };
 
-/* —————————————————————————————————————
- * GET /:userId
- * Excel export of transactions for a user, with an optional
- * date range (start / end ISO strings).
- * ————————————————————————————————————— */
-router.get(
-  '/:userId',
-  checkOwnership('userId'),
-  [
-    // ── Validate user ID, format, and optional date range ──
-    param('userId').isMongoId().withMessage('Invalid user ID.'),
-    queryValidator('format').optional().isIn(['csv', 'xlsx']).withMessage('Format must be csv or xlsx.'),
-    queryValidator('start').optional().isISO8601().toDate(),
-    queryValidator('end').optional().isISO8601().toDate(),
-  ],
-  async (req, res) => {
-    // ── Reject validation errors ──
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+const NUMERIC_LIKE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
-    const { userId } = req.params;
-    const { start, end, format = 'xlsx' } = req.query;
-
-    try {
-      // ── Load the user (for currency + filename) ──
-      const user = await User.findById(userId).lean();
-      if (!user) {
-        return res.status(404).json({ error: 'User not found.' });
-      }
-
-      const currency = user.currency || 'INR';
-      const currencySymbol = (CURRENCIES[currency] || CURRENCIES.INR).symbol;
-
-      // Build the transaction query. `dateRange` avoids shadowing the
-      // express-validator `query` import.
-      const dateRange = {};
-      if (start) dateRange.$gte = start;
-      if (end) dateRange.$lte = end;
-
-      const filter = {
-        user_id: userId,
-        is_deleted: { $ne: true },
-      };
-      if (start || end) filter.date = dateRange;
-
-      // Cap the export size to protect the server from very large
-      // datasets. The +1 is used to detect overflow and warn the user.
-      const transactions = await Transaction.find(filter)
-        .sort({ date: -1 })
-        .limit(MAX_EXPORT_ROWS + 1);
-
-      // ── Detect truncation and slice down to the cap ──
-      const truncated = transactions.length > MAX_EXPORT_ROWS;
-      const rowsToExport = truncated ? transactions.slice(0, MAX_EXPORT_ROWS) : transactions;
-
-      // ── Handle CSV export format ──
-      if (format === 'csv') {
-        const escapeCsv = (val) => {
-          if (val === null || val === undefined) return '""';
-          let str = String(val);
-          if (/^[=+\-@\t\r]/.test(str)) {
-            str = `'${str}`;
-          }
-          const escaped = str.replace(/"/g, '""');
-          return `"${escaped}"`;
-        };
-
-        const headers = ['ID', 'Date', 'Type', 'Category', 'Amount', 'Currency', 'Note'];
-        const csvRows = [headers.map(escapeCsv).join(',')];
-
-        for (const t of rowsToExport) {
-          const amount = Number(t.amount);
-          if (!Number.isFinite(amount)) continue;
-
-          const dateObj = t.date instanceof Date ? t.date : new Date(t.date);
-          if (Number.isNaN(dateObj.getTime())) continue;
-
-          csvRows.push([
-            escapeCsv(t._id.toString()),
-            escapeCsv(localDateStamp(dateObj)),
-            escapeCsv(String(t.type || '').toUpperCase()),
-            escapeCsv(t.category || 'Uncategorized'),
-            escapeCsv(amount.toFixed(2)),
-            escapeCsv(currency),
-            escapeCsv(t.note || ''),
-          ].join(','));
-        }
-
-        const safeUsername = String(user.username || 'Report').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const filename = `MyCoinwise_${safeUsername}_${localDateStamp()}.csv`;
-
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader(
-          'Content-Disposition',
-          `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`
-        );
-        return res.send(`\uFEFF${csvRows.join('\r\n')}`);
-      }
-
-      // ── Create the workbook (Excel format) ──
-      const workbook = new excel.Workbook();
-      workbook.creator = 'MyCoinwise';
-      workbook.created = new Date();
-
-      /* ── Transactions sheet ─────────────────────────────── */
-
-      const ws = workbook.addWorksheet('Transactions', {
-        pageSetup: { fitToPage: true },
-      });
-      ws.columns = [
-        { header: 'ID',               key: 'id',       width: 28 },
-        { header: 'Date',             key: 'date',     width: 22 },
-        { header: 'Type',             key: 'type',     width: 12 },
-        { header: 'Category',         key: 'category', width: 22 },
-        { header: 'Note',             key: 'note',     width: 32 },
-        { header: `Amount (${currency})`, key: 'amount', width: 16 },
-      ];
-
-      // ── Style the header row ──
-      const headerRow = ws.getRow(1);
-      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF059669' } };
-      headerRow.height = 22;
-
-      // ── Track totals while writing rows ──
-      let totalIncome = 0;
-      let totalExpense = 0;
-      let exportedCount = 0;
-
-      for (const t of rowsToExport) {
-        // ── Skip rows with invalid amounts or dates ──
-        const amount = Number(t.amount);
-        if (!Number.isFinite(amount)) continue;
-
-        const dateObj = t.date instanceof Date ? t.date : new Date(t.date);
-        if (Number.isNaN(dateObj.getTime())) continue;
-
-        // ── Accumulate totals ──
-        const tType = String(t.type || '').trim().toLowerCase();
-        if (tType === 'income') totalIncome += amount;
-        else if (tType === 'expense') totalExpense += amount;
-        exportedCount += 1;
-
-        // ── Write the row ──
-        const row = ws.addRow({
-          id: t._id.toString(),
-          date: localDateStamp(dateObj),
-          type: String(t.type || '').toUpperCase(),
-          category: t.category || 'Uncategorized',
-          note: t.note || '',
-          amount: `${currencySymbol}${amount.toFixed(2)}`,
-        });
-
-        // ── Color the amount by direction ──
-        row.getCell('amount').font = {
-          bold: true,
-          color: { argb: tType === 'income' ? 'FF10B981' : 'FFEF4444' },
-        };
-      }
-
-      // Light borders on every cell.
-      ws.eachRow((row) => {
-        row.eachCell((cell) => {
-          cell.border = {
-            top:    { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            left:   { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            right:  { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          };
-        });
-      });
-
-      /* ── Summary sheet ──────────────────────────────────── */
-
-      const summaryWs = workbook.addWorksheet('Summary', {
-        properties: { tabColor: { argb: 'FF059669' } },
-      });
-      summaryWs.addRow(['Metric', 'Value']);
-      summaryWs.addRow(['Total Income', `${currencySymbol}${totalIncome.toFixed(2)}`]);
-      summaryWs.addRow(['Total Expenses', `${currencySymbol}${totalExpense.toFixed(2)}`]);
-      summaryWs.addRow(['Net', `${currencySymbol}${(totalIncome - totalExpense).toFixed(2)}`]);
-      summaryWs.addRow(['Transactions Exported', exportedCount]);
-      if (truncated) {
-        summaryWs.addRow([
-          'Note',
-          `Export truncated at ${MAX_EXPORT_ROWS} rows. Apply a date filter to export the rest.`,
-        ]);
-      }
-      summaryWs.getRow(1).font = { bold: true };
-      summaryWs.getColumn(1).width = 22;
-      summaryWs.getColumn(2).width = 40;
-
-      // ── Build a safe, local-dated filename ──
-      const safeUsername = String(user.username || 'Report').replace(/[^a-zA-Z0-9_-]/g, '_');
-      const filename = `MyCoinwise_${safeUsername}_${localDateStamp()}.xlsx`;
-
-      res.setHeader(
-        'Content-Type',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      );
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`
-      );
-
-      // ── Stream the workbook to the client ──
-      await workbook.xlsx.write(res);
-      return res.end();
-    } catch (error) {
-      logger.error('[Excel Export] error:', error);
-      if (!res.headersSent) {
-        return res.status(500).json({ error: 'Unable to generate export.' });
-      }
-      // Headers already sent — cannot send a JSON error. End the stream.
-      return res.end();
-    }
+/**
+ * Neutralizes spreadsheet formula injection (including leading-whitespace payloads
+ * like "  =CMD()") while preserving plain negative numbers, and escapes RFC 4180 quotes.
+ */
+const escapeCsv = (val) => {
+  if (val === null || val === undefined) return '""';
+  let str = String(val);
+  const trimmedStart = str.trimStart();
+  if (/^[=+\-@\t\r]/.test(trimmedStart) && !NUMERIC_LIKE.test(trimmedStart)) {
+    str = `'${trimmedStart}`;
   }
-);
+  return `"${str.replace(/"/g, '""')}"`;
+};
+
+/**
+ * Neutralizes spreadsheet formula payloads in Excel string cells and bounds length.
+ */
+const sanitizeExcelCell = (val, maxLen = 500) => {
+  if (val === null || val === undefined) return '';
+  let str = String(val).slice(0, maxLen);
+  const trimmedStart = str.trimStart();
+  if (/^[=+\-@\t\r]/.test(trimmedStart) && !NUMERIC_LIKE.test(trimmedStart)) {
+    str = `'${trimmedStart}`;
+  }
+  return str;
+};
 
 /* —————————————————————————————————————
  * GET /backup/:userId
+ * Registered before /:userId so "/backup/:id" is never shadowed.
  * Full JSON backup of every user-owned collection.
  * ————————————————————————————————————— */
 router.get(
@@ -365,7 +126,6 @@ router.get(
   checkOwnership('userId'),
   [param('userId').isMongoId().withMessage('Invalid user ID.')],
   async (req, res) => {
-    // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -374,15 +134,13 @@ router.get(
     const { userId } = req.params;
 
     try {
-      // ── Load the user (for the profile section) ──
       const user = await User.findById(userId).lean();
       if (!user) {
         return res.status(404).json({ error: 'User not found.' });
       }
 
-      // Soft-deleted rows are excluded where the model supports it.
-      // Collections without an is_deleted field are returned in full.
-      // Every query is capped at MAX_BACKUP_DOCS_PER_COLLECTION.
+      const activeFilter = { user_id: userId, is_deleted: { $ne: true } };
+
       const [
         transactions,
         goals,
@@ -398,33 +156,21 @@ router.get(
         taxPayments,
         taxDocuments,
       ] = await Promise.all([
-        Transaction.find({ user_id: userId, is_deleted: { $ne: true } })
-          .limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
-        Goal.find({ user_id: userId, is_deleted: { $ne: true } })
-          .limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
-        Subscription.find({ user_id: userId, is_deleted: { $ne: true } })
-          .limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
-        Event.find({ user_id: userId, is_deleted: { $ne: true } })
-          .limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
-        WealthItem.find({ user_id: userId, is_deleted: { $ne: true } })
-          .limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
-        NetWorthHistory.find({ user_id: userId, is_deleted: { $ne: true } })
-          .limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
-        Budget.find({ user_id: userId })
-          .limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
-        Account.find({ user_id: userId })
-          .limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
-        Calculation.find({ user_id: userId })
-          .sort({ created_at: -1 })
-          .limit(MAX_BACKUP_DOCS_PER_COLLECTION)
-          .lean(),
-        TaxProfile.find({ user_id: userId }).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
-        TaxTag.find({ user_id: userId }).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
-        TaxPayment.find({ user_id: userId }).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
-        TaxDocument.find({ user_id: userId }).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        Transaction.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        Goal.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        Subscription.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        Event.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        WealthItem.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        NetWorthHistory.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        Budget.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        Account.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        Calculation.find(activeFilter).sort({ created_at: -1 }).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        TaxProfile.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        TaxTag.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        TaxPayment.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
+        TaxDocument.find(activeFilter).limit(MAX_BACKUP_DOCS_PER_COLLECTION).lean(),
       ]);
 
-      // ── Assemble the backup document ──
       const backup = {
         version: 5,
         exportedAt: new Date().toISOString(),
@@ -452,7 +198,6 @@ router.get(
         taxDocuments: taxDocuments.map(stripInternalFields),
       };
 
-      // ── Set download headers and send the JSON ──
       const filename = `MyCoinwise_backup_${localDateStamp()}.json`;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader(
@@ -472,8 +217,271 @@ router.get(
 );
 
 /* —————————————————————————————————————
- * Export
+ * GET /:userId
+ * Streaming Excel (.xlsx) or CSV export of transactions for a user,
+ * with an optional date range (start / end ISO strings).
  * ————————————————————————————————————— */
+router.get(
+  '/:userId',
+  checkOwnership('userId'),
+  [
+    param('userId').isMongoId().withMessage('Invalid user ID.'),
+    queryValidator('format').optional().isIn(['csv', 'xlsx']).withMessage('Format must be csv or xlsx.'),
+    queryValidator('start').optional().isISO8601().toDate(),
+    queryValidator('end').optional().isISO8601().toDate(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-// ── Export router ──
+    const { userId } = req.params;
+    const { start, end, format = 'xlsx' } = req.query;
+
+    let cursor = null;
+    let clientAborted = false;
+
+    const onClientAbort = () => {
+      if (!res.writableFinished) {
+        clientAborted = true;
+      }
+      if (cursor && typeof cursor.close === 'function') {
+        cursor.close().catch(() => { });
+      }
+    };
+    res.on('close', onClientAbort);
+
+    try {
+      const user = await User.findById(userId).lean();
+      if (!user) {
+        return res.status(404).json({ error: 'User not found.' });
+      }
+
+      const displayCurrency = normalizeCurrency(user.currency, 'INR');
+      const currencySymbol = (CURRENCIES[displayCurrency] || CURRENCIES.INR).symbol;
+      const safeUsername = String(user.username || 'Report').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+      const dateRange = {};
+      if (start) dateRange.$gte = start;
+      if (end) dateRange.$lte = end;
+
+      const filter = {
+        user_id: userId,
+        is_deleted: { $ne: true },
+      };
+      if (start || end) filter.date = dateRange;
+
+      cursor = Transaction.find(filter)
+        .sort({ date: -1 })
+        .limit(MAX_EXPORT_ROWS + 1)
+        .lean()
+        .cursor();
+
+      // ── Streaming CSV export (constant O(1) memory) ──
+      if (format === 'csv') {
+        const filename = `MyCoinwise_${safeUsername}_${localDateStamp()}.csv`;
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+        );
+
+        const headers = ['ID', 'Date', 'Type', 'Category', 'Amount', 'Currency', 'Note'];
+        res.write(`\uFEFF${headers.map(escapeCsv).join(',')}\r\n`);
+
+        let count = 0;
+        let truncated = false;
+
+        for await (const t of cursor) {
+          if (clientAborted || res.writableEnded) break;
+
+          if (count >= MAX_EXPORT_ROWS) {
+            truncated = true;
+            break;
+          }
+
+          if (!t || !t._id) continue;
+
+          const amount = Number(t.amount);
+          if (!Number.isFinite(amount)) continue;
+
+          const dateObj = t.date instanceof Date ? t.date : new Date(t.date);
+          if (Number.isNaN(dateObj.getTime())) continue;
+
+          const txCurrency = normalizeCurrency(t.currency, displayCurrency);
+          count += 1;
+
+          res.write(
+            [
+              escapeCsv(t._id.toString()),
+              escapeCsv(localDateStamp(dateObj)),
+              escapeCsv(String(t.type || '').toUpperCase()),
+              escapeCsv(t.category || 'Uncategorized'),
+              escapeCsv(amount.toFixed(2)),
+              escapeCsv(txCurrency),
+              escapeCsv(t.note || ''),
+            ].join(',') + '\r\n'
+          );
+        }
+
+        if (truncated && !clientAborted && !res.writableEnded) {
+          res.write(
+            [
+              escapeCsv('TRUNCATED'),
+              escapeCsv(localDateStamp()),
+              escapeCsv('INFO'),
+              escapeCsv('Notice'),
+              escapeCsv('0.00'),
+              escapeCsv(displayCurrency),
+              escapeCsv(`Export truncated at ${MAX_EXPORT_ROWS} rows. Apply a date filter to export the rest.`),
+            ].join(',') + '\r\n'
+          );
+        }
+
+        if (!res.writableEnded) res.end();
+        return undefined;
+      }
+
+      // ── Streaming Excel (.xlsx) export via WorkbookWriter ──
+      const filename = `MyCoinwise_${safeUsername}_${localDateStamp()}.xlsx`;
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+      );
+
+      const workbook = new excel.stream.xlsx.WorkbookWriter({
+        stream: res,
+        useStyles: true,
+      });
+      workbook.creator = 'MyCoinwise';
+      workbook.created = new Date();
+
+      const ws = workbook.addWorksheet('Transactions', {
+        pageSetup: { fitToPage: true },
+      });
+      ws.columns = [
+        { header: 'ID', key: 'id', width: 28 },
+        { header: 'Date', key: 'date', width: 18 },
+        { header: 'Type', key: 'type', width: 12 },
+        { header: 'Category', key: 'category', width: 22 },
+        { header: 'Currency', key: 'origCurrency', width: 12 },
+        { header: 'Note', key: 'note', width: 36, style: { alignment: { wrapText: true } } },
+        { header: `Amount (${displayCurrency})`, key: 'amount', width: 18 },
+      ];
+
+      const headerRow = ws.getRow(1);
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF059669' } };
+      headerRow.height = 22;
+      headerRow.commit();
+
+      const cellBorder = {
+        top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+      };
+
+      let totalIncome = 0;
+      let totalExpense = 0;
+      let exportedCount = 0;
+      let truncated = false;
+
+      for await (const t of cursor) {
+        if (clientAborted || res.writableEnded) break;
+
+        if (exportedCount >= MAX_EXPORT_ROWS) {
+          truncated = true;
+          break;
+        }
+
+        if (!t || !t._id) continue;
+
+        const rawAmount = Number(t.amount);
+        if (!Number.isFinite(rawAmount)) continue;
+
+        const dateObj = t.date instanceof Date ? t.date : new Date(t.date);
+        if (Number.isNaN(dateObj.getTime())) continue;
+
+        const txCurrency = normalizeCurrency(t.currency, displayCurrency);
+        const convertedAmount = convertToCurrency(rawAmount, txCurrency, displayCurrency);
+
+        const tType = String(t.type || '').trim().toLowerCase();
+        if (tType === 'income') totalIncome += convertedAmount;
+        else if (tType === 'expense') totalExpense += convertedAmount;
+        exportedCount += 1;
+
+        const row = ws.addRow({
+          id: t._id.toString(),
+          date: localDateStamp(dateObj),
+          type: String(t.type || '').toUpperCase(),
+          category: sanitizeExcelCell(t.category || 'Uncategorized', 80),
+          origCurrency: txCurrency,
+          note: sanitizeExcelCell(t.note || '', 500),
+          amount: `${currencySymbol}${convertedAmount.toFixed(2)}`,
+        });
+
+        row.getCell('amount').font = {
+          bold: true,
+          color: { argb: tType === 'income' ? 'FF10B981' : 'FFEF4444' },
+        };
+        row.eachCell((cell) => {
+          cell.border = cellBorder;
+        });
+        row.commit();
+      }
+
+      if (!clientAborted && !res.writableEnded) {
+        await ws.commit();
+
+        const summaryWs = workbook.addWorksheet('Summary', {
+          properties: { tabColor: { argb: 'FF059669' } },
+        });
+        summaryWs.columns = [
+          { width: 24 },
+          { width: 42 },
+        ];
+        const sumHeader = summaryWs.addRow(['Metric', `Value (${displayCurrency})`]);
+        sumHeader.font = { bold: true };
+        sumHeader.commit();
+
+        summaryWs.addRow(['Total Income', `${currencySymbol}${totalIncome.toFixed(2)}`]).commit();
+        summaryWs.addRow(['Total Expenses', `${currencySymbol}${totalExpense.toFixed(2)}`]).commit();
+        summaryWs.addRow(['Net', `${currencySymbol}${(totalIncome - totalExpense).toFixed(2)}`]).commit();
+        summaryWs.addRow(['Transactions Exported', exportedCount]).commit();
+        if (truncated) {
+          summaryWs.addRow([
+            'Note',
+            `Export truncated at ${MAX_EXPORT_ROWS} rows. Apply a date filter to export the rest.`,
+          ]).commit();
+        }
+        await summaryWs.commit();
+        await workbook.commit();
+      }
+
+      if (!res.writableEnded) res.end();
+      return undefined;
+    } catch (error) {
+      logger.error('[Excel Export] error:', error);
+      if (!res.headersSent) {
+        return res.status(500).json({ error: 'Unable to generate export.' });
+      }
+      if (!res.writableEnded) res.end();
+      return undefined;
+    } finally {
+      res.off('close', onClientAbort);
+      if (cursor && typeof cursor.close === 'function') {
+        await cursor.close().catch(() => { });
+      }
+    }
+  }
+);
+
+router.escapeCsv = escapeCsv;
+router.sanitizeExcelCell = sanitizeExcelCell;
 module.exports = router;

@@ -503,7 +503,8 @@ const BackupRestore = ({ userId, showMessage }) => {
       navigate('/', { replace: true });
     } catch (error) {
       console.error('Restore error:', error);
-      showMessage('error', 'Failed to restore backup: Invalid file format or corrupted data');
+      const reason = error?.response?.data?.message || error?.response?.data?.error;
+      showMessage('error', reason ? `Failed to restore backup: ${reason}` : 'Failed to restore backup: Invalid file format or corrupted data');
     } finally {
       if (isMountedRef.current) {
         setRestoreLoading(false);
@@ -590,7 +591,11 @@ const BackupRestore = ({ userId, showMessage }) => {
         <button
           type="button"
           className="btn-secondary"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => {
+            if (!fileInputRef.current || restoreLoading) return;
+            fileInputRef.current.value = '';
+            fileInputRef.current.click();
+          }}
           disabled={restoreLoading}
           style={{ display: 'flex', alignItems: 'center', gap: 8 }}
         >
@@ -600,9 +605,14 @@ const BackupRestore = ({ userId, showMessage }) => {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".json"
+          accept=".json,application/json"
+          className="sr-only"
           onChange={handleImportBackup}
-          style={{ display: 'none' }}
+          style={{
+            position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+            overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0, zIndex: -1,
+          }}
+          tabIndex={-1}
         />
       </div>
 
@@ -1601,12 +1611,27 @@ const ProfileTab = React.memo(({ formState, handleFieldChange, t, user, showMess
                 <button
                   type="button"
                   className="btn-secondary"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => {
+                    if (!fileInputRef.current) return;
+                    fileInputRef.current.value = '';
+                    fileInputRef.current.click();
+                  }}
                   style={{ flex: 1, minWidth: 140, justifyContent: 'center' }}
                 >
                   <Upload size={16} aria-hidden /> {t?.('upload_image') || 'Upload Image'}
                 </button>
-                <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  style={{
+            position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+            overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0, zIndex: -1,
+          }}
+                  tabIndex={-1}
+                  onChange={handleImageUpload}
+                />
               </div>
 
               {/* ── Lazy-loaded emoji picker tray ── */}
