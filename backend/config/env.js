@@ -131,12 +131,16 @@ function parseTrustProxy(raw) {
     if (/^\d+$/.test(value)) return Number(value);
     return raw;
   }
-  // Auto-detect reverse proxy in common cloud environments (Render, Vercel, Heroku, Fly, AWS)
+  // Auto-detect reverse proxy in common cloud environments (Render, Vercel, Railway, Cloud Run, Heroku, Fly, AWS)
   if (
     process.env.RENDER === 'true' ||
+    process.env.RENDER === '1' ||
     process.env.VERCEL === '1' ||
     process.env.VERCEL === 'true' ||
     Boolean(process.env.VERCEL) ||
+    Boolean(process.env.RAILWAY_ENVIRONMENT) ||
+    Boolean(process.env.K_SERVICE) ||
+    Boolean(process.env.DYNO) ||
     Boolean(process.env.HEROKU_APP_ID) ||
     Boolean(process.env.FLY_APP_NAME) ||
     Boolean(process.env.AWS_EXECUTION_ENV)

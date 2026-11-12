@@ -41,6 +41,8 @@ import Footer from './Footer';
 import DOMPurify from 'dompurify';
 import QuantumRuntime from '../services/quantumRuntime';
 import { CoinwiseMark } from './CoinwiseBrand';
+import NavigationProgressBar from './NavigationProgressBar';
+import { preloadRoute, getPrefetchHandlers } from '../utils/routePrefetch';
 
 const CurrencyConverter = lazy(() => import('./CurrencyConverter'));
 const AlertsCenter = lazy(() => import('./AlertsCenter'));
@@ -82,33 +84,6 @@ const MOBILE_NAV_ITEMS = [
   { to: '/calendar', icon: CalendarIcon, labelKey: 'calendar', mobileLabel: 'Calendar' },
   { to: '/analytics', icon: BarChart3, labelKey: 'analytics', mobileLabel: 'Analytics' },
 ];
-
-// ── Instant Route Preloader on Hover / Focus ──
-const preloadRoute = (to) => {
-  switch (to) {
-    case '/': import('../pages/Dashboard'); break;
-    case '/transactions': import('../pages/Transactions'); break;
-    case '/calendar': import('../pages/Calendar'); break;
-    case '/analytics': import('../pages/Analytics'); break;
-    case '/calculator': import('../pages/Calculator'); break;
-    case '/tax': import('../pages/Tax'); break;
-    case '/reports':
-    case '/download':
-    case '/statements': import('../pages/Reports'); break;
-    case '/accounts': import('../pages/Accounts'); break;
-    case '/budgets': import('../pages/Budgets'); break;
-    case '/goals': import('../pages/Goals'); break;
-    case '/subscriptions': import('../pages/Subscriptions'); break;
-    case '/cashflow': import('../pages/Cashflow'); break;
-    case '/wealth': import('../pages/Wealth'); break;
-    case '/about': import('../pages/About'); break;
-    case '/settings': import('../pages/SettingsPage'); break;
-    case '/terms': import('../pages/Terms'); break;
-    case '/privacy': import('../pages/Privacy'); break;
-    case '/404': import('../pages/NotFound'); break;
-    default: break;
-  }
-};
 
 // ── Rules for how user names are displayed ──
 const USER_DISPLAY_RULES = {
@@ -813,6 +788,7 @@ export default function AppLayout({ children }) {
       {/* App.jsx wraps the full tree in <MotionConfig reducedMotion="user">,
           so we deliberately do not nest a second one here. */}
       <div className="app-island-layout" data-theme={theme}>
+        <NavigationProgressBar isActive={isBackgroundSyncing} />
         {/* ── Ambient background layers (Desktop only) ── */}
         <div className="portfolio-bg-layer" aria-hidden="true" />
         {deviceType === 'desktop' && (
@@ -916,28 +892,25 @@ export default function AppLayout({ children }) {
 
           <div className="island-content-wrapper">
 
-            {/* ── Route transition: opacity-only for perf ── */}
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={location.pathname}
-                className="island-page"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{
-                  duration: 0.14,
-                  ease: [0.16, 1, 0.3, 1]
-                }}
-                style={{
-                  willChange: 'opacity',
-                  backfaceVisibility: 'hidden',
-                  WebkitBackfaceVisibility: 'hidden'
-                }}
-              >
-                <Breadcrumbs />
-                {children || <Outlet />}
-              </motion.div>
-            </AnimatePresence>
+            {/* ── Route transition: non-blocking GPU enter transition (no mode="wait" exit stall) ── */}
+            <motion.div
+              key={location.pathname}
+              className="island-page"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                duration: 0.16,
+                ease: [0.16, 1, 0.3, 1]
+              }}
+              style={{
+                willChange: 'opacity, transform',
+                backfaceVisibility: 'hidden',
+                WebkitBackfaceVisibility: 'hidden'
+              }}
+            >
+              <Breadcrumbs />
+              {children || <Outlet />}
+            </motion.div>
             <Footer />
           </div>
         </main>
@@ -1347,7 +1320,7 @@ const Header = React.memo(({
       <div className={`nav-container ${isScrolled ? 'is-scrolled' : ''}`}>
         {/* ── Brand + mobile title ── */}
         <div className="nav-brand-group">
-          <NavLink to="/" className="port" aria-label="Coinwise Home">
+          <NavLink to="/" className="port" aria-label="Coinwise Home" {...getPrefetchHandlers('/')}>
             <BrandLogo size={22} className="brand-logo-svg" />
           </NavLink>
           <span className="mobile-header-title" aria-current="page">
@@ -1357,25 +1330,25 @@ const Header = React.memo(({
 
         {/* ── Primary nav links ── */}
         <nav className="nav-links" aria-label="Main Navigation">
-          <NavLink to="/" end className={({ isActive }) => `nav-link nav-link-core ${isActive ? 'active' : ''}`}>
+          <NavLink to="/" end {...getPrefetchHandlers('/')} className={({ isActive }) => `nav-link nav-link-core ${isActive ? 'active' : ''}`}>
             {t?.('dashboard') || 'Dashboard'}
           </NavLink>
-          <NavLink to="/transactions" className={({ isActive }) => `nav-link nav-link-core ${isActive ? 'active' : ''}`}>
+          <NavLink to="/transactions" {...getPrefetchHandlers('/transactions')} className={({ isActive }) => `nav-link nav-link-core ${isActive ? 'active' : ''}`}>
             {t?.('transactions') || 'Transactions'}
           </NavLink>
-          <NavLink to="/analytics" className={({ isActive }) => `nav-link nav-link-core ${isActive ? 'active' : ''}`}>
+          <NavLink to="/analytics" {...getPrefetchHandlers('/analytics')} className={({ isActive }) => `nav-link nav-link-core ${isActive ? 'active' : ''}`}>
             {t?.('analytics') || 'Analytics'}
           </NavLink>
-          <NavLink to="/budgets" className={({ isActive }) => `nav-link nav-link-secondary ${isActive ? 'active' : ''}`}>
+          <NavLink to="/budgets" {...getPrefetchHandlers('/budgets')} className={({ isActive }) => `nav-link nav-link-secondary ${isActive ? 'active' : ''}`}>
             {t?.('budgets') || 'Budgets'}
           </NavLink>
-          <NavLink to="/goals" className={({ isActive }) => `nav-link nav-link-secondary ${isActive ? 'active' : ''}`}>
+          <NavLink to="/goals" {...getPrefetchHandlers('/goals')} className={({ isActive }) => `nav-link nav-link-secondary ${isActive ? 'active' : ''}`}>
             {t?.('goals') || 'Goals'}
           </NavLink>
-          <NavLink to="/wealth" className={({ isActive }) => `nav-link nav-link-tertiary ${isActive ? 'active' : ''}`}>
+          <NavLink to="/wealth" {...getPrefetchHandlers('/wealth')} className={({ isActive }) => `nav-link nav-link-tertiary ${isActive ? 'active' : ''}`}>
             {t?.('wealth') || 'Wealth'}
           </NavLink>
-          <NavLink to="/about" className={({ isActive }) => `nav-link nav-link-tertiary ${isActive ? 'active' : ''}`}>
+          <NavLink to="/about" {...getPrefetchHandlers('/about')} className={({ isActive }) => `nav-link nav-link-tertiary ${isActive ? 'active' : ''}`}>
             {t?.('about') || 'About'}
           </NavLink>
         </nav>

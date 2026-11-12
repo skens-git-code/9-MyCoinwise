@@ -10,9 +10,12 @@
  */
 
 const assert = require('assert');
+const fs = require('fs/promises');
+const path = require('path');
 const express = require('express');
 const ExcelJS = require('exceljs');
 const JSZip = require('jszip');
+const sharp = require('sharp');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 
@@ -22,6 +25,8 @@ const Transaction = require('../models/Transaction');
 const Account = require('../models/Account');
 const transactionsRouter = require('../routes/transactions');
 const { parseOoxmlViaZipXml } = require('../services/statement/excelParser');
+const { parseStatement } = require('../services/statementParser');
+const { RECEIPTS_PUBLIC_DIR, sanitizeReceiptUrl } = require('../services/statement/receiptStorage');
 
 async function buildXlsxBuffer() {
   const wb = new ExcelJS.Workbook();
@@ -269,6 +274,76 @@ async function runTests() {
     // Tier 3 direct OOXML ZIP XML parser verification
     const tier3Rows = await parseOoxmlViaZipXml(chartXlsxBuf);
     assert(tier3Rows.length >= 3, 'Tier 3 XML parser must extract header and transaction rows');
+
+    // 8. Excel embedded receipt image extraction + sharp compression + row matching + persistence
+    const createdReceiptFiles = [];
+    try {
+      const fakeReceiptPng = await sharp({
+        create: { width: 1200, height: 900, channels: 3, background: { r: 245, g: 245, b: 250 } },
+      })
+        .png({ compressionLevel: 0 })
+        .toBuffer();
+
+      const imgWb = new ExcelJS.Workbook();
+      const imgWs = imgWb.addWorksheet('Ledger');
+      imgWs.addRow(['Date', 'Counterparty', 'Type', 'Amount (INR)']);
+      imgWs.addRow(['2026-11-08', 'Cafe Coffee Day', 'Debit', 350]);
+      const imgId = imgWb.addImage({ buffer: fakeReceiptPng, extension: 'png' });
+      imgWs.addImage(imgId, { tl: { col: 0, row: 1 }, ext: { width: 200, height: 150 } }); // 0-based row 1 = 1-based Excel row 2
+      const imgXlsxBuf = Buffer.from(await imgWb.xlsx.writeBuffer());
+
+      const imgXlsxForm = new FormData();
+      imgXlsxForm.append('file', new Blob([imgXlsxBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'with-receipt.xlsx');
+      imgXlsxForm.append('filename', 'with-receipt.xlsx');
+      const imgXlsxRes = await fetch(`http://127.0.0.1:${port}/api/transactions/statement/preview`, {
+        method: 'POST',
+        headers: authHeader,
+        body: imgXlsxForm,
+      });
+      assert.strictEqual(imgXlsxRes.status, 200);
+      const imgXlsxPreview = await imgXlsxRes.json();
+      assert.strictEqual(imgXlsxPreview.transactions.length, 1);
+      const xlsxReceiptUrl = imgXlsxPreview.transactions[0].receipt_url;
+      assert(xlsxReceiptUrl && xlsxReceiptUrl.startsWith('/api/uploads/receipts/'), 'Excel embedded receipt image should attach receipt_url');
+      createdReceiptFiles.push(path.join(RECEIPTS_PUBLIC_DIR, path.basename(xlsxReceiptUrl)));
+
+      // Persist through /statement/import and confirm receipt_url is stored
+      const importImgRes = await fetch(`http://127.0.0.1:${port}/api/transactions/statement/import`, {
+        method: 'POST',
+        headers: { ...authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactions: imgXlsxPreview.transactions }),
+      });
+      assert.strictEqual(importImgRes.status, 201);
+      const savedReceiptTx = insertedStore.find((t) => t.merchant === 'Cafe Coffee Day');
+      assert.strictEqual(savedReceiptTx.receipt_url, xlsxReceiptUrl);
+
+      // 9. Direct image upload (PNG/JPG receipt) through OCR parser + compressed receipt storage + XSS sanitization
+      const ocrImageRes = await parseStatement({
+        content: fakeReceiptPng,
+        filename: 'cafe-bill.png',
+        userTransactions: [],
+        ocrRunner: async () => ({
+          text: 'Blue Tokai Coffee Roasters\nDate: 08/11/2026\nGrand Total: Rs.480.00\nThank you!',
+          pagesOcred: 1,
+        }),
+      });
+      assert.strictEqual(ocrImageRes.summary.detectedFormat, 'Image (OCR)');
+      assert.strictEqual(ocrImageRes.summary.diagnostics.ocrUsed, true);
+      assert.strictEqual(ocrImageRes.transactions.length, 1);
+      assert.strictEqual(ocrImageRes.transactions[0].amount, 480);
+      assert.strictEqual(ocrImageRes.transactions[0].merchant, 'Blue Tokai Coffee Roasters');
+      assert(ocrImageRes.transactions[0].receipt_url?.startsWith('/api/uploads/receipts/'));
+      createdReceiptFiles.push(path.join(RECEIPTS_PUBLIC_DIR, path.basename(ocrImageRes.transactions[0].receipt_url)));
+
+      // Verify sanitizeReceiptUrl blocks XSS / path traversal
+      assert.strictEqual(sanitizeReceiptUrl('javascript:alert(1)'), null);
+      assert.strictEqual(sanitizeReceiptUrl('/api/uploads/receipts/../../secret.txt'), null);
+      assert.strictEqual(sanitizeReceiptUrl('/api/uploads/receipts/receipt-abc.jpg'), '/api/uploads/receipts/receipt-abc.jpg');
+    } finally {
+      for (const f of createdReceiptFiles) {
+        await fs.unlink(f).catch(() => {});
+      }
+    }
 
     console.log('  ✅ Multipart CSV, XLSX, HTML-.xls preview & /statement/import integration passed');
   } finally {

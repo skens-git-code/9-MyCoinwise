@@ -4,7 +4,12 @@
  * page images (or rendered page screenshots) with strict page/time bounds.
  * ————————————————————————————————————— */
 
+const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
 const { logger } = require('../../utils/logger');
+
+const TESSERACT_CACHE_DIR = path.join(os.tmpdir(), 'mycoinwise-tesseract-cache');
 
 let tesseractModule = null;
 try {
@@ -39,7 +44,9 @@ const recognizeImagesWithTesseract = async (imageBuffers, { lang = 'eng', timeou
   let timer = null;
 
   try {
+    await fs.mkdir(TESSERACT_CACHE_DIR, { recursive: true }).catch(() => {});
     const workerOptions = {
+      cachePath: TESSERACT_CACHE_DIR,
       logger: () => {},
     };
     if (process.env.OCR_LANG_PATH) {

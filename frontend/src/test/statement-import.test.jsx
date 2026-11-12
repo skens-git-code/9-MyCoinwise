@@ -86,6 +86,8 @@ describe('Transactions Statement Import & Export Buttons', () => {
     expect(fileInput.getAttribute('accept')).toContain('.csv');
     expect(fileInput.getAttribute('accept')).toContain('.xlsx');
     expect(fileInput.getAttribute('accept')).toContain('.xls');
+    expect(fileInput.getAttribute('accept')).toContain('.png');
+    expect(fileInput.getAttribute('accept')).toContain('.jpg');
 
     const clickSpy = vi.spyOn(fileInput, 'click');
     fireEvent.click(importBtn);
@@ -120,6 +122,7 @@ describe('Transactions Statement Import & Export Buttons', () => {
             payment_method: 'upi',
             transaction_number: `TXN-${sample.name}`,
             import_fingerprint: `fp-${sample.name}`,
+            receipt_url: '/api/uploads/receipts/receipt-sample.jpg',
             duplicate: false,
             confidence: 'high',
           },
@@ -154,6 +157,7 @@ describe('Transactions Statement Import & Export Buttons', () => {
 
       const dialog = await screen.findByRole('dialog');
       expect(dialog.querySelector('.modal-wide')).toBeTruthy();
+      expect(dialog.querySelector('img[alt="Receipt"]')).toBeTruthy();
 
       const categorySelect = screen.getByLabelText(/Category for Test Merchant/i);
       expect(categorySelect.value).toBe(sample.category);
@@ -320,6 +324,46 @@ describe('Transactions Statement Import & Export Buttons', () => {
     expect(await screen.findByText(/Re-analysis failed/i)).toBeTruthy();
     await waitFor(() => {
       expect(dateSelect.value).toBe('');
+    });
+  });
+
+  it('renders attached receipt image on selected transaction detail ticket and rejects unsafe URLs', async () => {
+    const { container } = renderTransactions({
+      transactions: [
+        {
+          id: 'tx-receipt-1',
+          _id: 'tx-receipt-1',
+          amount: 480,
+          type: 'expense',
+          category: 'Food',
+          merchant: 'Blue Tokai',
+          note: 'Receipt Coffee',
+          receipt_url: '/api/uploads/receipts/receipt-valid-123.jpg',
+          date: '2026-11-08T12:00:00.000Z',
+          is_deleted: false,
+        },
+        {
+          id: 'tx-xss-1',
+          _id: 'tx-xss-1',
+          amount: 10,
+          type: 'expense',
+          category: 'Other',
+          merchant: 'Bad Link',
+          receipt_url: 'javascript:alert(1)',
+          date: '2026-11-08T12:00:00.000Z',
+          is_deleted: false,
+        },
+      ],
+    });
+
+    const items = container.querySelectorAll('.il-item');
+    fireEvent.click(items[0]);
+    const img = await screen.findByAltText('Transaction receipt');
+    expect(img.getAttribute('src')).toContain('/api/uploads/receipts/receipt-valid-123.jpg');
+
+    fireEvent.click(items[1]);
+    await waitFor(() => {
+      expect(screen.queryByAltText('Transaction receipt')).toBeNull();
     });
   });
 });

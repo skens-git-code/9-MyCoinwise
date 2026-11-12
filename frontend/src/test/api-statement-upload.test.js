@@ -61,5 +61,19 @@ describe('api.previewBankStatement upload resilience', () => {
     });
     expect(mockPost).toHaveBeenCalledTimes(1);
   });
+
+  it('retries once on transient 502-504 cold-start responses with extended 90s timeout', async () => {
+    const { api } = await import('../services/api');
+    const file = new File(['Date,Description,Debit\n2026-10-12,Coffee,100'], 'coldstart.csv', { type: 'text/csv' });
+
+    mockPost
+      .mockRejectedValueOnce({ response: { status: 503 } })
+      .mockResolvedValueOnce({ data: { transactions: [{ id: '1', amount: 100 }], summary: { detected: 1 } } });
+
+    const res = await api.previewBankStatement({ file, filename: 'coldstart.csv' });
+    expect(mockPost).toHaveBeenCalledTimes(2);
+    expect(mockPost.mock.calls[0][2]).toEqual(expect.objectContaining({ timeout: 90000 }));
+    expect(res.summary.detected).toBe(1);
+  });
 });
 

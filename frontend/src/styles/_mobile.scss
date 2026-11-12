@@ -1357,6 +1357,10 @@
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
+
+    &.modal-wide {
+      max-width: calc(100vw - 24px) !important;
+    }
   }
 
   .modal-box.modal-confirm {
@@ -1367,10 +1371,6 @@
     max-height: calc(100vh - 32px) !important;
     max-height: calc(100dvh - 32px) !important;
     overflow: hidden !important;
-
-    &.modal-wide {
-      max-width: calc(100vw - 24px) !important;
-    }
   }
 
   .modal-panel,

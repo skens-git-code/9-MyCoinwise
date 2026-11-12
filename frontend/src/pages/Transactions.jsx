@@ -42,6 +42,9 @@ import TransactionForm from '../components/TransactionForm';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
 import { api } from '../services/api';
+import { resolveReceiptUrl } from '../utils/receiptUrl';
+
+const getSafeReceiptUrl = (url) => resolveReceiptUrl(url);
 
 /* ============================================================
  * Constants
@@ -1047,12 +1050,31 @@ export default function Transactions() {
         ));
         return;
       }
-      const errMessage = String(error?.response?.data?.error || error?.message || '');
+      const status = error?.response?.status;
+      const errMessage = String(error?.response?.data?.error || error?.response?.data?.message || error?.message || '');
       if (/anchors/i.test(errMessage)) {
         showToast('error', tr(
           'statement_unsupported_layout',
           'This file has an unsupported layout. Please export as CSV if the issue persists.'
         ));
+        return;
+      }
+      if (error?.code === 'ECONNABORTED' || /timeout/i.test(errMessage)) {
+        showToast('error', tr(
+          'statement_timeout',
+          'Statement analysis timed out while waking the server or running OCR. Please retry in a few seconds.'
+        ));
+        return;
+      }
+      if (!error?.response) {
+        showToast('error', tr(
+          'statement_network_error',
+          'Could not reach the API server. Check your network connection or CORS/VITE_API_URL deployment settings.'
+        ));
+        return;
+      }
+      if (status === 413) {
+        showToast('error', tr('file_too_large', 'Statement file is too large for the server limit (max 10 MB).'));
         return;
       }
       showToast('error', errMessage || tr(
@@ -1198,7 +1220,8 @@ export default function Transactions() {
       setImportSummary(null);
       await refetch();
     } catch (error) {
-      showToast('error', error?.response?.data?.error || tr('import_failed', 'Could not add the selected transactions.'));
+      const msg = error?.response?.data?.error || error?.response?.data?.message || error?.message;
+      showToast('error', msg || tr('import_failed', 'Could not add the selected transactions.'));
     } finally {
       setIsImporting(false);
     }
@@ -1411,7 +1434,7 @@ export default function Transactions() {
         type="file"
         ref={fileInputRef}
         className="sr-only"
-        accept=".csv,.tsv,.xlsx,.xlsm,.xls,.pdf,text/csv,application/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12,application/vnd.ms-excel,application/pdf"
+        accept=".csv,.tsv,.xlsx,.xlsm,.xls,.pdf,.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp,text/csv,application/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12,application/vnd.ms-excel,application/pdf"
         style={{
           position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
           overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0, zIndex: -1,
@@ -1450,7 +1473,7 @@ export default function Transactions() {
             className="btn-secondary tx-import-btn"
             onClick={handleOpenImportPicker}
             aria-controls={statementInputId}
-            title={tr('import_title', 'Import bank statements or PDF receipts (CSV, Excel, PDF from Paytm, GPay, PhonePe, BharatPe, Banks)')}
+            title={tr('import_title', 'Import bank statements or receipt images (CSV, Excel, PDF, PNG, JPG from Paytm, GPay, PhonePe, BharatPe, Banks)')}
             disabled={isAnalyzingStatement}
           >
             {isAnalyzingStatement ? <Loader2 size={14} className="spin" /> : <Upload size={14} />}
@@ -2149,6 +2172,33 @@ export default function Transactions() {
                       </div>
                     ) : null}
 
+                    {/* Attached Receipt Image Proof */}
+                    {(() => {
+                      const receiptSrc = getSafeReceiptUrl(tx.receipt_url);
+                      if (!receiptSrc) return null;
+                      return (
+                        <div className="tx-ticket-row tags-row" style={{ display: 'block' }}>
+                          <span className="ttr-label" style={{ display: 'block', marginBottom: 8 }}>
+                            <ShieldCheck size={12} aria-hidden /> {tr('attachment', 'Receipt Attachment')}
+                          </span>
+                          <a href={receiptSrc} target="_blank" rel="noopener noreferrer">
+                            <img
+                              src={receiptSrc}
+                              alt="Transaction receipt"
+                              style={{
+                                width: '100%',
+                                maxHeight: 200,
+                                objectFit: 'contain',
+                                borderRadius: 8,
+                                border: '1px solid var(--glass-border)',
+                                background: 'var(--glass-1)',
+                              }}
+                            />
+                          </a>
+                        </div>
+                      );
+                    })()}
+
                     {/* Tags */}
                     {Array.isArray(tx.tags) && tx.tags.length > 0 && (
                       <div className="tx-ticket-row tags-row">
@@ -2728,6 +2778,24 @@ export default function Transactions() {
                         {row.bank_name ? `🏦 ${row.bank_name}` : (row.payment_method || 'bank_transfer').replace('_', ' ')}
                         {row.transaction_number ? ` · ID: ${row.transaction_number}` : ''}
                       </small>
+                      {(() => {
+                        const thumbSrc = getSafeReceiptUrl(row.receipt_url);
+                        if (!thumbSrc) return null;
+                        return (
+                          <a
+                            href={thumbSrc}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ display: 'inline-block', marginTop: 4 }}
+                          >
+                            <img
+                              src={thumbSrc}
+                              alt="Receipt"
+                              style={{ height: 30, borderRadius: 4, border: '1px solid var(--glass-border)' }}
+                            />
+                          </a>
+                        );
+                      })()}
                     </td>
                     <td data-label={tr(STATEMENT_COLUMNS[3].i18nKey, STATEMENT_COLUMNS[3].fallback)}>
                       {row.sender_name && (

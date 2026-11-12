@@ -13,6 +13,7 @@ const JSZip = require('jszip');
 const { decodeBufferToText, cleanText } = require('./helpers');
 const { parseCsvAsync } = require('./csvParser');
 const { detectTableHeader } = require('./tabularNormalizer');
+const { saveReceiptImageBuffer, MAX_SAVED_IMAGES_PER_STATEMENT } = require('./receiptStorage');
 
 const BUILTIN_DATE_NUMFMTS = new Set([14, 15, 16, 17, 18, 19, 20, 21, 22, 45, 46, 47]);
 
@@ -65,6 +66,7 @@ const formatExcelJsCellValue = (val, numFmt = '') => {
 
 const extractWorksheetRows = (worksheet) => {
   const rows = [];
+  const rowNumbers = [];
   worksheet.eachRow({ includeEmpty: false }, (row) => {
     const rowCells = [];
     const maxCol = row.cellCount || (Array.isArray(row.values) ? row.values.length - 1 : 0);
@@ -74,9 +76,40 @@ const extractWorksheetRows = (worksheet) => {
     }
     if (rowCells.some(Boolean)) {
       rows.push(rowCells);
+      rowNumbers.push(row.number);
     }
   });
-  return rows;
+  return { rows, rowNumbers };
+};
+
+const extractExcelImages = async (workbook, targetSheet = null) => {
+  const images = [];
+  if (!workbook || !Array.isArray(workbook.worksheets)) return images;
+  const sheets = targetSheet ? [targetSheet] : workbook.worksheets;
+
+  for (const worksheet of sheets) {
+    if (typeof worksheet?.getImages !== 'function') continue;
+    const wsImages = worksheet.getImages() || [];
+    for (const img of wsImages) {
+      if (images.length >= MAX_SAVED_IMAGES_PER_STATEMENT) return images;
+      try {
+        const media = workbook.getImage(Number(img.imageId));
+        if (!media?.buffer) continue;
+        const url = await saveReceiptImageBuffer(media.buffer);
+        if (url) {
+          const nativeRow = img.range?.tl?.nativeRow;
+          images.push({
+            url,
+            cell: Number.isFinite(nativeRow) ? nativeRow + 1 : null,
+            sheetName: worksheet.name || null,
+          });
+        }
+      } catch {
+        // Skip unreadable image entries
+      }
+    }
+  }
+  return images;
 };
 
 const scoreCandidateSheetRows = (rows) => {
@@ -88,28 +121,34 @@ const scoreCandidateSheetRows = (rows) => {
   return explicitDescBonus + rows.length;
 };
 
-const extractWorkbookRows = (workbook) => {
+const extractWorkbookRows = async (workbook, { saveReceipts = true } = {}) => {
   if (!workbook.worksheets || workbook.worksheets.length === 0) {
     throw new Error('Excel workbook contains no worksheets.');
   }
 
-  let fallbackRows = null;
-  let bestRows = null;
+  let fallback = null;
+  let best = null;
   let bestScore = -1;
 
   for (const worksheet of workbook.worksheets) {
-    const rows = extractWorksheetRows(worksheet);
-    if (!fallbackRows && rows.length > 0) {
-      fallbackRows = rows;
+    const extracted = extractWorksheetRows(worksheet);
+    if (!fallback && extracted.rows.length > 0) {
+      fallback = { ...extracted, worksheet };
     }
-    const score = scoreCandidateSheetRows(rows);
+    const score = scoreCandidateSheetRows(extracted.rows);
     if (score > bestScore) {
       bestScore = score;
-      bestRows = rows;
+      best = { ...extracted, worksheet };
     }
   }
 
-  return bestRows || fallbackRows || [];
+  const chosen = best || fallback || { rows: [], rowNumbers: [], worksheet: null };
+  const extractedImages = saveReceipts ? await extractExcelImages(workbook, chosen.worksheet) : [];
+  return {
+    rows: chosen.rows,
+    rowNumbers: chosen.rowNumbers,
+    extractedImages,
+  };
 };
 
 const stripOoxmlDrawingsAndCharts = async (buffer) => {
@@ -305,17 +344,17 @@ const parseOoxmlViaZipXml = async (buffer) => {
   return bestRows || fallbackRows || [];
 };
 
-const parseXlsxBuffer = async (buffer) => {
+const parseXlsxWithMeta = async (buffer, { saveReceipts = true } = {}) => {
   try {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
-    return extractWorkbookRows(workbook);
+    return await extractWorkbookRows(workbook, { saveReceipts });
   } catch (primaryErr) {
     // Tier 1b: Retry with ExcelJS ignoreNodes for drawings/charts/images
     try {
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(buffer, { ignoreNodes: ['drawings', 'charts', 'images'] });
-      return extractWorkbookRows(workbook);
+      return await extractWorkbookRows(workbook, { saveReceipts: false });
     } catch {
       // Fall through to ZIP stripping
     }
@@ -325,16 +364,22 @@ const parseXlsxBuffer = async (buffer) => {
       const sanitizedBuffer = await stripOoxmlDrawingsAndCharts(buffer);
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(sanitizedBuffer);
-      return extractWorkbookRows(workbook);
+      return await extractWorkbookRows(workbook, { saveReceipts: false });
     } catch (secondaryErr) {
       // Tier 3: Direct OOXML ZIP XML sheet parser (resilient to unsupported styles/pivots/anchors)
       try {
-        return await parseOoxmlViaZipXml(buffer);
+        const rows = await parseOoxmlViaZipXml(buffer);
+        return { rows, rowNumbers: [], extractedImages: [] };
       } catch {
         throw primaryErr || secondaryErr;
       }
     }
   }
+};
+
+const parseXlsxBuffer = async (buffer) => {
+  const { rows } = await parseXlsxWithMeta(buffer, { saveReceipts: false });
+  return rows;
 };
 
 /* —————————————————————————————————————
@@ -740,7 +785,7 @@ const parseBinaryBiffXls = (buffer) => {
  * @param {string} [filename='']
  * @returns {Promise<{ rows: string[][], engine: string }>}
  */
-const parseExcelBuffer = async (buffer, filename = '') => {
+const parseExcelBuffer = async (buffer, filename = '', { saveReceipts = true } = {}) => {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
     throw new Error('Excel file is empty.');
   }
@@ -750,13 +795,13 @@ const parseExcelBuffer = async (buffer, filename = '') => {
   const isOle2 = buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from('D0CF11E0A1B11AE1', 'hex'));
 
   if (isZipOoxml) {
-    const rows = await parseXlsxBuffer(buffer);
-    return { rows, engine: 'xlsx_exceljs' };
+    const { rows, rowNumbers, extractedImages } = await parseXlsxWithMeta(buffer, { saveReceipts });
+    return { rows, rowNumbers, extractedImages, engine: 'xlsx_exceljs' };
   }
 
   if (isOle2) {
     const rows = parseBinaryBiffXls(buffer);
-    return { rows, engine: 'xls_biff_cfb' };
+    return { rows, rowNumbers: [], extractedImages: [], engine: 'xls_biff_cfb' };
   }
 
   // Many Indian banks export HTML tables, XML Spreadsheet 2003, or TSV/CSV with `.xls` extension
@@ -765,18 +810,18 @@ const parseExcelBuffer = async (buffer, filename = '') => {
 
   if (sample.includes('<table') || sample.includes('<tr')) {
     const rows = parseHtmlTableXls(text);
-    if (rows.length > 0) return { rows, engine: 'xls_html' };
+    if (rows.length > 0) return { rows, rowNumbers: [], extractedImages: [], engine: 'xls_html' };
   }
 
   if (sample.includes('<workbook') || sample.includes('<ss:workbook') || sample.includes('schemas-microsoft-com:office:spreadsheet')) {
     const rows = parseSpreadsheetMlXls(text);
-    if (rows.length > 0) return { rows, engine: 'xls_xml2003' };
+    if (rows.length > 0) return { rows, rowNumbers: [], extractedImages: [], engine: 'xls_xml2003' };
   }
 
   if (/\.xls[xm]?$/i.test(filename) && text.trim()) {
     const csvRes = await parseCsvAsync(buffer);
     if (csvRes.rows.length > 0) {
-      return { rows: csvRes.rows, engine: `xls_${csvRes.engine}` };
+      return { rows: csvRes.rows, rowNumbers: [], extractedImages: [], engine: `xls_${csvRes.engine}` };
     }
   }
 

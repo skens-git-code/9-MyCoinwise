@@ -35,6 +35,7 @@ const resolveApiUrl = () => {
 };
 
 export const API_URL = resolveApiUrl();
+export { resolveReceiptUrl } from '../utils/receiptUrl';
 
 /* ─────────────────────────────────────
  * Get Stored Token
@@ -466,8 +467,21 @@ export const api = {
       if (payload.password) formData.append('password', payload.password);
       if (payload.dateFormat) formData.append('dateFormat', payload.dateFormat);
       if (payload.accountId) formData.append('accountId', payload.accountId);
+      const postWithColdStartRetry = async (url, data, config = { timeout: 90000 }) => {
+        try {
+          return await apiClient.post(url, data, config);
+        } catch (err) {
+          const status = err?.response?.status;
+          if (status >= 502 && status <= 504) {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            return apiClient.post(url, data, config);
+          }
+          throw err;
+        }
+      };
+
       try {
-        const res = await apiClient.post(`${API_URL}/transactions/statement/preview`, formData);
+        const res = await postWithColdStartRetry(`${API_URL}/transactions/statement/preview`, formData);
         return res.data;
       } catch (err) {
         const errMsg = String(err?.response?.data?.error || '');
@@ -482,7 +496,7 @@ export const api = {
         if (payload.password) fallbackBody.password = payload.password;
         if (payload.dateFormat) fallbackBody.dateFormat = payload.dateFormat;
         if (payload.accountId) fallbackBody.accountId = payload.accountId;
-        const res = await apiClient.post(`${API_URL}/transactions/statement/preview`, fallbackBody);
+        const res = await postWithColdStartRetry(`${API_URL}/transactions/statement/preview`, fallbackBody);
         return res.data;
       }
     }
@@ -493,13 +507,13 @@ export const api = {
     } else if (payload && typeof payload === 'object') {
       body = payload;
     }
-    const res = await apiClient.post(`${API_URL}/transactions/statement/preview`, body);
+    const res = await apiClient.post(`${API_URL}/transactions/statement/preview`, body, { timeout: 90000 });
     return res.data;
   },
 
   // ── Import the reviewed rows from a bank statement ──
   importBankStatement: async (transactions) => {
-    const res = await apiClient.post(`${API_URL}/transactions/statement/import`, { transactions });
+    const res = await apiClient.post(`${API_URL}/transactions/statement/import`, { transactions }, { timeout: 90000 });
     return res.data;
   },
 

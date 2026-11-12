@@ -14,11 +14,11 @@
 @use 'page-enhancements';
 @use 'plain-ui';
 @use 'mobile-perf';
-@use 'responsive-fixes';
 @use 'mobile';
 @use 'transactions';
 @use 'settings';
 @use 'dashboard';
+@use 'responsive-fixes';
 @use 'protection-perf';
 
 @media print {

@@ -3,6 +3,7 @@
 // here guarantees validated values before any other module reads process.env.
 const { config, trustProxy, isProduction } = require('./config/env');
 
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -195,7 +196,11 @@ const corsOptions = {
     if (isOriginAllowed(origin)) {
       return callback(null, true);
     }
-    logger.warn(`[CORS] Blocked request from unauthorized origin: ${origin}`);
+    logger.warn(`[CORS] Blocked request from unauthorized origin: ${origin}`, {
+      allowedOrigins,
+      frontendUrl: config.FRONTEND_URL,
+      nodeEnv: config.NODE_ENV,
+    });
     callback(new HttpError(403, `Origin ${origin} not allowed by CORS policy`));
   },
   credentials: true,
@@ -230,6 +235,8 @@ app.use((req, res, next) => {
 const preParserLimiter = rateLimit({
   identifier: 'preParser',
   windowMs: 60 * 1000,
+  skip: (req) => req.method === 'OPTIONS',
+  validate: { xForwardedForHeader: false },
   max: (req) => {
     const contentLength = Number(req.headers['content-length'] || 0);
     return contentLength > 200_000 ? (isDev ? 100 : 10) : (isDev ? 3000 : 300);
@@ -245,10 +252,14 @@ app.use('/api', preParserLimiter);
 // Handlers are instantiated once at startup rather than on every request.
 const DEFAULT_BODY_LIMIT = '100kb';
 const BULK_BODY_LIMIT = '15mb';
-const isBulkJsonRoute = (req) =>
-  req.path === '/api/transactions/statement/import' ||
-  req.path === '/api/transactions/statement/preview' ||
-  /^\/api\/users\/[^/]+\/import$/.test(req.path);
+const isBulkJsonRoute = (req) => {
+  const cleanPath = String(req.path || '').replace(/\/+$/, '');
+  return (
+    cleanPath === '/api/transactions/statement/import' ||
+    cleanPath === '/api/transactions/statement/preview' ||
+    /^\/api\/users\/[^/]+\/import$/.test(cleanPath)
+  );
+};
 
 const defaultJsonParser = express.json({ limit: DEFAULT_BODY_LIMIT });
 const bulkJsonParser = express.json({ limit: BULK_BODY_LIMIT });
@@ -394,6 +405,23 @@ const calcLimiter = makeLimiter({
 });
 
 // ─── 11. Routes ─────────────────────────────────────────────────────────────
+// Serve extracted/compressed statement receipt attachments with CORP cross-origin
+// so frontend origins can render <img> previews cleanly while blocking MIME sniffing.
+const { RECEIPTS_PUBLIC_DIR, RECEIPTS_TMP_DIR } = require('./services/statement/receiptStorage');
+
+const receiptsStaticOptions = {
+  maxAge: '7d',
+  fallthrough: true,
+  setHeaders: (res) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+  },
+};
+const serveReceiptsPublic = express.static(RECEIPTS_PUBLIC_DIR, receiptsStaticOptions);
+const serveReceiptsTmp = express.static(RECEIPTS_TMP_DIR, receiptsStaticOptions);
+app.use('/uploads/receipts', serveReceiptsPublic, serveReceiptsTmp);
+app.use('/api/uploads/receipts', serveReceiptsPublic, serveReceiptsTmp);
+
 // IP-level limiting is applied BEFORE authentication so that unauthenticated
 // floods are cheap to reject and never reach JWT verification or the database.
 
@@ -594,7 +622,11 @@ connectToMongo()
     }
 
     server = app.listen(PORT, () => {
-      logger.info(`🚀 MyCoinwise API running on port ${PORT}`);
+      logger.info(`🚀 MyCoinwise API running on port ${PORT}`, {
+        nodeEnv: config.NODE_ENV,
+        trustProxy,
+        allowedOrigins,
+      });
     });
 
     // Without this, a port clash (a very common local failure — a stale server

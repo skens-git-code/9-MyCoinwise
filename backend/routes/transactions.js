@@ -70,6 +70,7 @@ const { logger } = require('../utils/logger');
 const { dedupeTransactions } = require('../utils/transactionIntegrity');
 const { normalizeCurrency, convertToCurrency } = require('../utils/currency');
 const { parseStatement, IMPORT_LIMIT, toIsoDay } = require('../services/statementParser');
+const { sanitizeReceiptUrl } = require('../services/statement/receiptStorage');
 
 // ── Create router ──
 const router = express.Router();
@@ -220,7 +221,7 @@ const validateTransactionPayload = (payload) => {
     account_id, is_recurring, recurrence_interval, recurrence_ends_at,
     is_split, split_details, transaction_number, currency,
     bank_name, sender_name, receiver_name,
-    budget_category, budget_id,
+    budget_category, budget_id, receipt_url,
   } = payload;
 
   const numericAmount = parseTransactionAmount(amount);
@@ -280,6 +281,9 @@ const validateTransactionPayload = (payload) => {
   }
   if (budget_category !== undefined) {
     parsed.budget_category = budget_category ? String(budget_category).trim().slice(0, 80) : null;
+  }
+  if (receipt_url !== undefined) {
+    parsed.receipt_url = receipt_url ? sanitizeReceiptUrl(receipt_url) : null;
   }
   if (budget_id !== undefined) {
     if (budget_id && !mongoose.isValidObjectId(budget_id)) {
@@ -822,6 +826,7 @@ router.post('/statement/import', async (req, res) => {
         external_reference: cleanText(item.external_reference || item.transaction_number).slice(0, 150) || null,
         import_fingerprint: fingerprint,
         import_source: cleanText(item.import_source || 'bank_statement').slice(0, 40),
+        receipt_url: validation.receipt_url || null,
         audit_logs: [{ action: 'Imported from bank statement', timestamp: new Date() }],
       });
     }

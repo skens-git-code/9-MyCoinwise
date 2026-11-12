@@ -17,6 +17,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { ChevronRight, Home } from 'lucide-react';
 import { useAppActions } from '../contexts/AppContext';
+import { getPrefetchHandlers } from '../utils/routePrefetch';
 
 /* —————————————————————————————————————
  * Component
@@ -87,7 +88,7 @@ function Breadcrumbs() {
 
   return (
     <nav className="breadcrumbs-bar" aria-label="Breadcrumb navigation">
-      <NavLink to="/" className="crumb-item">
+      <NavLink to="/" className="crumb-item" {...getPrefetchHandlers('/')}>
         <Home size={13} className="crumb-icon" />
         <span>{dashboardLabel}</span>
       </NavLink>

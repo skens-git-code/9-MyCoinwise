@@ -135,8 +135,8 @@ const Modal = ({
             style={danger ? { borderColor: 'rgba(239,68,68,0.4)', boxShadow: '0 8px 32px rgba(239,68,68,0.2)' } : {}}
           >
             {/* ── Header: title and close button ── */}
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexShrink: 0 }}>
-              <h3 id={`${modalId}-title`} style={danger ? { color: 'var(--danger)' } : {}}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 4, flexShrink: 0 }}>
+              <h3 id={`${modalId}-title`} style={{ minWidth: 0, ...(danger ? { color: 'var(--danger)' } : {}) }}>
                 {title}
               </h3>
               {!isLoading && (
@@ -151,7 +151,7 @@ const Modal = ({
 
             {/* ── Action bar (only when confirmText + onConfirm are provided) ── */}
             {confirmText && onConfirm && (
-              <div className="modal-actions" style={{ marginTop: 24, display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <div className="modal-actions" style={{ marginTop: 24, display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'flex-end' }}>
                 {/* ── Cancel button ── */}
                 <button
                   type="button"

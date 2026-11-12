@@ -18,6 +18,7 @@ const {
 const { detectBankName, extractTransactionId } = require('./classifiers');
 const { detectTableHeader, normalizeTabularRows, headerKey, normalizeExplicitCategory } = require('./tabularNormalizer');
 const { extractTextFromScannedPdf } = require('./ocrService');
+const { saveReceiptImageBuffer, MAX_SAVED_IMAGES_PER_STATEMENT } = require('./receiptStorage');
 const { logger } = require('../../utils/logger');
 
 let pdfModule = null;
@@ -33,7 +34,16 @@ const loadPdfJs = async () => {
     pdfjsPromise = (async () => {
       try {
         const resolved = require.resolve('pdfjs-dist/legacy/build/pdf.mjs');
-        return await import(pathToFileURL(resolved).href);
+        const mod = await import(pathToFileURL(resolved).href);
+        if (mod?.GlobalWorkerOptions && !mod.GlobalWorkerOptions.workerSrc) {
+          try {
+            const workerPath = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
+            mod.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
+          } catch {
+            // Worker optional in environments with bundled workers
+          }
+        }
+        return mod;
       } catch {
         return await import('pdfjs-dist/legacy/build/pdf.mjs').catch(() => null);
       }
@@ -437,13 +447,42 @@ const extractRawTextWithPdfJs = async (buffer, password = null) => {
   }
 };
 
+const extractAndSaveImages = async (parser) => {
+  const extractedImages = [];
+  if (!parser || typeof parser.getImage !== 'function') return extractedImages;
+  try {
+    const imgResult = await parser.getImage({
+      first: 5,
+      imageBuffer: true,
+      imageDataUrl: false,
+      imageThreshold: 80,
+    });
+    for (const page of imgResult?.pages || []) {
+      for (const img of page?.images || []) {
+        if (extractedImages.length >= MAX_SAVED_IMAGES_PER_STATEMENT) return extractedImages;
+        if (img?.data && img.data.length > 0) {
+          const url = await saveReceiptImageBuffer(img.data, {
+            width: img.width,
+            height: img.height,
+            kind: img.kind,
+          });
+          if (url) extractedImages.push(url);
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn('Failed to extract embedded images from PDF', { err: err.message });
+  }
+  return extractedImages;
+};
+
 /**
  * Extracts raw text (and optionally tables/images) from a PDF buffer using pdf-parse v2.4.5,
  * with a direct pdfjs-dist text-stream fallback when pdf-parse crashes on malformed annotations (`anchors`).
  */
 const extractPdfArtifacts = async (
   buffer,
-  { password = null, ocrRunner = null } = {}
+  { password = null, ocrRunner = null, saveReceipts = true } = {}
 ) => {
   if (!pdfModule) {
     throw new Error('PDF parsing library is not available.');
@@ -454,6 +493,7 @@ const extractPdfArtifacts = async (
   let pageCount = 0;
   let tableCandidates = [];
   let ocrUsed = false;
+  let extractedImages = [];
   const warnings = [];
 
   try {
@@ -522,6 +562,10 @@ const extractPdfArtifacts = async (
             ocrUsed = true;
           }
         }
+
+        if (saveReceipts) {
+          extractedImages = await extractAndSaveImages(parser);
+        }
       } finally {
         if (typeof parser.destroy === 'function') {
           await parser.destroy();
@@ -552,6 +596,7 @@ const extractPdfArtifacts = async (
     tableCandidates,
     ocrUsed,
     warnings,
+    extractedImages,
   };
 };
 
@@ -998,6 +1043,52 @@ const parsePdfTextTransactions = (text, filename = '', { preferredFormat = 'DMY'
     }
   }
 
+  // 6. Generic Receipt / Invoice Parser (useful for OCR images and single-receipt PDFs)
+  if (transactions.length === 0 && /receipt|invoice|total|amount\s*due|grand\s*total|subtotal/i.test(text)) {
+    let lastSeenDate = null;
+    let lastSeenMerchant = 'Receipt Upload';
+    let lastSeenAmount = null;
+    let pickedMerchant = false;
+
+    for (const line of rawLines) {
+      if (!lastSeenDate) {
+        const inlineDate = line.match(/\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{1,2}[-\s.]?[A-Za-z]{3,9}[-\s.,]*\d{2,4}|[A-Za-z]{3,9}[-\s.]?\d{1,2}[-\s.,]*\d{2,4}|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2})\b/);
+        const parsedDate = toIsoDay(inlineDate ? inlineDate[1] : line, preferredFormat);
+        if (parsedDate) lastSeenDate = parsedDate;
+      }
+
+      if (
+        !pickedMerchant &&
+        /^[A-Za-z][A-Za-z0-9\s.&'-]{2,}$/.test(line) &&
+        !/receipt|invoice|tax|gst|subtotal|total|amount|date|cash|change|thank you/i.test(line)
+      ) {
+        lastSeenMerchant = line.trim();
+        pickedMerchant = true;
+      }
+
+      const amtMatch = line.match(
+        /(?:grand\s*total|amount\s*due|net\s*amount|total\s*paid|total)[\s:]*(?:₹|rs\.?|inr|\$|€|£)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i
+      );
+      if (amtMatch) {
+        const parsedAmt = parseStatementAmount(amtMatch[1]);
+        if (parsedAmt && parsedAmt > 0 && parsedAmt <= MAX_AMOUNT) {
+          lastSeenAmount = parsedAmt;
+        }
+      }
+    }
+
+    if (lastSeenAmount) {
+      transactions.push({
+        date: lastSeenDate || new Date().toISOString().slice(0, 10),
+        type: 'expense',
+        amount: lastSeenAmount,
+        desc: `Paid to ${lastSeenMerchant} | Receipt`,
+        raw: rawLines,
+        txnId: extractTransactionId(text),
+      });
+    }
+  }
+
   return {
     rawTransactions: transactions,
     bankName: defaultBank,
@@ -1018,11 +1109,13 @@ const parsePdfBuffer = async (
     merchantCategories = new Map(),
     accountId = null,
     ocrRunner = null,
+    saveReceipts = true,
   } = {}
 ) => {
-  const { text, pageCount, tableCandidates, ocrUsed, warnings } = await extractPdfArtifacts(buffer, {
+  const { text, pageCount, tableCandidates, ocrUsed, warnings, extractedImages } = await extractPdfArtifacts(buffer, {
     password,
     ocrRunner,
+    saveReceipts,
   });
 
   const headerSlice = text.slice(0, 600);
@@ -1056,6 +1149,7 @@ const parsePdfBuffer = async (
     return {
       mode: 'tabular',
       transactions: bestVectorResult.transactions,
+      extractedImages,
       diagnostics: {
         ...bestVectorResult.diagnostics,
         strategy: 'pdf_vector_table',
@@ -1090,6 +1184,7 @@ const parsePdfBuffer = async (
           return {
             mode: 'tabular',
             transactions: normalized.transactions,
+            extractedImages,
             diagnostics: {
               ...normalized.diagnostics,
               strategy: 'pdf_coordinate_table',
@@ -1115,6 +1210,7 @@ const parsePdfBuffer = async (
     mode: 'raw',
     rawTransactions: textParsed.rawTransactions,
     bankName: textParsed.bankName,
+    extractedImages,
     statementSource: ocrUsed ? 'pdf_ocr' : textParsed.statementSource,
     diagnostics: {
       strategy: ocrUsed ? 'pdf_ocr' : (textParsed.statementSource === 'bank_pdf' ? 'pdf_text_multiline' : 'pdf_app_parser'),
@@ -1132,6 +1228,7 @@ const parsePdfBuffer = async (
 module.exports = {
   isPasswordError,
   createPasswordRequiredError,
+  extractAndSaveImages,
   extractPdfArtifacts,
   collectCandidateTables,
   clusterPageItemsToRows,

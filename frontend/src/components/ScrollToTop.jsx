@@ -33,6 +33,14 @@ export default function ScrollToTop() {
       } catch {
         // Safe in environments where window.scrollTo is not implemented
       }
+      const contentWrapper = document.querySelector('.island-content-wrapper');
+      if (contentWrapper && contentWrapper.scrollTop !== 0) {
+        if (typeof contentWrapper.scrollTo === 'function') {
+          contentWrapper.scrollTo({ top: 0, behavior: 'instant' });
+        } else {
+          contentWrapper.scrollTop = 0;
+        }
+      }
       const mainEl = document.querySelector('.island-main');
       if (mainEl && mainEl.scrollTop !== 0) {
         mainEl.scrollTop = 0;

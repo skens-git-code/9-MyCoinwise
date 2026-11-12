@@ -53,10 +53,17 @@ const {
 } = require('./statement/excelParser');
 const {
   parsePdfBuffer,
+  parsePdfTextTransactions,
   reconstructCoordinateTable,
   collectCandidateTables,
   clusterPageItemsToRows,
 } = require('./statement/pdfExtractor');
+const {
+  recognizeImagesWithTesseract,
+} = require('./statement/ocrService');
+const {
+  saveReceiptImageBuffer,
+} = require('./statement/receiptStorage');
 
 const ISO_DAY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -158,6 +165,7 @@ const enrichRawPdfTransactions = ({
       counterparty_bank: extractCounterpartyDetails(tx.desc),
       external_reference: txnNumber,
       note: tx.desc.slice(0, 500),
+      receipt_url: tx.receipt_url || null,
       import_fingerprint: fingerprint,
       import_source: statementSource,
       confidence: (savedCategory || explicitCategory) ? 'high' : (categoryRule || incomeCategoryRule) ? 'medium' : 'low',
@@ -204,6 +212,7 @@ const parseStatement = async ({
   accountId = null,
   ocrRunner = null,
   bypassCache = false,
+  saveReceipts = true,
 }) => {
   const startedAt = Date.now();
   let buffer = null;
@@ -237,6 +246,15 @@ const parseStatement = async ({
   const isOle2Excel = buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from('D0CF11E0A1B11AE1', 'hex'));
   const isExcelExt = /\.xls[xm]?$/i.test(filename);
   const isExcel = !isPdf && (isZipExcel || isOle2Excel || isExcelExt);
+  const isImage =
+    !isPdf &&
+    !isExcel &&
+    (/\.(jpe?g|png|webp)$/i.test(filename) ||
+      buffer.subarray(0, 2).toString('hex') === 'ffd8' ||
+      buffer.subarray(0, 4).toString('hex') === '89504e47' ||
+      (buffer.length >= 12 &&
+        buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+        buffer.subarray(8, 12).toString('ascii') === 'WEBP'));
 
   const isUsBankOrFile = /chase|bofa|bank\s*of\s*america|wells\s*fargo|wells|amex|american\s*express|citi|citibank/i.test(filename);
   const preferredFormat = (dateFormat ? String(dateFormat).toUpperCase() : null) || (isUsBankOrFile ? 'MDY' : 'DMY');
@@ -297,6 +315,7 @@ const parseStatement = async ({
         merchantCategories,
         accountId,
         ocrRunner,
+        saveReceipts,
       });
       defaultBank = pdfResult.bankName || defaultBank;
       diagnostics = pdfResult.diagnostics || {};
@@ -312,9 +331,17 @@ const parseStatement = async ({
           accountId,
         });
       }
+
+      if (Array.isArray(pdfResult.extractedImages) && pdfResult.extractedImages.length > 0) {
+        const primaryReceiptUrl = pdfResult.extractedImages[0];
+        parsedList = parsedList.map((tx) => ({
+          ...tx,
+          receipt_url: tx.receipt_url || primaryReceiptUrl,
+        }));
+      }
     } else if (isExcel) {
       detectedFormat = 'Excel';
-      const { rows, engine } = await parseExcelWorkbook(buffer, filename);
+      const { rows, rowNumbers = [], extractedImages = [], engine } = await parseExcelWorkbook(buffer, filename, { saveReceipts });
       const normalized = normalizeTabularRows({
         rows,
         defaultBank,
@@ -324,10 +351,67 @@ const parseStatement = async ({
         importSource: 'excel_statement',
       });
       parsedList = normalized.transactions;
+      if (extractedImages.length > 0) {
+        parsedList = parsedList.map((tx, idx) => {
+          const matrixIdxMatch = String(tx.id || '').match(/^row-(\d+)$/);
+          const matrixIdx = matrixIdxMatch ? Number(matrixIdxMatch[1]) : null;
+          const actualExcelRow =
+            matrixIdx !== null && rowNumbers[matrixIdx]
+              ? rowNumbers[matrixIdx]
+              : (normalized.diagnostics.headerRowIndex || 0) + 2 + idx;
+          const matchedImage = extractedImages.find((img) => img.cell === actualExcelRow);
+          return {
+            ...tx,
+            receipt_url: matchedImage ? matchedImage.url : tx.receipt_url || null,
+          };
+        });
+      }
       diagnostics = {
         ...normalized.diagnostics,
         strategy: engine,
       };
+    } else if (isImage) {
+      detectedFormat = 'Image (OCR)';
+      const ocrExec = ocrRunner || recognizeImagesWithTesseract;
+      const ocrResult = await ocrExec([buffer], { lang: 'eng', timeoutMs: 30000 });
+
+      if (!ocrResult || !ocrResult.text || !String(ocrResult.text).trim()) {
+        throw new Error(
+          'Could not extract text from this image. Please ensure the image is clear, well-lit, and contains readable text.'
+        );
+      }
+
+      const receiptUrl = saveReceipts
+        ? await saveReceiptImageBuffer(buffer, { minBytes: 100 })
+        : null;
+
+      const textParsed = parsePdfTextTransactions(String(ocrResult.text), filename, { preferredFormat });
+      defaultBank = textParsed.bankName || detectBankName(filename, null) || 'Image Receipt';
+      parsedList = enrichRawPdfTransactions({
+        rawTransactions: (textParsed.rawTransactions || []).map((tx) => ({
+          ...tx,
+          receipt_url: receiptUrl || null,
+        })),
+        defaultBank,
+        statementSource: 'image_ocr',
+        merchantCategories,
+        accountId,
+      });
+
+      diagnostics = {
+        strategy: 'image_ocr',
+        ocrUsed: true,
+        rowsTotal: parsedList.length,
+        rowsParsed: parsedList.length,
+        rowsSkipped: 0,
+        warnings: [],
+      };
+
+      if (parsedList.length === 0) {
+        throw new Error(
+          'We read text from this image, but could not find valid transaction details (Date, Amount, Merchant).'
+        );
+      }
     } else {
       detectedFormat = 'CSV';
       const csvResult = await parseCsvAsync(buffer);
