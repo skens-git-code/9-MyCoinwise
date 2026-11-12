@@ -339,6 +339,16 @@ async function runTests() {
       assert.strictEqual(sanitizeReceiptUrl('javascript:alert(1)'), null);
       assert.strictEqual(sanitizeReceiptUrl('/api/uploads/receipts/../../secret.txt'), null);
       assert.strictEqual(sanitizeReceiptUrl('/api/uploads/receipts/receipt-abc.jpg'), '/api/uploads/receipts/receipt-abc.jpg');
+
+      // 10. Regression guard: extractAndSaveImages must time out cleanly if pdf-parse getImage() stalls
+      const { extractAndSaveImages } = require('../services/statement/pdfExtractor');
+      const hangingParser = {
+        getImage: () => new Promise(() => {}),
+      };
+      const tStart = Date.now();
+      const timedOutImages = await extractAndSaveImages(hangingParser, { timeoutMs: 80 });
+      assert.deepStrictEqual(timedOutImages, []);
+      assert(Date.now() - tStart < 1500, 'extractAndSaveImages should not hang when getImage stalls');
     } finally {
       for (const f of createdReceiptFiles) {
         await fs.unlink(f).catch(() => {});

@@ -61,6 +61,20 @@ const toPdfUint8Array = (buffer) =>
 
 const PAGE_CONCURRENCY = 4;
 
+const withTimeout = (promise, ms, label = 'PDF operation') => {
+  let timer = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`${label} timed out after ${ms}ms`);
+      err.code = 'PDF_STEP_TIMEOUT';
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([Promise.resolve(promise), timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+};
+
 /**
  * Checks whether a password-related error was thrown by pdf-parse or pdfjs-dist.
  */
@@ -447,16 +461,20 @@ const extractRawTextWithPdfJs = async (buffer, password = null) => {
   }
 };
 
-const extractAndSaveImages = async (parser) => {
+const extractAndSaveImages = async (parser, { timeoutMs = 8000 } = {}) => {
   const extractedImages = [];
   if (!parser || typeof parser.getImage !== 'function') return extractedImages;
   try {
-    const imgResult = await parser.getImage({
-      first: 5,
-      imageBuffer: true,
-      imageDataUrl: false,
-      imageThreshold: 80,
-    });
+    const imgResult = await withTimeout(
+      parser.getImage({
+        first: 5,
+        imageBuffer: true,
+        imageDataUrl: false,
+        imageThreshold: 80,
+      }),
+      timeoutMs,
+      'PDF image extraction'
+    );
     for (const page of imgResult?.pages || []) {
       for (const img of page?.images || []) {
         if (extractedImages.length >= MAX_SAVED_IMAGES_PER_STATEMENT) return extractedImages;
@@ -519,17 +537,22 @@ const extractPdfArtifacts = async (
       });
 
       try {
-        // Run getText then getTable sequentially on the same PDFParse instance
-        // because pdfjs-dist worker transport rejects concurrent load/transfer calls.
+        // Run getText -> getImage -> getTable sequentially on the same PDFParse instance.
+        // IMPORTANT: getImage MUST run before getTable because pdf-parse v2.4.5's getTable()
+        // mutates internal pdfjs state and causes a subsequent getImage() call to hang forever.
         let textRes = null;
         try {
-          textRes = await parser.getText({
-            cellSeparator: '\t',
-            cellThreshold: 7,
-            lineEnforce: true,
-            lineThreshold: 4.6,
-            pageJoiner: '',
-          });
+          textRes = await withTimeout(
+            parser.getText({
+              cellSeparator: '\t',
+              cellThreshold: 7,
+              lineEnforce: true,
+              lineThreshold: 4.6,
+              pageJoiner: '',
+            }),
+            20000,
+            'PDF text extraction'
+          );
         } catch (textErr) {
           if (isPasswordError(textErr)) throw textErr;
           logger.warn('pdf-parse getText failed, falling back to pdfjs-dist raw text extraction', { err: textErr.message });
@@ -540,16 +563,25 @@ const extractPdfArtifacts = async (
         }
 
         if (textRes) {
+          text = textRes?.text || '';
+          pageCount = textRes?.total || 0;
+        }
+
+        // Extract embedded receipt images BEFORE getTable() to avoid pdf-parse v2 hang
+        if (saveReceipts) {
+          extractedImages = await extractAndSaveImages(parser, { timeoutMs: 8000 });
+        }
+
+        if (textRes) {
           const tableRes =
             typeof parser.getTable === 'function'
-              ? await parser.getTable().catch((tblErr) => {
+              ? await withTimeout(parser.getTable(), 12000, 'PDF vector table extraction').catch((tblErr) => {
                   logger.warn('PDF vector table extraction warning', { err: tblErr.message });
                   return null;
                 })
               : null;
 
-          text = textRes?.text || '';
-          pageCount = textRes?.total || tableRes?.total || 0;
+          pageCount = pageCount || tableRes?.total || 0;
           tableCandidates = collectCandidateTables(tableRes);
         }
 
@@ -562,13 +594,9 @@ const extractPdfArtifacts = async (
             ocrUsed = true;
           }
         }
-
-        if (saveReceipts) {
-          extractedImages = await extractAndSaveImages(parser);
-        }
       } finally {
         if (typeof parser.destroy === 'function') {
-          await parser.destroy();
+          await withTimeout(parser.destroy(), 2000, 'PDF parser destroy').catch(() => {});
         }
       }
     } else {
