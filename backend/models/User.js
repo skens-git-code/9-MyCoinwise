@@ -337,6 +337,57 @@ const userSchema = new mongoose.Schema({
       animationsEnabled: true,
       showWeekNumbers: false
     }
+  },
+
+  // ── Linked bank accounts (masked account numbers only) ──
+  bank_accounts: {
+    type: [
+      {
+        id: { type: String, trim: true, maxlength: 80 },
+        bankName: { type: String, trim: true, maxlength: 120 },
+        accountNumber: { type: String, trim: true, maxlength: 32 },
+        ifsc: { type: String, trim: true, uppercase: true, maxlength: 11 },
+        accountHolder: { type: String, trim: true, maxlength: 100 },
+        accountType: { type: String, trim: true, maxlength: 30, default: 'Savings' },
+        verified: { type: Boolean, default: true },
+      },
+    ],
+    default: [],
+  },
+
+  // ── Payment methods (PCI-safe: masked last-4 cards & UPI IDs only, never CVV/full PAN) ──
+  payment_methods: {
+    type: Object,
+    default: {
+      cards: [],
+      upi: [],
+    },
+  },
+
+  // ── Recurring auto-pay mandates ──
+  auto_pays: {
+    type: [
+      {
+        id: { type: String, trim: true, maxlength: 80 },
+        name: { type: String, trim: true, maxlength: 120 },
+        amount: { type: Number, min: 0, max: 999999999.99 },
+        nextDate: { type: String, trim: true, maxlength: 32 },
+        enabled: { type: Boolean, default: true },
+        color: { type: String, trim: true, maxlength: 64 },
+      },
+    ],
+    default: [],
+  },
+
+  // ── Connected third-party app integrations ──
+  integrations: {
+    type: Object,
+    default: {
+      googleDrive: false,
+      appleICloud: false,
+      telegramAlerts: false,
+      whatsappAlerts: false,
+    },
   }
 
 }, {

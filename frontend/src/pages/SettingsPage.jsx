@@ -33,6 +33,7 @@ import {
   FileText, Trash2, Loader, Key, Shield, Eye, Mail, Check,
   Lock, LogOut, RefreshCw, AlertTriangle, EyeOff, Search,
   Monitor, Calendar, Activity, Upload, Clock, Cookie, FileCheck, ArrowRight,
+  Landmark, CreditCard, Link, ChevronDown,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { CURRENCIES, AVATAR_COLORS, api } from '../services/api';
@@ -51,7 +52,102 @@ const EmojiPicker = lazy(() => import('emoji-picker-react'));
  * ============================================================ */
 
 // ── Valid URL tab ids (used to resolve ?tab= param and defaults) ──
-const TAB_IDS = ['profile', 'preferences', 'language', 'appearance', 'notifications', 'security', 'users', 'data', 'advanced'];
+const TAB_IDS = [
+  'profile', 'banking', 'autopay', 'preferences', 'language',
+  'appearance', 'notifications', 'security', 'users', 'integrations', 'data', 'advanced',
+];
+
+// ── Comprehensive list of Indian & international banks ──
+const INDIAN_BANKS = [
+  'State Bank of India (SBI)',
+  'HDFC Bank',
+  'ICICI Bank',
+  'Axis Bank',
+  'Kotak Mahindra Bank',
+  'Punjab National Bank (PNB)',
+  'Bank of Baroda',
+  'Canara Bank',
+  'Union Bank of India',
+  'IDFC FIRST Bank',
+  'IndusInd Bank',
+  'Yes Bank',
+  'Federal Bank',
+  'Indian Bank',
+  'Bank of India',
+  'Central Bank of India',
+  'Indian Overseas Bank (IOB)',
+  'UCO Bank',
+  'Punjab & Sind Bank',
+  'Bandhan Bank',
+  'RBL Bank',
+  'IDBI Bank',
+  'South Indian Bank',
+  'Karur Vysya Bank',
+  'City Union Bank',
+  'Karnataka Bank',
+  'Tamilnad Mercantile Bank',
+  'AU Small Finance Bank',
+  'Equitas Small Finance Bank',
+  'Ujjivan Small Finance Bank',
+  'Paytm Payments Bank',
+  'Airtel Payments Bank',
+  'Jio Payments Bank',
+  'India Post Payments Bank',
+  'Standard Chartered Bank',
+  'HSBC India',
+  'Citibank',
+  'DBS Bank India',
+  'Deutsche Bank',
+  'American Express',
+];
+
+const DEFAULT_PAYMENT_METHODS = {
+  cards: [],
+  upi: [],
+};
+
+const DEFAULT_INTEGRATIONS = {
+  googleDrive: false,
+  appleICloud: false,
+  telegramAlerts: false,
+  whatsappAlerts: false,
+};
+
+const isValidLuhn = (digits) => {
+  if (!/^\d{13,19}$/.test(digits)) return false;
+  let sum = 0;
+  let doubleNext = false;
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let n = parseInt(digits[i], 10);
+    if (doubleNext) {
+      n *= 2;
+      if (n > 9) n -= 9;
+    }
+    sum += n;
+    doubleNext = !doubleNext;
+  }
+  return sum % 10 === 0;
+};
+
+const isFutureCardExpiry = (expiry) => {
+  const match = String(expiry || '').trim().match(/^(\d{2})\/(\d{2})$/);
+  if (!match) return false;
+  const month = parseInt(match[1], 10);
+  const year = 2000 + parseInt(match[2], 10);
+  if (month < 1 || month > 12) return false;
+  const now = new Date();
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const expMonthStart = new Date(year, month - 1, 1);
+  return expMonthStart >= currentMonthStart;
+};
+
+const detectCardBrand = (digits) => {
+  if (/^4/.test(digits)) return 'Visa';
+  if (/^(5[1-5]|2[2-7])/.test(digits)) return 'Mastercard';
+  if (/^(60|65|81|82|508)/.test(digits)) return 'RuPay';
+  if (/^3[47]/.test(digits)) return 'American Express';
+  return 'Card';
+};
 
 // ── Default notification preferences ──
 const DEFAULT_NOTIFICATION_PREFS = {
@@ -134,6 +230,16 @@ const buildResetPayload = (user) => {
     advancedPrefs: {
       ...DEFAULT_ADVANCED_PREFS,
       ...(user?.advanced_prefs || {}),
+    },
+    bankAccounts: Array.isArray(user?.bank_accounts) ? user.bank_accounts : [],
+    paymentMethods: {
+      cards: Array.isArray(user?.payment_methods?.cards) ? user.payment_methods.cards : [],
+      upi: Array.isArray(user?.payment_methods?.upi) ? user.payment_methods.upi : [],
+    },
+    autoPays: Array.isArray(user?.auto_pays) ? user.auto_pays : [],
+    integrations: {
+      ...DEFAULT_INTEGRATIONS,
+      ...(user?.integrations || {}),
     },
   };
 };
@@ -2730,6 +2836,837 @@ const CreateProfileModal = ({ isOpen, onClose, onConfirm, isLoading, defaultCurr
 };
 
 /* ============================================================
+ * Banking & Payments Tab (Indian Banks, PCI-safe Cards, UPI)
+ * ============================================================ */
+const BankingTab = React.memo(({ formState, dispatch, showMessage, handleSave, saving, isDirty }) => {
+  const [showAddBank, setShowAddBank] = useState(false);
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [showAddUpi, setShowAddUpi] = useState(false);
+
+  const [bankSearch, setBankSearch] = useState('');
+  const [bankDropdownOpen, setBankDropdownOpen] = useState(false);
+  const bankDropdownRef = useRef(null);
+
+  const [isSavingBank, setIsSavingBank] = useState(false);
+  const [isSavingCard, setIsSavingCard] = useState(false);
+  const [isSavingUpi, setIsSavingUpi] = useState(false);
+
+  const [bankForm, setBankForm] = useState({
+    bankName: '',
+    accountNumber: '',
+    ifsc: '',
+    accountHolder: '',
+    accountType: 'Savings',
+  });
+  const [cardForm, setCardForm] = useState({
+    cardName: '',
+    cardNumber: '',
+    expiry: '',
+    cvv: '',
+  });
+  const [upiForm, setUpiForm] = useState({
+    upiId: '',
+    provider: 'Google Pay',
+  });
+
+  useEffect(() => {
+    const handleOutside = (e) => {
+      if (bankDropdownRef.current && !bankDropdownRef.current.contains(e.target)) {
+        setBankDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  const filteredBanks = useMemo(() => {
+    const q = bankSearch.trim().toLowerCase();
+    if (!q) return INDIAN_BANKS;
+    return INDIAN_BANKS.filter((bank) => bank.toLowerCase().includes(q));
+  }, [bankSearch]);
+
+  const handleAddBank = (e) => {
+    e.preventDefault();
+    if (isSavingBank) return;
+
+    const bankName = bankForm.bankName.trim();
+    const accountHolder = bankForm.accountHolder.trim();
+    const cleanAcct = bankForm.accountNumber.replace(/\s+/g, '');
+    const ifsc = bankForm.ifsc.trim().toUpperCase();
+
+    if (!bankName || !cleanAcct || !ifsc || !accountHolder) {
+      showMessage('error', 'Bank Name, Account Holder, Account Number, and IFSC are required.');
+      return;
+    }
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) {
+      showMessage('error', 'Invalid IFSC code format (e.g., HDFC0001234).');
+      return;
+    }
+    if (!/^\d{8,18}$/.test(cleanAcct)) {
+      showMessage('error', 'Account number must be between 8 and 18 digits.');
+      return;
+    }
+
+    setIsSavingBank(true);
+    dispatch({
+      type: 'ADD_BANK',
+      value: {
+        id: `bank-${Date.now()}`,
+        bankName,
+        accountHolder,
+        accountNumber: `•••• ${cleanAcct.slice(-4)}`,
+        ifsc,
+        accountType: bankForm.accountType,
+        verified: true,
+      },
+    });
+    setBankForm({ bankName: '', accountNumber: '', ifsc: '', accountHolder: '', accountType: 'Savings' });
+    setBankSearch('');
+    setBankDropdownOpen(false);
+    setShowAddBank(false);
+    showMessage('success', 'Bank account added. Click Save Changes to persist.');
+    setTimeout(() => setIsSavingBank(false), 300);
+  };
+
+  const handleAddCard = (e) => {
+    e.preventDefault();
+    if (isSavingCard) return;
+
+    const cardName = cardForm.cardName.trim();
+    const cleanNum = cardForm.cardNumber.replace(/\D/g, '');
+    const expiry = cardForm.expiry.trim();
+
+    if (!cardName || !cleanNum || !expiry) {
+      showMessage('error', 'Cardholder name, card number, and expiry are required.');
+      return;
+    }
+    if (!isValidLuhn(cleanNum)) {
+      showMessage('error', 'Invalid card number. Please check the digits and try again.');
+      return;
+    }
+    if (!isFutureCardExpiry(expiry)) {
+      showMessage('error', 'Please enter a valid future expiry date (MM/YY).');
+      return;
+    }
+
+    setIsSavingCard(true);
+    // PCI-DSS: Never store CVV or full 16-digit PAN in state or backend
+    dispatch({
+      type: 'ADD_PAYMENT_METHOD',
+      methodType: 'cards',
+      value: {
+        id: `card-${Date.now()}`,
+        cardName,
+        cardNumber: `•••• •••• •••• ${cleanNum.slice(-4)}`,
+        expiry,
+        brand: detectCardBrand(cleanNum),
+      },
+    });
+    setCardForm({ cardName: '', cardNumber: '', expiry: '', cvv: '' });
+    setShowAddCard(false);
+    showMessage('success', 'Card added securely (last 4 digits only). Click Save Changes to persist.');
+    setTimeout(() => setIsSavingCard(false), 300);
+  };
+
+  const handleAddUpi = (e) => {
+    e.preventDefault();
+    if (isSavingUpi) return;
+
+    const upiId = upiForm.upiId.trim();
+    if (!/^[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}$/.test(upiId)) {
+      showMessage('error', 'Invalid UPI ID format (e.g., name@okhdfcbank).');
+      return;
+    }
+
+    setIsSavingUpi(true);
+    dispatch({
+      type: 'ADD_PAYMENT_METHOD',
+      methodType: 'upi',
+      value: {
+        id: `upi-${Date.now()}`,
+        upiId,
+        provider: upiForm.provider,
+        verified: true,
+      },
+    });
+    setUpiForm({ upiId: '', provider: 'Google Pay' });
+    setShowAddUpi(false);
+    showMessage('success', 'UPI ID added. Click Save Changes to persist.');
+    setTimeout(() => setIsSavingUpi(false), 300);
+  };
+
+  const bankAccounts = formState.bankAccounts || [];
+  const cards = formState.paymentMethods?.cards || [];
+  const upis = formState.paymentMethods?.upi || [];
+
+  return (
+    <>
+      <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
+        <div
+          className="idp-hero-icon"
+          style={{
+            width: 64, height: 64, marginBottom: 16,
+            background: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)',
+          }}
+          aria-hidden
+        >
+          <Landmark size={28} />
+        </div>
+        <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+          Banking &amp; Payments
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+          Securely manage your Indian bank accounts, masked cards, and UPI IDs.
+        </p>
+      </div>
+
+      <div className="idp-body">
+        {/* ── Linked Bank Accounts Section ── */}
+        <div className="idp-section" style={{ background: 'var(--glass-2)', padding: 24, borderRadius: 20, border: '1px solid var(--glass-border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+            <h4 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>Linked Bank Accounts</h4>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setShowAddBank((v) => !v)}
+              style={{ padding: '7px 14px', fontSize: '0.82rem' }}
+            >
+              <Plus size={14} /> {showAddBank ? 'Close Form' : 'Add Bank Account'}
+            </button>
+          </div>
+
+          {showAddBank && (
+            <form onSubmit={handleAddBank} className="add-form-container glass">
+              <div className="form-field bank-search-dropdown" ref={bankDropdownRef}>
+                <label htmlFor="bank-search-input">Bank Name (Indian &amp; Global Banks)</label>
+                <div className="bank-search-input-wrap">
+                  <Search size={15} className="bank-search-icon" aria-hidden />
+                  <input
+                    id="bank-search-input"
+                    type="text"
+                    className="searchable-bank-input"
+                    value={bankSearch}
+                    onFocus={() => setBankDropdownOpen(true)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBankSearch(val);
+                      setBankForm((prev) => ({ ...prev, bankName: val }));
+                      setBankDropdownOpen(true);
+                    }}
+                    placeholder="Search HDFC, SBI, ICICI, Axis, Kotak..."
+                    autoComplete="off"
+                    aria-expanded={bankDropdownOpen}
+                    aria-controls="indian-banks-listbox"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="bank-dropdown-chevron"
+                    onClick={() => setBankDropdownOpen((o) => !o)}
+                    aria-label="Toggle bank list"
+                  >
+                    <ChevronDown size={15} />
+                  </button>
+                </div>
+
+                {bankDropdownOpen && (
+                  <div id="indian-banks-listbox" role="listbox" className="bank-dropdown-list glass">
+                    {filteredBanks.length === 0 ? (
+                      <div className="bank-dropdown-empty">
+                        No preset match — &ldquo;{bankSearch}&rdquo; will be used as custom bank name.
+                      </div>
+                    ) : (
+                      filteredBanks.map((bank) => (
+                        <button
+                          key={bank}
+                          type="button"
+                          role="option"
+                          aria-selected={bankForm.bankName === bank}
+                          className={`bank-dropdown-item ${bankForm.bankName === bank ? 'is-selected' : ''}`}
+                          onClick={() => {
+                            setBankForm((prev) => ({ ...prev, bankName: bank }));
+                            setBankSearch(bank);
+                            setBankDropdownOpen(false);
+                          }}
+                        >
+                          <Landmark size={14} />
+                          <span>{bank}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="form-field">
+                <label htmlFor="bank-holder-input">Account Holder Name</label>
+                <input
+                  id="bank-holder-input"
+                  type="text"
+                  value={bankForm.accountHolder}
+                  onChange={(e) => setBankForm((prev) => ({ ...prev, accountHolder: e.target.value }))}
+                  placeholder="As per bank records"
+                  required
+                />
+              </div>
+
+              <div className="banking-grid">
+                <div className="form-field">
+                  <label htmlFor="bank-acct-input">Account Number</label>
+                  <input
+                    id="bank-acct-input"
+                    type="password"
+                    inputMode="numeric"
+                    value={bankForm.accountNumber}
+                    onChange={(e) => setBankForm((prev) => ({ ...prev, accountNumber: e.target.value.replace(/\D/g, '').slice(0, 18) }))}
+                    placeholder="8–18 digits (masked on save)"
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label htmlFor="bank-ifsc-input">IFSC Code</label>
+                  <input
+                    id="bank-ifsc-input"
+                    type="text"
+                    value={bankForm.ifsc}
+                    onChange={(e) => setBankForm((prev) => ({ ...prev, ifsc: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11) }))}
+                    placeholder="e.g. HDFC0001234"
+                    maxLength={11}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-field">
+                <label htmlFor="bank-type-select">Account Type</label>
+                <select
+                  id="bank-type-select"
+                  value={bankForm.accountType}
+                  onChange={(e) => setBankForm((prev) => ({ ...prev, accountType: e.target.value }))}
+                >
+                  <option value="Savings">Savings</option>
+                  <option value="Current">Current</option>
+                  <option value="Salary">Salary</option>
+                  <option value="NRE/NRO">NRE/NRO</option>
+                </select>
+              </div>
+
+              <div className="form-actions" style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowAddBank(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" disabled={isSavingBank}>
+                  {isSavingBank ? 'Adding...' : 'Add Account'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {bankAccounts.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: '18px 0' }}>
+                No bank accounts linked yet.
+              </p>
+            ) : (
+              bankAccounts.map((acc) => (
+                <div key={acc.id} className="bank-account-card">
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <Landmark size={18} style={{ color: 'var(--brand-primary)' }} />
+                      <strong>{acc.bankName}</strong>
+                      <span className="bank-verified-badge">Verified · {acc.accountType || 'Savings'}</span>
+                    </div>
+                    <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+                      {acc.accountHolder} · {acc.accountNumber} · IFSC: {acc.ifsc}
+                    </p>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => dispatch({ type: 'REMOVE_BANK', id: acc.id })}
+                      style={{ color: 'var(--danger)' }}
+                      aria-label={`Remove ${acc.bankName}`}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* ── Cards & UPI Section ── */}
+        <div className="idp-section" style={{ background: 'var(--glass-2)', padding: 24, borderRadius: 20, border: '1px solid var(--glass-border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+            <h4 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>Cards &amp; UPI</h4>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => { setShowAddCard((v) => !v); setShowAddUpi(false); }}
+                style={{ padding: '7px 14px', fontSize: '0.82rem' }}
+              >
+                <CreditCard size={14} /> Add Card
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => { setShowAddUpi((v) => !v); setShowAddCard(false); }}
+                style={{ padding: '7px 14px', fontSize: '0.82rem' }}
+              >
+                <Smartphone size={14} /> Add UPI ID
+              </button>
+            </div>
+          </div>
+
+          {showAddCard && (
+            <form onSubmit={handleAddCard} className="add-form-container glass">
+              <div className="form-field">
+                <label htmlFor="card-holder-input">Cardholder Name</label>
+                <input
+                  id="card-holder-input"
+                  type="text"
+                  value={cardForm.cardName}
+                  onChange={(e) => setCardForm((prev) => ({ ...prev, cardName: e.target.value }))}
+                  placeholder="Name on card"
+                  required
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="card-number-input">Card Number (only last 4 digits are saved)</label>
+                <input
+                  id="card-number-input"
+                  type="text"
+                  inputMode="numeric"
+                  value={cardForm.cardNumber}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 16);
+                    const formatted = digits.replace(/(.{4})/g, '$1 ').trim();
+                    setCardForm((prev) => ({ ...prev, cardNumber: formatted }));
+                  }}
+                  placeholder="0000 0000 0000 0000"
+                  maxLength={19}
+                  required
+                />
+              </div>
+              <div className="banking-grid">
+                <div className="form-field">
+                  <label htmlFor="card-expiry-input">Expiry (MM/YY)</label>
+                  <input
+                    id="card-expiry-input"
+                    type="text"
+                    inputMode="numeric"
+                    value={cardForm.expiry}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      const formatted = raw.length > 2 ? `${raw.slice(0, 2)}/${raw.slice(2)}` : raw;
+                      setCardForm((prev) => ({ ...prev, expiry: formatted }));
+                    }}
+                    placeholder="MM/YY"
+                    maxLength={5}
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label htmlFor="card-cvv-input">CVV (verification only, never stored)</label>
+                  <input
+                    id="card-cvv-input"
+                    type="password"
+                    inputMode="numeric"
+                    value={cardForm.cvv}
+                    onChange={(e) => setCardForm((prev) => ({ ...prev, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                    placeholder="•••"
+                    maxLength={4}
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+              <div className="form-actions" style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowAddCard(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={isSavingCard}>
+                  {isSavingCard ? 'Saving...' : 'Save Card'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {showAddUpi && (
+            <form onSubmit={handleAddUpi} className="add-form-container glass">
+              <div className="banking-grid">
+                <div className="form-field">
+                  <label htmlFor="upi-id-input">UPI ID</label>
+                  <input
+                    id="upi-id-input"
+                    type="text"
+                    value={upiForm.upiId}
+                    onChange={(e) => setUpiForm((prev) => ({ ...prev, upiId: e.target.value.trim() }))}
+                    placeholder="name@okhdfcbank"
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label htmlFor="upi-provider-select">UPI App / Provider</label>
+                  <select
+                    id="upi-provider-select"
+                    value={upiForm.provider}
+                    onChange={(e) => setUpiForm((prev) => ({ ...prev, provider: e.target.value }))}
+                  >
+                    <option value="Google Pay">Google Pay</option>
+                    <option value="PhonePe">PhonePe</option>
+                    <option value="Paytm">Paytm</option>
+                    <option value="BHIM">BHIM</option>
+                    <option value="Amazon Pay">Amazon Pay</option>
+                    <option value="CRED">CRED</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-actions" style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowAddUpi(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={isSavingUpi}>
+                  {isSavingUpi ? 'Saving...' : 'Save UPI ID'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {cards.length === 0 && upis.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: '14px 0' }}>
+                No cards or UPI IDs saved yet.
+              </p>
+            ) : (
+              <>
+                {cards.map((card) => (
+                  <div key={card.id} className="payment-method-card">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <CreditCard size={22} style={{ color: '#0ea5e9', flexShrink: 0 }} />
+                      <div>
+                        <strong style={{ fontSize: '0.95rem' }}>
+                          {card.brand} ending in {card.cardNumber.slice(-4)}
+                        </strong>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          {card.cardName} · Expires {card.expiry}
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => dispatch({ type: 'REMOVE_PAYMENT_METHOD', methodType: 'cards', id: card.id })}
+                        style={{ color: 'var(--danger)' }}
+                        aria-label={`Remove card ending in ${card.cardNumber.slice(-4)}`}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {upis.map((upi) => (
+                  <div key={upi.id} className="payment-method-card">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <Smartphone size={22} style={{ color: '#8b5cf6', flexShrink: 0 }} />
+                      <div>
+                        <strong style={{ fontSize: '0.95rem' }}>{upi.upiId}</strong>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          {upi.provider}
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => dispatch({ type: 'REMOVE_PAYMENT_METHOD', methodType: 'upi', id: upi.id })}
+                        style={{ color: 'var(--danger)' }}
+                        aria-label={`Remove UPI ${upi.upiId}`}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {handleSave && (
+        <div className="idp-tab-save-footer">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={saving || !isDirty}
+          >
+            {saving ? <Loader size={16} className="spin" /> : <Save size={16} />}
+            <span>{saving ? 'Saving...' : 'Save Banking & Payments'}</span>
+          </button>
+        </div>
+      )}
+    </>
+  );
+});
+BankingTab.displayName = 'BankingTab';
+
+/* ============================================================
+ * Auto-Pay Management Tab
+ * ============================================================ */
+const AutoPayTab = React.memo(({ formState, dispatch, showMessage, handleSave, saving, isDirty }) => {
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [mandateForm, setMandateForm] = useState({ name: '', amount: '', nextDate: '' });
+
+  const handleAddMandate = (e) => {
+    e.preventDefault();
+    const name = mandateForm.name.trim();
+    const amount = Number(mandateForm.amount);
+    if (!name || !Number.isFinite(amount) || amount <= 0) {
+      showMessage('error', 'Please enter a valid mandate name and positive amount.');
+      return;
+    }
+    dispatch({
+      type: 'ADD_AUTO_PAY',
+      value: {
+        id: `ap-${Date.now()}`,
+        name,
+        amount: Number(amount.toFixed(2)),
+        nextDate: mandateForm.nextDate || new Date().toISOString().slice(0, 10),
+        enabled: true,
+        color: 'rgba(245,158,11,0.12)',
+      },
+    });
+    setMandateForm({ name: '', amount: '', nextDate: '' });
+    setShowAddForm(false);
+    showMessage('success', 'Auto-pay mandate added. Click Save Changes to persist.');
+  };
+
+  const autoPays = formState.autoPays || [];
+
+  return (
+    <>
+      <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
+        <div
+          className="idp-hero-icon"
+          style={{
+            width: 64, height: 64, marginBottom: 16,
+            background: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)',
+          }}
+          aria-hidden
+        >
+          <Zap size={28} />
+        </div>
+        <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+          Auto-Pay Management
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+          Control recurring mandates, UPI AutoPay, and scheduled subscription debits.
+        </p>
+      </div>
+
+      <div className="idp-body">
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setShowAddForm((v) => !v)}
+            style={{ padding: '7px 14px', fontSize: '0.82rem' }}
+          >
+            <Plus size={14} /> {showAddForm ? 'Close' : 'Add Auto-Pay Mandate'}
+          </button>
+        </div>
+
+        {showAddForm && (
+          <form onSubmit={handleAddMandate} className="add-form-container glass">
+            <div className="banking-grid">
+              <div className="form-field">
+                <label htmlFor="autopay-name">Mandate / Merchant Name</label>
+                <input
+                  id="autopay-name"
+                  type="text"
+                  value={mandateForm.name}
+                  onChange={(e) => setMandateForm((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="e.g. JioFiber, Netflix, SIP"
+                  required
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="autopay-amount">Amount</label>
+                <input
+                  id="autopay-amount"
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  value={mandateForm.amount}
+                  onChange={(e) => setMandateForm((p) => ({ ...p, amount: e.target.value }))}
+                  placeholder="999"
+                  required
+                />
+              </div>
+            </div>
+            <div className="form-field">
+              <label htmlFor="autopay-date">Next Payment Date</label>
+              <input
+                id="autopay-date"
+                type="date"
+                value={mandateForm.nextDate}
+                onChange={(e) => setMandateForm((p) => ({ ...p, nextDate: e.target.value }))}
+              />
+            </div>
+            <div className="form-actions" style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowAddForm(false)}>Cancel</button>
+              <button type="submit" className="btn-primary">Add Mandate</button>
+            </div>
+          </form>
+        )}
+
+        <div className="settings-toggle-group">
+          {autoPays.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: '18px 0' }}>
+              No active auto-pay mandates configured yet.
+            </p>
+          ) : (
+            autoPays.map((ap) => (
+              <div key={ap.id} className={`settings-toggle-card ${ap.enabled ? 'is-active' : ''}`}>
+                <div className="stc-main">
+                  <div className="stc-icon-badge" style={{ background: ap.color || 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>
+                    <RefreshCw size={18} />
+                  </div>
+                  <div className="stc-text">
+                    <span className="stc-label">{ap.name}</span>
+                    <span className="stc-desc">
+                      Next payment: {ap.nextDate || 'Scheduled'} · Amount: ₹{ap.amount}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(ap.enabled)}
+                      onChange={(e) => dispatch({ type: 'TOGGLE_AUTO_PAY', id: ap.id, enabled: e.target.checked })}
+                      aria-label={`Enable ${ap.name}`}
+                    />
+                    <span className="slider" />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => dispatch({ type: 'REMOVE_AUTO_PAY', id: ap.id })}
+                    style={{ color: 'var(--danger)', padding: '6px 10px' }}
+                    aria-label={`Remove ${ap.name}`}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {handleSave && (
+        <div className="idp-tab-save-footer">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={saving || !isDirty}
+          >
+            {saving ? <Loader size={16} className="spin" /> : <Save size={16} />}
+            <span>{saving ? 'Saving...' : 'Save Auto-Pay'}</span>
+          </button>
+        </div>
+      )}
+    </>
+  );
+});
+AutoPayTab.displayName = 'AutoPayTab';
+
+/* ============================================================
+ * Connected Apps & Integrations Tab
+ * ============================================================ */
+const IntegrationsTab = React.memo(({ formState, dispatch, handleSave, saving, isDirty }) => {
+  const integrations = [
+    { key: 'googleDrive', name: 'Google Drive Backup', desc: 'Automatically back up your financial reports to Google Drive.', icon: Database },
+    { key: 'appleICloud', name: 'iCloud Sync', desc: 'Sync your budgets and transactions across Apple devices.', icon: Upload },
+    { key: 'telegramAlerts', name: 'Telegram Alerts', desc: 'Receive instant transaction alerts via Telegram.', icon: Bell },
+    { key: 'whatsappAlerts', name: 'WhatsApp Alerts', desc: 'Get weekly budget summaries on WhatsApp.', icon: Smartphone },
+  ];
+
+  const activeIntegrations = formState.integrations || DEFAULT_INTEGRATIONS;
+
+  return (
+    <>
+      <div className="idp-header" style={{ alignItems: 'flex-start', textAlign: 'left', marginBottom: 30 }}>
+        <div
+          className="idp-hero-icon"
+          style={{
+            width: 64, height: 64, marginBottom: 16,
+            background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.3)',
+          }}
+          aria-hidden
+        >
+          <Link size={28} />
+        </div>
+        <h3 style={{ fontSize: '2rem', margin: '0 0 8px', fontFamily: 'var(--font-head)', fontWeight: 800 }}>
+          Connected Apps &amp; Integrations
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+          Connect MyCoinwise with cloud backups and messaging alerts.
+        </p>
+      </div>
+
+      <div className="idp-body">
+        <div className="settings-toggle-group">
+          {integrations.map((app) => {
+            const connected = Boolean(activeIntegrations[app.key]);
+            return (
+              <div key={app.key} className={`settings-toggle-card ${connected ? 'is-active' : ''}`}>
+                <div className="stc-main">
+                  <div className="stc-icon-badge" style={{ background: 'rgba(139,92,246,0.12)', color: '#8b5cf6' }}>
+                    <app.icon size={18} />
+                  </div>
+                  <div className="stc-text">
+                    <span className="stc-label">{app.name}</span>
+                    <span className="stc-desc">{app.desc}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={connected ? 'btn-secondary' : 'btn-primary'}
+                  onClick={() => dispatch({ type: 'TOGGLE_INTEGRATION', key: app.key, value: !connected })}
+                  style={{ padding: '7px 16px', fontSize: '0.82rem', flexShrink: 0 }}
+                >
+                  {connected ? 'Disconnect' : 'Connect'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {handleSave && (
+        <div className="idp-tab-save-footer">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={saving || !isDirty}
+          >
+            {saving ? <Loader size={16} className="spin" /> : <Save size={16} />}
+            <span>{saving ? 'Saving...' : 'Save Integrations'}</span>
+          </button>
+        </div>
+      )}
+    </>
+  );
+});
+IntegrationsTab.displayName = 'IntegrationsTab';
+
+/* ============================================================
  * Reducer
  * ============================================================ */
 const settingsReducer = (state, action) => {
@@ -2746,6 +3683,70 @@ const settingsReducer = (state, action) => {
       }
       return { ...state, [action.field]: action.value, isDirty: true };
     }
+    case 'ADD_BANK':
+      return {
+        ...state,
+        bankAccounts: [...(state.bankAccounts || []), action.value],
+        isDirty: true,
+      };
+    case 'REMOVE_BANK':
+      return {
+        ...state,
+        bankAccounts: (state.bankAccounts || []).filter((acc) => acc.id !== action.id),
+        isDirty: true,
+      };
+    case 'ADD_PAYMENT_METHOD':
+      return {
+        ...state,
+        paymentMethods: {
+          ...(state.paymentMethods || DEFAULT_PAYMENT_METHODS),
+          [action.methodType]: [
+            ...((state.paymentMethods && state.paymentMethods[action.methodType]) || []),
+            action.value,
+          ],
+        },
+        isDirty: true,
+      };
+    case 'REMOVE_PAYMENT_METHOD':
+      return {
+        ...state,
+        paymentMethods: {
+          ...(state.paymentMethods || DEFAULT_PAYMENT_METHODS),
+          [action.methodType]: ((state.paymentMethods && state.paymentMethods[action.methodType]) || []).filter(
+            (pm) => pm.id !== action.id
+          ),
+        },
+        isDirty: true,
+      };
+    case 'ADD_AUTO_PAY':
+      return {
+        ...state,
+        autoPays: [...(state.autoPays || []), action.value],
+        isDirty: true,
+      };
+    case 'TOGGLE_AUTO_PAY':
+      return {
+        ...state,
+        autoPays: (state.autoPays || []).map((ap) =>
+          ap.id === action.id ? { ...ap, enabled: action.enabled } : ap
+        ),
+        isDirty: true,
+      };
+    case 'REMOVE_AUTO_PAY':
+      return {
+        ...state,
+        autoPays: (state.autoPays || []).filter((ap) => ap.id !== action.id),
+        isDirty: true,
+      };
+    case 'TOGGLE_INTEGRATION':
+      return {
+        ...state,
+        integrations: {
+          ...(state.integrations || DEFAULT_INTEGRATIONS),
+          [action.key]: action.value,
+        },
+        isDirty: true,
+      };
     case 'RESET_FORM':
       return { ...action.payload, isDirty: false };
     case 'CLEAR_DIRTY':
@@ -2988,6 +3989,10 @@ function SettingsInner({ context }) {
       profile_color: user?.profile_color,
       notification_prefs: user?.notification_prefs,
       advanced_prefs: user?.advanced_prefs,
+      bank_accounts: user?.bank_accounts || [],
+      payment_methods: user?.payment_methods || DEFAULT_PAYMENT_METHODS,
+      auto_pays: user?.auto_pays || [],
+      integrations: user?.integrations || DEFAULT_INTEGRATIONS,
     };
 
     try {
@@ -3002,6 +4007,10 @@ function SettingsInner({ context }) {
         profile_color: formState.avatarColor,
         notification_prefs: formState.notificationPrefs,
         advanced_prefs: formState.advancedPrefs,
+        bank_accounts: formState.bankAccounts,
+        payment_methods: formState.paymentMethods,
+        auto_pays: formState.autoPays,
+        integrations: formState.integrations,
       });
 
       const updatedUserObj = res?.user || {
@@ -3016,6 +4025,10 @@ function SettingsInner({ context }) {
         profile_color: formState.avatarColor,
         notification_prefs: formState.notificationPrefs,
         advanced_prefs: formState.advancedPrefs,
+        bank_accounts: formState.bankAccounts,
+        payment_methods: formState.paymentMethods,
+        auto_pays: formState.autoPays,
+        integrations: formState.integrations,
       };
 
       if (updateUser) {
@@ -3296,14 +4309,17 @@ function SettingsInner({ context }) {
   // ── Tab definitions (label + keywords for search) ──
   const TABS = useMemo(() => [
     { id: 'profile', icon: User, label: t?.('profile') || 'Profile', keywords: 'name photo avatar' },
+    { id: 'banking', icon: Landmark, label: t?.('banking_payments') || 'Banking & Payments', keywords: 'bank account upi card ifsc india' },
+    { id: 'autopay', icon: Zap, label: t?.('auto_pay') || 'Auto-Pay', keywords: 'subscriptions recurring mandates' },
     { id: 'preferences', icon: Settings, label: t?.('preferences') || 'Preferences', keywords: 'currency goal regional' },
     { id: 'language', icon: Globe, label: t?.('language') || 'Language', keywords: 'locale translation' },
     { id: 'appearance', icon: Palette, label: t?.('appearance') || 'Appearance', keywords: 'theme dark light color' },
     { id: 'notifications', icon: BellIcon, label: t?.('notifications') || 'Notifications', keywords: 'email push alerts' },
     { id: 'security', icon: Shield, label: t?.('security') || 'Security', keywords: 'password session 2fa' },
     { id: 'users', icon: Users, label: t?.('manage_users') || 'Manage Users', keywords: 'household family' },
+    { id: 'integrations', icon: Link, label: t?.('integrations') || 'Integrations', keywords: 'google apple telegram whatsapp' },
     { id: 'data', icon: Database, label: t?.('data_security') || 'Data & Security', keywords: 'export backup reset' },
-    { id: 'advanced', icon: Zap, label: t?.('advanced') || 'Advanced', keywords: 'date format timeout' },
+    { id: 'advanced', icon: Activity, label: t?.('advanced') || 'Advanced', keywords: 'date format timeout' },
   ], [t]);
 
   // ── Filter tabs by search query (label + keywords) ──
@@ -3357,6 +4373,12 @@ function SettingsInner({ context }) {
     switch (activeTab) {
       case 'profile':
         return <ProfileTab {...commonProps} />;
+      case 'banking':
+        return <BankingTab {...commonProps} dispatch={dispatch} />;
+      case 'autopay':
+        return <AutoPayTab {...commonProps} dispatch={dispatch} />;
+      case 'integrations':
+        return <IntegrationsTab {...commonProps} dispatch={dispatch} />;
       case 'preferences':
         return <PreferencesTab {...commonProps} />;
       case 'language':

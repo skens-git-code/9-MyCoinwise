@@ -354,6 +354,121 @@ const buildSettingsUpdate = (payload = {}) => {
       .filter(Boolean);
   }
 
+  // ── Linked bank accounts (masked account numbers only) ──
+  if (payload.bank_accounts !== undefined) {
+    if (!Array.isArray(payload.bank_accounts)) {
+      return { error: 'bank_accounts must be an array.' };
+    }
+    const ALLOWED_ACCOUNT_TYPES = new Set(['Savings', 'Current', 'Salary', 'NRE/NRO']);
+    const normalizedBanks = [];
+    for (const item of payload.bank_accounts.slice(0, 20)) {
+      if (!item || typeof item !== 'object') continue;
+      const bankName = String(item.bankName || '').trim().slice(0, 120);
+      const ifsc = String(item.ifsc || '').trim().toUpperCase().slice(0, 11);
+      const accountHolder = String(item.accountHolder || '').trim().slice(0, 100);
+      const rawDigits = String(item.accountNumber || '').replace(/\s+/g, '');
+      const last4 = rawDigits.slice(-4);
+      if (!bankName || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc) || !last4) {
+        return { error: 'Each bank account must include a valid bank name, account number, and IFSC code.' };
+      }
+      const accountType = ALLOWED_ACCOUNT_TYPES.has(item.accountType) ? item.accountType : 'Savings';
+      normalizedBanks.push({
+        id: String(item.id || `bank-${normalizedBanks.length + 1}`).trim().slice(0, 80),
+        bankName,
+        accountNumber: `•••• ${last4}`,
+        ifsc,
+        accountHolder,
+        accountType,
+        verified: Boolean(item.verified ?? true),
+      });
+    }
+    updates.bank_accounts = normalizedBanks;
+  }
+
+  // ── Payment methods (PCI-safe: never store CVV or full PAN) ──
+  if (payload.payment_methods !== undefined) {
+    if (!payload.payment_methods || typeof payload.payment_methods !== 'object' || Array.isArray(payload.payment_methods)) {
+      return { error: 'payment_methods must be an object.' };
+    }
+    const rawCards = Array.isArray(payload.payment_methods.cards) ? payload.payment_methods.cards : [];
+    const rawUpi = Array.isArray(payload.payment_methods.upi) ? payload.payment_methods.upi : [];
+
+    const cards = [];
+    for (const c of rawCards.slice(0, 20)) {
+      if (!c || typeof c !== 'object') continue;
+      const digits = String(c.cardNumber || '').replace(/\D/g, '');
+      const last4 = digits.slice(-4);
+      const cardName = String(c.cardName || '').trim().slice(0, 100);
+      const expiry = String(c.expiry || '').trim().slice(0, 7);
+      const brand = String(c.brand || 'Card').trim().slice(0, 32);
+      if (!cardName || last4.length !== 4) {
+        return { error: 'Each saved card must include a cardholder name and valid last 4 digits.' };
+      }
+      cards.push({
+        id: String(c.id || `card-${cards.length + 1}`).trim().slice(0, 80),
+        cardName,
+        cardNumber: `•••• •••• •••• ${last4}`,
+        expiry,
+        brand,
+      });
+    }
+
+    const upi = [];
+    for (const u of rawUpi.slice(0, 20)) {
+      if (!u || typeof u !== 'object') continue;
+      const upiId = String(u.upiId || '').trim().slice(0, 100);
+      if (!upiId.includes('@')) {
+        return { error: 'Each UPI entry must be a valid UPI ID (e.g., name@bank).' };
+      }
+      upi.push({
+        id: String(u.id || `upi-${upi.length + 1}`).trim().slice(0, 80),
+        upiId,
+        provider: String(u.provider || 'UPI').trim().slice(0, 50),
+        verified: Boolean(u.verified ?? true),
+      });
+    }
+
+    updates.payment_methods = { cards, upi };
+  }
+
+  // ── Recurring auto-pay mandates ──
+  if (payload.auto_pays !== undefined) {
+    if (!Array.isArray(payload.auto_pays)) {
+      return { error: 'auto_pays must be an array.' };
+    }
+    const autoPays = [];
+    for (const ap of payload.auto_pays.slice(0, 50)) {
+      if (!ap || typeof ap !== 'object') continue;
+      const name = String(ap.name || '').trim().slice(0, 120);
+      const amount = parseMoney(ap.amount);
+      if (!name || amount === null) {
+        return { error: 'Each auto-pay mandate requires a valid name and non-negative amount.' };
+      }
+      autoPays.push({
+        id: String(ap.id || `ap-${autoPays.length + 1}`).trim().slice(0, 80),
+        name,
+        amount,
+        nextDate: String(ap.nextDate || '').trim().slice(0, 32),
+        enabled: Boolean(ap.enabled),
+        color: String(ap.color || 'rgba(245,158,11,0.12)').trim().slice(0, 64),
+      });
+    }
+    updates.auto_pays = autoPays;
+  }
+
+  // ── Connected app integrations ──
+  if (payload.integrations !== undefined) {
+    if (!payload.integrations || typeof payload.integrations !== 'object' || Array.isArray(payload.integrations)) {
+      return { error: 'integrations must be an object.' };
+    }
+    updates.integrations = {
+      googleDrive: normalizeBoolean(payload.integrations.googleDrive, false),
+      appleICloud: normalizeBoolean(payload.integrations.appleICloud, false),
+      telegramAlerts: normalizeBoolean(payload.integrations.telegramAlerts, false),
+      whatsappAlerts: normalizeBoolean(payload.integrations.whatsappAlerts, false),
+    };
+  }
+
   return { updates };
 };
 

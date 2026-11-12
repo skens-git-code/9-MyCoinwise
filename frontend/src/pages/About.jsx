@@ -25,7 +25,7 @@ import {
   Rocket, Shield, Zap, Globe, Github, Twitter, Instagram, Facebook, Mail,
   Heart, Code, Sparkles, BrainCircuit, Users, Award, Clock, MapPin,
   GraduationCap, Briefcase, Terminal, Database, Cloud, Cpu, BookOpen,
-  CheckCircle2, ArrowRight, Linkedin, Phone, Calculator, Star, Coffee,
+  CheckCircle2, ArrowRight, Linkedin, Calculator, Star, Coffee,
   Layers, Wrench, Target, Quote, ExternalLink
 } from 'lucide-react';
 import { useAppActions } from '../contexts/AppContext';
@@ -36,8 +36,8 @@ import { useAppActions } from '../contexts/AppContext';
 
 // ── Default highlight tile values (overridable via props) ──
 const DEFAULT_STATS = {
-  projects: '50+',
-  contributions: '1.5K+',
+  projects: '20+',
+  contributions: '1000+',
   tools: '4',
   ventures: '2',
 };
@@ -46,44 +46,52 @@ const DEFAULT_STATS = {
 const PROFILE = {
   name: 'Sarthak Mathapati',
   initials: 'SM',
-  role: 'AI Software Engineer & Full-Stack Developer',
-  tagline: 'Disciplina · Execução · Foco',
-  location: 'Newton School of Technology, Delhi, India',
-  email: 'sarthakmathapati4@gmail.com',
-  phone: '+91 93567 07688',
+  role: 'ASI Software Engineer & Web Developer',
+  tagline: 'Disciplina · Execucao · Foco',
+  location: 'Newton School Of Technology, Delhi',
+  email: 'sarthak_m@skens.space',
   mantra: '#BuildingWithInnovation',
-  portfolioUrl: 'https://portfolioskens.vercel.app/',
+  portfolioUrl: 'https://www.skens.space/',
   mission:
-    'I build technology that empowers people, solves real-world problems, and makes the digital world more accessible, intuitive, and beautifully human for everyone.',
+    "Most developers build clunky garbage and call it 'intuitive.' I design software that actually works under real pressure—tackling the complex engineering challenges you only pretend to understand.",
   intro:
-    "Hello, I'm Sarthak Mathapati — an AI Software Engineer & Web Developer crafting sleek, responsive, and meaningful digital experiences. I turn ideas into reality.",
+    "I’m Sarthak Mathapati, an ASI Software Engineer. Precision architecture, ruthless efficiency. Building intelligent systems that work flawlessly at scale, translating complex neural architectures into relentless, production-grade reality.",
   bio: [
-    "I'm Sarthak Sidalingayya Mathapati, a 2nd-year B.Tech student in Computer Science & Artificial Intelligence at Newton School of Technology, in collaboration with Rishihood University.",
-    "Born in Sawantwadi (Sindhudurg, Maharashtra) and raised across Kolhapur to Delhi, I've experienced diverse cultures and perspectives — something that profoundly shapes the way I think, learn, and build.",
-    "Curious by nature and disciplined by choice, I'm always learning, experimenting, and innovating — guided by my personal mantra: #BuildingWithInnovation 🚀",
+    "Hi! I'm Sarthak Sidalingayya Mathapati, a 3rd-year B.Tech student in Computer Science & Artificial Intelligence at Newton School of Technology (in collaboration with Rishihood University).",
+    "Born in Sawantwadi and raised across Kolhapur to Delhi, experiencing diverse cultures has profoundly shaped how I think, collaborate, and engineer solutions. I'm driven by the goal of crafting human-centered tech products with clean architectures and memorable experiences.",
+    "Architecting distributed full-stack systems, exploring Deep Learning & ASI, and shipping low-latency interactive applications — guided by #BuildingWithInnovation.",
   ],
 };
 
 /* ============================================================
-   Image Assets — Replace with actual image URLs
+   Image Assets — Approved Assets from skens.space
    ============================================================ */
 
 const IMAGES = {
-  // Replace with your actual profile photo URL
-  profile: 'https://scrawny-maroon-wwjdpftgcz.edgeone.app/WhatsApp%20Image%202025-10-05%20at%2000.21.05_0bb32ab9.jpg',
+  profile: 'https://i.ibb.co/hRXBg5SR/Whats-App-Image-2026-10-24-at-17-11-37.jpg',
+  profileAlt: 'https://i.ibb.co/9HzVY6p5/Whats-App-Image-2026-10-22-at-15-54-52.jpg',
 
-  // Tool screenshots — replace with actual screenshots
-  tools: {
-    mathens: 'https://images.unsplash.com/photo-1587145820266-a5951ee6f620?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
-    cryptens: 'https://images.unsplash.com/photo-1614064641938-3bbee52942c7?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
-    battlens: 'https://images.unsplash.com/photo-1611996575749-79a3a250f948?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
-    achievens: 'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
+  projects: {
+    mycoinwise: 'https://i.ibb.co/wFZqTy5m/image.png',
+    mycoinwiseShowcase: 'https://i.ibb.co/Z6NGWNmJ/Whats-App-Image-2026-10-23-at-04-50-22.jpg',
   },
 
-  // Venture logos — replace with actual logos
+  tools: {
+    mathens: 'https://images.unsplash.com/photo-1518770660439-4636190af475?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=85',
+    cryptens: 'https://images.unsplash.com/photo-1461749280684-dccba630e2f6?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=85',
+    battlens: 'https://i.ibb.co/Z6NGWNmJ/Whats-App-Image-2026-10-23-at-04-50-22.jpg',
+    achievens: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=85',
+  },
+
   ventures: {
-    skens: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?ixlib=rb-4.0.3&auto=format&fit=crop&w=200&q=80',
-    leaflix: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?ixlib=rb-4.0.3&auto=format&fit=crop&w=200&q=80',
+    skens: 'https://i.ibb.co/wFZqTy5m/image.png',
+    leaflix: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=85',
+  },
+
+  testimonials: {
+    arpita: 'https://4kwallpapers.com/images/walls/thumbs_3t/27474.png',
+    rahul: 'https://4kwallpapers.com/images/walls/thumbs_3t/978.png',
+    siddhi: 'https://4kwallpapers.com/images/walls/thumbs_3t/973.png',
   },
 };
 
@@ -92,40 +100,40 @@ const SOCIALS = [
   { label: 'GitHub', href: 'https://github.com/skens-git-code', icon: Github },
   { label: 'LinkedIn', href: 'https://www.linkedin.com/in/sarthak-mathapati-b2b04430a/', icon: Linkedin },
   { label: 'X / Twitter', href: 'https://x.com/mathapatism8', icon: Twitter },
-  { label: 'Instagram', href: 'https://www.instagram.com/mathapati.i8/', icon: Instagram },
+  { label: 'Instagram', href: 'https://www.instagram.com/lethal_sinister.bleed/', icon: Instagram },
 ];
 
 // ── Focus areas shown as hover-lift cards ──
 const FOCUS_AREAS = [
   {
     icon: BrainCircuit,
-    title: 'AI Engineering',
-    desc: 'Predictive models, LLM integrations and intelligent automation built with TensorFlow, PyTorch and the OpenAI API.',
+    title: 'AI & ASI Engineering',
+    desc: 'Architecting intelligent systems, deep learning pipelines, and autonomous LLM workflows with PyTorch, TensorFlow, and LangChain.',
   },
   {
     icon: Code,
-    title: 'Full-Stack Development',
-    desc: 'End-to-end product delivery with React, Next.js, Node.js and FastAPI — from database schema to polished UI.',
+    title: 'Distributed Full-Stack',
+    desc: 'End-to-end production systems with React, Next.js, Node.js, FastAPI, MongoDB, and PostgreSQL — engineered for scale.',
   },
   {
     icon: Sparkles,
-    title: 'Interface Craft',
-    desc: 'Motion-rich, accessible interfaces that feel premium on every screen size, not like another spreadsheet.',
+    title: 'Low-Latency Interfaces',
+    desc: 'Motion-rich, responsive, accessible interfaces built for 60fps clarity across desktop, tablet, and mobile.',
   },
   {
     icon: Shield,
     title: 'Secure by Default',
-    desc: 'Encrypted transport, sane auth flows and data ownership. Your information is never a product.',
+    desc: 'Zero-trust auth flows, strict input validation, and data ownership. Security is built into the architecture.',
   },
 ];
 
 // ── Tech stack grouped by discipline ──
 const TECH_GROUPS = [
-  { label: 'Frontend', icon: Layers, items: ['React', 'Next.js', 'TypeScript', 'Tailwind CSS', 'HTML/CSS'] },
-  { label: 'Backend', icon: Terminal, items: ['Node.js', 'Express', 'Python', 'FastAPI'] },
-  { label: 'Data', icon: Database, items: ['MongoDB', 'PostgreSQL', 'MySQL', 'Redis'] },
-  { label: 'Cloud & DevOps', icon: Cloud, items: ['AWS', 'Docker', 'Kubernetes', 'GitHub Actions'] },
-  { label: 'AI / ML', icon: Cpu, items: ['TensorFlow', 'PyTorch', 'OpenAI API', 'LangChain'] },
+  { label: 'Frontend', icon: Layers, items: ['React.js', 'Next.js', 'TypeScript', 'Tailwind CSS', 'Three.js', 'HTML5/CSS3'] },
+  { label: 'Backend', icon: Terminal, items: ['Node.js', 'Python', 'Express.js', 'FastAPI', 'REST APIs', 'WebSockets'] },
+  { label: 'Data', icon: Database, items: ['MongoDB', 'PostgreSQL', 'Redis', 'MySQL', 'Prisma', 'Firestore'] },
+  { label: 'Cloud & DevOps', icon: Cloud, items: ['AWS', 'Docker', 'Kubernetes', 'CI/CD', 'Edge CDN', 'Linux OS'] },
+  { label: 'AI / ASI Ecosystem', icon: Cpu, items: ['Claude', 'OpenAI', 'DeepSeek', 'Gemini 2.0', 'Antigravity', 'PyTorch', 'LangChain'] },
 ];
 
 // ── Shipped tools with preview images and tags ──
@@ -183,37 +191,86 @@ const VENTURES = [
 // ── Career timeline entries ──
 const TIMELINE = [
   {
-    period: '2025 — Present',
+    period: '2026 — Present',
     title: 'Newton School of Technology',
-    desc: 'B.Tech in Computer Science & Artificial Intelligence.',
+    desc: 'B.Tech in Computer Science & Artificial Intelligence (Rishihood University) — practical software engineering, AI, and entrepreneurship.',
   },
   {
-    period: '2025 — Present',
-    title: 'Startup Founder',
-    desc: 'Building innovative solutions with Skens.inc & Leaflix.inc.',
+    period: '2026 — Present',
+    title: 'Founder & Developer · Skens.inc & Leaflix.inc',
+    desc: 'Leading product ideation, engineering web platforms, and launching digital ventures.',
   },
   {
-    period: '2023 — 2025',
-    title: 'Web Development Journey',
-    desc: 'Mastering full-stack development and modern web technologies.',
+    period: '2023 — 2026',
+    title: 'Full-Stack Mastery',
+    desc: 'Built responsive web applications, mastered React, Node.js, databases, and UI/UX design patterns.',
   },
 ];
 
 // ── Personal principles / habits ──
 const PRINCIPLES = [
+  'Daily Code Rhythm',
   'Continuous Learning',
-  'Daily Coding Practice',
   'Health First',
-  'Open Source Contribution',
-  'Document Everything',
-  'Help Others Grow',
+  'Open Source Mindset',
+  'System Documentation',
+  'Empowering Others',
 ];
 
 // ── Goals split by horizon ──
 const GOALS = [
-  { horizon: 'Short Term · 2025', items: ['Launch the Skens.inc MVP', 'Contribute to 5+ open source projects', 'Build an AI chatbot with 10K+ users'] },
-  { horizon: 'Medium Term · 2026–27', items: ['Scale a product to 100K+ users', 'Speak at international tech conferences', 'Launch an AI-powered SaaS product'] },
-  { horizon: 'Long Term · 2028+', items: ['Establish a tech education platform', 'Publish a book on AI development', 'Fund tech education in rural areas'] },
+  {
+    horizon: 'Short Term · 2025',
+    items: [
+      'Launch Skens MVP',
+      'Contribute to 5+ open source projects',
+      'Master Data Structures & Algorithms',
+      'Investigating recursive self-improvement, neural scaling laws, and scalable oversight systems toward ASI.',
+    ],
+  },
+  {
+    horizon: 'Medium Term · 2026–27',
+    items: [
+      'Scale startup to 100K+ users',
+      'Speak at international tech conferences',
+      'Launch AI-powered SaaS product',
+      'Build developer community of 10K+ members',
+    ],
+  },
+  {
+    horizon: 'Long Term · 2028+',
+    items: [
+      'Establish tech ventures platform',
+      'Invest in early-stage tech startups',
+      'Author a treatise framing human lifecycle phases through systems architecture & feedback loops',
+      'Create foundation for tech education in rural areas',
+    ],
+  },
+];
+
+// ── Client Testimonials (approved assets from skens.space) ──
+const TESTIMONIALS = [
+  {
+    name: 'Arpita Patil',
+    role: 'CTO, TechSolutions Inc.',
+    avatar: IMAGES.testimonials.arpita,
+    quote:
+      'Sarthak delivered an exceptional website that exceeded our expectations. His attention to detail and technical expertise made the entire process smooth and efficient.',
+  },
+  {
+    name: 'Rahul Diwedi',
+    role: 'Marketing Director, Innovate Co.',
+    avatar: IMAGES.testimonials.rahul,
+    quote:
+      'Working with Sarthak was a game-changer for our business. He transformed our outdated website into a modern, responsive platform that has significantly improved our user engagement.',
+  },
+  {
+    name: 'Siddhi Miglani',
+    role: 'Founder, Creative Studio',
+    avatar: IMAGES.testimonials.siddhi,
+    quote:
+      "Sarthak's ability to understand our vision and translate it into a functional, beautiful website was impressive. His communication throughout the project was excellent.",
+  },
 ];
 
 /* ============================================================
@@ -308,6 +365,9 @@ function Chip({ children }) {
 export default function About({ stats = DEFAULT_STATS }) {
   // ── i18n ──
   const { t } = useAppActions();
+  const [portraitIndex, setPortraitIndex] = useState(0);
+  const [profileImgError, setProfileImgError] = useState(false);
+  const portraits = [IMAGES.profile, IMAGES.profileAlt];
 
   // ── Respect the OS-level reduced-motion preference ──
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
@@ -422,7 +482,7 @@ export default function About({ stats = DEFAULT_STATS }) {
                 flexWrap: 'wrap',
               }}
             >
-              {/* ── Profile image (floats gently when motion allowed) ── */}
+              {/* ── Profile image (floats gently when motion allowed, click to switch approved portrait) ── */}
               <motion.div
                 animate={prefersReducedMotion ? {} : { y: [0, -6, 0] }}
                 transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
@@ -432,20 +492,37 @@ export default function About({ stats = DEFAULT_STATS }) {
                   flexShrink: 0,
                   borderRadius: 30,
                   overflow: 'hidden',
+                  position: 'relative',
+                  background: 'var(--brand-gradient)',
+                  display: 'grid',
+                  placeItems: 'center',
                   boxShadow: '0 16px 40px var(--brand-glow, rgba(16,185,129,0.35))',
                   border: '3px solid rgba(var(--brand-primary-rgb, 16, 185, 129), 0.3)',
                 }}
               >
-                <img
-                  src={IMAGES.profile}
-                  alt="Sarthak Mathapati"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                  }}
-                  loading="lazy"
-                />
+                {profileImgError ? (
+                  <span style={{ color: '#fff', fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-head)' }}>
+                    {PROFILE.initials}
+                  </span>
+                ) : (
+                  <img
+                    src={portraits[portraitIndex]}
+                    alt="Sarthak Mathapati — ASI Software Engineer"
+                    width={120}
+                    height={120}
+                    decoding="async"
+                    fetchPriority="high"
+                    onError={() => setProfileImgError(true)}
+                    onClick={() => setPortraitIndex((i) => (i + 1) % portraits.length)}
+                    title="Click to switch portrait"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      cursor: 'pointer',
+                    }}
+                  />
+                )}
               </motion.div>
 
               {/* ── Name, role, tagline, meta, and CTAs ── */}
@@ -1366,8 +1443,75 @@ export default function About({ stats = DEFAULT_STATS }) {
                   fontWeight: 600,
                 }}
               >
-                portfolioskens.vercel.app <ExternalLink size={15} aria-hidden="true" />
+                skens.space <ExternalLink size={15} aria-hidden="true" />
               </a>
+            </div>
+          </motion.section>
+
+          {/* ==================== Client Testimonials ==================== */}
+          <motion.section variants={itemVariants} aria-labelledby="about-testimonials-title">
+            <SectionTitle
+              icon={Users}
+              sub="Feedback from engineering leaders and founders we have built with."
+            >
+              <span id="about-testimonials-title">Client Testimonials</span>
+            </SectionTitle>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                gap: 16,
+              }}
+            >
+              {TESTIMONIALS.map((item) => (
+                <article
+                  key={item.name}
+                  className="bento-tile-base glass-sm"
+                  style={{
+                    ...glassCard,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: 16,
+                  }}
+                >
+                  <p
+                    style={{
+                      margin: 0,
+                      color: 'var(--text-secondary)',
+                      fontSize: '0.9rem',
+                      lineHeight: 1.65,
+                    }}
+                  >
+                    &ldquo;{item.quote}&rdquo;
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <img
+                      src={item.avatar}
+                      alt={`${item.name} — ${item.role}`}
+                      width={48}
+                      height={48}
+                      loading="lazy"
+                      decoding="async"
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        flexShrink: 0,
+                        border: '2px solid rgba(var(--brand-primary-rgb, 16, 185, 129), 0.3)',
+                      }}
+                    />
+                    <div style={{ minWidth: 0 }}>
+                      <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>{item.name}</h4>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {item.role}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ))}
             </div>
           </motion.section>
 
@@ -1468,23 +1612,6 @@ export default function About({ stats = DEFAULT_STATS }) {
                   }}
                 >
                   <Mail size={16} aria-hidden="true" /> {PROFILE.email}
-                </a>
-                <a
-                  href={`tel:${PROFILE.phone.replace(/\s/g, '')}`}
-                  className="btn-secondary allow-copy"
-                  data-allow-copy="true"
-                  style={{
-                    padding: '11px 20px',
-                    borderRadius: 12,
-                    textDecoration: 'none',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    fontSize: '0.9rem',
-                    fontWeight: 600,
-                  }}
-                >
-                  <Phone size={16} aria-hidden="true" /> {PROFILE.phone}
                 </a>
               </div>
 

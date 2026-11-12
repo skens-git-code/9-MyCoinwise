@@ -166,6 +166,17 @@ const toSafeUser = (user) => {
     balance: typeof user.balance === 'number' ? user.balance : 0,
     theme: user.theme || 'light',
     monthly_goal: typeof user.monthly_goal === 'number' ? user.monthly_goal : 0,
+    notification_prefs: user.notification_prefs || undefined,
+    advanced_prefs: user.advanced_prefs || undefined,
+    bank_accounts: Array.isArray(user.bank_accounts) ? user.bank_accounts : [],
+    payment_methods: user.payment_methods || { cards: [], upi: [] },
+    auto_pays: Array.isArray(user.auto_pays) ? user.auto_pays : [],
+    integrations: user.integrations || {
+      googleDrive: false,
+      appleICloud: false,
+      telegramAlerts: false,
+      whatsappAlerts: false,
+    },
   };
 };
 

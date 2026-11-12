@@ -583,3 +583,156 @@
     }
   }
 }
+
+/* ── Banking, Payment Methods & Searchable Bank Dropdown ─────────────── */
+.banking-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+
+  @media (min-width: 768px) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.add-form-container {
+  background: var(--glass-2, rgba(255, 255, 255, 0.04));
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--glass-border);
+  margin-bottom: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.bank-account-card,
+.payment-method-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    border-color: var(--brand-primary, #10b981);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  }
+}
+
+.bank-verified-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.14);
+  color: #10b981;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.bank-search-dropdown {
+  position: relative;
+}
+
+.bank-search-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  .bank-search-icon {
+    position: absolute;
+    left: 12px;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  .searchable-bank-input {
+    width: 100%;
+    padding: 10px 36px 10px 36px !important;
+    border-radius: 10px;
+    border: 1px solid var(--glass-border);
+    background: var(--surface-1);
+    color: var(--text-primary);
+    font-size: 0.92rem;
+  }
+
+  .bank-dropdown-chevron {
+    position: absolute;
+    right: 8px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.bank-dropdown-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 40;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg, 0 12px 28px rgba(0, 0, 0, 0.2));
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bank-dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &.is-selected {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--brand-primary, #10b981);
+  }
+}
+
+.bank-dropdown-empty {
+  padding: 10px 12px;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.idp-tab-save-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+@media (max-width: 480px) {
+  .bank-account-card,
+  .payment-method-card {
+    flex-direction: column;
+    align-items: flex-start;
+
+    > div:last-child {
+      width: 100%;
+      display: flex;
+      justify-content: flex-end;
+    }
+  }
+}
