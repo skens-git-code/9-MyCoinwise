@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AppContext } from '../contexts/AppContext';
 import { ToastProvider } from '../components/ToastProvider';
-import Transactions from '../pages/Transactions';
+import Transactions, { cleanNoteText, formatPaymentMethod } from '../pages/Transactions';
 
 vi.mock('../services/api', () => ({
   api: {
@@ -140,5 +140,63 @@ describe('Paytm Transaction Ticket Component & Mobile Polish', () => {
 
     // Verify it doesn't throw and remains interactive
     expect(shareBtn).toBeInTheDocument();
+  });
+
+  it('cleanNoteText correctly sanitizes SMS scraper dumps, UPI IDs, and tags', () => {
+    const raw1 = 'Paid to Go Grab | UPI ID: paytm.d12986753104@pty on UPI Ref No: 631579260664 Tag: # Groceries Union Bank Of India - 39 - Rs.20';
+    expect(cleanNoteText(raw1)).toBe('Paid to Go Grab');
+
+    const raw2 = 'Paid to Sakeel store2 | UPI ID: q0116424947@ybl on UPI Ref No: 316984876467 Tag: # Food Union Bank Of India - 39 - Rs.150';
+    expect(cleanNoteText(raw2)).toBe('Paid to Sakeel store2');
+
+    const raw3 = 'Recharge of Jio Mobile 9356707688 | UPI ID: paybi...';
+    expect(cleanNoteText(raw3)).toBe('Recharge of Jio Mobile');
+
+    expect(cleanNoteText('')).toBe('');
+    expect(cleanNoteText(null)).toBe('');
+    expect(cleanNoteText('Normal lunch note')).toBe('Normal lunch note');
+  });
+
+  it('formatPaymentMethod standardizes payment method names to proper casing', () => {
+    expect(formatPaymentMethod('upi')).toBe('UPI');
+    expect(formatPaymentMethod('card')).toBe('Card');
+    expect(formatPaymentMethod('net_banking')).toBe('Net Banking');
+    expect(formatPaymentMethod('cash')).toBe('Cash');
+    expect(formatPaymentMethod('neft')).toBe('NEFT');
+    expect(formatPaymentMethod('')).toBe('UPI');
+  });
+
+  it('hides receipt attachment section gracefully if receipt image fails to load', async () => {
+    const txWithBrokenReceipt = {
+      ...sampleTx,
+      id: 'tx-broken-receipt',
+      _id: 'tx-broken-receipt',
+      receipt_url: '/uploads/receipts/non-existent-proof.jpg',
+    };
+
+    const { container } = render(
+      <MemoryRouter>
+        <ToastProvider>
+          <AppContext.Provider value={{ ...mockContext, transactions: [txWithBrokenReceipt] }}>
+            <Transactions />
+          </AppContext.Provider>
+        </ToastProvider>
+      </MemoryRouter>
+    );
+
+    const txItem = container.querySelector('.il-item');
+    fireEvent.click(txItem);
+
+    // Initial receipt attachment image is mounted
+    const receiptImg = container.querySelector('.tx-ticket-receipt-attachment img');
+    expect(receiptImg).toBeTruthy();
+
+    // Trigger image error (e.g., 404 or missing image file)
+    fireEvent.error(receiptImg);
+
+    // After onError, the broken image glyph and its attachment container are cleanly hidden
+    await waitFor(() => {
+      expect(container.querySelector('.tx-ticket-receipt-attachment')).toBeNull();
+    });
   });
 });

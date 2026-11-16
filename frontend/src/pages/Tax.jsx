@@ -23,6 +23,7 @@ import { AlertTriangle, BarChart3, CheckCircle2, Circle, Download, FileText, Plu
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { api } from '../services/api';
 import { useToast } from '../components/ToastProvider';
+import { cleanNoteText } from './Transactions';
 import TaxDisclaimer from '../components/tax/TaxDisclaimer';
 import TaxProfileForm from '../components/tax/TaxProfileForm';
 import TaxEstimateCard from '../components/tax/TaxEstimateCard';
@@ -412,7 +413,7 @@ export default function Tax() {
                 <option value="">Choose an expense…</option>
                 {taxTransactions.map((tx) => (
                   <option key={getId(tx)} value={getId(tx)}>
-                    {tx.category} · {money(tx.amount)} · {formatTaxDate(tx.date, taxLocale)}
+                    {tx.category || 'Expense'}{tx.note ? ` (${cleanNoteText(tx.note, 24)})` : ''} · {money(tx.displayAmount ?? tx.amount)} · {formatTaxDate(tx.date, taxLocale)}
                   </option>
                 ))}
               </select>
@@ -442,11 +443,11 @@ export default function Tax() {
                   {tagged.length ? (
                     tagged.map((row) => (
                       <tr key={getId(row.tag)}>
-                        <td>{formatTaxDate(row.transaction.date, taxLocale)}</td>
-                        <td>{row.transaction.merchant || row.transaction.category}</td>
-                        <td>{row.tag.treatment.replaceAll('_', ' ')}</td>
-                        <td>{row.tag.portion}%</td>
-                        <td>{money((Number(row.transaction.amount) * Number(row.tag.portion || 100)) / 100)}</td>
+                        <td>{formatTaxDate(row.transaction?.date, taxLocale)}</td>
+                        <td>{cleanNoteText(row.transaction?.merchant || row.transaction?.note || row.transaction?.category || 'Expense', 35)}</td>
+                        <td>{row.tag?.treatment?.replaceAll('_', ' ') || 'deductible'}</td>
+                        <td>{row.tag?.portion ?? 100}%</td>
+                        <td>{money((Number(row.transaction?.amount || 0) * Number(row.tag?.portion || 100)) / 100)}</td>
                         <td>
                           <button
                             className="icon-button"

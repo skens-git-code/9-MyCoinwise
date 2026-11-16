@@ -35,6 +35,7 @@ import {
 import { useToast } from '../components/ToastProvider';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { dedupeTransactions } from '../utils/transactionIntegrity';
+import { cleanNoteText } from './Transactions';
 import {
   readCachedRatesToInr,
   getFallbackRatesToInr,
@@ -275,13 +276,15 @@ const CustomTooltip = memo(({ active, payload, label, isDark, fmt }) => {
         fontSize: '0.82rem',
       }}
     >
-      {/* ── Tooltip label (e.g. month) ── */}
-      <p style={{ margin: '0 0 6px 0', fontWeight: 'bold' }}>{label}</p>
+      {/* ── Tooltip label (e.g. month or single slice name) ── */}
+      {Boolean(label) && (
+        <p style={{ margin: '0 0 6px 0', fontWeight: 'bold' }}>{label}</p>
+      )}
 
       {/* ── One line per series in the hovered slice ── */}
       {payload.map((entry, index) => (
-        <p key={`${entry.dataKey}-${index}`} style={{ margin: '3px 0', color: entry.color, fontWeight: 600 }}>
-          {entry.name}: {typeof fmt === 'function' ? fmt(entry.value) : String(entry.value)}
+        <p key={`${entry.dataKey || entry.name}-${index}`} style={{ margin: '3px 0', color: entry.color, fontWeight: 600 }}>
+          {entry.name || entry.dataKey || 'Amount'}: {typeof fmt === 'function' ? fmt(entry.value) : String(entry.value)}
         </p>
       ))}
     </div>
@@ -376,11 +379,11 @@ const DrillDownModal = memo(({ isOpen, onClose, title, transactions, fmt, locale
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>
-                      {t.category || t.note || 'Uncategorized'}
+                      {t.category || (t.note ? cleanNoteText(t.note, 40) : 'Uncategorized')}
                     </span>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                       {formatFullDate(t.date, locale)}
-                      {t.note && t.category ? ` · ${t.note}` : ''}
+                      {t.note && t.category ? ` · ${cleanNoteText(t.note, 45)}` : ''}
                     </span>
                   </div>
                   <span
@@ -1025,7 +1028,7 @@ export default function Analytics() {
       t.type,
       t.category || 'Other',
       safeParseAmount(t.displayAmount ?? t.amount).toFixed(2),
-      t.note || '',
+      cleanNoteText(t.note || '', 120),
     ]);
     const csvContent = [
       headers.map(escapeCsvField).join(','),
@@ -1243,7 +1246,7 @@ export default function Analytics() {
       {/* ===================== Period selector ===================== */}
       {/* Period Selector — Clean Standard Dropdown */}
       <div className="analytics-period-bar glass" style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '8px 16px', position: 'relative', width: 'auto', marginBottom: 14 }}>
-        <span className="apb-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', fontWeight: 600, color: '#64748B' }}>
+        <span className="apb-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
           <Calendar size={14} /> Compare Period:
         </span>
         <div style={{ position: 'relative' }}>
@@ -1293,7 +1296,7 @@ export default function Analytics() {
                   flexDirection: 'column',
                   gap: 2,
                   boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-                  background: 'var(--surface-card, #ffffff)',
+                  background: 'var(--surface-1)',
                   border: '1px solid var(--glass-border)',
                 }}
               >
@@ -1531,7 +1534,7 @@ export default function Analytics() {
                 <div className="aab-info">
                   <span className="aab-cat">{a.category}</span>
                   <span className="aab-date">{formatShortDate(a.tx.date, locale)}</span>
-                  {a.tx.note && <span className="aab-note">· {a.tx.note}</span>}
+                  {a.tx.note && <span className="aab-note">· {cleanNoteText(a.tx.note, 35)}</span>}
                 </div>
                 <div className="aab-right">
                   <span className="aab-amount text-danger">{fmt(safeParseAmount(a.tx.displayAmount ?? a.tx.amount))}</span>
@@ -1647,7 +1650,7 @@ export default function Analytics() {
             </ResponsiveContainer>
           ) : (
             <div className="chart-empty" style={{ minHeight: 64, padding: '16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <p style={{ margin: 0, color: '#64748B', fontSize: '0.85rem' }}>Not enough category history to render evolution chart.</p>
+              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Not enough category history to render evolution chart.</p>
             </div>
           )}
         </motion.div>

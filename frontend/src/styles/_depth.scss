@@ -802,9 +802,10 @@ body,
 }
 
 .bt-pie-wrap {
-  height: 215px !important;
+  height: 270px !important;
   width: 100% !important;
-  min-height: 180px !important;
+  min-height: 240px !important;
+  overflow: visible !important;
 }
 
 /* Compact layout tokens (Section 5) */

@@ -157,4 +157,33 @@ describe('Dashboard Hierarchy & Correctness (Acceptance Criteria SC-1 to SC-6)',
     const nudge = goalCard.querySelector('.bg-nudge');
     expect(nudge.textContent).toMatch(/Goal met · \+.*7,000.*surplus/);
   });
+
+  it('SC-7: displays distinct Total Credits and Total Debits subtitles and a dedicated Net Cashflow card', () => {
+    renderDashboard();
+    const incomeCard = document.querySelector('.bento-income');
+    const expenseCard = document.querySelector('.bento-expense');
+    expect(incomeCard).toBeTruthy();
+    expect(expenseCard).toBeTruthy();
+
+    // Verify Income and Expense cards no longer falsely duplicate "Net Cashflow"
+    expect(incomeCard.textContent).toContain('Total Credits');
+    expect(incomeCard.textContent).not.toContain('Net Cashflow');
+    expect(expenseCard.textContent).toContain('Total Debits');
+    expect(expenseCard.textContent).not.toContain('Net Cashflow');
+
+    // Verify dedicated Net Cashflow card exists with correct derived balance
+    const netCashflowCard = document.querySelector('.net-cashflow-card');
+    expect(netCashflowCard).toBeTruthy();
+    expect(netCashflowCard.textContent).toContain('Net Cashflow');
+    // Income (50,000) - Expense (23,000) = +27,000
+    expect(netCashflowCard.textContent).toContain('+₹27,000');
+  });
+
+  it('SC-8: renders prominent Available Balance hero card right below header', () => {
+    renderDashboard();
+    const balanceHero = document.querySelector('.dashboard-balance-hero');
+    expect(balanceHero).toBeTruthy();
+    expect(balanceHero.textContent).toContain('Available Balance');
+    expect(balanceHero.textContent).toContain('Surplus');
+  });
 });

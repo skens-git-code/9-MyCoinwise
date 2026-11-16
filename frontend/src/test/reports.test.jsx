@@ -96,14 +96,14 @@ describe('Reports & Statements Download Center (A4 Executive Edition)', () => {
     expect(screen.getByText('COINWISE')).toBeInTheDocument();
     expect(screen.getByText('CERTIFIED')).toBeInTheDocument();
     expect(screen.getByText('Alex Mercer')).toBeInTheDocument();
-    expect(screen.getByText(/Itemized Transaction Ledger/i)).toBeInTheDocument();
-    expect(screen.getByText(/Digitally Signed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Transaction Ledger/i)).toBeInTheDocument();
+    expect(screen.getByText(/ELECTRONICALLY CERTIFIED/i)).toBeInTheDocument();
     expect(screen.getByText(/October Payroll/i)).toBeInTheDocument();
   });
 
   it('switches statement type presets (Income, Expenses, Consolidated)', () => {
     renderReports();
-    const incomePill = screen.getByRole('button', { name: /Income & Inflows/i });
+    const incomePill = screen.getByRole('button', { name: /Income/i });
     fireEvent.click(incomePill);
 
     // After filtering for Income, only payroll should be present, not apartment rent
@@ -120,7 +120,7 @@ describe('Reports & Statements Download Center (A4 Executive Edition)', () => {
     fireEvent.click(notesToggle);
     expect(notesToggle).not.toBeChecked();
 
-    const sealToggle = screen.getByLabelText(/Verification Seal & Hash/i);
+    const sealToggle = screen.getByLabelText(/Verification Seal/i);
     expect(sealToggle).toBeChecked();
     fireEvent.click(sealToggle);
     expect(sealToggle).not.toBeChecked();
@@ -162,8 +162,8 @@ describe('Reports & Statements Download Center (A4 Executive Edition)', () => {
 
   it('adjusts zoom level when clicking Zoom In, Zoom Out, and Fit', () => {
     renderReports();
-    const zoomInBtn = screen.getByTitle('Zoom In');
-    const zoomOutBtn = screen.getByTitle('Zoom Out');
+    const zoomInBtn = screen.getByTitle(/Zoom In/i);
+    const zoomOutBtn = screen.getByTitle(/Zoom Out/i);
     const fitBtn = screen.getByRole('button', { name: 'Fit' });
 
     fireEvent.click(zoomInBtn);

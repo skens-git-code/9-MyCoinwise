@@ -63,6 +63,12 @@ function Breadcrumbs() {
         return t?.('calculator') || 'Calculator';
       case '/tax':
         return t?.('tax_center') || 'Tax Center';
+      case '/reports':
+        return t?.('reports') || 'Statements & Reports';
+      case '/terms':
+        return 'Terms & Conditions';
+      case '/privacy':
+        return 'Privacy Policy';
       default:
         return path.replace('/', '').replace(/-/g, ' ');
     }

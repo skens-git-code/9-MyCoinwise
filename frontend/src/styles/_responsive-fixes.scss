@@ -347,7 +347,7 @@ img {
     align-items: flex-start !important;
     gap: 12px !important;
 
-    .inbox-header-actions,
+    .inbox-header-actions:not(.tx-page *),
     .mh-actions,
     .ih-actions {
       display: flex !important;
@@ -360,6 +360,15 @@ img {
         min-height: 38px !important;
       }
     }
+  }
+
+  .tx-page .inbox-header .inbox-header-actions,
+  .tx-page .inbox-header-actions {
+    display: grid !important;
+    grid-template-columns: 1.15fr 1fr 1fr !important;
+    gap: 6px !important;
+    width: 100% !important;
+    flex-wrap: nowrap !important;
   }
 
   .hero-networth-card {

@@ -1687,9 +1687,11 @@ export default function Calendar() {
                   onClick={() =>
                     openAddTransactionFormForDate(normalizeDateKey(getAppDate()))
                   }
+                  aria-label={formatText('add_transaction', 'Add transaction')}
                 >
-                  <Plus size={16} />{' '}
-                  <span>{formatText('add_transaction', 'Add Transaction')}</span>
+                  <Plus size={16} />
+                  <span className="cal-btn-text-full">{formatText('add_transaction', 'Add Transaction')}</span>
+                  <span className="cal-btn-text-short">{formatText('add', 'Add')}</span>
                 </motion.button>
               </div>
             </div>

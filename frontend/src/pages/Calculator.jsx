@@ -137,17 +137,29 @@ function tokenizeExpression(expression) {
 }
 
 /**
- * Evaluates a tokenized mathematical expression with support for angles and previous answers.
+ * Evaluates a tokenized mathematical expression with support for angles,
+ * implicit multiplication, and previous answers.
  */
-function evaluateMathExpression(expression, { angleMode = 'DEG', previousAnswer = 0 } = {}) {
-  // Normalize common symbols
-  const cleanedExpression = String(expression)
+export function evaluateMathExpression(expression, { angleMode = 'DEG', previousAnswer = 0 } = {}) {
+  // Normalize symbols, common Unicode operators, and implicit multiplications
+  let cleanedExpression = String(expression)
     .replaceAll('×', '*')
     .replaceAll('÷', '/')
     .replaceAll('−', '-')
-    .replaceAll('√', 'sqrt')
-    .replace(/(\d)\(/g, '$1*(') // Implicit multiplication: 2(3) -> 2*(3)
-    .replace(/\)\(/g, ')*(');   // Implicit multiplication: )( -> )*(
+    .replaceAll('∛', 'cbrt(')
+    .replaceAll('√', 'sqrt(')
+    .replace(/(\d)(π|pi|ans|\()/gi, '$1*$2')
+    .replace(/(\d)e(?![+-]?\d)/gi, '$1*e')
+    .replace(/(\))(\d|π|pi|ans|e|\()/gi, '$1*$2')
+    .replace(/(π|ans)(\d|\()/gi, '$1*$2')
+    .replace(/\)\(/g, ')*(');
+
+  // Auto-balance unclosed opening parentheses at the end of the expression
+  const openCount = (cleanedExpression.match(/\(/g) || []).length;
+  const closeCount = (cleanedExpression.match(/\)/g) || []).length;
+  if (openCount > closeCount) {
+    cleanedExpression += ')'.repeat(openCount - closeCount);
+  }
 
   const tokens = tokenizeExpression(cleanedExpression);
   let position = 0;
@@ -162,14 +174,32 @@ function evaluateMathExpression(expression, { angleMode = 'DEG', previousAnswer 
   const toRadians = (value) => (angleMode === 'DEG' ? (value * Math.PI) / 180 : value);
   const fromRadians = (value) => (angleMode === 'DEG' ? (value * 180) / Math.PI : value);
 
+  // Exact degree trigonometry helper to avoid floating point artifacts (e.g. sin(180) = 0, cos(90) = 0)
+  const degSin = (deg) => {
+    const norm = Math.abs(deg) % 360;
+    if (norm === 0 || norm === 180 || norm === 360) return 0;
+    return Math.sin(toRadians(deg));
+  };
+  const degCos = (deg) => {
+    const norm = Math.abs(deg) % 360;
+    if (norm === 90 || norm === 270) return 0;
+    return Math.cos(toRadians(deg));
+  };
+  const degTan = (deg) => {
+    const norm = Math.abs(deg) % 360;
+    if (norm === 90 || norm === 270) throw new Error(`tan(${deg}°) is undefined`);
+    if (norm === 0 || norm === 180 || norm === 360) return 0;
+    return Math.tan(toRadians(deg));
+  };
+
   // Constants available in expressions
   const constants = { pi: Math.PI, e: Math.E, ans: previousAnswer };
 
   // Mathematical functions available in expressions
   const mathFunctions = {
-    sin: (v) => Math.sin(toRadians(v)),
-    cos: (v) => Math.cos(toRadians(v)),
-    tan: (v) => Math.tan(toRadians(v)),
+    sin: (v) => (angleMode === 'DEG' ? degSin(v) : Math.sin(v)),
+    cos: (v) => (angleMode === 'DEG' ? degCos(v) : Math.cos(v)),
+    tan: (v) => (angleMode === 'DEG' ? degTan(v) : Math.tan(v)),
     asin: (v) => fromRadians(Math.asin(v)),
     acos: (v) => fromRadians(Math.acos(v)),
     atan: (v) => fromRadians(Math.atan(v)),
@@ -321,10 +351,13 @@ function evaluateMathExpression(expression, { angleMode = 'DEG', previousAnswer 
 }
 
 /**
- * Formats a numeric result for display, handling large/small numbers.
+ * Formats a numeric result for display, handling large/small numbers and rounding
+ * residual floating-point artifacts near zero.
  */
-const formatDisplayResult = (value) => {
+export const formatDisplayResult = (value) => {
   if (!Number.isFinite(value)) return 'Error';
+  // Round tiny floating precision artifacts near zero (e.g. 1e-16 to 0)
+  if (Math.abs(value) < 1e-14 && Math.abs(value) > 0) return '0';
   if (Math.abs(value) >= 1e12 || (Math.abs(value) > 0 && Math.abs(value) < 1e-9)) {
     return value.toExponential(8);
   }
@@ -370,7 +403,9 @@ export default function ScientificCalculator() {
   // Mode and view state
   const [calculatorMode, setCalculatorMode] = useState('standard'); // 'standard' | 'finance'
   const [financeTool, setFinanceTool] = useState('emi'); // 'emi' | 'tip' | 'compound'
-  const [showMobileHistory, setShowMobileHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(() => (
+    typeof window === 'undefined' ? true : window.matchMedia('(min-width: 861px)').matches
+  ));
 
   // Financial Tools: Loan EMI state
   const [loanPrincipal, setLoanPrincipal] = useState('500000');
@@ -508,10 +543,13 @@ export default function ScientificCalculator() {
     if (storedAngle === 'DEG' || storedAngle === 'RAD') setAngleMode(storedAngle);
   }, [USER_ID]);
 
+  const prevUserIdRef = useRef(USER_ID);
   useEffect(() => {
-    const frame = requestAnimationFrame(reloadUserData);
-    return () => cancelAnimationFrame(frame);
-  }, [reloadUserData]);
+    if (prevUserIdRef.current !== USER_ID) {
+      prevUserIdRef.current = USER_ID;
+      reloadUserData();
+    }
+  }, [USER_ID, reloadUserData]);
 
   /**
    * Persists angle mode preference.
@@ -640,16 +678,43 @@ export default function ScientificCalculator() {
    */
 
   /**
-   * Appends a character or function to the current expression.
-   */
+ * Appends a character or function to the current expression, safeguarding
+ * against duplicate dots and double binary operators.
+ */
   const appendToExpression = useCallback((value) => {
     setCurrentExpression((prev) => {
+      // Smart decimal insertion: prevent multiple dots in current number segment
+      if (value === '.') {
+        const lastNumMatch = prev.match(/(\d+\.?\d*)$/);
+        if (lastNumMatch && lastNumMatch[1].includes('.')) return prev;
+        if (!lastNumMatch || /[+*/^(\-]$/.test(prev)) {
+          return prev + '0.';
+        }
+      }
+
+      // Prevent duplicate consecutive binary operators (e.g. 5 + * -> 5 *)
+      if (['+', '*', '/', '^'].includes(value)) {
+        if (/[+*/^]$/.test(prev)) {
+          return prev.slice(0, -1) + value;
+        }
+        if (prev.endsWith('-') && /[+*/^]-$/.test(prev)) {
+          return prev.slice(0, -2) + value;
+        }
+      }
+
+      // Handle balanced parentheses check
       if (value === ')') {
         const openCount = (prev.match(/\(/g) || []).length;
         const closeCount = (prev.match(/\)/g) || []).length;
         if (closeCount >= openCount) return prev;
       }
-      return prev === '0' ? value : prev + value;
+
+      // Replace leading zero unless entering decimal or operator
+      if (prev === '0' && !['.', '+', '-', '*', '/', '^', '%'].includes(value)) {
+        return value;
+      }
+
+      return prev + value;
     });
     setErrorMessage('');
   }, []);
@@ -735,9 +800,11 @@ export default function ScientificCalculator() {
       if (isInputField) return;
 
       if (/^[0-9.+*/^%(),-]$/.test(event.key)) appendToExpression(event.key);
+      else if (event.key === 'x' || event.key === 'X') appendToExpression('*');
+      else if (event.key === 'p' || event.key === 'P') appendToExpression('π');
       else if (event.key === 'Enter' || event.key === '=') performCalculation();
       else if (event.key === 'Backspace') setCurrentExpression((prev) => prev.slice(0, -1));
-      else if (event.key === 'Escape') {
+      else if (event.key === 'c' || event.key === 'C' || event.key === 'Escape') {
         setCurrentExpression('');
         setDisplayResult('0');
         setErrorMessage('');
@@ -856,6 +923,17 @@ export default function ScientificCalculator() {
     }
   }, [USER_ID]);
 
+  /**
+   * Dispatches click actions for basic keypad keys.
+   */
+  const handleBasicKeyClick = useCallback((value, action) => {
+    if (action === 'clearEntry') clearEntry();
+    else if (action === 'clear') clearAll();
+    else if (action === 'backspace') setCurrentExpression((c) => c.slice(0, -1));
+    else if (action === 'calculate') performCalculation();
+    else appendToExpression(value);
+  }, [appendToExpression, performCalculation]);
+
   /* 
    * ————————————————————————————————————————————
    * RENDER: MAIN INTERFACE
@@ -901,10 +979,11 @@ export default function ScientificCalculator() {
           {/* Toggle History Button for Quick Access */}
           <button
             type="button"
-            className={`btn-secondary ${showMobileHistory ? 'active' : ''}`}
-            onClick={() => setShowMobileHistory((v) => !v)}
+            className={`btn-secondary ${showHistory ? 'active' : ''}`}
+            onClick={() => setShowHistory((v) => !v)}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', padding: '7px 12px' }}
-            title="Toggle calculation history"
+            title={showHistory ? 'Hide calculation history' : 'Show calculation history'}
+            aria-pressed={showHistory}
           >
             <History size={14} />
             <span>History</span>
@@ -916,7 +995,7 @@ export default function ScientificCalculator() {
       </header>
 
       {/* ===================== Main Calculator Body ===================== */}
-      <div className="calculator-shell">
+      <div className={`calculator-shell ${!showHistory ? 'is-history-hidden' : ''}`}>
         <section className="calculator-main glass" aria-label="Calculator Workspace">
           {calculatorMode === 'standard' ? (
             <>
@@ -1000,12 +1079,6 @@ export default function ScientificCalculator() {
                 <div className="calculator-basic-panel">
                   <div className="calculator-basic-grid">
                     {KEY_LAYOUTS.basic.map(([value, label, action]) => {
-                      let clickHandler = () => appendToExpression(value);
-                      if (action === 'clearEntry') clickHandler = clearEntry;
-                      else if (action === 'clear') clickHandler = clearAll;
-                      else if (action === 'backspace') clickHandler = () => setCurrentExpression((c) => c.slice(0, -1));
-                      else if (action === 'calculate') clickHandler = performCalculation;
-
                       let className = 'calculator-key';
                       if (['/', '*', '-', '+', '^'].includes(value)) className += ' operator';
                       else if (['CE', 'C', 'Delete'].includes(value)) className += ' utility';
@@ -1016,7 +1089,7 @@ export default function ScientificCalculator() {
                           type="button"
                           key={`${value}-${label}`}
                           className={className}
-                          onClick={clickHandler}
+                          onClick={() => handleBasicKeyClick(value, action)}
                           aria-label={label}
                         >
                           {value === 'Delete' ? <Delete size={18} /> : label}
@@ -1300,13 +1373,11 @@ export default function ScientificCalculator() {
         </section>
 
         {/* ===================== Calculation History Sidebar / Drawer ===================== */}
-        <aside
-          className={`calculator-history glass ${showMobileHistory ? 'is-mobile-visible' : ''}`}
-          aria-label="Calculation history"
-          style={{
-            display: showMobileHistory ? 'block' : undefined,
-          }}
-        >
+        {showHistory && (
+          <aside
+            className="calculator-history glass"
+            aria-label="Calculation history"
+          >
           <div className="calculator-history-heading">
             <div>
               <span className="calculator-eyebrow">
@@ -1374,6 +1445,7 @@ export default function ScientificCalculator() {
             </div>
           )}
         </aside>
+        )}
       </div>
     </div>
   );

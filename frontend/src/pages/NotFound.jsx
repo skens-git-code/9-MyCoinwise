@@ -36,7 +36,7 @@ export default function NotFound() {
     { label: 'Budgets', path: '/budgets', icon: PieChart, authOnly: true },
     { label: 'Analytics', path: '/analytics', icon: TrendingUp, authOnly: true },
     { label: 'Wealth', path: '/wealth', icon: Wallet, authOnly: true },
-    { label: 'Calculator', path: '/calculator', icon: Calculator, authOnly: false },
+    { label: 'Calculator', path: '/calculator', icon: Calculator, authOnly: true },
     { label: 'Sign In', path: '/login', icon: ShieldCheck, unauthOnly: true },
   ];
 

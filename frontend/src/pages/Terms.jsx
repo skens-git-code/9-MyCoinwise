@@ -50,11 +50,19 @@ export default function Terms() {
   const isAuthenticated = Boolean(stateCtx?.user || stateCtx?.token || legacyCtx?.user || legacyCtx?.token);
 
   useEffect(() => {
-    // Scroll to top upon navigation
+    // Scroll to top upon navigation and unconstrain viewport scroll
     if (typeof window !== 'undefined') {
       window.scrollTo(0, 0);
       document.title = 'Terms & Conditions – MyCoinwise';
+      document.documentElement.classList.add('public-viewport-scrollable');
+      document.body.classList.add('public-viewport-scrollable');
     }
+    return () => {
+      if (typeof window !== 'undefined') {
+        document.documentElement.classList.remove('public-viewport-scrollable');
+        document.body.classList.remove('public-viewport-scrollable');
+      }
+    };
   }, [location.pathname]);
 
   const handleToggleTheme = () => {
@@ -75,10 +83,12 @@ export default function Terms() {
   };
 
   const handleBackNavigation = () => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
+    if (isAuthenticated) {
+      navigate('/');
+    } else if (typeof window !== 'undefined' && window.history.length > 1) {
       navigate(-1);
     } else {
-      navigate(isAuthenticated ? '/' : '/login');
+      navigate('/login');
     }
   };
 
@@ -87,12 +97,15 @@ export default function Terms() {
       className="terms-page-shell"
       style={{
         minHeight: '100dvh',
+        height: 'auto',
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--surface-0, #080a0a)',
         color: 'var(--text-primary, #ffffff)',
         position: 'relative',
         overflowX: 'hidden',
+        overflowY: 'visible',
+        WebkitOverflowScrolling: 'touch',
         transition: 'background 0.3s ease, color 0.3s ease',
       }}
     >
@@ -173,21 +186,20 @@ export default function Terms() {
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                background: 'var(--surface-2, rgba(255, 255, 255, 0.04))',
-                border: '1px solid var(--glass-border, rgba(255, 255, 255, 0.08))',
-                borderRadius: 10,
-                padding: '2px',
+                background: 'var(--surface-2, rgba(255, 255, 255, 0.05))',
+                borderRadius: 12,
+                padding: '3px',
                 fontSize: '0.8125rem',
                 fontWeight: 600,
               }}
             >
               <span
                 style={{
-                  padding: '6px 12px',
-                  borderRadius: 8,
+                  padding: '6px 14px',
+                  borderRadius: 10,
                   background: 'var(--surface-1, #ffffff)',
                   color: 'var(--brand-primary, #10b981)',
-                  boxShadow: 'var(--shadow-xs, 0 1px 3px rgba(0,0,0,0.1))',
+                  boxShadow: 'var(--shadow-xs, 0 1px 3px rgba(0,0,0,0.08))',
                   cursor: 'default',
                 }}
               >
@@ -196,8 +208,8 @@ export default function Terms() {
               <Link
                 to="/privacy"
                 style={{
-                  padding: '6px 12px',
-                  borderRadius: 8,
+                  padding: '6px 14px',
+                  borderRadius: 10,
                   color: 'var(--text-secondary, #94a3b8)',
                   textDecoration: 'none',
                   transition: 'color 0.15s ease',
@@ -218,10 +230,10 @@ export default function Terms() {
               style={{
                 width: 38,
                 height: 38,
-                borderRadius: 10,
+                borderRadius: 12,
                 background: 'var(--surface-1, rgba(255, 255, 255, 0.05))',
                 color: 'var(--text-secondary, #94a3b8)',
-                border: '1px solid var(--glass-border, rgba(255, 255, 255, 0.1))',
+                border: 'none',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -243,10 +255,10 @@ export default function Terms() {
                 alignItems: 'center',
                 gap: 6,
                 padding: '8px 16px',
-                borderRadius: 10,
+                borderRadius: 12,
                 background: 'var(--surface-1, rgba(255, 255, 255, 0.06))',
                 color: 'var(--text-primary, #ffffff)',
-                border: '1px solid var(--glass-border, rgba(255, 255, 255, 0.1))',
+                border: 'none',
                 fontSize: '0.875rem',
                 fontWeight: 600,
                 cursor: 'pointer',

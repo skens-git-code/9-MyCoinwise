@@ -45,9 +45,19 @@ body {
   text-size-adjust: 100%;
 }
 
-/* ── Unconstrain document viewport for Landing & Public pages ── */
+/* ── Unconstrain document viewport for Landing, Auth, Terms, Privacy & Public pages ── */
 html:has(.landing-page),
 body:has(.landing-page),
+html:has(.terms-page-shell),
+body:has(.terms-page-shell),
+html:has(.privacy-page-shell),
+body:has(.privacy-page-shell),
+html:has(.about-page),
+body:has(.about-page),
+html:has(.auth-page),
+body:has(.auth-page),
+html.public-viewport-scrollable,
+body.public-viewport-scrollable,
 html.landing-viewport-scrollable,
 body.landing-viewport-scrollable {
   height: auto !important;
@@ -60,6 +70,11 @@ body.landing-viewport-scrollable {
 }
 
 #root:has(.landing-page),
+#root:has(.terms-page-shell),
+#root:has(.privacy-page-shell),
+#root:has(.about-page),
+#root:has(.auth-page),
+body.public-viewport-scrollable #root,
 body.landing-viewport-scrollable #root {
   min-height: 100vh !important;
   min-height: 100dvh !important;

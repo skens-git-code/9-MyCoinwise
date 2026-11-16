@@ -31,7 +31,7 @@ import {
   Bell, AlertCircle, RefreshCw, LogOut, Sparkles, Calendar as CalendarIcon,
   Menu, X, Zap, Search, Keyboard, User, Users, Sun, Moon, Check,
   HelpCircle, ExternalLink, Languages, Coins, Info, PieChart, Repeat, Landmark, Calculator as CalculatorIcon, ReceiptText,
-  Home as HomeIcon, Cloud, FileCheck
+  Home as HomeIcon, Cloud, FileCheck, MoreVertical
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { CURRENCIES } from '../services/api';
@@ -268,8 +268,8 @@ const useUserDisplay = (user, t) => {
     }
 
     // ── Combine first name and surname without duplicating ──
-    const firstName = String(user?.username || user?.name || '').trim();
-    const surname = String(user?.last_name || user?.surname || '').trim();
+    const firstName = String(user?.username || user?.name || '').replace(/_/g, ' ').trim();
+    const surname = String(user?.last_name || user?.surname || '').replace(/_/g, ' ').trim();
     const hasSurnameAlready = surname && firstName.toLocaleLowerCase().endsWith(surname.toLocaleLowerCase());
     const rawName = [firstName, surname && !hasSurnameAlready ? surname : '']
       .filter(Boolean)
@@ -1506,7 +1506,8 @@ const Header = React.memo(({
                 background: userInfo.avatarColor,
                 overflow: 'hidden',
                 padding: 0,
-                border: '1px solid rgba(0, 212, 255, 0.35)',
+                border: 'none',
+                boxShadow: '0 1px 4px rgba(0, 0, 0, 0.12)',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1753,7 +1754,7 @@ const MobileBottomNav = React.memo(({ t, onOpenDrawer }) => {
         aria-label={t?.('open_menu') || 'Open navigation menu'}
       >
         <motion.div className="dock-icon-wrapper" whileTap={{ scale: 0.88 }}>
-          <Menu size={20} className="dock-icon nav-icon-menu" />
+          <MoreVertical size={20} className="dock-icon nav-icon-menu" />
         </motion.div>
         <span className="dock-label">{t?.('more') || 'More'}</span>
       </button>

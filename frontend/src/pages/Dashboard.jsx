@@ -31,7 +31,7 @@ import {
   Wallet, Sparkles, Zap, Settings, Minus,
   Rocket, LineChart, Tag, RefreshCw, Share2,
   Edit3, Trash2, ChevronDown, AlertTriangle, X, PieChart as PieIcon,
-  Eye, EyeOff, Calendar, Info, LogOut,
+  Eye, EyeOff, Calendar, Info, LogOut, Activity,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { api } from '../services/api';
@@ -766,29 +766,23 @@ export default function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
   const alertDismissedKey = useMemo(() => userScopedKey('deficit_alert_dismissed', USER_ID), [USER_ID]);
   const [alertDismissed, setAlertDismissed] = useState(() => safeGetItem(alertDismissedKey, 'false') === 'true');
   const dismissAlert = useCallback(() => {
     setAlertDismissed(true);
     safeSetItem(alertDismissedKey, 'true');
   }, [alertDismissedKey]);
-  const userMenuRef = useRef(null);
   const exportMenuRef = useRef(null);
 
   useEffect(() => {
-    if (!showUserMenu && !showExportMenu) return;
+    if (!showExportMenu) return;
     const handleOutsideClick = (e) => {
-      if (showUserMenu && userMenuRef.current && !userMenuRef.current.contains(e.target)) {
-        setShowUserMenu(false);
-      }
       if (showExportMenu && exportMenuRef.current && !exportMenuRef.current.contains(e.target)) {
         setShowExportMenu(false);
       }
     };
     const handleEscape = (e) => {
       if (e.key === 'Escape') {
-        setShowUserMenu(false);
         setShowExportMenu(false);
       }
     };
@@ -798,7 +792,7 @@ export default function Dashboard() {
       document.removeEventListener('mousedown', handleOutsideClick);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [showUserMenu, showExportMenu]);
+  }, [showExportMenu]);
 
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -1554,6 +1548,74 @@ export default function Dashboard() {
   const SPENDING_CHART_HEIGHT = 260;
   const NETWORTH_CHART_HEIGHT = 180;
 
+  // ── Custom pie chart label with clean leader lines (outside labels) ──
+  const renderCustomizedPieLabel = useCallback(
+    ({ cx, cy, midAngle, outerRadius, percent, index, name }) => {
+      // Hide leader lines for tiny slices (< 2.5%) to prevent overlapping clutter
+      if ((percent || 0) < 0.025) return null;
+
+      const RADIAN = Math.PI / 180;
+      const cos = Math.cos(-midAngle * RADIAN);
+      const sin = Math.sin(-midAngle * RADIAN);
+
+      // 1. Point on outer circumference of donut slice
+      const sx = cx + (outerRadius + 4) * cos;
+      const sy = cy + (outerRadius + 4) * sin;
+
+      // 2. Inflection elbow point
+      const mx = cx + (outerRadius + 18) * cos;
+      const my = cy + (outerRadius + 18) * sin;
+
+      // 3. Horizontal shelf extension
+      const isRight = cos >= 0;
+      const ex = mx + (isRight ? 18 : -18);
+      const ey = my;
+
+      const sliceColor = PIE_COLORS[index % PIE_COLORS.length];
+      const pctStr = `${Math.round(percent * 100)}%`;
+      const rawName = String(name || '');
+      const displayName = rawName.length > 10 ? `${rawName.slice(0, 9)}…` : rawName;
+
+      return (
+        <g className="pie-leader-label" style={{ pointerEvents: 'none' }}>
+          {/* Inflection leader polyline */}
+          <polyline
+            points={`${sx},${sy} ${mx},${my} ${ex},${ey}`}
+            stroke={sliceColor}
+            strokeWidth={1.5}
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity={0.88}
+          />
+          {/* Terminal anchor dot */}
+          <circle cx={ex} cy={ey} r={2.5} fill={sliceColor} />
+
+          {/* Outside label: Category Name + Percentage */}
+          <text
+            x={ex + (isRight ? 5 : -5)}
+            y={ey}
+            textAnchor={isRight ? 'start' : 'end'}
+            dominantBaseline="central"
+            fill={isDark ? '#e2e8f0' : '#1e293b'}
+            style={{
+              fontSize: '11px',
+              fontWeight: 700,
+              fontFamily: 'inherit',
+              letterSpacing: '-0.01em',
+            }}
+          >
+            <tspan fontWeight="700">{displayName}</tspan>
+            <tspan fill={sliceColor} fontWeight="800" dx="4">
+              {pctStr}
+            </tspan>
+          </text>
+        </g>
+      );
+    },
+    [isDark]
+  );
+
   /* ============================================================
    * Event Handlers
    * ============================================================ */
@@ -1902,91 +1964,202 @@ export default function Dashboard() {
               <Plus size={16} strokeWidth={2.5} />
               <span>{tr('add_transaction', 'Add Transaction')}</span>
             </motion.button>
-
-            {/* ── User Profile (clickable button with dropdown menu) ── */}
-            <div className="bento-user-menu-wrap" ref={userMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
-              <button
-                type="button"
-                className="bento-user-profile"
-                title={`User: ${sanitizedUsername}`}
-                onClick={() => setShowUserMenu((v) => !v)}
-                aria-haspopup="menu"
-                aria-expanded={showUserMenu}
-                style={{
-                  border: 'none',
-                  background: 'inherit',
-                  font: 'inherit',
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-              >
-                <div className="user-avatar" aria-hidden="true">
-                  {userAvatarChar}
-                </div>
-                <span className="user-name" style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {sanitizedUsername}
-                </span>
-                <ChevronDown
-                  size={14}
-                  style={{
-                    color: '#64748b',
-                    flexShrink: 0,
-                    transform: showUserMenu ? 'rotate(180deg)' : 'none',
-                    transition: 'transform 0.2s ease',
-                  }}
-                />
-              </button>
-
-              {showUserMenu && (
-                <div className="bento-user-dropdown-menu" role="menu" aria-label="User profile options">
-                  <div className="user-menu-header">
-                    <span className="umh-name">{sanitizedUsername}</span>
-                    {user?.email && <span className="umh-email">{user.email}</span>}
-                  </div>
-                  <div className="user-menu-divider" />
-                  <button
-                    type="button"
-                    className="user-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      navigate('/settings');
-                    }}
-                  >
-                    <Settings size={15} style={{ color: '#0ea5e9' }} />
-                    <span>Account Settings</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="user-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      navigate('/analytics');
-                    }}
-                  >
-                    <LineChart size={15} style={{ color: '#8b5cf6' }} />
-                    <span>Analytics</span>
-                  </button>
-                  <div className="user-menu-divider" />
-                  <button
-                    type="button"
-                    className="user-menu-item text-danger"
-                    role="menuitem"
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      if (typeof logout === 'function') logout();
-                      navigate('/login', { replace: true });
-                    }}
-                  >
-                    <LogOut size={15} />
-                    <span>Log Out</span>
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         </div>
+
+        {/* ===================== Available Balance Bento Hero Card ===================== */}
+        <motion.div
+          className="dashboard-balance-hero glass"
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            position: 'relative',
+            overflow: 'hidden',
+            borderRadius: '24px',
+            background: isDark
+              ? 'linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.96) 55%, rgba(6, 78, 59, 0.3) 100%)'
+              : 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 45%, rgba(236, 253, 245, 0.9) 100%)',
+            border: `1px solid ${isDark ? 'rgba(52, 211, 153, 0.28)' : 'rgba(16, 185, 129, 0.24)'}`,
+            boxShadow: isDark
+              ? '0 16px 40px rgba(0, 0, 0, 0.45), 0 0 24px rgba(16, 185, 129, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.12)'
+              : '0 12px 30px -4px rgba(16, 185, 129, 0.14), 0 2px 8px rgba(15, 23, 42, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.95)',
+            marginBottom: 8,
+          }}
+        >
+          {/* Ambient Lighting Accents */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: -35,
+              right: -25,
+              width: 160,
+              height: 160,
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(16, 185, 129, 0.18) 0%, transparent 70%)',
+              pointerEvents: 'none',
+            }}
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              bottom: -40,
+              left: -20,
+              width: 140,
+              height: 140,
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(6, 182, 212, 0.14) 0%, transparent 70%)',
+              pointerEvents: 'none',
+            }}
+          />
+
+          <div className="bento-balance-grid">
+            {/* Tile 1: Primary Available Balance Hub */}
+            <div className="bento-balance-primary">
+              {/* Top Row: Eyebrow + Status Badge on left, Wallet Squircle on right */}
+              <div className="bento-primary-top-row">
+                <div className="bento-balance-eyebrow-row">
+                  <div className="bento-beacon-wrap" aria-hidden="true">
+                    <span className="bento-beacon-ping" />
+                    <span className="bento-beacon-dot" />
+                  </div>
+                  <span className="bento-balance-eyebrow">
+                    {tr('available_balance', 'Available Balance')}
+                  </span>
+                  <span className={rawBalance >= 0 ? 'badge-surplus' : 'badge-deficit'}>
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: rawBalance >= 0 ? '#065f46' : '#881337',
+                        display: 'inline-block',
+                      }}
+                    />
+                    {rawBalance >= 0 ? tr('surplus', 'Surplus') : tr('deficit', 'Deficit')}
+                  </span>
+                </div>
+
+                <div className="bento-wallet-squircle" aria-hidden="true">
+                  <Wallet size={20} strokeWidth={2.2} />
+                </div>
+              </div>
+
+              {/* Middle Row: Large authoritative balance numeral */}
+              <div className="bento-balance-number">
+                {loading && !hasLoadedOnce ? (
+                  <span style={{ opacity: 0.6 }}>--</span>
+                ) : (
+                  <AnimatedNumber
+                    value={rawBalance}
+                    duration={800}
+                    format={formatAnimatedCurrency}
+                    skipAnimationOnMount
+                  />
+                )}
+              </div>
+
+              {/* Bottom Row: Quick In/Out Movement Glance Chips on left, Updated real-time on right */}
+              <div className="bento-primary-bottom-row">
+                <div className="bento-movement-chips">
+                  <span className="badge-in">
+                    <ArrowUpRight size={13} strokeWidth={2.4} aria-hidden="true" />
+                    In: {formatCurrencyText(rawIncome, safeFmt, currencySymbol)}
+                  </span>
+                  <span className="badge-out">
+                    <ArrowDownRight size={13} strokeWidth={2.4} aria-hidden="true" />
+                    Out: {formatCurrencyText(rawExpense, safeFmt, currencySymbol)}
+                  </span>
+                </div>
+
+                <span className="bento-wallet-status-label">
+                  <span className="bento-pulse-dot" aria-hidden="true" />
+                  Updated real-time
+                </span>
+              </div>
+            </div>
+
+            {/* Vertical Ambient Divider (desktop only) */}
+            <div className="bento-balance-divider" aria-hidden="true" />
+
+            {/* Subgrid Wrapper (side-by-side on tablet/mobile) */}
+            <div className="bento-subgrid-wrap">
+              {/* Tile 2: Net Cashflow Stat Capsule */}
+              <div className="bento-balance-subcard bento-net-cashflow net-cashflow-card">
+                <div className="bento-subcard-header">
+                  <div className="bento-header-left">
+                    <div className="bento-jewel-icon bento-jewel-emerald" aria-hidden="true">
+                      {netSavings >= 0 ? <TrendingUp size={14} strokeWidth={2.6} /> : <TrendingDown size={14} strokeWidth={2.6} />}
+                    </div>
+                    <span className="bento-subcard-title">Net Cashflow</span>
+                  </div>
+                  <span className={`bento-subcard-pill ${netSavings >= 0 ? 'pos' : 'neg'}`}>
+                    <ArrowUpRight size={11} strokeWidth={2.5} aria-hidden="true" />
+                    {rawIncome > 0 ? `${((netSavings / rawIncome) * 100).toFixed(1)}% margin` : '0% margin'}
+                  </span>
+                </div>
+                <div className={`bento-subcard-metric font-tabular ${netSavings >= 0 ? 'pos' : 'neg'}`}>
+                  {netSavings >= 0 ? '+' : ''}{formatCurrencyText(netSavings, safeFmt, currencySymbol)}
+                </div>
+                <div className="bento-status-chip-row">
+                  <span className={`bento-status-chip ${netSavings >= 0 ? 'pos' : 'neg'}`}>
+                    <span className="chip-dot" />
+                    {netSavings >= 0 ? 'Capital Preserved & Positive' : 'Debits Exceed Credits'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Tile 3: Cashflow Retention & Efficiency Gauge */}
+              <div className="bento-balance-subcard bento-retention-meter">
+                <div className="bento-subcard-header">
+                  <div className="bento-header-left">
+                    <div className="bento-jewel-icon bento-jewel-cyan" aria-hidden="true">
+                      <Activity size={14} strokeWidth={2.6} />
+                    </div>
+                    <span className="bento-subcard-title">Income Retained</span>
+                  </div>
+                  <span className={`bento-subcard-pill ${netSavings >= 0 ? 'pos' : 'neg'} font-tabular`}>
+                    <Sparkles size={11} strokeWidth={2.4} aria-hidden="true" />
+                    <span>{rawIncome > 0 && netSavings >= 0 ? 'Healthy' : 'Deficit'}</span>
+                  </span>
+                </div>
+                <div className="bento-retention-headline">
+                  <span className={`bento-subcard-metric font-tabular ${netSavings >= 0 ? 'pos' : 'neg'}`}>
+                    {rawIncome > 0 ? Math.max(0, Math.min(100, (netSavings / rawIncome) * 100)).toFixed(1) : '0.0'}%
+                  </span>
+                  <span className="bento-retention-sub">of total credits</span>
+                </div>
+                {/* Visual Dual-Gradient Retained vs Spent Track */}
+                <div
+                  className="bento-dual-track"
+                  role="progressbar"
+                  aria-label="Income retention rate"
+                  aria-valuenow={rawIncome > 0 ? Math.max(0, Math.min(100, (netSavings / rawIncome) * 100)) : 0}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <div
+                    className="bento-track-retained"
+                    style={{
+                      width: `${rawIncome > 0 ? Math.max(0, Math.min(100, (netSavings / rawIncome) * 100)) : 0}%`,
+                    }}
+                  />
+                </div>
+                <div className="bento-track-labels">
+                  <span className="bento-metric-hint spent">
+                    <span className="hint-dot red" />
+                    <span>Spent {rawIncome > 0 ? Math.min(100, Math.max(0, (rawExpense / rawIncome) * 100)).toFixed(0) : 0}%</span>
+                  </span>
+                  <span className="bento-metric-hint saved">
+                    <span className="hint-dot green" />
+                    <span>Saved {rawIncome > 0 ? Math.max(0, (netSavings / rawIncome) * 100).toFixed(0) : 0}%</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
 
         {/* ===================== Quick stats strip ===================== */}
         <motion.div
@@ -1996,13 +2169,21 @@ export default function Dashboard() {
         >
           <div className="dqs-pill">
             <span className="dqs-label">
-              <TrendingUp size={13} style={{ color: savingsRate < 0 ? '#ef4444' : '#10b981' }} aria-hidden="true" />
+              <TrendingUp size={14} style={{ color: savingsRate < 0 ? '#ef4444' : '#10b981' }} strokeWidth={2.4} aria-hidden="true" />
               Savings Rate:
             </span>
-            <span className={`dqs-val ${savingsRate < 0 ? 'neg' : savingsRate >= 20 ? 'pos' : ''}`}>
+            <span className={`dqs-val ${savingsRate < 0 ? 'neg' : savingsRate >= 20 ? 'pos' : ''}`} style={{ color: savingsRate < 0 ? '#ef4444' : '#10b981' }}>
               {savingsRate.toFixed(1)}%
             </span>
-            <span className={`dqs-badge ${savingsRate < 0 ? 'neg' : savingsRate >= 20 ? 'pos' : 'neutral'}`}>
+            <span
+              className={`dqs-badge ${savingsRate < 0 ? 'neg' : savingsRate >= 20 ? 'pos' : 'neutral'}`}
+              style={{
+                background: savingsRate < 0 ? 'rgba(239, 68, 68, 0.16)' : 'rgba(16, 185, 129, 0.16)',
+                color: savingsRate < 0 ? '#ef4444' : '#059669',
+                border: `1px solid ${savingsRate < 0 ? 'rgba(239, 68, 68, 0.35)' : 'rgba(16, 185, 129, 0.35)'}`,
+                fontWeight: 700,
+              }}
+            >
               {savingsRate < 0 ? 'Deficit' : savingsRate >= 20 ? 'Healthy' : savingsRate > 0 ? 'Active' : 'Low'}
             </span>
           </div>
@@ -2011,14 +2192,22 @@ export default function Dashboard() {
 
           <div className="dqs-pill">
             <span className="dqs-label">
-              <Tag size={13} style={{ color: '#0ea5e9' }} aria-hidden="true" />
+              <Tag size={14} style={{ color: '#8b5cf6' }} strokeWidth={2.4} aria-hidden="true" />
               Top Expense:
             </span>
-            <span className="dqs-val">
+            <span className="dqs-val" style={{ color: isDark ? '#f8fafc' : '#0f172a' }}>
               {topExpenseCategory ? topExpenseCategory.name : '—'}
             </span>
             {topExpenseCategory ? (
-              <span className="dqs-badge neutral">
+              <span
+                className="dqs-badge"
+                style={{
+                  background: 'rgba(139, 92, 246, 0.14)',
+                  color: '#7c3aed',
+                  border: '1px solid rgba(139, 92, 246, 0.32)',
+                  fontWeight: 700,
+                }}
+              >
                 {topExpenseCategory.pct}% of total
               </span>
             ) : (
@@ -2030,13 +2219,21 @@ export default function Dashboard() {
 
           <div className="dqs-pill">
             <span className="dqs-label">
-              <Zap size={13} style={{ color: '#f59e0b' }} aria-hidden="true" />
+              <Zap size={14} style={{ color: '#f59e0b' }} strokeWidth={2.4} aria-hidden="true" />
               Daily Avg Spend:
             </span>
-            <span className="dqs-val">
+            <span className="dqs-val" style={{ color: isDark ? '#f8fafc' : '#0f172a' }}>
               {formatCurrencyNode(dailyAverageSpend, safeFmt, currencySymbol)}
             </span>
-            <span className="dqs-badge neutral">
+            <span
+              className="dqs-badge"
+              style={{
+                background: 'rgba(245, 158, 11, 0.14)',
+                color: '#d97706',
+                border: '1px solid rgba(245, 158, 11, 0.32)',
+                fontWeight: 700,
+              }}
+            >
               30d avg
             </span>
           </div>
@@ -2066,26 +2263,6 @@ export default function Dashboard() {
                 {preset.label}
               </button>
             ))}
-          </div>
-
-          <div className="filter-select-wrap">
-            <span className="filter-select-icon" aria-hidden="true">
-              <Calendar size={13} />
-            </span>
-            <select
-              className="filter-select"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              aria-label="Filter by date"
-            >
-              <option value="all">{tr('all_time', 'All Time')}</option>
-              <option value="7days">{tr('last_7_days', 'Last 7 Days')}</option>
-              <option value="30days">{tr('last_30_days', 'Last 30 Days')}</option>
-              <option value="thisMonth">{tr('this_month', 'This Month')}</option>
-            </select>
-            <span className="filter-select-arrow" aria-hidden="true">
-              <ChevronDown size={14} />
-            </span>
           </div>
 
           <div className="filter-select-wrap">
@@ -2195,13 +2372,13 @@ export default function Dashboard() {
                       <XAxis
                         dataKey="name"
                         interval={chartData.length > 8 ? Math.ceil(chartData.length / 5) : 0}
-                        tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 11 }}
+                        tick={{ fill: isDark ? '#94a3b8' : '#475569', fontSize: 11, fontWeight: 500 }}
                         axisLine={false}
                         tickLine={false}
                       />
                       <YAxis
                         domain={[0, (dataMax) => Math.max(Number.isFinite(dataMax) ? dataMax : 0, Math.ceil(maxIncome * 1.3))]}
-                        tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 10 }}
+                        tick={{ fill: isDark ? '#94a3b8' : '#475569', fontSize: 10, fontWeight: 500 }}
                         axisLine={false}
                         tickLine={false}
                         width={40}
@@ -2218,9 +2395,9 @@ export default function Dashboard() {
                       />
                       <Tooltip content={<CashflowFloatingTooltip safeFmt={safeFmt} currencySymbol={currencySymbol} />} />
                       <Legend
-                        wrapperStyle={{ paddingTop: 6, paddingBottom: 2, fontSize: '0.78rem', fontWeight: 700 }}
+                        wrapperStyle={{ paddingTop: 8, paddingBottom: 2, fontSize: '0.84rem', fontWeight: 600 }}
                         formatter={(value) => (
-                          <span style={{ color: '#64748b' }}>
+                          <span style={{ color: isDark ? '#94a3b8' : '#475569', fontSize: '0.84rem', fontWeight: 600, marginLeft: 4 }}>
                             {value === 'income' ? tr('income_label', 'Income') : tr('expense_label', 'Expenses')}
                           </span>
                         )}
@@ -2299,7 +2476,7 @@ export default function Dashboard() {
                 valueText={formatCurrencyText(rawIncome, safeFmt, currencySymbol)}
                 colorRgb={isDark ? '52, 211, 153' : '16, 185, 129'}
                 accentColor={isDark ? '#34d399' : '#10b981'}
-                subtitle={dateFilter === 'thisMonth' ? 'This Month' : dateFilter === '7days' ? 'Last 7 Days' : dateFilter === '30days' ? 'Last 30 Days' : 'Net Cashflow'}
+                subtitle={dateFilter === 'thisMonth' ? 'This Month' : dateFilter === '7days' ? 'Last 7 Days' : dateFilter === '30days' ? 'Last 30 Days' : 'Total Credits'}
                 trend={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.dir}
                 trendVal={dateFilter === 'all' || momMetrics.income.val === 'New' ? undefined : momMetrics.income.val}
                 className="bento-income"
@@ -2322,7 +2499,7 @@ export default function Dashboard() {
                 valueText={formatCurrencyText(rawExpense, safeFmt, currencySymbol)}
                 colorRgb={isDark ? '248, 113, 113' : '220, 38, 38'}
                 accentColor={isDark ? '#f87171' : '#dc2626'}
-                subtitle={dateFilter === 'thisMonth' ? 'This Month' : dateFilter === '7days' ? 'Last 7 Days' : dateFilter === '30days' ? 'Last 30 Days' : 'Net Cashflow'}
+                subtitle={dateFilter === 'thisMonth' ? 'This Month' : dateFilter === '7days' ? 'Last 7 Days' : dateFilter === '30days' ? 'Last 30 Days' : 'Total Debits'}
                 trend={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.dir}
                 trendVal={dateFilter === 'all' || momMetrics.expense.val === 'New' ? undefined : momMetrics.expense.val}
                 className="bento-expense"
@@ -2598,11 +2775,11 @@ export default function Dashboard() {
                   <div className="tooltip-trigger-wrap">
                     <span className="bh-label" style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <span className="bh-indicator-dot" style={{ background: isDeficit ? '#ef4444' : '#10b981' }} aria-hidden="true" />
-                      {tr('net_cashflow', 'Net Cashflow')}
-                      <Info size={14} className="info-icon" style={{ color: isDark ? '#94a3b8' : '#64748b', cursor: 'pointer' }} aria-label="Net Cashflow Information" />
+                      {tr('net_position', 'Net Position')}
+                      <Info size={14} className="info-icon" style={{ color: isDark ? '#94a3b8' : '#64748b', cursor: 'pointer' }} aria-label="Net Position Information" />
                     </span>
                     <div className="custom-dark-tooltip">
-                      This figure excludes incoming savings. It indicates your net cash flow.
+                      This figure represents your overall liquid net position across accounts.
                     </div>
                   </div>
                   <span
@@ -2632,9 +2809,6 @@ export default function Dashboard() {
                   >
                     {showBalance ? <Eye size={16} /> : <EyeOff size={16} />}
                   </button>
-                  <div className="bh-icon-wrap" aria-hidden="true" style={{ color: isDeficit ? '#ef4444' : '#10b981' }}>
-                    <Wallet size={18} strokeWidth={2} />
-                  </div>
                 </div>
               </div>
 
@@ -2795,7 +2969,7 @@ export default function Dashboard() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderTop: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(226, 232, 240, 0.8)' }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{isDeficit ? 'Deficit' : 'Surplus'}</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Balance Status</span>
                   <span style={{
                     fontSize: '0.74rem',
                     fontWeight: 700,
@@ -2986,11 +3160,11 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="bt-pie-wrap" style={{ height: 235, minHeight: 200, position: 'relative' }}>
+              <div className="bt-pie-wrap" style={{ height: 270, minHeight: 250, position: 'relative', overflow: 'visible' }}>
                 {pieData.length > 0 ? (
                   <>
-                    <ResponsiveContainer width="100%" height={235} minWidth={1} minHeight={200}>
-                      <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                    <ResponsiveContainer width="100%" height={270} minWidth={1} minHeight={250}>
+                      <PieChart margin={{ top: 14, right: 62, bottom: 14, left: 62 }}>
                         <Pie
                           isAnimationActive={!prefersReducedMotion && !loading}
                           animationBegin={100}
@@ -2998,17 +3172,19 @@ export default function Dashboard() {
                           animationEasing="ease-out"
                           data={pieData}
                           cx="50%"
-                          cy="40%"
+                          cy="44%"
                           startAngle={90}
                           endAngle={-270}
-                          innerRadius="50%"
-                          outerRadius="74%"
+                          innerRadius="44%"
+                          outerRadius="64%"
                           paddingAngle={pieData.length > 1 ? 4 : 0}
                           cornerRadius={pieData.length > 1 ? 5 : 0}
                           dataKey="value"
                           nameKey="name"
-                          stroke={pieData.length > 1 ? "var(--surface-card, #ffffff)" : "none"}
-                          strokeWidth={pieData.length > 1 ? 2 : 0}
+                          stroke={pieData.length > 1 ? (isDark ? "rgba(15, 23, 42, 0.95)" : "#ffffff") : "none"}
+                          strokeWidth={pieData.length > 1 ? 2.5 : 0}
+                          label={renderCustomizedPieLabel}
+                          labelLine={false}
                           onMouseEnter={(_, index) => setHoveredPieIndex(index)}
                           onMouseLeave={() => setHoveredPieIndex(null)}
                           onClick={(entry) => {
@@ -3070,53 +3246,6 @@ export default function Dashboard() {
                         />
                       </PieChart>
                     </ResponsiveContainer>
-
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: '40%',
-                        left: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        textAlign: 'center',
-                        pointerEvents: 'none',
-                        userSelect: 'none',
-                        maxWidth: '42%',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: '0.66rem',
-                          fontWeight: 700,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.04em',
-                          color: 'var(--text-muted, #94a3b8)',
-                          whiteSpace: 'nowrap',
-                          textOverflow: 'ellipsis',
-                          overflow: 'hidden',
-                        }}
-                      >
-                        {hoveredPieIndex !== null && pieData[hoveredPieIndex]
-                          ? pieData[hoveredPieIndex].name
-                          : pieData.length === 1
-                            ? pieData[0].name
-                            : tr('total', 'Total')}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: '0.92rem',
-                          fontWeight: 800,
-                          color: 'var(--text-primary, #0f172a)',
-                          fontVariantNumeric: 'tabular-nums',
-                          lineHeight: 1.15,
-                          marginTop: 1,
-                        }}
-                      >
-                        {hoveredPieIndex !== null && pieData[hoveredPieIndex]
-                          ? formatCurrencyText(pieData[hoveredPieIndex].value, safeFmt, currencySymbol)
-                          : formatCurrencyText(pieTotal, safeFmt, currencySymbol)}
-                      </div>
-                    </div>
                   </>
                 ) : (
                   <div className="bento-empty">

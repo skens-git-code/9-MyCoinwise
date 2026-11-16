@@ -64,22 +64,44 @@ function AppRoutes() {
     <ErrorBoundary resetKeys={[location.pathname]} fullScreen={false}>
       <Routes location={location}>
         <Route path="/" element={<Suspense fallback={<DashboardSkeleton />}><Dashboard /></Suspense>} />
+        <Route path="/dashboard" element={<Navigate to="/" replace />} />
+        <Route path="/home" element={<Navigate to="/" replace />} />
         <Route path="/transactions" element={<Suspense fallback={<TransactionsSkeleton />}><Transactions /></Suspense>} />
+        <Route path="/txns" element={<Navigate to="/transactions" replace />} />
         <Route path="/analytics" element={<Suspense fallback={<AnalyticsSkeleton />}><Analytics /></Suspense>} />
         <Route path="/accounts" element={<Suspense fallback={<AccountsSkeleton />}><Accounts /></Suspense>} />
+        <Route path="/banking" element={<Navigate to="/accounts" replace />} />
+        <Route path="/bank" element={<Navigate to="/accounts" replace />} />
+        <Route path="/wallets" element={<Navigate to="/accounts" replace />} />
         <Route path="/budgets" element={<Suspense fallback={<BudgetsSkeleton />}><Budgets /></Suspense>} />
         <Route path="/goals" element={<Suspense fallback={<GoalsSkeleton />}><Goals /></Suspense>} />
+        <Route path="/savings" element={<Navigate to="/goals" replace />} />
+        <Route path="/saving-goals" element={<Navigate to="/goals" replace />} />
+        <Route path="/saving" element={<Navigate to="/goals" replace />} />
         <Route path="/subscriptions" element={<Suspense fallback={<SubscriptionsSkeleton />}><Subscriptions /></Suspense>} />
+        <Route path="/recurring" element={<Navigate to="/subscriptions" replace />} />
+        <Route path="/bills" element={<Navigate to="/subscriptions" replace />} />
         <Route path="/cashflow" element={<Suspense fallback={<CashflowSkeleton />}><Cashflow /></Suspense>} />
+        <Route path="/forecasting" element={<Navigate to="/cashflow" replace />} />
+        <Route path="/forecast" element={<Navigate to="/cashflow" replace />} />
         <Route path="/wealth" element={<Suspense fallback={<WealthSkeleton />}><Wealth /></Suspense>} />
+        <Route path="/assets" element={<Navigate to="/wealth" replace />} />
         <Route path="/calendar" element={<Suspense fallback={<CalendarSkeleton />}><Calendar /></Suspense>} />
         <Route path="/settings" element={<Suspense fallback={<PageSkeleton title="Settings" />}><SettingsPage /></Suspense>} />
+        <Route path="/preferences" element={<Navigate to="/settings" replace />} />
+        <Route path="/account" element={<Navigate to="/settings" replace />} />
+        <Route path="/security" element={<Navigate to="/settings" replace />} />
         <Route path="/about" element={<Suspense fallback={<PageSkeleton title="About" />}><About /></Suspense>} />
+        <Route path="/about-us" element={<Navigate to="/about" replace />} />
         <Route path="/calculator" element={<Suspense fallback={<PageSkeleton title="Calculator" />}><Calculator /></Suspense>} />
         <Route path="/tax" element={<Suspense fallback={<PageSkeleton title="Tax" />}><Tax /></Suspense>} />
         <Route path="/reports" element={<Suspense fallback={<PageSkeleton title="Statements & Reports" />}><Reports /></Suspense>} />
         <Route path="/download" element={<Navigate to="/reports" replace />} />
         <Route path="/statements" element={<Navigate to="/reports" replace />} />
+        <Route path="/statement" element={<Navigate to="/reports" replace />} />
+        <Route path="/report" element={<Navigate to="/reports" replace />} />
+        <Route path="/export" element={<Navigate to="/reports" replace />} />
+        <Route path="/statement-upload" element={<Navigate to="/reports" replace />} />
         <Route path="/tax-center" element={<Navigate to="/tax" replace />} />
         <Route path="/taxes" element={<Navigate to="/tax" replace />} />
         <Route path="/history" element={<Navigate to="/transactions" replace />} />
@@ -979,8 +1001,13 @@ export default function App() {
                   <Suspense fallback={<Loader />}>
                     <Routes>
                       <Route path="/welcome" element={<Landing />} />
+                      <Route path="/landing" element={<Navigate to="/welcome" replace />} />
                       <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
+                      <Route path="/signin" element={<Navigate to="/login" replace />} />
+                      <Route path="/sign-in" element={<Navigate to="/login" replace />} />
                       <Route path="/register" element={!user ? <Register /> : <Navigate to="/" replace />} />
+                      <Route path="/signup" element={<Navigate to="/register" replace />} />
+                      <Route path="/sign-up" element={<Navigate to="/register" replace />} />
                       <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" replace />} />
                       <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" replace />} />
                       <Route path="/verify-email" element={<VerifyEmail />} />

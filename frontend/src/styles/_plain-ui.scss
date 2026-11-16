@@ -2188,6 +2188,8 @@ a,
   margin: 0;
   border-radius: 12px;
   background: color-mix(in srgb, var(--surface-1) 86%, transparent);
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .island-header .connection-toggle:hover:not(:disabled) {

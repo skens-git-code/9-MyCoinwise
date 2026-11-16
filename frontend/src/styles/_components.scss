@@ -1102,10 +1102,21 @@
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  min-height: 180px;
-  height: 220px;
+  min-height: 240px;
+  height: 270px;
   flex-shrink: 0;
-  overflow: hidden;
+  overflow: visible;
+
+  .recharts-wrapper,
+  .recharts-surface {
+    overflow: visible !important;
+  }
+}
+
+.pie-leader-label {
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 0.2s ease;
 }
 
 /* Recharts v3 renders its chart inside a zero-size, overflow-visible measuring
@@ -7216,6 +7227,13 @@ textarea:focus-visible {
     font-weight: 700 !important;
     white-space: nowrap;
     box-shadow: 0 4px 14px rgba(var(--brand-primary-rgb, 16, 185, 129), 0.35) !important;
+
+    .cal-btn-text-short {
+      display: none;
+    }
+    .cal-btn-text-full {
+      display: inline;
+    }
   }
 }
 
@@ -7420,9 +7438,16 @@ textarea:focus-visible {
       .cal-new-btn {
         height: 38px !important;
         min-height: 38px !important;
-        padding: 0 12px !important;
+        padding: 0 10px !important;
         font-size: 0.8rem !important;
         white-space: nowrap !important;
+
+        .cal-btn-text-short {
+          display: inline !important;
+        }
+        .cal-btn-text-full {
+          display: none !important;
+        }
       }
     }
   }
@@ -7511,15 +7536,57 @@ textarea:focus-visible {
   }
 
   .cal-grid-desktop {
-    display: none !important;
+    display: block !important;
+    width: 100% !important;
   }
 
   .cal-list-mobile-fallback {
-    display: block !important;
+    display: none !important;
+  }
+
+  .cal-grid {
+    gap: 4px !important;
+  }
+
+  .cal-weekday {
+    font-size: 0.7rem !important;
+    padding-bottom: 4px !important;
+  }
+
+  .cal-day {
+    min-height: 52px !important;
+    padding: 4px 2px !important;
+    border-radius: 8px !important;
+
+    .cal-date-num {
+      font-size: 0.8rem !important;
+    }
+
+    .cal-day-quick-add {
+      display: none !important;
+    }
+
+    .cal-cell-net-val {
+      font-size: 0.62rem !important;
+    }
+
+    .cal-dual-bar {
+      height: 3px !important;
+    }
   }
 
   .cal-legend-bar {
-    display: none !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px 12px !important;
+    padding: 10px 8px !important;
+    font-size: 0.7rem !important;
+    justify-content: center !important;
+  }
+
+  .cal-drawer-overlay {
+    align-items: flex-end !important;
+    justify-content: center !important;
   }
 
   /* [FIX] Weekly summary strip: scroll horizontally on mobile instead of wrapping,
@@ -8368,6 +8435,12 @@ select {
   gap: 16px;
   max-width: 1040px;
   margin: 0 auto;
+  transition: max-width 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &.is-history-hidden {
+    grid-template-columns: 1fr;
+    max-width: 720px;
+  }
 }
 
 .calculator-main,

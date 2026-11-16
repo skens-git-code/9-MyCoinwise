@@ -71,4 +71,4 @@ jobs:
         with:
           uploadArtifacts: true
           temporaryPublicStorage: true
-          configPath: './.lighthouserc.json'
+          configPath: './stuff/config/.lighthouserc.json'

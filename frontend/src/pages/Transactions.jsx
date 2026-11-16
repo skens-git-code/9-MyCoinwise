@@ -46,6 +46,113 @@ import { resolveReceiptUrl } from '../utils/receiptUrl';
 
 const getSafeReceiptUrl = (url) => resolveReceiptUrl(url);
 
+/**
+ * Sanitize raw transaction note/description by removing SMS scraper artifacts,
+ * raw UPI IDs, UPI references, emails, and scraper tags.
+ *
+ * @param {string} raw
+ * @param {number} [maxLen=120]
+ * @returns {string}
+ */
+export function cleanNoteText(raw, maxLen = 120) {
+  if (!raw) return '';
+  let str = String(raw)
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  // Strip scraper tags like "Tag: # Groceries Union Bank Of India - 39 - Rs.20"
+  str = str.replace(/\bTag:\s*#.*$/i, '');
+
+  // Strip "on UPI Ref No: 631579260664" or "UPI Ref: 12345"
+  str = str.replace(/\b(?:on\s+)?UPI Ref(?:\s*No)?[:\s]*\w+/gi, '');
+
+  // Strip "| UPI ID: paytm... @pty" or "UPI ID: ..."
+  str = str.replace(/\s*\|\s*UPI ID:[^|]*/gi, '');
+  str = str.replace(/\bUPI ID:[^\s,|]*/gi, '');
+
+  // Strip email addresses
+  str = str.replace(/[\w.-]+@[\w.-]+/g, '');
+
+  // Strip phone numbers / account numbers (10+ digits)
+  str = str.replace(/\b\d{10,}\b/g, '');
+
+  // Strip trailing pipes, dashes, colons, or periods
+  str = str.replace(/\s*[|–\-:]\s*$/g, '').replace(/\s{2,}/g, ' ').trim();
+
+  if (maxLen && str.length > maxLen) {
+    return `${str.slice(0, maxLen - 3).trim()}...`;
+  }
+  return str;
+}
+
+/**
+ * Format payment method into standardized executive casing (e.g., 'UPI', 'Card', 'Net Banking').
+ */
+export function formatPaymentMethod(method) {
+  if (!method) return 'UPI';
+  const m = String(method).trim();
+  const lower = m.toLowerCase();
+  if (lower === 'upi') return 'UPI';
+  if (lower === 'card' || lower === 'debit_card' || lower === 'credit_card') return 'Card';
+  if (lower === 'net_banking' || lower === 'netbanking') return 'Net Banking';
+  if (lower === 'cash') return 'Cash';
+  if (lower === 'cheque' || lower === 'check') return 'Cheque';
+  if (lower === 'neft' || lower === 'rtgs' || lower === 'imps') return lower.toUpperCase();
+  return m.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Robust receipt attachment viewer that hides gracefully if the image fails to load or 404s.
+ */
+function ReceiptAttachment({ receiptUrl, tr }) {
+  const [hasError, setHasError] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const receiptSrc = getSafeReceiptUrl(receiptUrl);
+
+  if (!receiptSrc || hasError) return null;
+
+  return (
+    <div className="tx-ticket-row tags-row tx-ticket-receipt-attachment" style={{ display: 'block' }}>
+      <span className="ttr-label" style={{ display: 'block', marginBottom: 8 }}>
+        <ShieldCheck size={12} aria-hidden /> {tr('attachment', 'Receipt Attachment')}
+      </span>
+      <a href={receiptSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
+        <img
+          src={receiptSrc}
+          alt={tr('transaction_receipt', 'Transaction receipt')}
+          onLoad={() => setIsLoaded(true)}
+          onError={() => setHasError(true)}
+          style={{
+            display: isLoaded ? 'block' : 'none',
+            width: '100%',
+            maxHeight: 200,
+            objectFit: 'contain',
+            borderRadius: 8,
+            border: '1px solid var(--glass-border)',
+            background: 'var(--glass-1)',
+          }}
+        />
+        {!isLoaded && !hasError && (
+          <div
+            style={{
+              padding: '12px',
+              textAlign: 'center',
+              borderRadius: 8,
+              border: '1px dashed var(--glass-border)',
+              background: 'var(--glass-1)',
+              fontSize: '0.78rem',
+              color: 'var(--text-muted)',
+            }}
+          >
+            Loading receipt...
+          </div>
+        )}
+      </a>
+    </div>
+  );
+}
+
 /* ============================================================
  * Constants
  * ============================================================ */
@@ -639,10 +746,22 @@ export default function Transactions() {
                 return new Date(tx.date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
               })()}
               {tx.bank_name && <span className="ili-note-snip" style={{ color: 'var(--brand-primary)', fontWeight: 600 }}> · {highlight(tx.bank_name, deferredSearchTerm)}</span>}
-              {tx.merchant && <span className="ili-note-snip"> · {highlight(tx.merchant, deferredSearchTerm)}</span>}
-              {!tx.merchant && tx.note && <span className="ili-note-snip"> · {highlight(tx.note, deferredSearchTerm)}</span>}
-              {tx.sender_name && <span className="ili-note-snip"> · From: {highlight(tx.sender_name, deferredSearchTerm)}</span>}
-              {tx.receiver_name && <span className="ili-note-snip"> · To: {highlight(tx.receiver_name, deferredSearchTerm)}</span>}
+              {(() => {
+                const noteSnippet = cleanNoteText(tx.note, 36);
+                if (tx.merchant) {
+                  return <span className="ili-note-snip"> · {highlight(tx.merchant, deferredSearchTerm)}</span>;
+                }
+                if (noteSnippet && noteSnippet.toLowerCase() !== (tx.category || '').toLowerCase()) {
+                  return <span className="ili-note-snip"> · {highlight(noteSnippet, deferredSearchTerm)}</span>;
+                }
+                return null;
+              })()}
+              {tx.type === 'income' && tx.sender_name && !['you', 'self'].includes(tx.sender_name.trim().toLowerCase()) && (
+                <span className="ili-note-snip"> · From: {highlight(tx.sender_name, deferredSearchTerm)}</span>
+              )}
+              {tx.type === 'expense' && !tx.merchant && tx.receiver_name && !['you', 'self'].includes(tx.receiver_name.trim().toLowerCase()) && (
+                <span className="ili-note-snip"> · To: {highlight(tx.receiver_name, deferredSearchTerm)}</span>
+              )}
             </p>
           </div>
 
@@ -1462,7 +1581,9 @@ export default function Transactions() {
             className="btn-primary tx-add-btn"
             onClick={handleOpenAdd}
           >
-            <Plus size={15} /> <span>{tr('add_transaction', 'Add Transaction')}</span>
+            <Plus size={15} />
+            <span className="tx-btn-text-full">{tr('add_transaction', 'Add Transaction')}</span>
+            <span className="tx-btn-text-short">{tr('add', 'Add')}</span>
           </motion.button>
 
           {/* ── Import statement button ── */}
@@ -1706,13 +1827,14 @@ export default function Transactions() {
               <div className="il-controls-actions">
                 <button
                   type="button"
-                  className="icon-btn"
+                  className={`icon-btn ${showAdvancedFilters ? 'active' : ''}`}
                   onClick={() => setShowAdvancedFilters((v) => !v)}
                   aria-label={tr('advanced_filters', 'Advanced filters')}
                   aria-expanded={showAdvancedFilters}
                   title={tr('advanced_filters', 'Advanced filters')}
                 >
-                  <Filter size={16} />
+                  <Filter size={15} />
+                  <span className="il-filter-btn-label">{tr('filters', 'Filters')}</span>
                 </button>
 
                 {hasActiveFilters && (
@@ -1931,10 +2053,22 @@ export default function Transactions() {
                             return new Date(tx.date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
                           })()}
                           {tx.bank_name && <span className="ili-note-snip" style={{ color: 'var(--brand-primary)', fontWeight: 600 }}> · {highlight(tx.bank_name, deferredSearchTerm)}</span>}
-                          {tx.merchant && <span className="ili-note-snip"> · {highlight(tx.merchant, deferredSearchTerm)}</span>}
-                          {!tx.merchant && tx.note && <span className="ili-note-snip"> · {highlight(tx.note, deferredSearchTerm)}</span>}
-                          {tx.sender_name && <span className="ili-note-snip"> · From: {highlight(tx.sender_name, deferredSearchTerm)}</span>}
-                          {tx.receiver_name && <span className="ili-note-snip"> · To: {highlight(tx.receiver_name, deferredSearchTerm)}</span>}
+                          {(() => {
+                            const noteSnippet = cleanNoteText(tx.note, 36);
+                            if (tx.merchant) {
+                              return <span className="ili-note-snip"> · {highlight(tx.merchant, deferredSearchTerm)}</span>;
+                            }
+                            if (noteSnippet && noteSnippet.toLowerCase() !== (tx.category || '').toLowerCase()) {
+                              return <span className="ili-note-snip"> · {highlight(noteSnippet, deferredSearchTerm)}</span>;
+                            }
+                            return null;
+                          })()}
+                          {tx.type === 'income' && tx.sender_name && !['you', 'self'].includes(tx.sender_name.trim().toLowerCase()) && (
+                            <span className="ili-note-snip"> · From: {highlight(tx.sender_name, deferredSearchTerm)}</span>
+                          )}
+                          {tx.type === 'expense' && !tx.merchant && tx.receiver_name && !['you', 'self'].includes(tx.receiver_name.trim().toLowerCase()) && (
+                            <span className="ili-note-snip"> · To: {highlight(tx.receiver_name, deferredSearchTerm)}</span>
+                          )}
                         </p>
                       </div>
 
@@ -2103,7 +2237,7 @@ export default function Transactions() {
                           <span className="tl-label">
                             <CreditCard size={12} aria-hidden /> {tr('payment_method', 'Payment Method')}
                           </span>
-                          <span className="tl-val bold">{tx.payment_method}</span>
+                          <span className="tl-val bold">{formatPaymentMethod(tx.payment_method)}</span>
                         </div>
                       )}
 
@@ -2159,45 +2293,29 @@ export default function Transactions() {
                     </div>
 
                     {/* Note Box */}
-                    {tx.note ? (
-                      <div className="tx-ticket-row note-row">
-                        <span className="ttr-label">
-                          <FileText size={12} aria-hidden /> {tr('description', 'Note')}
-                        </span>
-                        <div className="ttr-note-box">
-                          <span className="ttr-note-quote" aria-hidden="true">“</span>
-                          <span className="ttr-note-text">{tx.note}</span>
-                          <span className="ttr-note-quote" aria-hidden="true">”</span>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* Attached Receipt Image Proof */}
                     {(() => {
-                      const receiptSrc = getSafeReceiptUrl(tx.receipt_url);
-                      if (!receiptSrc) return null;
+                      const noteToShow = cleanNoteText(tx.note);
+                      if (!noteToShow) return null;
                       return (
-                        <div className="tx-ticket-row tags-row" style={{ display: 'block' }}>
-                          <span className="ttr-label" style={{ display: 'block', marginBottom: 8 }}>
-                            <ShieldCheck size={12} aria-hidden /> {tr('attachment', 'Receipt Attachment')}
+                        <div className="tx-ticket-row note-row">
+                          <span className="ttr-label">
+                            <FileText size={12} aria-hidden /> {tr('description', 'Description')}
                           </span>
-                          <a href={receiptSrc} target="_blank" rel="noopener noreferrer">
-                            <img
-                              src={receiptSrc}
-                              alt="Transaction receipt"
-                              style={{
-                                width: '100%',
-                                maxHeight: 200,
-                                objectFit: 'contain',
-                                borderRadius: 8,
-                                border: '1px solid var(--glass-border)',
-                                background: 'var(--glass-1)',
-                              }}
-                            />
-                          </a>
+                          <div className="ttr-note-box">
+                            <span className="ttr-note-quote" aria-hidden="true">“</span>
+                            <span className="ttr-note-text">{noteToShow}</span>
+                            <span className="ttr-note-quote" aria-hidden="true">”</span>
+                          </div>
                         </div>
                       );
                     })()}
+
+                    {/* Attached Receipt Image Proof */}
+                    <ReceiptAttachment
+                      key={tx._id || tx.id || tx.receipt_url}
+                      receiptUrl={tx.receipt_url}
+                      tr={tr}
+                    />
 
                     {/* Tags */}
                     {Array.isArray(tx.tags) && tx.tags.length > 0 && (

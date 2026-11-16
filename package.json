@@ -9,8 +9,8 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "start": "node start.js",
-    "dev": "node start.js",
+    "start": "node stuff/scripts/start.js",
+    "dev": "node stuff/scripts/start.js",
     "build": "npm --prefix frontend run build",
     "test": "npm --prefix backend test && npm --prefix frontend test",
     "db:reset": "node backend/scripts/reset-db.js",

@@ -202,10 +202,16 @@ const parseTransactionDate = (value) => {
 // without rejecting valid local-date transactions submitted by users east of UTC.
 const isFutureDate = (date) => {
   if (!date) return false;
-  const endOfGracePeriod = new Date();
-  endOfGracePeriod.setUTCDate(endOfGracePeriod.getUTCDate() + 1);
-  endOfGracePeriod.setUTCHours(23, 59, 59, 999);
-  return date.getTime() > endOfGracePeriod.getTime();
+  const localGrace = new Date();
+  localGrace.setDate(localGrace.getDate() + 1);
+  localGrace.setHours(23, 59, 59, 999);
+
+  const utcGrace = new Date();
+  utcGrace.setUTCDate(utcGrace.getUTCDate() + 1);
+  utcGrace.setUTCHours(23, 59, 59, 999);
+
+  const endOfGracePeriod = Math.max(localGrace.getTime(), utcGrace.getTime());
+  return date.getTime() > endOfGracePeriod;
 };
 
 /* —————————————————————————————————————

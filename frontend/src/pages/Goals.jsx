@@ -34,6 +34,7 @@ import { predictTimeToGoal } from '../services/aiEngine';
 import { api } from '../services/api';
 import Modal from '../components/Modal';
 import { useToast } from '../components/ToastProvider';
+import { cleanNoteText } from './Transactions';
 
 /* ============================================================
  * Constants
@@ -1681,7 +1682,7 @@ export default function Goals() {
                         }}
                         aria-hidden="true"
                       />
-                      {g.notes}
+                      {cleanNoteText(g.notes, 120)}
                     </p>
                   )}
 
@@ -1782,7 +1783,7 @@ export default function Goals() {
                         <span>
                           ~{pred.months} {tr('months', 'mo')}
                         </span>{' '}
-                        @ {fmt(pred.savingsPerMonth)}/{tr('monthly_short', 'mo')}
+                        @ {fmt(safeNumber(pred.savingsPerMonth, 0))}/{tr('monthly_short', 'mo')}
                       </motion.div>
                     )}
 

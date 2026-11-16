@@ -22,6 +22,9 @@ export default defineConfig(({ mode }) => {
     ].filter(Boolean),
     server: {
       port: 5173,
+      fs: {
+        strict: false,
+      },
       proxy: {
         '/api': {
           target: apiProxyTarget,

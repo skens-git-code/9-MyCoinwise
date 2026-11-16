@@ -88,6 +88,43 @@ describe('PDF Export Engine v2 Audit Tests', () => {
     expect(cleanDescription(null)).toBe('Transaction Entry');
   });
 
+  it('strips raw UPI IDs, emails, and phone numbers via sanitizeDescription', async () => {
+    const { sanitizeDescription } = await import('../services/pdfExport');
+    expect(
+      sanitizeDescription('Paid to Rishihood University | UPI ID: **********...')
+    ).toBe('Paid to Rishihood University');
+    expect(
+      sanitizeDescription('Recharge of Jio Mobile 9356707688 | UPI ID: paybi...')
+    ).toBe('Recharge of Jio Mobile');
+    expect(sanitizeDescription('')).toBe('Transaction Entry');
+    expect(sanitizeDescription(null)).toBe('Transaction Entry');
+  });
+
+  it('filters out absurd or invalid dates in formatDateLatin and isValidTransactionDate', async () => {
+    const { formatDateLatin, isValidTransactionDate } = await import('../services/pdfExport');
+    expect(formatDateLatin('2926-11-03')).toBe('—');
+    expect(formatDateLatin('2028-11-02')).toBe('—');
+    expect(formatDateLatin('1996-11-03')).toBe('—');
+    expect(formatDateLatin('1800-01-01')).toBe('—');
+    expect(formatDateLatin(null)).toBe('—');
+    expect(formatDateLatin(undefined)).toBe('—');
+    expect(formatDateLatin('2025-01-01')).toBe('01 Jan 2025');
+
+    expect(isValidTransactionDate('1996-11-03')).toBe(false);
+    expect(isValidTransactionDate('2926-11-03')).toBe(false);
+    expect(isValidTransactionDate(null)).toBe(false);
+    expect(isValidTransactionDate('2025-01-01')).toBe(true);
+  });
+
+  it('sanitizes dirty category strings via cleanCategory', async () => {
+    const { cleanCategory } = await import('../services/pdfExport');
+    expect(cleanCategory('Education.')).toBe('Education');
+    expect(cleanCategory('Food.')).toBe('Food');
+    expect(cleanCategory('Groceries: ')).toBe('Groceries');
+    expect(cleanCategory('')).toBe('Uncategorised');
+    expect(cleanCategory(null)).toBe('Uncategorised');
+  });
+
   it('generates multi-page PDF statements when transaction count exceeds one page', async () => {
     const user = { username: 'MultiPageUser', balance: 50000, currency: 'USD' };
     // Create 60 transactions to guarantee multi-page flow

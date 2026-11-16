@@ -1,25 +1,28 @@
-/* —————————————————————————————————————
+/**
  * TaxDocument Model
- * Stores uploaded tax-related documents (W-2, 1099, receipts, etc.)
- * linked to a user and their tax profile.
  *
- * Key behaviors:
- *   - Documents always belong to a user AND a tax profile.
- *   - file_size is capped at 10 MB to protect storage.
- *   - `file_url` holds the storage path or signed URL — not the file itself.
- *   - `amount` and `issue_date` are optional so non-monetary docs can be stored.
+ * Defines the schema for tax-related documents (e.g., W-2, 1099, Form 16, receipts)
+ * associated with a specific user and tax profile.
+ *
+ * Constraints & Business Logic:
+ *   - Ownership: Each document is strictly bound to a user and a tax profile.
+ *   - Storage: File size is capped at 10 MB to enforce storage constraints.
+ *   - File Reference: `file_url` stores the storage path or signed URL, not the binary data.
+ *   - Optional Fields: `amount` and `issue_date` are optional to support non-monetary documentation.
  *
  * Indexes:
- *   - user_id       : fast lookup of a user's documents.
- *   - tax_profile_id: fast lookup of a profile's documents.
- * ————————————————————————————————————— */
+ *   - user_id: Optimized for querying documents by user.
+ *   - tax_profile_id: Optimized for querying documents by tax profile.
+ *   - (user_id, created_at): Compound index for chronological document retrieval.
+ */
 
-// ── Load mongoose ──
+// Dependency: Mongoose ODM
 const mongoose = require('mongoose');
 
-// ── Define schema ──
+// Schema Definition
 const taxDocumentSchema = new mongoose.Schema({
-  // ── Owning user reference ──
+  
+  // Ownership: Associated User
   user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -27,7 +30,7 @@ const taxDocumentSchema = new mongoose.Schema({
     index: true
   },
 
-  // ── Tax profile the document belongs to ──
+  // Ownership: Associated Tax Profile
   tax_profile_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'TaxProfile',
@@ -35,14 +38,15 @@ const taxDocumentSchema = new mongoose.Schema({
     index: true
   },
 
-  // ── Document category (used for filtering and reporting) ──
+  // Categorization: Document Type
+  // Note: Enum supports multi-jurisdictional tax forms (US: W-2/1099, IN: Form 16, CA: T4/T5).
   document_type: {
     type: String,
     enum: ['w2', '1099', 'form16', 't4', 't5', 'receipt', 'invoice', 'other'],
     required: true
   },
 
-  // ── Human-readable label shown in the UI ──
+  // UI Display: User-defined descriptive label
   label: {
     type: String,
     required: true,
@@ -50,14 +54,14 @@ const taxDocumentSchema = new mongoose.Schema({
     maxlength: 200
   },
 
-  // ── Storage path or signed URL to the uploaded file ──
+  // Storage: Path or signed URL (does not contain raw binary data)
   file_url: {
     type: String,
     required: true,
     maxlength: 4096
   },
 
-  // ── File size in bytes (max 10 MB) ──
+  // Constraint: File size in bytes (Max: 10 MB)
   file_size: {
     type: Number,
     required: true,
@@ -65,27 +69,27 @@ const taxDocumentSchema = new mongoose.Schema({
     max: 10 * 1024 * 1024
   },
 
-  // ── MIME type of the uploaded file ──
+  // File Metadata: MIME type
   mime_type: {
     type: String,
     required: true,
     maxlength: 120
   },
 
-  // ── Date the document was issued (optional) ──
+  // Financial Context: Issue date (optional)
   issue_date: {
     type: Date,
     default: null
   },
 
-  // ── Monetary amount tied to the document (optional) ──
+  // Financial Context: Associated monetary amount (optional)
   amount: {
     type: Number,
     default: null,
     min: 0
   },
 
-  // ── Free-form user notes ──
+  // Annotations: User-provided notes
   notes: {
     type: String,
     default: '',
@@ -93,19 +97,16 @@ const taxDocumentSchema = new mongoose.Schema({
   },
 
 }, {
-  // ── Auto-managed created_at / updated_at fields ──
+  // Audit: Automated timestamp tracking
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
 
+// Database Indexing: Compound index for efficient chronological retrieval
 taxDocumentSchema.index({ user_id: 1, created_at: -1 });
 
-// ── Standardize schema serialization and ObjectId validation ──
+// Utility: Standardize schema serialization and ObjectId validation
 const { standardizeSchema } = require('../utils/schemaStandardizer');
 standardizeSchema(taxDocumentSchema);
 
-/* —————————————————————————————————————
- * Export
- * ————————————————————————————————————— */
-
-// ── Register and export the model ──
+// Export: Register and export the Mongoose model
 module.exports = mongoose.model('TaxDocument', taxDocumentSchema);
