@@ -54,11 +54,11 @@ const taxDocumentSchema = new mongoose.Schema({
     maxlength: 200
   },
 
-  // Storage: Path or signed URL (does not contain raw binary data)
+  // Storage: Path or signed URL (encrypted with AES-256-GCM at rest)
   file_url: {
     type: String,
     required: true,
-    maxlength: 4096
+    maxlength: 8192
   },
 
   // Constraint: File size in bytes (Max: 10 MB)

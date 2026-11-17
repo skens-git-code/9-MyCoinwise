@@ -34,7 +34,6 @@ const transactionSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    index: true
   },
 
   // ── Transaction direction ──
@@ -63,7 +62,6 @@ const transactionSchema = new mongoose.Schema({
   date: {
     type: Date,
     default: Date.now,
-    index: true
   },
 
   // ── Optional user note ──
@@ -78,7 +76,6 @@ const transactionSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Account',
     default: null,
-    index: true
   },
 
   // ── Budget Linkage ──
@@ -98,7 +95,6 @@ const transactionSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Budget',
     default: null,
-    index: true,
   },
 
   /* —————————————————————————————————————
@@ -168,7 +164,6 @@ const transactionSchema = new mongoose.Schema({
     type: String,
     default: null,
     maxlength: 64,
-    index: true
   },
 
   // ── External reference from the statement ──
@@ -222,23 +217,29 @@ const transactionSchema = new mongoose.Schema({
   },
 
   // ── Embedded split entries ──
-  split_details: [{
-    // ── Person the split is with ──
-    person: {
-      type: String,
-      maxlength: 100
-    },
-    // ── Amount owed by that person ──
-    amount: {
-      type: Number,
-      min: 0
-    },
-    // ── Whether the split has been settled ──
-    paid: {
-      type: Boolean,
-      default: false
-    }
-  }],
+  split_details: {
+    type: [{
+      // ── Person the split is with ──
+      person: {
+        type: String,
+        maxlength: 100
+      },
+      // ── Amount owed by that person ──
+      amount: {
+        type: Number,
+        min: 0
+      },
+      // ── Whether the split has been settled ──
+      paid: {
+        type: Boolean,
+        default: false
+      }
+    }],
+    validate: [
+      (val) => !val || val.length <= 50,
+      'Split details cannot exceed 50 items'
+    ]
+  },
 
   /* —————————————————————————————————————
    * Audit History

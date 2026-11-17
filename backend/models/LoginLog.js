@@ -34,7 +34,6 @@ const loginLogSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'User', 
     default: null, 
-    index: true,
   },
 
   // ── Email associated with the attempt ──
@@ -44,7 +43,6 @@ const loginLogSchema = new mongoose.Schema({
     lowercase: true,
     trim: true,
     maxlength: [255, 'Email too long'],
-    index: true
   },
 
   // ── Outcome of the attempt ──
@@ -55,7 +53,6 @@ const loginLogSchema = new mongoose.Schema({
       message: 'Status must be success or failed'
     },
     required: [true, 'Status is required'],
-    index: true
   },
 
   // ── Reason code describing what happened ──
@@ -78,7 +75,6 @@ const loginLogSchema = new mongoose.Schema({
       message: 'Invalid reason code'
     },
     default: null,
-    index: true
   },
 
   /* —————————————————————————————————————
@@ -106,7 +102,6 @@ const loginLogSchema = new mongoose.Schema({
   is_suspicious: { 
     type: Boolean, 
     default: false,
-    index: true
   },
 
   // ── Failed attempts count prior to this entry ──
@@ -156,7 +151,6 @@ const loginLogSchema = new mongoose.Schema({
       message: 'Invalid device type'
     },
     default: 'unknown',
-    index: true
   },
 
   // ── Parsed browser name ──
@@ -292,7 +286,6 @@ const loginLogSchema = new mongoose.Schema({
   request_id: { 
     type: String, 
     default: null,
-    index: true
   },
 
   // ── Server response time in milliseconds ──
@@ -333,7 +326,6 @@ const loginLogSchema = new mongoose.Schema({
     type: String, 
     enum: ['web', 'mobile_app', 'api', 'admin', 'cron', 'webhook'],
     default: 'web',
-    index: true
   },
 
   // ── Free-form notes (appended to by markAsSuspicious) ──
@@ -398,19 +390,10 @@ loginLogSchema.index({ ip: 1, created_at: -1 });
 loginLogSchema.index({ status: 1, created_at: -1 });
 loginLogSchema.index({ is_suspicious: 1, created_at: -1 });
 
-// ── Security analytics ──
+// ── Security analytics & rate limiting ──
 loginLogSchema.index({ user_id: 1, status: 1, created_at: -1 });
 loginLogSchema.index({ ip: 1, status: 1, created_at: -1 });
-loginLogSchema.index({ country: 1, status: 1 });
-loginLogSchema.index({ device_type: 1, browser: 1 });
-
-// ── Session tracking ──
-loginLogSchema.index({ session_id: 1 });
-loginLogSchema.index({ token_id: 1 });
-
-// ── Rate limiting & monitoring ──
 loginLogSchema.index({ email: 1, status: 1, created_at: -1 });
-loginLogSchema.index({ created_at: -1, is_suspicious: 1 });
 
 /* —————————————————————————————————————
  * Middleware
@@ -530,10 +513,14 @@ loginLogSchema.virtual('risk_level').get(function() {
 // ── Flag the entry as suspicious and append a reason note ──
 loginLogSchema.methods.markAsSuspicious = async function(reason) {
   this.is_suspicious = true;
-  if (reason && this.notes) {
-    this.notes = `${this.notes}; Suspicious: ${reason}`;
-  } else if (reason) {
-    this.notes = `Suspicious: ${reason}`;
+  const addition = reason ? `Suspicious: ${reason}` : '';
+  if (addition) {
+    if (this.notes) {
+      const combined = `${this.notes}; ${addition}`;
+      this.notes = combined.length > 500 ? combined.slice(0, 497) + '...' : combined;
+    } else {
+      this.notes = addition.length > 500 ? addition.slice(0, 497) + '...' : addition;
+    }
   }
   return await this.save();
 };
@@ -542,15 +529,15 @@ loginLogSchema.methods.markAsSuspicious = async function(reason) {
 loginLogSchema.methods.enrichWithGeoData = async function(geoData) {
   if (geoData) {
     this.country = geoData.country_code || this.country;
-    this.country_code_3 = geoData.country_code3;
-    this.region = geoData.region;
-    this.city = geoData.city;
-    this.postal_code = geoData.postal;
-    this.latitude = geoData.latitude;
-    this.longitude = geoData.longitude;
-    this.timezone = geoData.timezone;
-    this.isp = geoData.isp;
-    this.organization = geoData.org;
+    this.country_code_3 = geoData.country_code3 ?? this.country_code_3;
+    this.region = geoData.region ?? this.region;
+    this.city = geoData.city ?? this.city;
+    this.postal_code = geoData.postal ?? this.postal_code;
+    this.latitude = typeof geoData.latitude === 'number' ? geoData.latitude : this.latitude;
+    this.longitude = typeof geoData.longitude === 'number' ? geoData.longitude : this.longitude;
+    this.timezone = geoData.timezone ?? this.timezone;
+    this.isp = geoData.isp ?? this.isp;
+    this.organization = geoData.org ?? this.organization;
   }
   return await this.save();
 };
@@ -581,6 +568,15 @@ loginLogSchema.statics.parseUserAgent = function(ua) {
 
   if ((versionMatch = ua.match(/Edg\/(\d+(?:\.\d+)*)/i))) {
     browser = 'Edge';
+    browser_version = versionMatch[1];
+  } else if ((versionMatch = ua.match(/(?:Opera|OPR)\/(\d+(?:\.\d+)*)/i))) {
+    browser = 'Opera';
+    browser_version = versionMatch[1];
+  } else if ((versionMatch = ua.match(/SamsungBrowser\/(\d+(?:\.\d+)*)/i))) {
+    browser = 'Samsung Internet';
+    browser_version = versionMatch[1];
+  } else if ((versionMatch = ua.match(/Vivaldi\/(\d+(?:\.\d+)*)/i))) {
+    browser = 'Vivaldi';
     browser_version = versionMatch[1];
   } else if ((versionMatch = ua.match(/CriOS\/(\d+(?:\.\d+)*)/i))) {
     browser = 'Chrome';

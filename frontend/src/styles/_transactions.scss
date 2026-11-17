@@ -882,6 +882,22 @@
     .tss-divider {
       height: 24px !important;
     }
+
+    @media (max-width: 480px) {
+      grid-template-columns: 1fr 1fr !important;
+      gap: 8px !important;
+      padding: 10px 12px !important;
+
+      .tss-divider {
+        display: none !important;
+      }
+
+      .tss-col.net {
+        grid-column: 1 / -1 !important;
+        border-top: 1px solid var(--glass-border) !important;
+        padding-top: 8px !important;
+      }
+    }
   }
 
   .il-filters {

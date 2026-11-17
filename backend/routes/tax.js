@@ -281,17 +281,24 @@ const getTaggedTransactions = async (req, profileId, start, end) => {
     .filter((item) => item.transaction);
 };
 
+// ── Helper to forward async errors to Express error handler ──
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+
 /* ── Document encryption ──────────────────────────────────── */
 
 // ── Derive the AES-256-GCM key from the env-provided secret ──
 const getCryptoKey = () => {
-  const raw = String(
+  const configured =
     config.TAX_FIELD_ENCRYPTION_KEY ||
     config.JWT_SECRET ||
     process.env.TAX_FIELD_ENCRYPTION_KEY ||
-    process.env.JWT_SECRET ||
-    'mcw-default-tax-encryption-secret-key-32'
-  ).trim();
+    process.env.JWT_SECRET;
+  if (!configured && (config.NODE_ENV === 'production' || process.env.NODE_ENV === 'production')) {
+    throw new Error('FATAL: TAX_FIELD_ENCRYPTION_KEY or JWT_SECRET must be configured in production.');
+  }
+  const raw = String(configured || 'mcw-default-tax-encryption-secret-key-32').trim();
   return crypto.createHash('sha256').update(raw).digest();
 };
 
@@ -349,7 +356,7 @@ router.use(generalLimiter);
 
 // ── GET /profiles
 // List the user's tax profiles, excluding legacy/incomplete records.
-router.get('/profiles', async (req, res) => {
+router.get('/profiles', asyncHandler(async (req, res) => {
   // Ignore legacy/incomplete records so the UI never renders a profile
   // with undefined jurisdiction or fiscal year. They remain untouched
   // for audit.
@@ -362,7 +369,7 @@ router.get('/profiles', async (req, res) => {
 
   audit(req, 'view');
   return res.json({ profiles });
-});
+}));
 
 // ── POST /profiles
 // Create a new tax profile.
@@ -376,7 +383,7 @@ router.post('/profiles', [
   body('tax_id_last4').optional({ checkFalsy: true, nullable: true })
     .matches(/^[A-Za-z0-9]{4}$/)
     .withMessage('Only the last four tax-ID characters may be stored.'),
-], async (req, res) => {
+], asyncHandler(async (req, res) => {
   // ── Validate input ──
   if (!resultOrBadRequest(req, res)) return;
 
@@ -404,11 +411,11 @@ router.post('/profiles', [
     warning: duplicate ? 'Another profile already exists for this fiscal year.' : null,
     message: 'Tax profile created.',
   });
-});
+}));
 
 // ── GET /profiles/:id
 // Fetch a single owned tax profile.
-router.get('/profiles/:id', [idParam], async (req, res) => {
+router.get('/profiles/:id', [idParam], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   const profile = await findOwnedProfile(req, req.params.id);
@@ -421,11 +428,11 @@ router.get('/profiles/:id', [idParam], async (req, res) => {
 
   audit(req, 'view', profile._id);
   return res.json({ profile });
-});
+}));
 
 // ── PUT /profiles/:id
 // Update a profile with optimistic concurrency via `_version`.
-router.put('/profiles/:id', [idParam], async (req, res) => {
+router.put('/profiles/:id', [idParam], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   // ── Whitelist updatable fields ──
@@ -475,11 +482,11 @@ router.put('/profiles/:id', [idParam], async (req, res) => {
 
   audit(req, 'update', profile._id);
   return res.json({ profile, message: 'Tax profile updated.' });
-});
+}));
 
 // ── DELETE /profiles/:id
 // Delete a profile and all associated tax records.
-router.delete('/profiles/:id', [idParam], async (req, res) => {
+router.delete('/profiles/:id', [idParam], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   const profile = await findOwnedProfile(req, req.params.id);
@@ -500,7 +507,7 @@ router.delete('/profiles/:id', [idParam], async (req, res) => {
 
   audit(req, 'delete', profile._id);
   return res.json({ message: 'Tax profile and associated tax records deleted.' });
-});
+}));
 
 /* —————————————————————————————————————
  * Estimates
@@ -600,7 +607,7 @@ router.post('/estimate', estimateLimiter, [profileIdBody], async (req, res) => {
 
 // ── POST /estimate/compare
 // Compare new vs. old regime for Indian profiles.
-router.post('/estimate/compare', estimateLimiter, [profileIdBody], async (req, res) => {
+router.post('/estimate/compare', estimateLimiter, [profileIdBody], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   // ── Load and validate the profile ──
@@ -655,11 +662,11 @@ router.post('/estimate/compare', estimateLimiter, [profileIdBody], async (req, r
 
   audit(req, 'regime_compare', profile._id);
   return res.json({ comparison });
-});
+}));
 
 // ── POST /estimate/capital-gains
 // Estimate capital gains tax from sold holdings.
-router.post('/estimate/capital-gains', gainsLimiter, [profileIdBody], async (req, res) => {
+router.post('/estimate/capital-gains', gainsLimiter, [profileIdBody], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   // ── Load the profile and matching rule set ──
@@ -687,7 +694,7 @@ router.post('/estimate/capital-gains', gainsLimiter, [profileIdBody], async (req
 
   audit(req, 'capital_gains_estimate', profile._id);
   return res.json({ capital_gains: result });
-});
+}));
 
 /* —————————————————————————————————————
  * Transaction Tagging
@@ -703,7 +710,7 @@ router.post('/tag', tagLimiter, [
     'business_expense', 'medical', 'charity', 'retirement', 'education',
   ]),
   body('portion').optional().isFloat({ min: 0, max: 100 }),
-], async (req, res) => {
+], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   // ── Ensure the transaction belongs to the user ──
@@ -759,11 +766,11 @@ router.post('/tag', tagLimiter, [
 
   audit(req, 'tag_create', profile._id, { transactionId: String(transaction._id) });
   return res.json({ tag, message: 'Transaction tagged for tax.' });
-});
+}));
 
 // ── DELETE /tag/:transaction_id
 // Remove the tax tag for a transaction.
-router.delete('/tag/:transaction_id', [param('transaction_id').isMongoId()], async (req, res) => {
+router.delete('/tag/:transaction_id', [param('transaction_id').isMongoId()], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   await TaxTag.deleteOne({
@@ -772,11 +779,11 @@ router.delete('/tag/:transaction_id', [param('transaction_id').isMongoId()], asy
   });
   audit(req, 'tag_delete');
   return res.json({ message: 'Tax tag removed.' });
-});
+}));
 
 // ── GET /tagged-transactions
 // List tax-tagged transactions, optionally filtered by profile and treatment.
-router.get('/tagged-transactions', [query('profile_id').optional().isMongoId()], async (req, res) => {
+router.get('/tagged-transactions', [query('profile_id').optional().isMongoId()], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   const rows = await getTaggedTransactions(
@@ -786,7 +793,7 @@ router.get('/tagged-transactions', [query('profile_id').optional().isMongoId()],
   const filtered = treatment ? rows.filter((row) => row.tag.treatment === treatment) : rows;
 
   return res.json({ transactions: filtered, total: filtered.length });
-});
+}));
 
 /* —————————————————————————————————————
  * Tax Payments
@@ -794,7 +801,7 @@ router.get('/tagged-transactions', [query('profile_id').optional().isMongoId()],
 
 // ── GET /payments
 // List tax payments, optionally scoped to a profile.
-router.get('/payments', [query('profile_id').optional().isMongoId()], async (req, res) => {
+router.get('/payments', [query('profile_id').optional().isMongoId()], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   const filter = { user_id: userIdOf(req) };
@@ -802,7 +809,7 @@ router.get('/payments', [query('profile_id').optional().isMongoId()], async (req
 
   const payments = await TaxPayment.find(filter).sort({ payment_date: -1 }).lean();
   return res.json({ payments });
-});
+}));
 
 // ── POST /payments
 // Record a new tax payment.
@@ -812,7 +819,7 @@ router.post('/payments', [
   body('currency').isLength({ min: 3, max: 3 }).isAlphanumeric(),
   body('payment_date').isISO8601(),
   body('payment_type').isIn(['advance_tax', 'tds', 'quarterly', 'self_assessment', 'other']),
-], async (req, res) => {
+], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   // ── Ensure the profile belongs to the user ──
@@ -837,11 +844,11 @@ router.post('/payments', [
 
   audit(req, 'payment_create', profile._id);
   return res.status(201).json({ payment, message: 'Tax payment recorded.' });
-});
+}));
 
 // ── DELETE /payments/:id
 // Remove a tax payment.
-router.delete('/payments/:id', [idParam], async (req, res) => {
+router.delete('/payments/:id', [idParam], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   const deleted = await TaxPayment.findOneAndDelete({
@@ -852,7 +859,7 @@ router.delete('/payments/:id', [idParam], async (req, res) => {
 
   audit(req, 'payment_delete', deleted.tax_profile_id);
   return res.json({ message: 'Tax payment removed.' });
-});
+}));
 
 /* —————————————————————————————————————
  * Tax Documents
@@ -860,7 +867,7 @@ router.delete('/payments/:id', [idParam], async (req, res) => {
 
 // ── GET /documents
 // List tax documents with `file_url` decrypted for display.
-router.get('/documents', [query('profile_id').optional().isMongoId()], async (req, res) => {
+router.get('/documents', [query('profile_id').optional().isMongoId()], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   const filter = { user_id: userIdOf(req) };
@@ -872,7 +879,7 @@ router.get('/documents', [query('profile_id').optional().isMongoId()], async (re
 
   audit(req, 'document_view');
   return res.json({ documents: documents.map(serializeDocument) });
-});
+}));
 
 // ── POST /documents
 // Index a new tax document (file_url is encrypted at rest).
@@ -883,7 +890,7 @@ router.post('/documents', [
   body('file_url').isURL({ require_protocol: true }).isLength({ max: 4096 }),
   body('file_size').isInt({ min: 0, max: 10 * 1024 * 1024 }),
   body('mime_type').trim().isLength({ min: 1, max: 120 }),
-], async (req, res) => {
+], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   // ── Ensure the profile belongs to the user ──
@@ -910,11 +917,11 @@ router.post('/documents', [
     document: serializeDocument(document.toObject()),
     message: 'Tax document indexed.',
   });
-});
+}));
 
 // ── DELETE /documents/:id
 // Remove a tax document.
-router.delete('/documents/:id', [idParam], async (req, res) => {
+router.delete('/documents/:id', [idParam], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   const deleted = await TaxDocument.findOneAndDelete({
@@ -925,7 +932,7 @@ router.delete('/documents/:id', [idParam], async (req, res) => {
 
   audit(req, 'document_delete', deleted.tax_profile_id);
   return res.json({ message: 'Tax document removed.' });
-});
+}));
 
 /* —————————————————————————————————————
  * Reports
@@ -936,7 +943,7 @@ router.delete('/documents/:id', [idParam], async (req, res) => {
 router.get('/report/:profile_id', reportLimiter, [
   param('profile_id').isMongoId(),
   query('format').optional().isIn(['json', 'csv', 'pdf']),
-], async (req, res) => {
+], asyncHandler(async (req, res) => {
   if (!resultOrBadRequest(req, res)) return;
 
   // ── Load the profile and rule set ──
@@ -1034,7 +1041,7 @@ router.get('/report/:profile_id', reportLimiter, [
 
   // ── Default JSON output ──
   return res.json({ report });
-});
+}));
 
 /* —————————————————————————————————————
  * Admin
@@ -1042,7 +1049,7 @@ router.get('/report/:profile_id', reportLimiter, [
 
 // ── POST /admin/seed-rules
 // Idempotently seed tax rule sets for supported jurisdictions.
-router.post('/admin/seed-rules', admin, async (req, res) => {
+router.post('/admin/seed-rules', admin, asyncHandler(async (req, res) => {
   const indiaRules = require('../services/taxRules/india-2024');
   const usRules = require('../services/taxRules/us-federal-2024');
   const rules = [...indiaRules, ...usRules];
@@ -1057,7 +1064,7 @@ router.post('/admin/seed-rules', admin, async (req, res) => {
 
   audit(req, 'admin_seed');
   return res.json({ seeded: rules.length, message: 'Tax rules seeded idempotently.' });
-});
+}));
 
 /* —————————————————————————————————————
  * Export

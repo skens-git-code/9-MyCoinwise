@@ -451,7 +451,12 @@ userSchema.pre('save', async function(next) {
 
 // ── Compare a candidate password with the stored hash ──
 userSchema.methods.comparePassword = async function(candidate) {
-  return bcrypt.compare(candidate, this.password);
+  try {
+    if (!this.password || typeof candidate !== 'string') return false;
+    return await bcrypt.compare(candidate, this.password);
+  } catch (_err) {
+    return false;
+  }
 };
 
 // ── Return true if the account is currently locked ──

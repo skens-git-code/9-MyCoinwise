@@ -221,14 +221,23 @@ export const api = {
    * ───────────────────────────────────── */
 
   // ── Log in and return { token, user } (with automatic retry for cold-start waking backends) ──
-  login: async (credentials) => {
+  login: async (credentials, config = {}) => {
     let lastError;
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (config?.signal?.aborted) {
+        const abortErr = new Error('Login request aborted');
+        abortErr.name = 'AbortError';
+        abortErr.code = 'ERR_CANCELED';
+        throw abortErr;
+      }
       try {
-        const res = await apiClient.post(`${API_URL}/auth/login`, credentials);
+        const res = await apiClient.post(`${API_URL}/auth/login`, credentials, config);
         return res.data;
       } catch (err) {
         lastError = err;
+        if (config?.signal?.aborted) {
+          throw err;
+        }
         const status = err?.response?.status;
         const isColdStart =
           err?.code === 'ECONNABORTED' ||
@@ -647,7 +656,7 @@ export const api = {
 
   // ── Clear all calculations for a user ──
   clearCalculations: async (userId) => {
-    const res = await apiClient.delete(`${API_URL}/calculations/${userId}`);
+    const res = await apiClient.delete(`${API_URL}/calculations/${userId}`, { params: { confirm: 'true' } });
     return res.data;
   },
 

@@ -50,6 +50,7 @@ import {
   Info, RefreshCw, Check, Sun, Moon,
 } from 'lucide-react';
 import { CoinwiseMark } from '../components/CoinwiseBrand';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 /* ============================================================
  * Constants
@@ -128,11 +129,15 @@ const sanitizeBackendMessage = (msg) => {
 
 /* [FIX 1] Timeout wrapper — used to bound api.login even if the api layer
  * itself has no timeout. Races the caller's promise against a reject timer.
+ * Aborts any pending in-flight request when an AbortController is provided.
  * Cleans up the timer regardless of outcome. */
-function withTimeout(promise, ms, label = 'request') {
+function withTimeout(promise, ms, label = 'request', controller = null) {
   let timerId;
   const timeout = new Promise((_, reject) => {
     timerId = setTimeout(() => {
+      if (controller) {
+        try { controller.abort(); } catch { /* ignore */ }
+      }
       const err = new Error(`${label} timed out after ${ms}ms`);
       err.code = 'ETIMEDOUT';
       err.isTimeout = true;
@@ -146,7 +151,7 @@ function withTimeout(promise, ms, label = 'request') {
 /* ============================================================
  * Main Component
  * ============================================================ */
-export default function Login() {
+function LoginForm() {
   const { lang = 'en', user, theme: contextTheme } = useAppState();
   const { login, t, setLanguage, toggleTheme } = useAppActions();
   const legacyCtx = useContext(AppContext);
@@ -491,9 +496,10 @@ export default function Login() {
       if (effectivePassword !== password) setPassword(effectivePassword);
 
       const trimmedEmail = effectiveEmail.toLowerCase();
+      const loginAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
 
-      // [FIX 1] Wrap api.login in a hard 30s timeout regardless of what the
-      // api layer does. This bounds sleeping cold starts.
+      // [FIX 1] Wrap api.login in a hard 30s timeout with cancellation support
+      // to bound sleeping cold starts.
       const { token, user: loggedUser } = await withTimeout(
         api.login({
           email: trimmedEmail,
@@ -501,7 +507,8 @@ export default function Login() {
           rememberMe,
         }),
         LOGIN_TIMEOUT_MS,
-        'login'
+        'login',
+        loginAbort
       );
 
       if (rememberMe) safeWriteEmail(trimmedEmail);
@@ -902,7 +909,7 @@ export default function Login() {
                   {tr('authenticating', 'Authenticating…')}
                   {/* [FIX 8] Slow hint appears only after SLOW_LOGIN_HINT_MS */}
                   {slowLoginHint && (
-                    <span style={{ fontSize: '0.75em', opacity: 0.75, marginLeft: 6 }}>
+                    <span role="status" aria-live="polite" style={{ fontSize: '0.75em', opacity: 0.75, marginLeft: 6 }}>
                       ({tr('waking_server', 'waking server, up to 30s')})
                     </span>
                   )}
@@ -979,4 +986,12 @@ const coldNoticeStyle = {
   background: 'rgba(245, 158, 11, 0.08)',
   border: '1px solid rgba(245, 158, 11, 0.22)',
 };
+
+export default function Login() {
+  return (
+    <ErrorBoundary fallbackTitle="Sign In Error">
+      <LoginForm />
+    </ErrorBoundary>
+  );
+}
 

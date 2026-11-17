@@ -10,9 +10,18 @@
 // ── Auth Viewport & Scrolling (Mobile Virtual Keyboard Support) ──
 // Unconstrain root document elements when on auth screens so that mobile
 // virtual keyboards can shrink the dynamic viewport without cutting off scroll.
+// Keeps overflow-y: auto on body and visible on html to eliminate double scrollbars.
 html:has(.auth-page),
+html.auth-viewport-scrollable {
+  height: auto !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
 body:has(.auth-page),
-html.auth-viewport-scrollable,
 body.auth-viewport-scrollable {
   height: auto !important;
   min-height: 100vh !important;
@@ -285,35 +294,6 @@ body.auth-viewport-scrollable #root {
     color: var(--text-secondary);
     line-height: 1.45;
     margin: 0;
-  }
-}
-
-// ── Quick Trust & Benefits Strip ────────────────────────────────
-.auth-benefits {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0 0 clamp(16px, 3vw, 20px) 0;
-  padding: 12px 14px;
-  background: rgba(var(--brand-primary-rgb), 0.05);
-  border: 1px solid rgba(var(--brand-primary-rgb), 0.16);
-  border-radius: 14px;
-  box-sizing: border-box;
-
-  li {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: clamp(0.76rem, 2.4vw, 0.84rem);
-    color: var(--text-secondary);
-    font-weight: 500;
-    line-height: 1.35;
-
-    svg {
-      color: var(--brand-primary);
-      flex-shrink: 0;
-    }
   }
 }
 
@@ -970,13 +950,11 @@ body.auth-viewport-scrollable #root {
       color: #64748b !important;
     }
   }
+}
 
-  .auth-benefits {
-    background: rgba(5, 150, 105, 0.06) !important;
-    border-color: rgba(5, 150, 105, 0.18) !important;
-
-    li {
-      color: #334155 !important;
-    }
+// ── Accessibility: Reduced motion support for spinner ──────────
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none !important;
   }
 }

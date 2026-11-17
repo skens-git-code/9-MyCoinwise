@@ -58,12 +58,14 @@
 
 // ── Load dependencies ──
 const express = require('express');
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const multer = require('multer');
 const { LRUCache } = require('lru-cache');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const Account = require('../models/Account');
+const Budget = require('../models/Budget');
 const checkOwnership = require('../middleware/ownership');
 const auth = require('../middleware/auth');
 const { logger } = require('../utils/logger');
@@ -267,8 +269,7 @@ const validateTransactionPayload = (payload) => {
     // Validate against the model enum so a bad value returns 400 rather than an
     // opaque 500 from a Mongoose ValidationError.
     if (!PAYMENT_METHODS.has(payment_method)) {
-      parsed.error = `Invalid payment_method. Allowed: ${[...PAYMENT_METHODS].join(', ')}`;
-      return parsed;
+      return { error: `Invalid payment_method. Allowed: ${[...PAYMENT_METHODS].join(', ')}` };
     }
     parsed.payment_method = payment_method;
   }
@@ -300,10 +301,12 @@ const validateTransactionPayload = (payload) => {
   if (is_recurring !== undefined) parsed.is_recurring = Boolean(is_recurring);
   if (recurrence_interval !== undefined) {
     if (recurrence_interval !== null && !RECURRENCE_INTERVALS.has(recurrence_interval)) {
-      parsed.error = `Invalid recurrence_interval. Allowed: ${[...RECURRENCE_INTERVALS].join(', ')}`;
-      return parsed;
+      return { error: `Invalid recurrence_interval. Allowed: ${[...RECURRENCE_INTERVALS].join(', ')}` };
     }
     parsed.recurrence_interval = recurrence_interval;
+  }
+  if (parsed.is_recurring && (!parsed.recurrence_interval || !RECURRENCE_INTERVALS.has(parsed.recurrence_interval))) {
+    return { error: 'Recurring transactions require a valid recurrence interval (daily, weekly, monthly, yearly).' };
   }
   if (recurrence_ends_at !== undefined) {
     if (recurrence_ends_at === null || recurrence_ends_at === '') {
@@ -339,10 +342,7 @@ const getTransactionBalance = async (userId) => {
   const [user, transactions, accounts] = await Promise.all([
     User.findById(userId).select('currency').lean(),
     Transaction.find({
-      $or: [
-        { user_id: new mongoose.Types.ObjectId(String(userId)) },
-        { user_id: String(userId) },
-      ],
+      user_id: new mongoose.Types.ObjectId(String(userId)),
       is_deleted: { $ne: true },
     })
       .select('type amount currency account_id date import_fingerprint recurrence_instance_key category merchant note')
@@ -789,11 +789,13 @@ router.post('/statement/import', async (req, res) => {
       const validation = validateTransactionPayload(safeItem);
       const merchant = cleanText(item.merchant || item.receiver_name).slice(0, 150) || null;
       const fingerprint = String(item.import_fingerprint || '').slice(0, 64);
+      const itemAccountId = validation.account_id || (mongoose.isValidObjectId(item.account_id) ? item.account_id : null);
       const key = [
         validation.parsedDate?.toISOString().slice(0, 10),
         item.type,
         validation.numericAmount?.toFixed(2),
         normalizeForMatch(merchant || item.note),
+        itemAccountId || '',
       ].join('|');
 
       if (
@@ -812,7 +814,6 @@ router.post('/statement/import', async (req, res) => {
       }
 
       batchKeys.add(key);
-      const itemAccountId = validation.account_id || (mongoose.isValidObjectId(item.account_id) ? item.account_id : null);
       accepted.push({
         user_id: req.userId,
         account_id: itemAccountId,
@@ -990,6 +991,9 @@ router.post('/process-recurring', async (req, res) => {
 
     // ── Process and report ──
     const { created, hasMore } = await processRecurringForUser(req.userId);
+    if (hasMore) {
+      lastRecurringProcessMap.delete(String(req.userId));
+    }
     return res.json({
       created,
       hasMore,
@@ -1207,6 +1211,17 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // ── Resolve the budget (when provided) ──
+    if (validation.budget_id) {
+      const selectedBudget = await Budget.findOne({
+        _id: validation.budget_id,
+        user_id: req.userId,
+      }).lean();
+      if (!selectedBudget) {
+        return res.status(400).json({ error: 'Selected budget was not found.' });
+      }
+    }
+
     // ── Determine the effective currency ──
     const owner = await User.findById(req.userId).select('currency').lean();
     const transactionCurrency = normalizeCurrency(
@@ -1233,8 +1248,9 @@ router.post('/', async (req, res) => {
       payment_method: validation.payment_method,
       transaction_number: generatedTxNumber,
       account_id: validation.account_id || null,
-      budget_category: validation.budget_category !== undefined ? validation.budget_category : (req.body.budget_category ? String(req.body.budget_category).trim().slice(0, 80) : null),
+      budget_category: validation.budget_category || null,
       budget_id: validation.budget_id || null,
+      receipt_url: validation.receipt_url || null,
       is_recurring: validation.is_recurring,
       recurrence_interval: validation.recurrence_interval,
       recurrence_ends_at: validation.recurrence_ends_at,
@@ -1324,6 +1340,17 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    // ── Resolve the budget (when provided) ──
+    if (validation.budget_id) {
+      const selectedBudget = await Budget.findOne({
+        _id: validation.budget_id,
+        user_id: req.userId,
+      }).lean();
+      if (!selectedBudget) {
+        return res.status(400).json({ error: 'Selected budget was not found.' });
+      }
+    }
+
     // ── Determine the effective currency ──
     const owner = await User.findById(req.userId).select('currency').lean();
     const transactionCurrency = normalizeCurrency(
@@ -1360,10 +1387,14 @@ router.put('/:id', async (req, res) => {
     if (validation.split_details !== undefined) t.split_details = validation.split_details;
     if (validation.budget_category !== undefined) t.budget_category = validation.budget_category;
     if (validation.budget_id !== undefined) t.budget_id = validation.budget_id;
+    if (validation.receipt_url !== undefined) t.receipt_url = validation.receipt_url;
 
     // Defensive: legacy documents may not have audit_logs yet.
     if (!Array.isArray(t.audit_logs)) t.audit_logs = [];
     t.audit_logs.push({ action: 'Updated', timestamp: new Date() });
+    if (t.audit_logs.length > 50) {
+      t.audit_logs = t.audit_logs.slice(-50);
+    }
 
     await t.save();
 
@@ -1466,18 +1497,20 @@ router.delete('/:id', async (req, res) => {
   }
 
   try {
-    // ── Load and authorize ──
-    const t = await Transaction.findById(req.params.id);
-    if (!t) return res.status(404).json({ error: 'Transaction not found' });
-
-    if (String(t.user_id) !== String(req.userId)) {
-      return res.status(403).json({ error: 'Access denied' });
+    // ── Atomically remove the document with ownership check ──
+    const t = await Transaction.findOneAndDelete({ _id: req.params.id, user_id: req.userId });
+    if (!t) {
+      const existsOther = await Transaction.exists({ _id: req.params.id });
+      if (existsOther) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      return res.status(404).json({ error: 'Transaction not found' });
     }
 
-    // ── Adjust balances before permanent removal ──
+    // ── Adjust balances now that removal is guaranteed ──
     const oldSigned = await getTransactionSignedAmountForUser(req.userId, t);
 
-    if (t.account_id && t.date.getTime() <= Date.now()) {
+    if (t.account_id && t.date && t.date.getTime() <= Date.now()) {
       const accountDoc = await Account.findOne({ _id: t.account_id, user_id: req.userId }).select('currency').lean();
       const accountCurrency = normalizeCurrency(accountDoc?.currency, t.currency);
       const converted = convertToCurrency(t.amount, t.currency, accountCurrency);
@@ -1487,9 +1520,6 @@ router.delete('/:id', async (req, res) => {
         { $inc: { current_balance: Math.round(accDelta * 100) / 100 } }
       );
     }
-
-    // ── Permanently remove the document ──
-    await Transaction.deleteOne({ _id: t._id, user_id: req.userId });
 
     const balance = await adjustUserBalanceIncrementally(req.userId, -oldSigned, t.date);
 

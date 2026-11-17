@@ -20,12 +20,26 @@
 const express = require('express');
 const { body, validationResult, param } = require('express-validator');
 const mongoose = require('mongoose');
+const rateLimit = require('express-rate-limit');
 const Calculation = require('../models/Calculation');
 const checkOwnership = require('../middleware/ownership');
+const auth = require('../middleware/auth');
 const { logger } = require('../utils/logger');
+const { isProduction } = require('../config/env');
 
 // ── Create router ──
 const router = express.Router();
+
+const isDev = !isProduction;
+
+// ── Rate limiter for calculation mutations: 120 per minute ──
+const calcMutationLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: isDev ? 1000 : 120,
+  message: { error: 'Too many calculation requests. Please wait a moment.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 /* —————————————————————————————————————
  * Constants
@@ -69,11 +83,14 @@ const validateUserIdParam = (req, res, next) => {
 // ── Require authentication and expose req.userId ──
 router.use((req, res, next) => {
   if (req.method === 'OPTIONS') return next();
-  if (!req.user || (!req.user.id && !req.user._id)) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  if (req.user && (req.user.id || req.user._id)) {
+    req.userId = req.user.id || req.user._id;
+    return next();
   }
-  req.userId = req.user.id || req.user._id;
-  return next();
+  return auth(req, res, () => {
+    req.userId = req.user?.id || req.user?._id;
+    return next();
+  });
 });
 
 // ── Disable caching on every response, including errors ──
@@ -127,6 +144,7 @@ router.get('/:userId', validateUserIdParam, checkOwnership('userId'), async (req
  * ————————————————————————————————————— */
 router.post(
   '/',
+  calcMutationLimiter,
   [
     // ── Validate input ──
     body('client_id').isString().trim().notEmpty().isLength({ max: MAX_CLIENT_ID }),
@@ -141,13 +159,25 @@ router.post(
     // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      const errList = errors.array();
+      return res.status(400).json({ error: errList[0]?.msg || 'Validation failed', errors: errList });
     }
 
     try {
+      // ── Enforce calculation limit per user (max 10,000) ──
+      if (mongoose.connection.readyState === 1) {
+        const count = await Calculation.countDocuments({ user_id: req.userId });
+        if (count >= 10000) {
+          const existing = await Calculation.exists({ user_id: req.userId, client_id: req.body.client_id });
+          if (!existing) {
+            return res.status(400).json({
+              error: 'Calculation limit reached (10000). Please clear older history to save new calculations.',
+            });
+          }
+        }
+      }
+
       // ── Upsert by (user_id, client_id) ──
-      // $setOnInsert is redundant with the filter clause but documents intent:
-      // on upsert-insert, client_id and user_id come from the filter object.
       const result = await Calculation.findOneAndUpdate(
         { user_id: req.userId, client_id: req.body.client_id },
         {
@@ -156,10 +186,6 @@ router.post(
             result: req.body.result,
             numeric_result: Number(req.body.numeric_result),
             angle_mode: req.body.angle_mode || 'DEG',
-          },
-          $setOnInsert: {
-            user_id: req.userId,
-            client_id: req.body.client_id,
           },
         },
         { new: true, upsert: true, runValidators: true, includeResultMetadata: true }
@@ -182,7 +208,7 @@ router.post(
               angle_mode: req.body.angle_mode || 'DEG',
             },
           },
-          { new: true, runValidators: true }
+          { new: true, upsert: true, runValidators: true }
         );
         if (retried) return res.status(200).json(toResponseShape(retried));
       }
@@ -196,10 +222,14 @@ router.post(
  * DELETE /:userId
  * Clear all calculations for the given user.
  * ————————————————————————————————————— */
-router.delete('/:userId', validateUserIdParam, checkOwnership('userId'), async (req, res) => {
+router.delete('/:userId', calcMutationLimiter, validateUserIdParam, checkOwnership('userId'), async (req, res) => {
   // ── Ensure the request targets the authenticated user ──
   if (String(req.userId) !== String(req.params.userId)) {
     return res.status(403).json({ error: 'Forbidden.' });
+  }
+
+  if (req.query.confirm !== undefined && req.query.confirm !== 'true') {
+    return res.status(400).json({ error: 'Confirmation parameter must be true.' });
   }
 
   try {
@@ -223,6 +253,7 @@ router.delete('/:userId', validateUserIdParam, checkOwnership('userId'), async (
  * ————————————————————————————————————— */
 router.delete(
   '/:userId/:clientId',
+  calcMutationLimiter,
   validateUserIdParam,
   checkOwnership('userId'),
   [param('clientId').isString().trim().notEmpty().isLength({ max: MAX_CLIENT_ID })],
@@ -230,7 +261,8 @@ router.delete(
     // ── Reject validation errors ──
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      const errList = errors.array();
+      return res.status(400).json({ error: errList[0]?.msg || 'Validation failed', errors: errList });
     }
 
     // ── Ensure the request targets the authenticated user ──

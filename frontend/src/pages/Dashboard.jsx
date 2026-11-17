@@ -28,10 +28,10 @@ import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
   TrendingUp, TrendingDown, Target,
   Download, Plus, ArrowUpRight, ArrowDownRight,
-  Wallet, Sparkles, Zap, Settings, Minus,
+  Wallet, Sparkles, Zap, Minus,
   Rocket, LineChart, Tag, RefreshCw, Share2,
   Edit3, Trash2, ChevronDown, AlertTriangle, X, PieChart as PieIcon,
-  Eye, EyeOff, Calendar, Info, LogOut, Activity,
+  Eye, EyeOff, Info, Activity,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import { api } from '../services/api';
@@ -173,6 +173,9 @@ const getCategoryEmojiOrIcon = (category, type) => {
 };
 
 const storageCache = new Map();
+
+/** Clear dashboard localStorage in-memory cache to prevent stale data across user sessions. */
+export const clearDashboardStorageCache = () => storageCache.clear();
 
 /** Safe localStorage write with in-memory cache update. */
 const safeSetItem = (key, value) => {
@@ -814,6 +817,11 @@ export default function Dashboard() {
     };
   }, []);
 
+  // ── Invalidate memory cache on user change/logout to prevent stale state ──
+  useEffect(() => {
+    storageCache.clear();
+  }, [USER_ID]);
+
   // ── Sanitize username: replace underscores with spaces ──
   const rawUsername = user?.username || user?.name || (user?.email ? user.email.split('@')[0] : 'Username');
   const sanitizedUsername = useMemo(() => String(rawUsername).replace(/_/g, ' ').trim() || 'Username', [rawUsername]);
@@ -830,13 +838,11 @@ export default function Dashboard() {
       return next;
     });
   }, [showBalanceKey]);
-  const hasLoadedOnceRef = useRef(!loading);
-  useEffect(() => {
-    if (!loading) {
-      hasLoadedOnceRef.current = true;
-    }
-  }, [loading]);
-  const hasLoadedOnce = hasLoadedOnceRef.current || !loading;
+  const hasLoadedOnceRef = useRef(false);
+  if (!loading && !hasLoadedOnceRef.current) {
+    hasLoadedOnceRef.current = true;
+  }
+  const hasLoadedOnce = hasLoadedOnceRef.current;
 
   const handleOpenAddForm = useCallback(() => {
     setEditingTx(null);
@@ -1278,7 +1284,8 @@ export default function Dashboard() {
       curr.setDate(curr.getDate() + 1);
     }
 
-    const daysToUse = allDays.length > 30 ? allDays.slice(-30) : allDays;
+    // For 'all' time filter, show full history without capping to 30 days
+    const daysToUse = dateFilter === 'all' ? allDays : (allDays.length > 30 ? allDays.slice(-30) : allDays);
 
     // ── Fill in zero-days so the chart is continuous ──
     let rows = daysToUse.map((day) => {
@@ -1380,7 +1387,8 @@ export default function Dashboard() {
       curr.setDate(curr.getDate() + 1);
     }
 
-    const daysToUse = allDays.length > 30 ? allDays.slice(-30) : allDays;
+    // Net worth over time displays the entire trajectory without artificial day truncation
+    const daysToUse = allDays;
 
     // ── Seed the running total with starting balance + pre-window deltas ──
     let running = startingBalance;
@@ -1476,12 +1484,7 @@ export default function Dashboard() {
     const top5 = entries.slice(0, 5).map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }));
     const remainder = entries.slice(5).reduce((sum, [_, val]) => sum + val, 0);
     if (remainder > 0) {
-      const existingOther = top5.find((e) => e.name.toLowerCase() === 'other');
-      if (existingOther) {
-        existingOther.value = Number((existingOther.value + remainder).toFixed(2));
-      } else {
-        top5.push({ name: 'Other', value: Number(remainder.toFixed(2)) });
-      }
+      top5.push({ name: 'Other (combined)', value: Number(remainder.toFixed(2)) });
     }
     return top5;
   }, [periodTransactions]);
@@ -1844,6 +1847,13 @@ export default function Dashboard() {
   /* ============================================================
    * Render
    * ============================================================ */
+
+  // ── Redirect unauthenticated users to login instead of infinite skeleton ──
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/login', { replace: true });
+    }
+  }, [loading, user, navigate]);
 
   // ── Early exit: show the loading skeleton until we have a user ──
   if ((loading && !user) || !user) return <DashboardSkeleton />;
@@ -2352,7 +2362,12 @@ export default function Dashboard() {
                 </span>
               </div>
 
-              <div className="bt-chart-wrap" style={{ flex: '1 1 auto', width: '100%', minHeight: 220, position: 'relative' }}>
+              <div
+                className="bt-chart-wrap"
+                role="img"
+                aria-label="Daily spending vs income area chart"
+                style={{ flex: '1 1 auto', width: '100%', height: SPENDING_CHART_HEIGHT, minHeight: 220, position: 'relative' }}
+              >
                 {chartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200}>
                     <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
@@ -2529,7 +2544,12 @@ export default function Dashboard() {
                   </span>
                 </div>
               </div>
-              <div className="bt-chart-wrap" style={{ height: 160, minHeight: 140, width: '100%' }}>
+              <div
+                className="bt-chart-wrap"
+                role="img"
+                aria-label="Expense spikes chart"
+                style={{ height: 160, minHeight: 140, width: '100%' }}
+              >
                 {expenseSpikesData.length > 0 && expenseSpikesData.some((d) => d.amount > 0) ? (
                   <ResponsiveContainer width="100%" height={160}>
                     <BarChart data={expenseSpikesData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -2607,7 +2627,12 @@ export default function Dashboard() {
                   </p>
                 </div>
               ) : (
-                <div className="bt-chart-wrap" style={{ height: NETWORTH_CHART_HEIGHT, minHeight: 160 }}>
+                <div
+                  className="bt-chart-wrap"
+                  role="img"
+                  aria-label="Net worth over time area chart"
+                  style={{ height: NETWORTH_CHART_HEIGHT, minHeight: 160 }}
+                >
                   <ResponsiveContainer width="100%" height={NETWORTH_CHART_HEIGHT} minWidth={1} minHeight={160}>
                     <AreaChart data={netWorthData} margin={{ top: 5, right: 8, left: -5, bottom: 0 }}>
                       <defs>
@@ -3160,7 +3185,12 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="bt-pie-wrap" style={{ height: 270, minHeight: 250, position: 'relative', overflow: 'visible' }}>
+              <div
+                className="bt-pie-wrap"
+                role="img"
+                aria-label="Category spending breakdown chart"
+                style={{ height: 270, minHeight: 250, position: 'relative', overflow: 'visible' }}
+              >
                 {pieData.length > 0 ? (
                   <>
                     <ResponsiveContainer width="100%" height={270} minWidth={1} minHeight={250}>
@@ -3295,3 +3325,5 @@ export default function Dashboard() {
     </ErrorBoundary>
   );
 }
+
+Dashboard.propTypes = {};

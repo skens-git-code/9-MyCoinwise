@@ -55,7 +55,7 @@
 
   @media (max-width: 900px) {
     gap: 16px !important;
-    padding: 16px 12px calc(140px + env(safe-area-inset-bottom, 24px)) 12px !important;
+    padding: 16px 12px 24px 12px !important;
     border-radius: 20px !important;
   }
 }
@@ -1551,9 +1551,10 @@
     user-select: none !important;
     -webkit-user-select: none !important;
     -webkit-touch-callout: none !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
   }
 
   .stat-bottom-row {
@@ -2784,3 +2785,16 @@
     }
   }
 }
+
+/* ── Accessibility: Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-pulse-glow,
+  .live-dot-pulse,
+  .bento-beacon-ping,
+  .bento-tile:hover {
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
+

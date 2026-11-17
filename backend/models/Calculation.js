@@ -21,8 +21,7 @@ const calculationSchema = new mongoose.Schema({
   user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
-    index: true
+    required: true
   },
 
   // ── Client-side ID used for deduplication when syncing ──

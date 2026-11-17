@@ -1002,7 +1002,7 @@
   background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  z-index: var(--z-drawer);
+  z-index: var(--z-drawer, 1201);
 }
 
 .mobile-drawer {
@@ -1012,23 +1012,24 @@
   bottom: 0;
   width: min(330px, 86vw);
   background: var(--surface-1);
-  backdrop-filter: blur(36px) saturate(160%);
-  -webkit-backdrop-filter: blur(36px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
   border-right: 1px solid var(--glass-border-hover);
   box-shadow: 24px 0 64px rgba(0, 0, 0, 0.85);
-  z-index: calc(var(--z-drawer) + 1);
+  z-index: calc(var(--z-drawer, 1201) + 1);
   display: flex;
   flex-direction: column;
   /* Reserve the notch at the top and the home indicator at the bottom; the
      drawer is full-height (`top: 0` / `bottom: 0`) so its first and last rows
      otherwise sat under the system UI. */
-  padding: max(20px, var(--top-safe)) 16px max(20px, env(safe-area-inset-bottom, 0px));
+  padding: max(20px, var(--top-safe, 0px)) 16px max(20px, env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   overflow-x: hidden;
   gap: 12px;
   box-sizing: border-box;
-  /* [AUDIT] Added max-height safety for small phones */
+  /* [AUDIT] Added max-height safety for small phones and overscroll containment */
   max-height: 100dvh;
+  overscroll-behavior: contain;
   touch-action: pan-y !important;
 
   &::-webkit-scrollbar {
@@ -1769,16 +1770,16 @@
   }
 
   .island-content-wrapper {
-    padding-bottom: 0;
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 16px));
   }
 
   .mobile-bottom-dock {
     bottom: 12px;
-    left: 10px;
-    right: 10px;
+    left: max(10px, env(safe-area-inset-left, 0px));
+    right: max(10px, env(safe-area-inset-right, 0px));
     height: 66px;
     border-radius: 22px;
-    padding: 0 2px;
+    padding: 0 2px calc(4px + env(safe-area-inset-bottom, 0px));
   }
 
   .dock-item {
@@ -1799,19 +1800,19 @@
   }
 
   .island-page {
-    padding: 12px 12px 0;
+    padding: 12px 12px calc(84px + env(safe-area-inset-bottom, 16px));
   }
 
   .island-header {
     position: sticky;
     top: 0;
     z-index: 20;
-    background: color-mix(in srgb, var(--ambient-base) 88%, transparent);
+    background: color-mix(in srgb, var(--ambient-base, #ffffff) 88%, transparent);
     backdrop-filter: blur(18px);
     /* Reserve the notch / status-bar area. Without this the sticky header sat
        under the iOS clock in standalone mode (`black-translucent` + `cover`).
        `max()` keeps the designed 14px padding on devices with no inset. */
-    padding-top: max(14px, var(--top-safe));
+    padding-top: max(14px, var(--top-safe, 0px));
   }
 }
 
@@ -1851,5 +1852,25 @@
 
   .island-page {
     padding: 10px 10px calc(84px + env(safe-area-inset-bottom, 16px));
+  }
+}
+
+/* ── Accessibility: Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .island-main::before,
+  .island-user .user-avatar::before,
+  .island-user .user-avatar::after,
+  .user-badge-pulse,
+  .nav-progress-bar {
+    animation: none !important;
   }
 }

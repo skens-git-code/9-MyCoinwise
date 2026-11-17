@@ -28,7 +28,7 @@ const { logger } = require('../utils/logger');
 const aiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  keyGenerator: (req) => String(req.userId || req.user?.id || req.ip || 'anonymous'),
+  keyGenerator: (req) => String(req.userId || req.user?.id || req.user?._id || req.ip || 'anonymous'),
   validate: { keyGeneratorIpFallback: false },
   message: { error: 'Too many AI requests. Please try again later.' },
 });

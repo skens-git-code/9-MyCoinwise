@@ -29,6 +29,7 @@ const { body, param, query, validationResult } = require('express-validator');
 const Subscription = require('../models/Subscription');
 const checkOwnership = require('../middleware/ownership');
 const { logger } = require('../utils/logger');
+const { CURRENCIES } = require('../utils/currency');
 
 // ── Create router ──
 const router = express.Router();
@@ -208,6 +209,7 @@ router.post(
     body('start_date').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
     body('next_billing_date').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
     body('trial_ends').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
+    body('currency').optional().isString().trim().toUpperCase().isIn(Array.from(CURRENCIES)).withMessage('Invalid currency code.'),
   ],
   async (req, res) => {
     // ── Reject validation errors ──
@@ -235,13 +237,13 @@ router.post(
     try {
       const normalizedName = name.trim();
 
-      // Duplicate name check on live (uncancelled & active) subscriptions
+      // Duplicate name check on live (uncancelled & active) subscriptions using collation index
       const duplicate = await Subscription.exists({
         user_id: req.user.id,
-        name: new RegExp(`^${escapeRegExp(normalizedName)}$`, 'i'),
+        name: normalizedName,
         is_active: true,
         cancelled_at: null,
-      });
+      }).collation({ locale: 'en', strength: 2 });
       if (duplicate) {
         return res.status(409).json({
           error: 'An active subscription with this name already exists.',
@@ -321,6 +323,7 @@ router.put(
     body('start_date').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
     body('next_billing_date').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
     body('trial_ends').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
+    body('currency').optional().isString().trim().toUpperCase().isIn(Array.from(CURRENCIES)).withMessage('Invalid currency code.'),
     body('is_active').optional().isBoolean().toBoolean(),
     body('is_paused').optional().isBoolean().toBoolean(),
     body('cancelled_at').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
@@ -346,16 +349,16 @@ router.put(
         is_active, is_paused, cancelled_at,
       } = req.body;
 
-      // Duplicate name check (excluding self, matching live subscriptions only).
+      // Duplicate name check (excluding self, matching live subscriptions only via collation index).
       if (name !== undefined) {
         const normalizedName = name.trim();
         const duplicate = await Subscription.exists({
           _id: { $ne: subscription._id },
           user_id: req.user.id,
-          name: new RegExp(`^${escapeRegExp(normalizedName)}$`, 'i'),
+          name: normalizedName,
           is_active: true,
           cancelled_at: null,
-        });
+        }).collation({ locale: 'en', strength: 2 });
         if (duplicate) {
           return res.status(409).json({
             error: 'An active subscription with this name already exists.',

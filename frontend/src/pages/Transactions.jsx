@@ -23,8 +23,10 @@ import React, {
   useState, useMemo, useDeferredValue, useRef, useEffect, useCallback, useId,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { FixedSizeList } from '../components/FixedSizeList';
 import debounce from 'lodash.debounce';
 import {
@@ -32,17 +34,19 @@ import {
   Trash2, Edit3, Plus, Wallet, FileText, X,
   Download, Upload, Copy, CheckSquare, Square,
   FileSpreadsheet, FileCode, CheckCircle2, ChevronDown,
-  Layers, RefreshCw, Undo2, AlertTriangle, Loader2, Tag,
+  Layers, Undo2, AlertTriangle, Loader2, Tag,
   Calendar, DollarSign, Keyboard, Receipt, Share2, Landmark, User, Lock, Target, ShieldCheck,
   CreditCard,
 } from 'lucide-react';
-import { CoinwiseMark, CoinwiseBadge } from '../components/CoinwiseBrand';
+import { CoinwiseMark } from '../components/CoinwiseBrand';
 import { useAppState, useAppActions } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
 import Modal from '../components/Modal';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { useToast } from '../components/ToastProvider';
 import { api } from '../services/api';
 import { resolveReceiptUrl } from '../utils/receiptUrl';
+import { getAppDate } from '../utils/dateUtils';
 
 const getSafeReceiptUrl = (url) => resolveReceiptUrl(url);
 
@@ -252,6 +256,27 @@ const getTransactionId = (transaction) => {
   return id == null ? '' : String(id);
 };
 
+/** Whitelist fields for restoring transactions to prevent sending server-managed attributes (user_id, created_at, etc.) */
+const sanitizeTransactionForRestore = (tx) => {
+  if (!tx || typeof tx !== 'object') return null;
+  return {
+    type: tx.type,
+    category: tx.category,
+    amount: Number(tx.amount) || 0,
+    note: tx.note || '',
+    date: toLocalDateKey(tx.date),
+    merchant: tx.merchant || '',
+    tags: Array.isArray(tx.tags) ? tx.tags : [],
+    payment_method: tx.payment_method || '',
+    account_id: tx.account_id || undefined,
+    budget_category: tx.budget_category || undefined,
+    sender_name: tx.sender_name || undefined,
+    receiver_name: tx.receiver_name || undefined,
+    is_recurring: Boolean(tx.is_recurring),
+    recurrence_interval: tx.recurrence_interval || undefined,
+  };
+};
+
 // ── True when the transaction is not soft-deleted ──
 const isLiveTransaction = (tx) =>
   tx && typeof tx === 'object' && tx.is_deleted !== true && tx.is_deleted !== 'true' && tx.is_deleted !== 1;
@@ -289,6 +314,8 @@ const highlight = (text, query) => {
  * Main Component
  * ============================================================ */
 export default function Transactions() {
+  const navigate = useNavigate();
+
   // ── App context: data, actions, i18n ──
   const {
     transactions: rawTransactions = [],
@@ -308,6 +335,30 @@ export default function Transactions() {
     t,
   } = useAppActions();
   const { showToast } = useToast();
+
+  // ── Auth guard: redirect unauthenticated users to login ──
+  useEffect(() => {
+    if (!contextLoading && !user) {
+      navigate('/login', { replace: true });
+    }
+  }, [contextLoading, user, navigate]);
+
+  // ── Track current day to auto-recompute date-dependent calculations at midnight / on focus ──
+  const [currentDay, setCurrentDay] = useState(() => getAppDate().toDateString());
+  useEffect(() => {
+    const checkDay = () => {
+      const today = getAppDate().toDateString();
+      setCurrentDay((prev) => (prev !== today ? today : prev));
+    };
+    window.addEventListener('focus', checkDay);
+    document.addEventListener('visibilitychange', checkDay);
+    const interval = setInterval(checkDay, 60000);
+    return () => {
+      window.removeEventListener('focus', checkDay);
+      document.removeEventListener('visibilitychange', checkDay);
+      clearInterval(interval);
+    };
+  }, []);
 
   // ── Translation helper with inline fallback ──
   const tr = useCallback((key, fallback) => t?.(key) || fallback, [t]);
@@ -440,11 +491,23 @@ export default function Transactions() {
   const [isSharingTicket, setIsSharingTicket] = useState(false);
   const [isDownloadingReceiptPDF, setIsDownloadingReceiptPDF] = useState(false);
   const isMobile = useMediaQuery('(max-width: 768px)');
+  const mobileReceiptModalRef = useRef(null);
+
+  // ── Focus trap for mobile receipt modal dialog ──
+  useFocusTrap({
+    isOpen: Boolean(isMobile && selectedTxId),
+    onClose: () => setSelectedTxId(null),
+    containerRef: mobileReceiptModalRef,
+  });
 
   // ── Escape key closes active receipt ──
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && selectedTxId) {
+        // If an explicit modal dialog is open, let that modal handle Escape
+        if (document.querySelector('[role="dialog"]:not(.tx-mobile-receipt-overlay)')) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         setSelectedTxId(null);
@@ -525,7 +588,7 @@ export default function Transactions() {
 
   // ── Apply filters, search, presets, and sort ──
   const filtered = useMemo(() => {
-    const now = new Date();
+    const now = currentDay ? getAppDate() : getAppDate();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
@@ -601,7 +664,7 @@ export default function Transactions() {
     return result;
   }, [
     transactions, deferredSearchTerm, filterType, filterCategory, filterTag,
-    activePreset, sortBy, dateFrom, dateTo, amountMin, amountMax,
+    activePreset, sortBy, dateFrom, dateTo, amountMin, amountMax, currentDay,
   ]);
 
   // ── Whether any filter is currently active (checks immediate searchInput) ──
@@ -622,6 +685,7 @@ export default function Transactions() {
     setDateTo('');
     setAmountMin('');
     setAmountMax('');
+    setShowAdvancedFilters(false);
   }, []);
 
   /* ============================================================
@@ -799,13 +863,19 @@ export default function Transactions() {
       }
       showToast('success', tr('bulk_deleted', `Deleted ${idsToDelete.length} transactions`));
 
-      // Snapshot for undo with parallel restoration to avoid partial aborts
+      setSelectedIds(new Set());
+      setShowBulkDeleteModal(false);
+      if (selectedIds.has(String(selectedTxId))) setSelectedTxId(null);
+      try {
+        await refetch();
+      } catch {
+        /* quiet fallback */
+      }
+
+      // Snapshot for undo with whitelisted attributes to avoid echoing server-managed fields
       const restoreFn = async () => {
         const results = await Promise.allSettled(
-          snapshot.map((tx) => {
-            const { id, _id, ...rest } = tx;
-            return addTransaction({ ...rest, date: toLocalDateKey(tx.date) });
-          })
+          snapshot.map((tx) => addTransaction(sanitizeTransactionForRestore(tx)))
         );
         const failures = results.filter((r) => r.status === 'rejected');
         if (failures.length > 0) {
@@ -813,10 +883,6 @@ export default function Transactions() {
         }
       };
       armUndo(tr('bulk_deleted_undo', `${idsToDelete.length} deleted`), restoreFn);
-
-      setSelectedIds(new Set());
-      setShowBulkDeleteModal(false);
-      if (selectedIds.has(String(selectedTxId))) setSelectedTxId(null);
       try {
         await refetch();
       } catch (refetchErr) {
@@ -887,8 +953,7 @@ export default function Transactions() {
       await refetch();
 
       const restoreFn = async () => {
-        const { id: _i, _id: _ii, ...rest } = snapshot;
-        await addTransaction({ ...rest, date: toLocalDateKey(snapshot.date) });
+        await addTransaction(sanitizeTransactionForRestore(snapshot));
       };
       armUndo(tr('tx_deleted', 'Transaction deleted'), restoreFn);
     } catch (err) {
@@ -909,7 +974,6 @@ export default function Transactions() {
       setIsAdding(false);
       showToast('success', tr('tx_added', 'Transaction added'));
     } catch (err) {
-      showToast('error', err?.message || tr('tx_add_failed', 'Failed to add transaction'));
       throw err;
     }
   }, [addTransaction, showToast, tr]);
@@ -921,7 +985,6 @@ export default function Transactions() {
       setDuplicateTxData(null);
       showToast('success', tr('tx_duplicated', 'Transaction duplicated'));
     } catch (err) {
-      showToast('error', err?.message || tr('tx_duplicate_failed', 'Failed to duplicate'));
       throw err;
     }
   }, [addTransaction, showToast, tr]);
@@ -934,7 +997,6 @@ export default function Transactions() {
       setEditingTx(null);
       showToast('success', tr('tx_updated', 'Transaction updated'));
     } catch (err) {
-      showToast('error', err?.message || tr('tx_update_failed', 'Failed to update transaction'));
       throw err;
     }
   }, [editTransaction, editingTx, showToast, tr]);
@@ -949,7 +1011,7 @@ export default function Transactions() {
     setDuplicateTxData({
       type: tx.type,
       category: tx.category,
-      amount: tx.amount,
+      amount: getTxAmount(tx),
       note: tx.note ? `${tx.note} (Copy)` : 'Copy',
       date: toLocalDateKey(new Date()),  // local date, not UTC
       merchant: tx.merchant,
@@ -1114,9 +1176,9 @@ export default function Transactions() {
 
     setImportSummary(analysis.summary || null);
     setWalletUsage({
-      current: analysis.summary?.currentTxCount ?? analysis.currentCount ?? transactions.length,
+      current: analysis.summary?.currentTxCount ?? analysis.currentCount ?? rawTransactions.length,
       limit: analysis.summary?.maxLimit ?? analysis.userLimit ?? 1000,
-      available: analysis.summary?.remainingSlots ?? analysis.availableSlots ?? Math.max(0, 1000 - transactions.length),
+      available: analysis.summary?.remainingSlots ?? analysis.availableSlots ?? Math.max(0, 1000 - rawTransactions.length),
     });
 
     setStatementRows(rows);
@@ -1125,7 +1187,7 @@ export default function Transactions() {
       'statement_detected',
       `${analysis.summary?.detected || rows.length} transactions detected. Review before adding.`
     ));
-  }, [showToast, tr, transactions.length]);
+  }, [showToast, tr, rawTransactions.length]);
 
   const handleOpenImportPicker = useCallback(() => {
     if (isAnalyzingStatement) return;
@@ -1217,7 +1279,7 @@ export default function Transactions() {
   }, [processStatementFile]);
 
   const handlePageDragOver = useCallback((e) => {
-    if (!e.dataTransfer?.types?.includes?.('Files')) return;
+    if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     if (!isDragActive) setIsDragActive(true);
@@ -1263,14 +1325,13 @@ export default function Transactions() {
   // ── Unlock and analyze password-protected PDF statement ──
   const handleUnlockPdf = useCallback(async (e) => {
     if (e) e.preventDefault();
-    if (!pdfPasswordInput.trim() || !pdfPasswordPrompt) return;
+    if (!pdfPasswordInput.trim() || !pdfPasswordPrompt || !pdfPasswordPrompt.file) return;
     setIsAnalyzingStatement(true);
     setPdfPasswordError('');
     try {
       const pwd = pdfPasswordInput.trim();
       const analysis = await api.previewBankStatement({
         file: pdfPasswordPrompt.file,
-        fileData: pdfPasswordPrompt.fileData,
         filename: pdfPasswordPrompt.filename,
         fileType: pdfPasswordPrompt.fileType,
         password: pwd,
@@ -1519,8 +1580,8 @@ export default function Transactions() {
    * Loading State
    * ============================================================ */
 
-  // ── Skeleton while the first page load is in progress ──
-  if (contextLoading && transactions.length === 0) {
+  // ── Skeleton while auth or data load is in progress ──
+  if ((contextLoading && !user) || !user || (contextLoading && transactions.length === 0)) {
     return (
       <div className="inbox-layout-page tx-page">
         <div className="inbox-header">
@@ -1541,12 +1602,13 @@ export default function Transactions() {
    * ============================================================ */
 
   return (
-    <div
-      className={`inbox-layout-page tx-page ${isDragActive ? 'tx-drop-active' : ''}`}
-      onDragOver={handlePageDragOver}
-      onDragLeave={handlePageDragLeave}
-      onDrop={handlePageDrop}
-    >
+    <ErrorBoundary>
+      <div
+        className={`inbox-layout-page tx-page ${isDragActive ? 'tx-drop-active' : ''}`}
+        onDragOver={handlePageDragOver}
+        onDragLeave={handlePageDragLeave}
+        onDrop={handlePageDrop}
+      >
       {/* ── Visually-hidden file input for statement import (avoids display:none picker blocks) ── */}
       <input
         id={statementInputId}
@@ -1887,7 +1949,10 @@ export default function Transactions() {
                         min="0"
                         step="0.01"
                         value={amountMin}
-                        onChange={(e) => setAmountMin(e.target.value)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setAmountMin(v === '' ? '' : String(Math.max(0, Number(v))));
+                        }}
                         placeholder="0"
                       />
                     </label>
@@ -1898,7 +1963,10 @@ export default function Transactions() {
                         min="0"
                         step="0.01"
                         value={amountMax}
-                        onChange={(e) => setAmountMax(e.target.value)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setAmountMax(v === '' ? '' : String(Math.max(0, Number(v))));
+                        }}
                         placeholder="—"
                       />
                     </label>
@@ -2498,10 +2566,15 @@ export default function Transactions() {
                   </AnimatePresence>
                 )}
 
-                {/* ── Mobile Portal Receipt Modal: Mounts to document.body with full-screen coverage ── */}
+                {/* ── Mobile Portal Receipt Modal: Mounts to document.body with full-screen coverage & dialog semantics ── */}
                 {isMobile && selectedTx && typeof document !== 'undefined' && createPortal(
                   <div
+                    ref={mobileReceiptModalRef}
                     className="tx-mobile-receipt-overlay"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={tr('transaction_details', 'Transaction Details')}
+                    tabIndex={-1}
                     onClick={(e) => {
                       if (e.target === e.currentTarget) setSelectedTxId(null);
                     }}
@@ -3004,5 +3077,6 @@ export default function Transactions() {
         )}
       </AnimatePresence>
     </div>
+  </ErrorBoundary>
   );
 }

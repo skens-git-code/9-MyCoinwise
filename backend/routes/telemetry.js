@@ -25,11 +25,21 @@
 // ── Load dependencies ──
 const express = require('express');
 const axios = require('axios');
+const rateLimit = require('express-rate-limit');
 const { config } = require('../config/env');
 const { logger } = require('../utils/logger');
 
 // ── Create router ──
 const router = express.Router();
+
+// ── Rate limiter: max 60 reports per 15 min per IP ──
+const telemetryLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many telemetry reports. Please slow down.' },
+});
 
 // ── Envelope constraints ──
 const MAX_ENVELOPE_BYTES = 100 * 1024;
@@ -95,6 +105,7 @@ function isEnvelopeForDsn(body, ours) {
  * ————————————————————————————————————— */
 router.post(
   '/sentry-tunnel',
+  telemetryLimiter,
   // ── Envelopes are text, not JSON: capture the raw body ──
   express.text({ type: ENVELOPE_CONTENT_TYPE, limit: '100kb' }),
   async (req, res) => {

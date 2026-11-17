@@ -25,6 +25,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
@@ -39,6 +40,9 @@ const { logger, auditLogger } = require('../utils/logger');
 const emailService = require('../services/emailService');
 const { dedupeTransactions } = require('../utils/transactionIntegrity');
 const { isProduction } = require('../config/env');
+
+// ── Fixed dummy bcrypt hash to protect against timing-based user enumeration ──
+const DUMMY_HASH = '$2a$12$e8uk7vWms3qZ6qI0V9H5mO5Zz1eQ9pS4kK8s7rL3uO5rT7vX9zY6W';
 
 // ── Create router ──
 const router = express.Router();
@@ -226,10 +230,7 @@ const getTransactionBalance = async (userId) => {
   const [user, transactions, accounts] = await Promise.all([
     User.findById(userId).select('currency').lean(),
     Transaction.find({
-      $or: [
-        { user_id: new mongoose.Types.ObjectId(String(userId)) },
-        { user_id: String(userId) },
-      ],
+      user_id: new mongoose.Types.ObjectId(String(userId)),
       is_deleted: { $ne: true },
     })
       // See the note in routes/transactions.js: `date` must be selected or the
@@ -278,18 +279,21 @@ router.use((req, res, next) => {
 /* —————————————————————————————————————
  * GET /check-username
  * Real-time username availability check (debounced by client).
+ * Rate-limited to prevent username enumeration.
  * ————————————————————————————————————— */
-router.get('/check-username', async (req, res) => {
+router.get('/check-username', loginLimiter, async (req, res) => {
   try {
     const raw = String(req.query.username || '').trim();
     if (!raw || raw.length < 2 || raw.length > 80) {
-      return res.json({ available: false });
+      return res.status(400).json({ available: false, error: 'Username must be between 2 and 80 characters.' });
     }
-    const existing = await User.findOne({ username: raw }).select('_id').lean();
+    const existing = await User.findOne({ username: raw })
+      .select('_id')
+      .lean();
     return res.json({ available: !existing });
   } catch (err) {
     logger.warn('Check username error:', err.message);
-    return res.json({ available: true });
+    return res.status(503).json({ available: false, error: 'Service temporarily unavailable.' });
   }
 });
 
@@ -384,6 +388,7 @@ router.post(
         });
       });
 
+      auditLogger.info('User registered', { userId: String(user._id), email: user.email, ip: ipAddr });
       return res.status(201).json({ token, user: toSafeUser(user) });
     } catch (error) {
       // ── Map duplicate-key errors to a friendly message with field target ──
@@ -450,26 +455,28 @@ router.post(
 
     try {
       const isEmail = rawIdentifier.includes('@');
-      let userQuery;
+      let user;
       if (isEmail) {
-        userQuery = { email };
+        user = await User.findOne({ email }).select('+password');
       } else {
-        const escapeRegExp = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        userQuery = {
-          $or: [
-            { email },
-            { username: new RegExp(`^${escapeRegExp(rawIdentifier)}$`, 'i') },
-          ],
-        };
+        // Fast index-backed direct lookup first, then case-insensitive fallback
+        user = await User.findOne({ username: rawIdentifier }).select('+password');
+        if (!user) {
+          const escapeRegExp = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          user = await User.findOne({ username: new RegExp(`^${escapeRegExp(rawIdentifier)}$`, 'i') }).select('+password');
+        }
+        if (!user) {
+          user = await User.findOne({ email }).select('+password');
+        }
       }
-
-      // ── Load the user (password field is select: false by default) ──
-      const user = await User.findOne(userQuery).select('+password');
 
       const loginEmail = user?.email || email;
 
       // ── Handle unknown account ──
       if (!user) {
+        // Timing-attack hardening: perform dummy bcrypt compare to equalize response latency
+        await bcrypt.compare(password, DUMMY_HASH);
+
         LoginLog.create({
           email,
           status: 'failed',
@@ -485,9 +492,24 @@ router.post(
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
-      // ── Reject disabled accounts ──
+      // ── Reject disabled accounts without leaking account status ──
       if (!user.is_active) {
-        return res.status(403).json({ error: 'Account is disabled. Contact support.' });
+        LoginLog.create({
+          user_id: user._id,
+          email: loginEmail,
+          status: 'failed',
+          reason: 'account_locked',
+          ip: ipAddr,
+          user_agent: ua,
+          device_type,
+          browser,
+          os,
+          failed_attempts_before: user.failed_login_count || 0,
+        }).catch((err) => logger.warn('LoginLog write failed (disabled_account)', {
+          error: err.message,
+          userId: String(user._id),
+        }));
+        return res.status(401).json({ error: 'Invalid credentials' });
       }
 
       // ── Handle an active lockout, or clear an expired one ──
@@ -568,7 +590,7 @@ router.post(
       // ── Clear lock state and issue session token concurrently to reduce DB roundtrips ──
       const [token] = await Promise.all([
         createSessionToken(user, req, {
-          rememberMe: req.body.rememberMe !== false,
+          rememberMe: req.body.rememberMe === true,
           browser,
           os,
           device_type,
@@ -593,6 +615,7 @@ router.post(
         userId: String(user._id),
       }));
 
+      auditLogger.info('User logged in', { userId: String(user._id), email: loginEmail, ip: ipAddr });
       return res.json({ token, user: toSafeUser(user) });
     } catch (error) {
       logger.error('Login error:', error);
@@ -729,13 +752,13 @@ router.get('/login-logs', auth, async (req, res) => {
     const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
     const skip = (page - 1) * limit;
 
-    // ── Load logs and total count in parallel ──
+    // ── Load logs and total count in parallel (strip sensitive internals) ──
     const [logs, total] = await Promise.all([
       LoginLog.find({ user_id: req.user.id })
         .sort({ created_at: -1 })
         .skip(skip)
         .limit(limit)
-        .select('-__v')
+        .select('-session_id -token_id -created_by_ip -__v')
         .lean(),
       LoginLog.countDocuments({ user_id: req.user.id }),
     ]);
@@ -795,8 +818,10 @@ router.get(['/verify-email', '/verify/:token'], async (req, res) => {
     const rawToken = req.params.token || req.query.token;
     const clientUrl = (process.env.FRONTEND_URL || process.env.CLIENT_URL || '').replace(/\/$/, '');
 
+    const isXhr = req.headers['x-requested-with'] === 'XMLHttpRequest';
+
     if (!rawToken || typeof rawToken !== 'string' || rawToken.length < 10) {
-      if (req.accepts('html') && !req.xhr) {
+      if (req.accepts('html') && !isXhr) {
         return res.redirect(`${clientUrl}/login?error=invalid_token`);
       }
       return res.status(400).json({ error: 'Invalid or missing verification token.' });
@@ -811,7 +836,7 @@ router.get(['/verify-email', '/verify/:token'], async (req, res) => {
     }).select('_id email email_verified email_verify_token email_verify_expires');
 
     if (!user) {
-      if (req.accepts('html') && !req.xhr) {
+      if (req.accepts('html') && !isXhr) {
         return res.redirect(`${clientUrl}/login?error=expired_token`);
       }
       return res.status(400).json({
@@ -827,7 +852,7 @@ router.get(['/verify-email', '/verify/:token'], async (req, res) => {
 
     auditLogger.info('Email verified', { userId: String(user._id), email: user.email });
 
-    if (req.accepts('html') && !req.xhr) {
+    if (req.accepts('html') && !isXhr) {
       return res.redirect(`${clientUrl}/login?verified=1`);
     }
 
