@@ -70,14 +70,20 @@ const calculateIncomeTax = ({ grossIncome, ruleSet, profile }) => {
   const itemized = lineTotal(profile.itemized_deductions);
 
   // US filers take the GREATER of the standard and itemized deductions —
-  // they are mutually exclusive. Other jurisdictions (e.g. India) allow the
-  // standard deduction to stack with itemized/chapter-VI-A deductions.
+  // they are mutually exclusive.
+  // In India:
+  // - New Regime (Section 115BAC): Itemized deductions (Chapter VI-A like 80C, 80D) are disallowed.
+  //   Only standard deduction applies.
+  // - Old Regime: Standard deduction stacks with Chapter VI-A deductions.
   const isUS = String(ruleSet.jurisdiction || '').toUpperCase() === 'US';
+  const isIndia = String(ruleSet.jurisdiction || '').toUpperCase() === 'IN';
   let appliedStandard = standardDeduction;
   let appliedItemized = itemized;
   if (isUS) {
     if (itemized >= standardDeduction) appliedStandard = 0;
     else appliedItemized = 0;
+  } else if (isIndia && String(ruleSet.regime || profile.tax_regime || '').toLowerCase() === 'new') {
+    appliedItemized = 0;
   }
 
   const deductionRoom = Math.max(0, gross - preTax);
