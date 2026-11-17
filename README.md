@@ -17,7 +17,7 @@
 
   <br>
 
-  <p><strong>📍 Newton School of Technology, Delhi · 📧 sarthakmathapati4@gmail.com · 📱 +91 93567 07688</strong></p>
+  <p><strong>📍 Newton School of Technology, Delhi · 📧 sarthak_m@skens.space·/strong></p>
 
   <br>
 
