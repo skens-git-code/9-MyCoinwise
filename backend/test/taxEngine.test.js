@@ -104,7 +104,8 @@ const annual = estimateAnnualTax({
 });
 assert.strictEqual(annual.hasTaxableActivity, true);
 assert.strictEqual(annual.paymentsMade, 1000);
-assert.strictEqual(annual.balanceDue, 42680);
+// In India New Regime (115BAC), itemized deductions (charity/80G) are disallowed, so balanceDue is 43200
+assert.strictEqual(annual.balanceDue, 43200);
 
 // ── India Old Regime verification ──
 const indiaOld = profile('IN', 2024, 'old');

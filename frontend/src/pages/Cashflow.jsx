@@ -45,6 +45,7 @@ import {
   readCachedRatesToInr,
   resolveCurrency,
 } from '../utils/currencyRates';
+import { parseLocalDate, parseSafeDate } from '../utils/dateUtils';
 
 /* ============================================================
  * Constants
@@ -153,11 +154,11 @@ const isSubscriptionActiveOn = (sub, date) => {
   if (!sub) return false;
   if (sub.is_paused) return false;
   if (sub.cancelled_at) {
-    const cancelled = new Date(sub.cancelled_at);
+    const cancelled = parseLocalDate(sub.cancelled_at) || parseSafeDate(sub.cancelled_at) || new Date(sub.cancelled_at);
     if (!Number.isNaN(cancelled.getTime()) && cancelled <= date) return false;
   }
   if (sub.end_date) {
-    const end = new Date(sub.end_date);
+    const end = parseLocalDate(sub.end_date) || parseSafeDate(sub.end_date) || new Date(sub.end_date);
     if (!Number.isNaN(end.getTime()) && end < date) return false;
   }
   return true;
@@ -171,11 +172,10 @@ const subscriptionBillsOn = (sub, date) => {
   if (!isSubscriptionActiveOn(sub, date)) return false;
 
   const cycle = String(sub.cycle || '').toLowerCase();
-  const anchor = sub.next_billing_date
-    ? new Date(sub.next_billing_date)
-    : sub.start_date
-      ? new Date(sub.start_date)
-      : null;
+  const anchorRaw = sub.next_billing_date || sub.start_date;
+  const anchor = anchorRaw
+    ? (parseLocalDate(anchorRaw) || parseSafeDate(anchorRaw) || new Date(anchorRaw))
+    : null;
   if (!anchor || Number.isNaN(anchor.getTime())) return false;
 
   const day = date.getDate();
@@ -262,6 +262,7 @@ export default function Cashflow() {
     transactions = [],
     subscriptions = [],
     accounts = [],
+    user,
     currency = 'INR',
     token,
     theme,
@@ -271,6 +272,7 @@ export default function Cashflow() {
   const {
     fmt,
     t,
+    refetch,
   } = useAppActions();
   const { showToast } = useToast();
 
@@ -423,22 +425,33 @@ export default function Cashflow() {
       if (!Array.isArray(transactions)) return [];
       const endOfToday = new Date();
       endOfToday.setHours(23, 59, 59, 999);
+      // Leeway for clock skew across timezones (24 hours)
+      const cutoffTime = endOfToday.getTime() + 86400000;
+
       return transactions
         .filter(isLiveTx)
         .map((tx) => {
-          const date = new Date(tx.date);
-          if (Number.isNaN(date.getTime()) || date > endOfToday) return null;
+          const d = parseLocalDate(tx.date) || parseSafeDate(tx.date) || (tx.date instanceof Date ? tx.date : new Date(tx.date));
+          if (!d || Number.isNaN(d.getTime()) || d.getTime() > cutoffTime) return null;
           const sourceCurrency = resolveCurrency(
             tx.currency || accountCurrencies.get(String(tx.account_id || '')) || displayCurrency,
             displayCurrency
           );
-          const displayAmount = convertCurrency(
-            safeNumber(tx.amount, 0),
+          const rawAmt = safeNumber(tx.amount, 0);
+          const converted = convertCurrency(
+            rawAmt,
             sourceCurrency,
             displayCurrency,
             fxRatesToInr
           );
-          return displayAmount === null ? null : { ...tx, displayAmount };
+          const displayAmount = converted !== null ? converted : rawAmt;
+          const normType = String(tx.type || '').trim().toLowerCase();
+          return {
+            ...tx,
+            type: normType,
+            date: d,
+            displayAmount,
+          };
         })
         .filter(Boolean);
     }, [transactions, accountCurrencies, displayCurrency, fxRatesToInr]
@@ -446,7 +459,7 @@ export default function Cashflow() {
 
   /* ---------------- Current Balance ---------------- */
   // Starting balance = sum of account initial balances + net of transactions.
-  // If accounts aren't available, fall back to transactions-only.
+  // If accounts aren't available, fall back to user balance or 0.
   const startingBalance = useMemo(() => {
     let base = 0;
     if (Array.isArray(accounts) && accounts.length > 0) {
@@ -463,9 +476,11 @@ export default function Cashflow() {
           );
           return sum + (converted === null ? 0 : converted);
         }, 0);
+    } else if (user?.balance != null) {
+      base = safeNumber(user.balance, 0);
     }
     return base;
-  }, [accounts, displayCurrency, fxRatesToInr]);
+  }, [accounts, user, displayCurrency, fxRatesToInr]);
 
   // ── Net of live transactions (income − expense) ──
   const transactionNet = useMemo(() => {
@@ -509,9 +524,22 @@ export default function Cashflow() {
 
     // Filter to lookback window
     const recent = liveTransactions.filter((tx) => {
-      const d = new Date(tx.date);
+      const d = tx.date instanceof Date ? tx.date : new Date(tx.date);
       return !Number.isNaN(d.getTime()) && d >= lookbackStart;
     });
+
+    // Determine actual lookback span from transactions to avoid diluting burn
+    let activeDays = LOOKBACK_DAYS;
+    if (recent.length > 0) {
+      const timestamps = recent
+        .map((t) => (t.date instanceof Date ? t.date.getTime() : new Date(t.date).getTime()))
+        .filter((t) => !Number.isNaN(t));
+      if (timestamps.length > 0) {
+        const minTime = Math.min(...timestamps);
+        const daySpan = Math.max(1, Math.ceil((now.getTime() - minTime) / 86400000));
+        activeDays = Math.min(LOOKBACK_DAYS, Math.max(7, daySpan));
+      }
+    }
 
     // Subscription name index for exclusion from variable burn
     const subNames = new Set(
@@ -520,7 +548,7 @@ export default function Cashflow() {
         .filter(Boolean)
     );
 
-    // Daily income: income events / lookbackDays
+    // Daily income: income events / activeDays
     let recentIncome = 0;
     const variableExpenses = [];
     for (const tx of recent) {
@@ -535,7 +563,7 @@ export default function Cashflow() {
       }
     }
 
-    const days = Math.max(1, LOOKBACK_DAYS);
+    const days = Math.max(1, activeDays);
     const dailyIncome = recentIncome / days;
 
     // Robust daily burn: median expense × frequency
@@ -549,9 +577,6 @@ export default function Cashflow() {
       const eventsPerDay = variableExpenses.length / days;
       dailyVariableBurn = Math.max(0, median * eventsPerDay);
     }
-    // Never artificially inflate burn — 0 is a valid value.
-    // If you want a floor, uncomment the next line.
-    // dailyVariableBurn = Math.max(dailyVariableBurn, 1);
 
     const parsedWhatIf = safeNumber(whatIfAmount, 0);
 
@@ -592,10 +617,8 @@ export default function Cashflow() {
       if (parsedWhatIf !== 0) {
         if (scenarioType === 'oneTime') {
           // i = 1 means tomorrow; startDay = 1 should mean "tomorrow"
-          // to stay consistent with the loop indexing.
           if (i === scenarioStartDay) scenarioAdj = -parsedWhatIf;
         } else if (scenarioType === 'recurring') {
-          // End date = start day + months*30 (approximation)
           const endDay = scenarioStartDay + scenarioMonths * 30;
           if (i >= scenarioStartDay && i < endDay) {
             if (scenarioFrequency === 'daily') {
@@ -621,13 +644,17 @@ export default function Cashflow() {
         criticalHit = { day: i, date: new Date(d), balance };
       }
 
+      const uncertaintyOffset = dailyVolatility * Math.sqrt(i);
+      const lowerBound = Math.max(0, balance - uncertaintyOffset);
+      const upperBound = Math.max(lowerBound, balance + uncertaintyOffset);
+
       const row = {
         dayIndex: i,
         dateStr: formatShortDate(d, locale),
         balance: Number(balance.toFixed(2)),
         baseline: Number(baselineBalance.toFixed(2)),
-        uncertaintyBase: Number((balance - dailyVolatility * Math.sqrt(i)).toFixed(2)),
-        uncertaintyBand: Number((2 * dailyVolatility * Math.sqrt(i)).toFixed(2)),
+        uncertaintyBase: Number(lowerBound.toFixed(2)),
+        uncertaintyBand: Number((upperBound - lowerBound).toFixed(2)),
         isDanger,
         isCritical,
       };
@@ -849,6 +876,21 @@ export default function Cashflow() {
           </span>
         </div>
         <div className="mh-actions" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* ── Refresh Button ── */}
+          {typeof refetch === 'function' && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                refetch();
+                showToast('info', tr('refreshing', 'Refreshing cashflow data…'));
+              }}
+              title={tr('refresh_title', 'Refresh transactions and accounts')}
+            >
+              <RotateCcw size={14} /> {tr('refresh', 'Refresh')}
+            </button>
+          )}
+
           {/* ── Export CSV ── */}
           <button
             type="button"
@@ -982,7 +1024,7 @@ export default function Cashflow() {
             </div>
 
             <div style={{ height: 340, minHeight: 340, width: '100%', marginTop: 20 }}>
-              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={240} debounce={50} initialDimension={{ width: 320, height: 240 }}>
+              <ResponsiveContainer width="100%" height={340} minWidth={1} minHeight={240} initialDimension={{ width: 320, height: 340 }}>
                 <AreaChart data={projectionData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     {/* ── Gradient for the projected balance area ── */}
@@ -1011,6 +1053,10 @@ export default function Cashflow() {
                     minTickGap={35}
                   />
                   <YAxis
+                    domain={[
+                      (dataMin) => Math.floor(Math.min(0, dataMin * 0.95)),
+                      (dataMax) => Math.ceil(Math.max(100, dataMax * 1.05)),
+                    ]}
                     tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}

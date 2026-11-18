@@ -36,6 +36,7 @@ import { useToast } from '../components/ToastProvider';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { dedupeTransactions } from '../utils/transactionIntegrity';
 import { cleanNoteText } from './Transactions';
+import { parseLocalDate, parseSafeDate } from '../utils/dateUtils';
 import {
   readCachedRatesToInr,
   getFallbackRatesToInr,
@@ -104,8 +105,8 @@ const usePrefersReducedMotion = () => {
 // ── Return true when the input is a valid Date ──
 const isValidDate = (value) => {
   if (!value) return false;
-  const d = value instanceof Date ? value : new Date(value);
-  return !Number.isNaN(d.getTime());
+  const d = parseLocalDate(value) || parseSafeDate(value) || (value instanceof Date ? value : new Date(value));
+  return d !== null && !Number.isNaN(d.getTime());
 };
 
 // ── Structural validation for a transaction row ──
@@ -190,10 +191,10 @@ const computeDelta = (cur, prev) => {
   };
 };
 
-/** Local YYYY-MM key — no UTC drift. */
+/** Local YYYY-MM key — no UTC drift, supports all standard date formats. */
 const toMonthKey = (dateInput) => {
-  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
-  if (Number.isNaN(d.getTime())) return null;
+  const d = parseLocalDate(dateInput) || parseSafeDate(dateInput) || (dateInput instanceof Date ? dateInput : new Date(dateInput));
+  if (!d || Number.isNaN(d.getTime())) return null;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
@@ -206,8 +207,8 @@ const monthStartTimestamp = (monthKey) => {
 // ── Start-of-day for the given date input ──
 const startOfDay = (input) => {
   if (!input) return null;
-  const d = input instanceof Date ? new Date(input) : new Date(input);
-  if (Number.isNaN(d.getTime())) return null;
+  const d = parseLocalDate(input) || parseSafeDate(input) || (input instanceof Date ? new Date(input) : new Date(input));
+  if (!d || Number.isNaN(d.getTime())) return null;
   d.setHours(0, 0, 0, 0);
   return d;
 };
@@ -215,8 +216,8 @@ const startOfDay = (input) => {
 // ── End-of-day for the given date input ──
 const endOfDay = (input) => {
   if (!input) return null;
-  const d = input instanceof Date ? new Date(input) : new Date(input);
-  if (Number.isNaN(d.getTime())) return null;
+  const d = parseLocalDate(input) || parseSafeDate(input) || (input instanceof Date ? new Date(input) : new Date(input));
+  if (!d || Number.isNaN(d.getTime())) return null;
   d.setHours(23, 59, 59, 999);
   return d;
 };
@@ -423,6 +424,7 @@ export default function Analytics() {
   } = useAppState();
   const {
     fmt: contextFmt,
+    refetch,
   } = useAppActions();
   const { showToast } = useToast();
 
@@ -492,6 +494,7 @@ export default function Analytics() {
   const [periodFilter, setPeriodFilter] = useState('month');
   const [chartType, setChartType] = useState('bar');
   const [showAllEvolutionCategories, setShowAllEvolutionCategories] = useState(false);
+  const [evolutionGranularity, setEvolutionGranularity] = useState('auto');
   const [customRange, setCustomRange] = useState({ start: '', end: '' });
   const [showCustomRange, setShowCustomRange] = useState(false);
   const [isPeriodDropdownOpen, setIsPeriodDropdownOpen] = useState(false);
@@ -691,14 +694,16 @@ export default function Analytics() {
   }, [validTransactions, locale]);
 
   /* ============================================================
-   * Category Evolution — fills gaps, drops zero-total categories
+   * Category Evolution — Weekly or Monthly resolution with smart fallback
    * ============================================================ */
   const categoryEvolution = useMemo(() => {
     // ── Rank categories by total expense ──
     const catTotals = new Map();
+    const expenseTxs = [];
     validTransactions
       .filter((t) => String(t.type || '').trim().toLowerCase() === 'expense')
       .forEach((t) => {
+        expenseTxs.push(t);
         const c = t.category || 'Other';
         catTotals.set(c, (catTotals.get(c) || 0) + safeParseAmount(t.displayAmount ?? t.amount));
       });
@@ -711,25 +716,90 @@ export default function Analytics() {
     const limit = showAllEvolutionCategories ? 8 : 5;
     const activeCats = sortedCats.slice(0, limit);
 
-    if (activeCats.length === 0) {
-      return { data: [], categories: [] };
+    if (activeCats.length === 0 || expenseTxs.length === 0) {
+      return { data: [], categories: [], resolution: 'weekly' };
     }
 
     // Determine full month range
     const monthKeys = new Set();
-    validTransactions.forEach((t) => {
-      if (String(t.type || '').trim().toLowerCase() !== 'expense') return;
+    expenseTxs.forEach((t) => {
       const key = toMonthKey(t.date);
       if (key) monthKeys.add(key);
     });
-    if (monthKeys.size === 0) {
-      return { data: [], categories: activeCats };
+
+    const isSingleMonth = monthKeys.size <= 1;
+    const resolution = evolutionGranularity === 'auto'
+      ? (isSingleMonth ? 'weekly' : 'monthly')
+      : evolutionGranularity;
+
+    if (resolution === 'weekly') {
+      // ── Weekly Resolution: break down into weeks of the active month (W1–W5) ──
+      const sortedMKeys = Array.from(monthKeys).sort();
+      const primaryMonthKey = sortedMKeys[sortedMKeys.length - 1] || toMonthKey(new Date());
+      const [pYear, pMonth] = primaryMonthKey.split('-').map(Number);
+      const daysInMonth = new Date(pYear, pMonth, 0).getDate();
+      const monthShort = new Date(pYear, pMonth - 1, 1).toLocaleDateString(locale || 'en-IN', { month: 'short' });
+
+      const weekMap = new Map();
+      let startDay = 1;
+      let wIdx = 1;
+      while (startDay <= daysInMonth) {
+        const endDay = Math.min(startDay + 6, daysInMonth);
+        const wKey = `W${wIdx}`;
+        const row = {
+          name: wKey,
+          timestamp: new Date(pYear, pMonth - 1, startDay).getTime(),
+          displayName: `W${wIdx} (${monthShort} ${startDay}–${endDay})`,
+        };
+        activeCats.forEach((c) => { row[c] = 0; });
+        weekMap.set(wKey, row);
+        startDay = endDay + 1;
+        wIdx += 1;
+      }
+
+      // Populate expense transactions
+      expenseTxs.forEach((t) => {
+        const cat = t.category || 'Other';
+        if (!activeCats.includes(cat)) return;
+        const d = parseLocalDate(t.date) || parseSafeDate(t.date) || new Date(t.date);
+        if (!d || Number.isNaN(d.getTime())) return;
+        const day = d.getDate();
+        const wNum = Math.min(weekMap.size, Math.floor((day - 1) / 7) + 1);
+        const wKey = `W${wNum}`;
+        const row = weekMap.get(wKey);
+        if (row) {
+          row[cat] = Number((row[cat] + safeParseAmount(t.displayAmount ?? t.amount)).toFixed(2));
+        }
+      });
+
+      const weeklyData = Array.from(weekMap.values());
+      const visibleCats = activeCats.filter((cat) =>
+        weeklyData.some((row) => Number(row[cat]) > 0)
+      );
+
+      return {
+        data: weeklyData,
+        categories: visibleCats.length > 0 ? visibleCats : activeCats,
+        resolution: 'weekly',
+      };
     }
 
+    // ── Monthly Resolution ──
     const sortedMonthKeys = Array.from(monthKeys).sort();
-    const allMonths = enumerateMonths(sortedMonthKeys[0], sortedMonthKeys[sortedMonthKeys.length - 1]);
+    let allMonths = enumerateMonths(sortedMonthKeys[0] || toMonthKey(new Date()), sortedMonthKeys[sortedMonthKeys.length - 1] || toMonthKey(new Date()));
 
-    // Fill every month with zeros for every category
+    // When only 1 month exists, pad with preceding months so the trend shows the ramp-up
+    if (allMonths.length === 1) {
+      const [curY, curM] = allMonths[0].split('-').map(Number);
+      const padded = [];
+      for (let offset = 3; offset >= 1; offset--) {
+        const d = new Date(curY, curM - 1 - offset, 1);
+        padded.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+      }
+      allMonths = [...padded, allMonths[0]];
+    }
+
+    // Fill every month with zeros for active categories
     const monthData = new Map();
     allMonths.forEach((key) => {
       const row = {
@@ -742,39 +812,31 @@ export default function Analytics() {
     });
 
     // Populate
-    validTransactions.forEach((t) => {
-      if (t.type !== 'expense') return;
+    expenseTxs.forEach((t) => {
       const cat = t.category || 'Other';
       if (!activeCats.includes(cat)) return;
       const key = toMonthKey(t.date);
       if (!key) return;
       const row = monthData.get(key);
-      if (row) row[cat] += safeParseAmount(t.displayAmount ?? t.amount);
+      if (row) {
+        row[cat] = Number((row[cat] + safeParseAmount(t.displayAmount ?? t.amount)).toFixed(2));
+      }
     });
 
-    // Keep only the last MAX_MONTHS_EVOLUTION months
     const data = Array.from(monthData.values())
       .sort((a, b) => a.timestamp - b.timestamp)
       .slice(-MAX_MONTHS_EVOLUTION);
 
-    // Drop categories whose total in the visible window is 0
     const visibleCats = activeCats.filter((cat) =>
       data.some((row) => Number(row[cat]) > 0)
     );
 
-    // Trim leading all-zero months so the chart doesn't render a flat zero line followed by a spike
-    const firstActiveIndex = data.findIndex((row) =>
-      visibleCats.some((c) => Number(row[c]) > 0)
-    );
-    const finalData = firstActiveIndex > 0 ? data.slice(firstActiveIndex) : data;
-
-    // If fewer than two months have data, hide the chart to prevent floating single dot
-    if (finalData.length < 2) {
-      return { data: [], categories: [] };
-    }
-
-    return { data: finalData, categories: visibleCats };
-  }, [validTransactions, showAllEvolutionCategories, locale]);
+    return {
+      data,
+      categories: visibleCats.length > 0 ? visibleCats : activeCats,
+      resolution: 'monthly',
+    };
+  }, [validTransactions, showAllEvolutionCategories, evolutionGranularity, locale]);
 
   /* ============================================================
    * Day of Week
@@ -1225,6 +1287,19 @@ export default function Analytics() {
           <span className="badge">AI Insights</span>
         </div>
         <div className="analytics-actions">
+          {typeof refetch === 'function' && (
+            <button
+              type="button"
+              onClick={() => {
+                refetch();
+                showToast('info', 'Refreshing analytics data…');
+              }}
+              className="btn-secondary"
+              title="Refresh transaction data"
+            >
+              <RotateCcw size={15} /> Refresh
+            </button>
+          )}
           <button
             onClick={exportChartAsImage}
             className="btn-secondary"
@@ -1613,21 +1688,45 @@ export default function Analytics() {
           <div className="chart-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <h3 style={{ margin: 0 }}>Category Spending Evolution</h3>
-              <span className="chart-badge">Historical Trends</span>
+              <span className="chart-badge">
+                {categoryEvolution.resolution === 'weekly' ? 'Weekly Trends' : 'Monthly Trends'}
+              </span>
             </div>
-            {/* ── Toggle top-5 vs. top-8 view ── */}
-            {categoryEvolution.data.length > 0 && categoryEvolution.categories.length > 0 && (
-              <button
-                className="btn-secondary"
-                style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                onClick={() => setShowAllEvolutionCategories((p) => !p)}
-              >
-                {showAllEvolutionCategories ? 'Show Top 5' : 'Show All (Top 8)'}
-              </button>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <div className="chart-controls" style={{ margin: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => setEvolutionGranularity('weekly')}
+                  className={`chart-type-btn ${categoryEvolution.resolution === 'weekly' && evolutionGranularity !== 'monthly' ? 'active' : ''}`}
+                  style={{ fontSize: '0.72rem', padding: '4px 8px' }}
+                  title="View week-by-week category breakdown"
+                >
+                  Weekly
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEvolutionGranularity('monthly')}
+                  className={`chart-type-btn ${evolutionGranularity === 'monthly' ? 'active' : ''}`}
+                  style={{ fontSize: '0.72rem', padding: '4px 8px' }}
+                  title="View month-over-month category breakdown"
+                >
+                  Monthly
+                </button>
+              </div>
+              {categoryEvolution.data.length > 0 && categoryEvolution.categories.length > 0 && (
+                <button
+                  className="btn-secondary"
+                  style={{ fontSize: '0.72rem', padding: '4px 8px' }}
+                  onClick={() => setShowAllEvolutionCategories((p) => !p)}
+                  title="Toggle visible category limit"
+                >
+                  {showAllEvolutionCategories ? 'Top 5' : 'Top 8'}
+                </button>
+              )}
+            </div>
           </div>
           {categoryEvolution.data.length > 0 && categoryEvolution.categories.length > 0 ? (
-            <ResponsiveContainer width="100%" height={240} minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 240 }}>
+            <ResponsiveContainer width="100%" height={260} minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 260 }}>
               <LineChart data={categoryEvolution.data} margin={{ top: 10, right: 20, left: 0, bottom: 25 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
                 <XAxis dataKey="displayName" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
@@ -1649,8 +1748,8 @@ export default function Analytics() {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="chart-empty" style={{ minHeight: 64, padding: '16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Not enough category history to render evolution chart.</p>
+            <div className="chart-empty" style={{ minHeight: 80, padding: '24px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No expense transactions recorded yet to display category trends.</p>
             </div>
           )}
         </motion.div>

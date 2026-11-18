@@ -60,10 +60,21 @@ export function parseLocalDate(dateInput) {
     return isValid(dateInput) ? dateInput : null;
   }
   if (typeof dateInput === 'string') {
-    const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) {
-      const local = new Date(+m[1], +m[2] - 1, +m[3]);
-      return isValid(local) ? local : null;
+    const trimmed = dateInput.trim();
+    // 1. YYYY-MM-DD
+    const isoMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (isoMatch) {
+      const local = new Date(+isoMatch[1], +isoMatch[2] - 1, +isoMatch[3]);
+      if (isValid(local)) return local;
+    }
+    // 2. DD/MM/YYYY or DD-MM-YYYY
+    const dmyMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    if (dmyMatch) {
+      const d = +dmyMatch[1];
+      const m = +dmyMatch[2] - 1;
+      const y = +dmyMatch[3];
+      const local = new Date(y, m, d);
+      if (isValid(local) && local.getDate() === d) return local;
     }
   }
   return parseSafeDate(dateInput);
@@ -78,16 +89,25 @@ export function parseSafeDate(dateInput) {
     return isValid(dateInput) ? dateInput : null;
   }
 
-  // ── String inputs: try ISO first, then native Date ──
+  // ── String inputs: try ISO, DD/MM/YYYY, then native Date ──
   if (typeof dateInput === 'string') {
-    const m = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m) {
-      const local = new Date(+m[1], +m[2] - 1, +m[3]);
+    const trimmed = dateInput.trim();
+    const isoMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (isoMatch) {
+      const local = new Date(+isoMatch[1], +isoMatch[2] - 1, +isoMatch[3]);
       if (isValid(local)) return local;
     }
-    const parsed = parseISO(dateInput);
+    const dmyMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    if (dmyMatch) {
+      const d = +dmyMatch[1];
+      const m = +dmyMatch[2] - 1;
+      const y = +dmyMatch[3];
+      const local = new Date(y, m, d);
+      if (isValid(local) && local.getDate() === d) return local;
+    }
+    const parsed = parseISO(trimmed);
     if (isValid(parsed)) return parsed;
-    const native = new Date(dateInput);
+    const native = new Date(trimmed);
     return isValid(native) ? native : null;
   }
 

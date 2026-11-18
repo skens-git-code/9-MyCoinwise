@@ -43,6 +43,7 @@ import QuantumRuntime from '../services/quantumRuntime';
 import { CoinwiseMark } from './CoinwiseBrand';
 import NavigationProgressBar from './NavigationProgressBar';
 import { preloadRoute, getPrefetchHandlers } from '../utils/routePrefetch';
+import { notificationManager } from '../utils/notificationManager';
 
 const CurrencyConverter = lazy(() => import('./CurrencyConverter'));
 const AlertsCenter = lazy(() => import('./AlertsCenter'));
@@ -449,7 +450,17 @@ export default function AppLayout({ children }) {
   const [showOnboardingTour, setShowOnboardingTour] = useState(false);
   const [showAddTx, setShowAddTx] = useState(false);
   const [addTxInstanceKey, setAddTxInstanceKey] = useState(0);
-  const [dismissedAlertIds, setDismissedAlertIds] = useState(() => new Set());
+  const [readAlertIds, setReadAlertIds] = useState(() => notificationManager.getReadIds());
+  const [archivedAlertIds, setArchivedAlertIds] = useState(() => notificationManager.getArchivedIds());
+  const [notifMode, setNotifMode] = useState(() => notificationManager.getMode());
+
+  useEffect(() => {
+    return notificationManager.subscribe(() => {
+      setReadAlertIds(notificationManager.getReadIds());
+      setArchivedAlertIds(notificationManager.getArchivedIds());
+      setNotifMode(notificationManager.getMode());
+    });
+  }, []);
 
   // ── Shared hooks ──
   const { activeDropdown, toggleDropdown, closeAll } = useDropdownManager();
@@ -551,46 +562,45 @@ export default function AppLayout({ children }) {
     };
   }, []);
 
-  // ── Active alerts = alerts minus dismissed ──
+  // ── Active alerts = alerts minus archived ──
   const activeAlerts = useMemo(() => {
     const safeAlerts = Array.isArray(alerts) ? alerts : [];
-    return safeAlerts.filter(a => a && !dismissedAlertIds.has(a.id || a.title));
-  }, [alerts, dismissedAlertIds]);
+    return safeAlerts.filter(a => a && !archivedAlertIds.has(String(a.id || a.title)));
+  }, [alerts, archivedAlertIds]);
 
-  // ── Urgent count (danger + warning) ──
+  // ── Urgent count (unread danger + warning, respecting silent mode) ──
   const urgentAlertsCount = useMemo(
-    () => activeAlerts.filter(a => a.type === 'danger' || a.type === 'warning').length,
-    [activeAlerts]
+    () => {
+      if (notifMode === 'silent') return 0;
+      return activeAlerts.filter(a => {
+        const isUrgent = a.type === 'danger' || a.type === 'warning';
+        const isUnread = !readAlertIds.has(String(a.id || a.title));
+        return isUrgent && isUnread;
+      }).length;
+    },
+    [activeAlerts, readAlertIds, notifMode]
   );
 
-  // ── Mark single alert as dismissed locally ──
+  const totalUnreadCount = useMemo(() => {
+    return activeAlerts.filter(a => !readAlertIds.has(String(a.id || a.title))).length;
+  }, [activeAlerts, readAlertIds]);
+
+  // ── Mark single alert as dismissed/archived ──
   const handleDismissAlert = useCallback((id) => {
-    setDismissedAlertIds(prev => {
-      const next = new Set(prev);
-      if (id) next.add(id);
-      try {
-        localStorage.setItem('mcw_dismissed_alerts', JSON.stringify([...next]));
-      } catch (err) {
-        console.warn('Failed to save dismissed alerts', err);
-      }
-      return next;
-    });
+    notificationManager.archive(id);
   }, []);
 
-  // ── Mark every alert as dismissed locally ──
+  // ── Mark every active alert as dismissed/archived ──
   const handleDismissAllAlerts = useCallback(() => {
-    const safeAlerts = Array.isArray(alerts) ? alerts : [];
-    const allIds = safeAlerts.map(a => a?.id || a?.title).filter(Boolean);
-    setDismissedAlertIds(prev => {
-      const next = new Set([...prev, ...allIds]);
-      try {
-        localStorage.setItem('mcw_dismissed_alerts', JSON.stringify([...next]));
-      } catch (err) {
-        console.warn('Failed to save dismissed alerts', err);
-      }
-      return next;
-    });
-  }, [alerts]);
+    const allIds = activeAlerts.map(a => a?.id || a?.title).filter(Boolean);
+    notificationManager.archiveAll(allIds);
+  }, [activeAlerts]);
+
+  // ── Mark every active alert as read ──
+  const handleMarkAllAlertsRead = useCallback(() => {
+    const allIds = activeAlerts.map(a => a?.id || a?.title).filter(Boolean);
+    notificationManager.markAllAsRead(allIds);
+  }, [activeAlerts]);
 
   // [FIX #7] pageTitleKey is now derived from NAV_ITEMS so it can
   // never drift out of sync when routes are added or removed.
@@ -841,6 +851,8 @@ export default function AppLayout({ children }) {
             onShowAlerts={handleOpenAlerts}
             onShowAI={handleOpenAI}
             urgentAlertsCount={urgentAlertsCount}
+            totalUnreadCount={totalUnreadCount}
+            readAlertIds={readAlertIds}
             formattedBalance={formattedBalance}
             theme={theme}
             onToggleTheme={handleToggleTheme}
@@ -854,6 +866,7 @@ export default function AppLayout({ children }) {
             onOpenTour={() => setShowOnboardingTour(true)}
             activeAlerts={activeAlerts}
             onDismissAllAlerts={handleDismissAllAlerts}
+            onMarkAllAlertsRead={handleMarkAllAlertsRead}
             financialSummary={financialSummary}
             currencySymbol={currencyInfo?.symbol || '$'}
             logout={handleLogout}
@@ -1212,6 +1225,7 @@ const Header = React.memo(({
   pageTitle, userInfo,
   activeDropdown, onDropdownToggle, onCloseDropdowns,
   onShowConverter, onShowAlerts, onShowAI, urgentAlertsCount,
+  totalUnreadCount = 0, readAlertIds, onMarkAllAlertsRead,
   formattedBalance, theme, onToggleTheme,
   lang, t, onLanguageChange, onOpenProfile,
   onOpenCmdPalette, onOpenShortcuts,
@@ -1427,11 +1441,15 @@ const Header = React.memo(({
               className="theme-toggle nav-btn-alerts"
               onClick={() => onDropdownToggle('notifications')}
               aria-expanded={activeDropdown === 'notifications'}
-              aria-label={`Alerts${urgentAlertsCount > 0 ? `, ${urgentAlertsCount} urgent` : ''}`}
-              title="Alerts"
+              aria-label={`Alerts${urgentAlertsCount > 0 ? `, ${urgentAlertsCount} urgent` : totalUnreadCount > 0 ? `, ${totalUnreadCount} unread` : ''}`}
+              title="Notifications & Alerts"
             >
               <Bell size={18} strokeWidth={1.75} />
-              {urgentAlertsCount > 0 && <span className="nav-unread-dot" />}
+              {urgentAlertsCount > 0 ? (
+                <span className="nav-unread-dot" />
+              ) : totalUnreadCount > 0 ? (
+                <span className="nav-unread-dot" style={{ background: 'var(--brand-primary)', boxShadow: '0 0 6px var(--brand-glow)' }} />
+              ) : null}
             </button>
 
             <AnimatePresence>
@@ -1444,31 +1462,62 @@ const Header = React.memo(({
                   onClick={e => e.stopPropagation()}
                 >
                   <div className="had-header">
-                    <span className="had-title">{t?.('smart_alerts') || 'Smart Alerts'}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="had-title">{t?.('smart_alerts') || 'Smart Alerts'}</span>
+                      {totalUnreadCount > 0 && (
+                        <span className="ac-unread-indicator-badge" style={{ fontSize: '0.62rem', padding: '1px 6px' }}>
+                          {totalUnreadCount} unread
+                        </span>
+                      )}
+                    </div>
                     {activeAlerts.length > 0 && (
                       <button
                         type="button"
                         className="had-mark-read"
-                        onClick={onDismissAllAlerts}
+                        onClick={onMarkAllAlertsRead || onDismissAllAlerts}
+                        title="Mark all as read"
                       >
-                        <Check size={13} /> {t?.('clear') || 'Clear'}
+                        <Check size={13} /> {t?.('mark_read') || 'Mark read'}
                       </button>
                     )}
                   </div>
                   <div className="had-list">
                     {activeAlerts.length > 0 ? (
-                      activeAlerts.slice(0, 3).map((a, idx) => (
-                        <div
-                          key={a.id || `${a.title}-${idx}`}
-                          className={`had-item ${a.type || 'info'}`}
-                        >
-                          <span className="had-item-icon">{a.icon || '💡'}</span>
-                          <div className="had-item-body">
-                            {a.title && <div className="had-item-title">{a.title}</div>}
-                            <div className="had-item-msg">{a.message || a.title}</div>
+                      activeAlerts.slice(0, 4).map((a, idx) => {
+                        const alertId = a.id || `${a.title}-${idx}`;
+                        const isRead = readAlertIds?.has(String(a.id || a.title));
+                        return (
+                          <div
+                            key={alertId}
+                            className={`had-item ${a.type || 'info'} ${isRead ? 'read' : 'unread'}`}
+                            onClick={() => {
+                              notificationManager.markAsRead(a.id || a.title);
+                              onCloseDropdowns?.();
+                              if (a.actionRoute) navigate(a.actionRoute);
+                              else onShowAlerts?.();
+                            }}
+                            style={{ cursor: 'pointer', opacity: isRead ? 0.72 : 1 }}
+                          >
+                            <span className="had-item-icon">{a.icon || '💡'}</span>
+                            <div className="had-item-body">
+                              {a.title && <div className="had-item-title">{a.title}</div>}
+                              <div className="had-item-msg">{a.message || a.title}</div>
+                            </div>
+                            {!isRead && (
+                              <span
+                                style={{
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: '50%',
+                                  background: a.type === 'danger' || a.type === 'warning' ? 'var(--danger)' : 'var(--brand-primary)',
+                                  flexShrink: 0,
+                                  alignSelf: 'center',
+                                }}
+                              />
+                            )}
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                     ) : (
                       <div className="had-empty">
                         {t?.('no_unread_alerts') || 'No unread alerts'}
@@ -1484,7 +1533,7 @@ const Header = React.memo(({
                         onShowAlerts?.();
                       }}
                     >
-                      {t?.('open_alerts_center') || 'Open Alerts Center'} <ExternalLink size={13} />
+                      {t?.('open_alerts_center') || 'Open Notification Center'} <ExternalLink size={13} />
                     </button>
                   </div>
                 </motion.div>

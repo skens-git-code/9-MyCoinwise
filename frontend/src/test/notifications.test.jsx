@@ -134,3 +134,74 @@ describe('Wave 5 — Notifications & Toasts (Glitches #12 & #13)', () => {
     expect(screen.queryByText('Something went wrong')).toBeNull();
   });
 });
+
+describe('Enterprise Notification Manager & Architecture', () => {
+  it('manages read, archived, pinned statuses and relative time correctly', async () => {
+    const { notificationManager } = await import('../utils/notificationManager');
+
+    const testId = 'alert-test-xyz';
+    notificationManager.markAsUnread(testId);
+    expect(notificationManager.isRead(testId)).toBe(false);
+
+    notificationManager.markAsRead(testId);
+    expect(notificationManager.isRead(testId)).toBe(true);
+
+    notificationManager.togglePin(testId);
+    expect(notificationManager.isPinned(testId)).toBe(true);
+
+    notificationManager.archive(testId);
+    expect(notificationManager.isArchived(testId)).toBe(true);
+
+    notificationManager.unarchive(testId);
+    expect(notificationManager.isArchived(testId)).toBe(false);
+
+    expect(notificationManager.formatRelativeTime(Date.now() - 30000)).toBe('Just now');
+    expect(notificationManager.formatRelativeTime(Date.now() - 300000)).toBe('5m ago');
+    expect(notificationManager.formatRelativeTime(Date.now() - 7200000)).toBe('2h ago');
+  });
+
+  it('correctly calculates quiet hours spans', async () => {
+    const { notificationManager } = await import('../utils/notificationManager');
+
+    const prefsDisabled = { quietHoursEnabled: false };
+    expect(notificationManager.isInQuietHours(prefsDisabled)).toBe(false);
+
+    // Overnight quiet hours 22:00 to 08:00
+    const overnightPrefs = {
+      quietHoursEnabled: true,
+      quietHoursStart: '22:00',
+      quietHoursEnd: '08:00',
+    };
+    // Result depends on current hour, verify function runs cleanly and returns boolean
+    expect(typeof notificationManager.isInQuietHours(overnightPrefs)).toBe('boolean');
+  });
+
+  it('generateAlerts respects user notification preferences and enriches metadata', async () => {
+    const { generateAlerts } = await import('../services/aiEngine');
+
+    const userWithPrefs = {
+      monthly_goal: 5000,
+      notification_prefs: {
+        budgetAlerts: false, // suppressed
+        unusualSpending: true,
+        goalMilestones: true,
+      },
+    };
+
+    const mockTxs = [
+      { id: '1', date: new Date().toISOString(), type: 'expense', amount: 8000, category: 'Shopping' },
+    ];
+
+    const alerts = generateAlerts(mockTxs, userWithPrefs, []);
+    // Budget alert should be suppressed
+    const budgetAlert = alerts.find(a => a.category === 'budget');
+    expect(budgetAlert).toBeUndefined();
+
+    // Daily tip is always included and has metadata
+    const tip = alerts.find(a => a.type === 'tip');
+    expect(tip).toBeTruthy();
+    expect(tip.id).toBeTruthy();
+    expect(tip.priority).toBe(5);
+    expect(tip.details).toBeTruthy();
+  });
+});

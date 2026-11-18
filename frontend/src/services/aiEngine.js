@@ -145,7 +145,7 @@ export function predictTimeToGoal(goal, transactions) {
 /* —————————————————————————————————————
  * Budget Alert Generation
  * Produces a prioritized list of alerts for the dashboard based on
- * this month's activity, goals, anomalies, and daily tips.
+ * this month's activity, goals, anomalies, user notification preferences, and daily tips.
  * ————————————————————————————————————— */
 export function generateAlerts(transactions, user, goals = []) {
   const safeTxs = Array.isArray(transactions) ? transactions : [];
@@ -154,17 +154,20 @@ export function generateAlerts(transactions, user, goals = []) {
   const monthlyGoal = Number(user?.monthly_goal || 0);
   const now = new Date();
   const thisMonth = safeYearMonth(now);
+  const prefs = user?.notification_prefs || {};
 
   // ── Filter current-month transactions ──
   const thisMonthExpenses = safeTxs.filter(t => {
     if (!t || t.is_deleted === true) return false;
     const m = safeYearMonth(t.date);
-    return t.type === 'expense' && m === thisMonth;
+    const type = String(t.type || '').trim().toLowerCase();
+    return type === 'expense' && m === thisMonth;
   });
   const thisMonthIncome = safeTxs.filter(t => {
     if (!t || t.is_deleted === true) return false;
     const m = safeYearMonth(t.date);
-    return t.type === 'income' && m === thisMonth;
+    const type = String(t.type || '').trim().toLowerCase();
+    return type === 'income' && m === thisMonth;
   });
 
   const totalExpense = thisMonthExpenses.reduce((a, c) => {
@@ -177,88 +180,158 @@ export function generateAlerts(transactions, user, goals = []) {
   }, 0);
   const currentSavings = totalIncome - totalExpense;
 
-  // 1. Prompt to set a monthly goal if none is set (always visible, encourages engagement)
+  const budgetEnabled = prefs.budgetAlerts !== false;
+  const unusualSpendingEnabled = prefs.unusualSpending !== false;
+  const goalsEnabled = prefs.goalMilestones !== false;
+
+  // 1. Prompt to set a monthly goal if none is set
   if (monthlyGoal === 0) {
     alerts.push({
+      id: `alert-set-goal-${thisMonth}`,
       type: 'info',
+      category: 'goal',
       icon: '🎯',
       title: 'Set a Monthly Savings Goal',
       message: 'Head to Settings to set a monthly savings goal — it unlocks smart budget alerts and progress tracking.',
       priority: 4,
+      timestamp: new Date().toISOString(),
+      actionLabel: 'Set Goal',
+      actionRoute: '/settings',
+      details: 'A defined savings target helps calculate pacing and detect overspending early.',
     });
   }
 
-  // 2. Budget limit warning
-  if (monthlyGoal > 0 && currentSavings < monthlyGoal * 0.2 && currentSavings >= 0) {
+  // 2. Budget limit warning (pacing alert)
+  if (budgetEnabled && monthlyGoal > 0 && currentSavings < monthlyGoal * 0.2 && currentSavings >= 0) {
+    const pct = ((currentSavings / monthlyGoal) * 100).toFixed(0);
     alerts.push({
+      id: `alert-budget-pacing-${thisMonth}`,
       type: 'warning',
+      category: 'budget',
       icon: '⚠️',
       title: 'Budget Alert',
-      message: `You're only ${((currentSavings / monthlyGoal) * 100).toFixed(0)}% toward your monthly goal. Try to cut some expenses!`,
+      message: `You're only ${pct}% toward your monthly goal. Try to cut some expenses!`,
       priority: 2,
+      timestamp: new Date().toISOString(),
+      actionLabel: 'Review Budgets',
+      actionRoute: '/budgets',
+      details: `Saved so far: ${currentSavings.toFixed(2)} out of goal ${monthlyGoal.toFixed(2)}. ${pct}% accomplished with ${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate()} days remaining in the month.`,
     });
   }
 
-  // 3. Negative savings
-  if (currentSavings < 0) {
+  // 3. Negative savings (Overspending deficit)
+  if (budgetEnabled && currentSavings < 0) {
+    const deficit = Math.abs(currentSavings).toFixed(2);
     alerts.push({
+      id: `alert-overspending-${thisMonth}`,
       type: 'danger',
+      category: 'budget',
       icon: '🚨',
       title: 'Overspending Alert',
-      message: `You've spent more than you earned this month. Current deficit: ${Math.abs(currentSavings).toFixed(2)}`,
+      message: `You've spent more than you earned this month. Current deficit: ${deficit}`,
       priority: 1,
+      timestamp: new Date().toISOString(),
+      actionLabel: 'View Outflow',
+      actionRoute: '/transactions',
+      details: `Total monthly income: ${totalIncome.toFixed(2)} vs expenses: ${totalExpense.toFixed(2)}. Net cashflow deficit of ${deficit}.`,
     });
   }
 
   // 4. Top category this month
   const catMap = {};
   thisMonthExpenses.forEach(t => {
-    catMap[t.category] = (catMap[t.category] || 0) + Number(t.amount);
+    const cat = t.category || 'Other';
+    catMap[cat] = (catMap[cat] || 0) + Number(t.amount || 0);
   });
   const topCat = Object.entries(catMap).sort((a, b) => b[1] - a[1])[0];
-  if (topCat && topCat[1] > totalExpense * 0.4) {
+  if (topCat && totalExpense > 0 && topCat[1] > totalExpense * 0.4) {
+    const catPct = ((topCat[1] / totalExpense) * 100).toFixed(0);
     alerts.push({
+      id: `alert-topcat-${encodeURIComponent(topCat[0])}-${thisMonth}`,
       type: 'info',
+      category: 'spending',
       icon: '🔍',
       title: 'Top Expense Category',
-      message: `"${topCat[0]}" accounts for ${((topCat[1] / totalExpense) * 100).toFixed(0)}% of your spending this month.`,
+      message: `"${topCat[0]}" accounts for ${catPct}% of your spending this month.`,
       priority: 3,
+      timestamp: new Date().toISOString(),
+      actionLabel: 'Analyze Spending',
+      actionRoute: '/analytics',
+      details: `Total spent in ${topCat[0]}: ${topCat[1].toFixed(2)} out of total monthly expenditure ${totalExpense.toFixed(2)}.`,
     });
   }
 
   // 5. Anomalies
-  const anomalies = detectAnomalies(safeTxs);
-  if (anomalies.length > 0) {
-    alerts.push({
-      type: 'info',
-      icon: '📊',
-      title: 'Unusual Spending Detected',
-      message: `Your "${anomalies[0].category}" spending (${anomalies[0].amount.toFixed(2)}) is unusually high vs avg of ${anomalies[0].average.toFixed(2)}.`,
-      priority: 3,
-    });
+  if (unusualSpendingEnabled) {
+    const anomalies = detectAnomalies(safeTxs);
+    if (anomalies.length > 0) {
+      const topAnomaly = anomalies[0];
+      alerts.push({
+        id: `alert-anomaly-${encodeURIComponent(topAnomaly.category || 'other')}-${thisMonth}`,
+        type: 'warning',
+        category: 'spending',
+        icon: '📊',
+        title: 'Unusual Spending Detected',
+        message: `Your "${topAnomaly.category}" spending (${topAnomaly.amount.toFixed(2)}) is unusually high vs avg of ${topAnomaly.average.toFixed(2)}.`,
+        priority: 2,
+        timestamp: new Date().toISOString(),
+        actionLabel: 'Inspect Transactions',
+        actionRoute: '/transactions',
+        details: 'Identified as a spending spike that significantly exceeds your 90-day baseline average.',
+      });
+    }
   }
 
-  // 6. Stuck goal nudge — mirrors the isStuck logic on the Goals page
-  if (safeGoals.length > 0) {
+  // 6. Goals checks (Milestones reached & Stuck goals)
+  if (goalsEnabled && safeGoals.length > 0) {
+    // 6a. Milestone achieved
+    const achievedGoal = safeGoals.find(g => {
+      const tgt = Number(g?.target || 0);
+      const svd = Number(g?.saved || 0);
+      return tgt > 0 && svd >= tgt;
+    });
+    if (achievedGoal) {
+      alerts.push({
+        id: `alert-goal-achieved-${achievedGoal.id || achievedGoal._id || achievedGoal.name}`,
+        type: 'success',
+        category: 'goal',
+        icon: '🎉',
+        title: 'Goal Achieved!',
+        message: `Congratulations! You funded 100% of "${achievedGoal.name}".`,
+        priority: 2,
+        timestamp: achievedGoal.updated_at || new Date().toISOString(),
+        actionLabel: 'View Goals',
+        actionRoute: '/goals',
+        details: `Saved ${Number(achievedGoal.saved).toFixed(2)} of target ${Number(achievedGoal.target).toFixed(2)}. Ready for your next milestone!`,
+      });
+    }
+
+    // 6b. Stuck goal nudge
     const stuckGoals = safeGoals.filter(g => {
       const pct = g.target > 0 ? (Number(g.saved) / Number(g.target)) * 100 : 0;
-      const ageInDays = g.created_at ? (new Date() - new Date(g.created_at)) / (1000 * 60 * 60 * 24) : 0;
+      const ageInDays = g.created_at ? (now - new Date(g.created_at)) / (1000 * 60 * 60 * 24) : 0;
       return pct < 15 && ageInDays > 14 && pct < 100;
     });
     if (stuckGoals.length > 0) {
       const g = stuckGoals[0];
       const pct = g.target > 0 ? ((Number(g.saved) / Number(g.target)) * 100).toFixed(0) : 0;
       alerts.push({
+        id: `alert-goal-stuck-${g.id || g._id || g.name}`,
         type: 'warning',
+        category: 'goal',
         icon: '🐌',
         title: 'Goal Behind Schedule',
         message: `"${g.name}" is only ${pct}% funded after 2+ weeks. Consider adding a small contribution to keep momentum!`,
-        priority: 2,
+        priority: 3,
+        timestamp: new Date().toISOString(),
+        actionLabel: 'Contribute Now',
+        actionRoute: '/goals',
+        details: `Target: ${Number(g.target).toFixed(2)}, currently saved: ${Number(g.saved).toFixed(2)}. Even modest recurring deposits keep momentum high.`,
       });
     }
   }
 
-  // 7. Daily tip (always shown — ensures at least 1 alert is always visible)
+  // 7. Daily tip (refreshed daily)
   const tips = [
     "💡 Try the 50/30/20 rule: 50% needs, 30% wants, 20% savings.",
     "💡 Tracking every expense can save up to 20% more each month!",
@@ -268,15 +341,30 @@ export function generateAlerts(transactions, user, goals = []) {
     "💡 Cook at home twice more per week to save significantly on food.",
   ];
   alerts.push({
+    id: `alert-tip-${thisMonth}-${now.getDate()}`,
     type: 'tip',
+    category: 'insights',
     icon: '💡',
     title: 'Daily Finance Tip',
-    message: tips[new Date().getDate() % tips.length],
+    message: tips[now.getDate() % tips.length],
     priority: 5,
+    timestamp: new Date().toISOString(),
+    actionLabel: 'Read Insights',
+    actionRoute: '/analytics',
+    details: 'Daily micro-insights powered by MyCoinwise behavioral finance engine.',
   });
 
-  // ── Sort by priority (lowest number = highest priority) ──
-  return alerts.sort((a, b) => a.priority - b.priority);
+  // ── Deduplicate by ID and sort by priority (lowest number = highest priority) ──
+  const seenIds = new Set();
+  const deduped = [];
+  for (const a of alerts) {
+    if (!seenIds.has(a.id)) {
+      seenIds.add(a.id);
+      deduped.push(a);
+    }
+  }
+
+  return deduped.sort((a, b) => a.priority - b.priority);
 }
 
 /* —————————————————————————————————————

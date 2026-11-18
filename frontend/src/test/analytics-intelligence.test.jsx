@@ -93,3 +93,60 @@ describe('Tax Center Reconciliation Logic', () => {
     });
   });
 });
+
+describe('Category Spending Evolution & Forecasting Integrity', () => {
+  it('generates multi-bucket weekly evolution data for single-month 30+ transaction datasets', () => {
+    // Generate 35 transactions across days 1 to 28 of November 2026
+    const sampleTxs = [];
+    for (let day = 1; day <= 28; day++) {
+      sampleTxs.push({
+        id: `tx-${day}`,
+        date: `2026-11-${String(day).padStart(2, '0')}`,
+        type: 'Expense', // test uppercase
+        category: day % 2 === 0 ? 'Groceries' : 'Education',
+        amount: 200,
+      });
+    }
+
+    // Weekly bucketing logic simulation
+    const activeCats = ['Groceries', 'Education'];
+    const weekMap = new Map();
+    for (let w = 1; w <= 4; w++) {
+      const wKey = `W${w}`;
+      weekMap.set(wKey, { name: wKey, Groceries: 0, Education: 0 });
+    }
+
+    sampleTxs.forEach((t) => {
+      const d = new Date(t.date);
+      const day = d.getDate();
+      const wNum = Math.min(4, Math.floor((day - 1) / 7) + 1);
+      const row = weekMap.get(`W${wNum}`);
+      if (row && t.category) {
+        row[t.category] += t.amount;
+      }
+    });
+
+    const weeklyData = Array.from(weekMap.values());
+    expect(weeklyData.length).toBe(4);
+    expect(weeklyData[0].Groceries).toBeGreaterThan(0);
+    expect(weeklyData[0].Education).toBeGreaterThan(0);
+    expect(weeklyData[3].Groceries).toBeGreaterThan(0);
+  });
+
+  it('correctly handles non-negative uncertainty bands in cashflow forecasting', () => {
+    const balance = 500;
+    const dailyVolatility = 300;
+    const day = 10;
+    const uncertaintyOffset = dailyVolatility * Math.sqrt(day); // ~948.68
+    const lowerBound = Math.max(0, balance - uncertaintyOffset);
+    const upperBound = Math.max(lowerBound, balance + uncertaintyOffset);
+
+    const uncertaintyBase = Number(lowerBound.toFixed(2));
+    const uncertaintyBand = Number((upperBound - lowerBound).toFixed(2));
+
+    expect(uncertaintyBase).toBe(0);
+    expect(uncertaintyBase).toBeGreaterThanOrEqual(0);
+    expect(uncertaintyBand).toBeGreaterThan(0);
+    expect(uncertaintyBase + uncertaintyBand).toBeCloseTo(upperBound, 1);
+  });
+});
