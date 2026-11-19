@@ -32,6 +32,7 @@ import {
   Loader2, RefreshCw, Smartphone, MailCheck,
 } from 'lucide-react';
 import { CoinwiseMark } from '../components/CoinwiseBrand';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /* ============================================================
  * Constants
@@ -127,61 +128,7 @@ const getPasswordStrength = (password) => {
   return Math.max(0, Math.min(5, score));
 };
 
-/* ============================================================
- * Focus Trap
- * ============================================================ */
-function useFocusTrap(ref, isActive, onEscape) {
-  useEffect(() => {
-    if (!isActive || !ref.current) return undefined;
-    const node = ref.current;
-    const previousActive = document.activeElement;
 
-    // ── Query visible focusable elements inside the modal ──
-    const getFocusable = () =>
-      Array.from(
-        node.querySelectorAll(
-          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )
-      ).filter((el) => el.offsetParent !== null);
-
-    // ── Initial focus ──
-    const focusables = getFocusable();
-    if (focusables.length > 0) focusables[0].focus();
-
-    // ── Escape closes; Tab cycles within the modal ──
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onEscape?.();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      const list = getFocusable();
-      if (list.length === 0) {
-        e.preventDefault();
-        return;
-      }
-      const first = list[0];
-      const last = list[list.length - 1];
-      const current = document.activeElement;
-      if (e.shiftKey) {
-        if (current === first || !node.contains(current)) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else if (current === last || !node.contains(current)) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      try { previousActive?.focus?.(); } catch { /* ignore */ }
-    };
-  }, [ref, isActive, onEscape]);
-}
 
 /* ============================================================
  * Component
@@ -604,7 +551,7 @@ export default function Register() {
     navigate('/', { replace: true });
   }, [registeredSession, login, navigate]);
 
-  useFocusTrap(successModalRef, showSuccess, closeSuccessModal);
+  useFocusTrap({ isOpen: showSuccess, onClose: closeSuccessModal, containerRef: successModalRef });
 
   /* ============================================================
    * Derived UI State

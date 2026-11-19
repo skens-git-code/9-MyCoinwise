@@ -41,6 +41,7 @@ import { LANGUAGES } from '../services/i18n';
 import { getCookieConsent, setCookieConsent, openCookiePreferences, isDoNotTrack } from '../services/clarity';
 
 import Modal from '../components/Modal';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { useToast } from '../components/ToastProvider';
 import PropTypes from 'prop-types';
 
@@ -279,67 +280,7 @@ const getSafeUserEmail = (user) => {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 160 ? email : null;
 };
 
-/* ============================================================
- * Focus trap hook
- * ============================================================ */
-function useFocusTrap(ref, isActive, onEscape) {
-  useEffect(() => {
-    if (!isActive || !ref.current) return undefined;
-    const node = ref.current;
-    const previousActive = document.activeElement;
 
-    // ── Query visible focusable elements inside the trap ──
-    const getFocusable = () =>
-      Array.from(
-        node.querySelectorAll(
-          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )
-      ).filter((el) => {
-        if (el.offsetParent !== null) return true;
-        // Fallback for position: fixed elements where offsetParent can be null in some engines
-        const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
-        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
-      });
-
-    // ── Initial focus ──
-    const focusables = getFocusable();
-    if (focusables.length > 0) focusables[0].focus();
-
-    // ── Escape closes; Tab cycles inside the trap ──
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onEscape?.();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      const list = getFocusable();
-      if (list.length === 0) {
-        e.preventDefault();
-        return;
-      }
-      const first = list[0];
-      const last = list[list.length - 1];
-      const current = document.activeElement;
-      if (e.shiftKey) {
-        if (current === first || !node.contains(current)) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else if (current === last || !node.contains(current)) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      try { previousActive?.focus?.(); } catch { /* ignore */ }
-    };
-  }, [ref, isActive, onEscape]);
-}
 
 /* ============================================================
  * Password strength
@@ -409,7 +350,7 @@ const ReAuthModalContent = ({ onClose, onConfirmed, actionLabel, isLoading }) =>
   const [error, setError] = useState('');
   const modalRef = useRef(null);
 
-  useFocusTrap(modalRef, true, onClose);
+  useFocusTrap({ isOpen: true, onClose, containerRef: modalRef });
 
   // ── Submit the password and resolve based on the parent's result ──
   const handleConfirm = async () => {

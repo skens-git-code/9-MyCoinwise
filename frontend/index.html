@@ -16,7 +16,16 @@
     <script>
       (() => {
         try {
-          document.documentElement.dataset.theme = localStorage.getItem('mcw-theme') === 'amoled' ? 'amoled' : 'light';
+          const stored = localStorage.getItem('mcw-theme');
+          let theme = 'light';
+          if (stored === 'amoled') {
+            theme = 'amoled';
+          } else if (stored === 'auto' || !stored) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+              theme = 'amoled';
+            }
+          }
+          document.documentElement.dataset.theme = theme;
         } catch {
           document.documentElement.dataset.theme = 'light';
         }

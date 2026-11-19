@@ -1368,7 +1368,7 @@
   .modal-box {
     margin: auto !important;
     max-height: calc(100vh - 32px) !important;
-    max-height: calc(100dvh - 32px) !important;
+    max-height: calc(var(--tx-modal-viewport-height, 100dvh) - 32px) !important;
     border-radius: 20px !important;
     width: 100% !important;
     max-width: 480px !important;
@@ -1387,7 +1387,7 @@
     max-width: 440px !important;
     width: 100% !important;
     max-height: calc(100vh - 32px) !important;
-    max-height: calc(100dvh - 32px) !important;
+    max-height: calc(var(--tx-modal-viewport-height, 100dvh) - 32px) !important;
     overflow: hidden !important;
   }
 
@@ -1397,7 +1397,7 @@
     width: 100% !important;
     max-width: 100% !important;
     max-height: calc(100vh - 36px) !important;
-    max-height: calc(100dvh - 36px) !important;
+    max-height: calc(var(--tx-modal-viewport-height, 100dvh) - 36px) !important;
     border-radius: 20px !important;
     padding: 18px 16px !important;
     margin: auto !important;

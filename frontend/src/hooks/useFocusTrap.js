@@ -30,6 +30,48 @@ function releaseScrollLock() {
   }
 }
 
+let activeViewportTrackers = 0;
+let viewportCleanup = null;
+
+function acquireViewportTracking() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  activeViewportTrackers += 1;
+  if (activeViewportTrackers === 1) {
+    const update = () => {
+      const vv = window.visualViewport;
+      const height = vv ? vv.height : window.innerHeight;
+      const offsetTop = vv ? vv.offsetTop : 0;
+      document.documentElement.style.setProperty('--tx-modal-viewport-height', `${height}px`);
+      document.documentElement.style.setProperty('--tx-modal-viewport-offset-top', `${offsetTop}px`);
+    };
+    update();
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', update);
+      vv.addEventListener('scroll', update);
+    }
+    window.addEventListener('resize', update);
+    viewportCleanup = () => {
+      if (vv) {
+        vv.removeEventListener('resize', update);
+        vv.removeEventListener('scroll', update);
+      }
+      window.removeEventListener('resize', update);
+      document.documentElement.style.removeProperty('--tx-modal-viewport-height');
+      document.documentElement.style.removeProperty('--tx-modal-viewport-offset-top');
+    };
+  }
+}
+
+function releaseViewportTracking() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  activeViewportTrackers = Math.max(0, activeViewportTrackers - 1);
+  if (activeViewportTrackers === 0 && viewportCleanup) {
+    viewportCleanup();
+    viewportCleanup = null;
+  }
+}
+
 /**
  * Focus management for modal-like surfaces.
  *
@@ -140,9 +182,10 @@ export function useFocusTrap({
 
     document.addEventListener('keydown', handleKeyDown, true);
 
-    // ── Background scroll lock (reference counted across nested dialogs) ──
+    // ── Background scroll lock & viewport tracking (reference counted across nested dialogs) ──
     if (lockScroll) {
       acquireScrollLock();
+      acquireViewportTracking();
     }
 
     return () => {
@@ -151,6 +194,7 @@ export function useFocusTrap({
 
       if (lockScroll) {
         releaseScrollLock();
+        releaseViewportTracking();
       }
 
       // ── 4. Restore focus to the trigger ──

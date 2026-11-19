@@ -39,6 +39,7 @@ import { useAppState, useAppActions } from '../contexts/AppContext';
 import TransactionForm from '../components/TransactionForm';
 import { useToast } from '../components/ToastProvider';
 import { getAppDate } from '../utils/dateUtils';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /* --------------------------------------------------------------------------
  * Localization Configuration & Resolution
@@ -148,66 +149,6 @@ const canonicalizeCategoryName = (categoryValue) => {
 
 const isLiveTransaction = (transaction) =>
   Boolean(transaction && typeof transaction === 'object' && transaction.is_deleted !== true);
-
-/* --------------------------------------------------------------------------
- * Accessibility: Focus Trap Hook
- * -------------------------------------------------------------------------- */
-
-function useFocusTrap(containerRef, isActive) {
-  useEffect(() => {
-    if (!isActive || !containerRef.current) return undefined;
-
-    const containerElement = containerRef.current;
-    const previouslyActiveElement = document.activeElement;
-
-    const getFocusableElements = () => {
-      const focusableSelector =
-        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-      return Array.from(containerElement.querySelectorAll(focusableSelector)).filter(
-        (element) => element.offsetParent !== null || element === document.activeElement
-      );
-    };
-
-    const focusableNodes = getFocusableElements();
-    if (focusableNodes.length > 0) focusableNodes[0].focus();
-
-    const handleKeyDown = (event) => {
-      if (event.key !== 'Tab') return;
-
-      const currentFocusables = getFocusableElements();
-      if (currentFocusables.length === 0) {
-        event.preventDefault();
-        return;
-      }
-
-      const firstElement = currentFocusables[0];
-      const lastElement = currentFocusables[currentFocusables.length - 1];
-      const currentElement = document.activeElement;
-
-      if (event.shiftKey) {
-        if (currentElement === firstElement || !containerElement.contains(currentElement)) {
-          event.preventDefault();
-          lastElement.focus();
-        }
-      } else if (currentElement === lastElement || !containerElement.contains(currentElement)) {
-        event.preventDefault();
-        firstElement.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      if (previouslyActiveElement && previouslyActiveElement.focus) {
-        try {
-          previouslyActiveElement.focus();
-        } catch {
-          /* Element unmounted or unfocusable */
-        }
-      }
-    };
-  }, [containerRef, isActive]);
-}
 
 /* --------------------------------------------------------------------------
  * Trend Visualization Component
@@ -1050,8 +991,8 @@ export default function Calendar() {
     navigateToNextPeriod,
   ]);
 
-  useFocusTrap(dayModalRef, Boolean(selectedDate));
-  useFocusTrap(deleteModalRef, Boolean(pendingDeleteTransaction));
+  useFocusTrap({ isOpen: Boolean(selectedDate), onClose: closeDayDetailsPanel, containerRef: dayModalRef });
+  useFocusTrap({ isOpen: Boolean(pendingDeleteTransaction), onClose: cancelDeleteOperation, containerRef: deleteModalRef });
 
   /* --------------------------------------------------------------------------
    * Grid Renderers: Monthly View
