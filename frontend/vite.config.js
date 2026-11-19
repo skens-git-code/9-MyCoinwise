@@ -33,9 +33,27 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
-      target: 'es2020',
+      target: 'esnext',
       cssCodeSplit: true,
+      cssMinify: 'lightningcss',
       sourcemap: !isProd,
+      minify: 'terser',
+      terserOptions: {
+        compress: {
+          dead_code: true,
+          drop_console: isProd,
+          drop_debugger: isProd,
+          passes: 2,
+          pure_getters: true,
+          unsafe_math: true,
+        },
+        mangle: {
+          safari10: true,
+        },
+        format: {
+          comments: false,
+        },
+      },
       chunkSizeWarningLimit: 1000,
       assetsInlineLimit: 4096,
       rollupOptions: {
@@ -50,7 +68,11 @@ export default defineConfig(({ mode }) => {
               if (id.includes('lucide-react')) return 'icons';
               if (id.includes('exceljs') || id.includes('jspdf') || id.includes('jspdf-autotable')) return 'export-vendor';
               if (id.includes('lodash.debounce') || id.includes('lodash.throttle')) return 'lodash-vendor';
-              if (id.includes('react-router-dom')) return 'router-vendor';
+              if (id.includes('react-router-dom') || id.includes('react-router')) return 'router-vendor';
+              if (id.includes('i18next') || id.includes('react-i18next')) return 'i18n-vendor';
+              if (id.includes('date-fns')) return 'date-fns-vendor';
+              if (id.includes('@tanstack/react-query') || id.includes('@tanstack/query')) return 'tanstack-query';
+              if (id.includes('dompurify')) return 'dompurify';
               if (id.includes('react') || id.includes('react-dom')) {
                 return 'react-vendor';
               }

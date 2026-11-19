@@ -218,6 +218,27 @@ const LOCALE_MAP = {
   en: 'en-US', hi: 'hi-IN', mr: 'mr-IN', bgc: 'hi-IN', kn: 'kn-IN',
 };
 
+const numberFormatCache = new Map();
+function getCachedNumberFormatter(locale, fractionDigits) {
+  const cacheKey = `${locale}:${fractionDigits}`;
+  let formatter = numberFormatCache.get(cacheKey);
+  if (!formatter) {
+    try {
+      formatter = new Intl.NumberFormat(locale, {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
+      });
+    } catch {
+      formatter = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
+      });
+    }
+    numberFormatCache.set(cacheKey, formatter);
+  }
+  return formatter;
+}
+
 export function formatCurrency(amount, currency = 'INR', localeOrLang = 'en-IN') {
   const info = CURRENCIES[currency] || CURRENCIES.INR;
   const parsedAmount = Number(amount);
@@ -226,7 +247,8 @@ export function formatCurrency(amount, currency = 'INR', localeOrLang = 'en-IN')
   const defaultLocale = currency === 'INR' ? 'en-IN' : 'en-US';
   const resolvedLocale = currency === 'INR' ? 'en-IN' : (LOCALE_MAP[localeOrLang] || localeOrLang || defaultLocale);
   const fractionDigits = Number.isInteger(info.fractionDigits) ? info.fractionDigits : 2;
-  const numStr = Math.abs(val).toLocaleString(resolvedLocale, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
+  const formatter = getCachedNumberFormatter(resolvedLocale, fractionDigits);
+  const numStr = formatter.format(Math.abs(val));
   return `${isNeg ? '-' : ''}${info.symbol}${numStr}`;
 }
 

@@ -55,7 +55,23 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Stale-while-revalidate for navigation HTML and other GET requests
+  // Network-first for SPA navigation to prevent serving stale JS bundles after deployments
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+          }
+          return res;
+        })
+        .catch(() => caches.match('/index.html').then((cached) => cached || caches.match('/')))
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for other GET requests
   e.respondWith(
     caches.match(e.request).then((cached) => {
       const networkFetch = fetch(e.request)

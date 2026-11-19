@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /* —————————————————————————————————————
  * Transactions Page
  * Full transaction management hub with:
@@ -969,36 +970,24 @@ export default function Transactions() {
 
   // ── Add a new transaction ──
   const handleAdd = useCallback(async (tx) => {
-    try {
-      await addTransaction(tx);
-      setIsAdding(false);
-      showToast('success', tr('tx_added', 'Transaction added'));
-    } catch (err) {
-      throw err;
-    }
+    await addTransaction(tx);
+    setIsAdding(false);
+    showToast('success', tr('tx_added', 'Transaction added'));
   }, [addTransaction, showToast, tr]);
 
   // ── Duplicate a transaction ──
   const handleDuplicate = useCallback(async (tx) => {
-    try {
-      await addTransaction(tx);
-      setDuplicateTxData(null);
-      showToast('success', tr('tx_duplicated', 'Transaction duplicated'));
-    } catch (err) {
-      throw err;
-    }
+    await addTransaction(tx);
+    setDuplicateTxData(null);
+    showToast('success', tr('tx_duplicated', 'Transaction duplicated'));
   }, [addTransaction, showToast, tr]);
 
   // ── Edit an existing transaction ──
   const handleEdit = useCallback(async (tx) => {
-    try {
-      const id = getTransactionId(editingTx);
-      await editTransaction(id, tx);
-      setEditingTx(null);
-      showToast('success', tr('tx_updated', 'Transaction updated'));
-    } catch (err) {
-      throw err;
-    }
+    const id = getTransactionId(editingTx);
+    await editTransaction(id, tx);
+    setEditingTx(null);
+    showToast('success', tr('tx_updated', 'Transaction updated'));
   }, [editTransaction, editingTx, showToast, tr]);
 
   /* ============================================================

@@ -1,5 +1,35 @@
 import { useEffect, useRef } from 'react';
 
+let activeScrollLocks = 0;
+let originalBodyOverflow = '';
+let originalDocOverflow = '';
+let originalPaddingRight = '';
+
+function acquireScrollLock() {
+  if (typeof document === 'undefined') return;
+  activeScrollLocks += 1;
+  if (activeScrollLocks === 1) {
+    const { body, documentElement } = document;
+    originalBodyOverflow = body.style.overflow;
+    originalDocOverflow = documentElement.style.overflow;
+    originalPaddingRight = body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
+    body.style.overflow = 'hidden';
+    documentElement.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+  }
+}
+
+function releaseScrollLock() {
+  if (typeof document === 'undefined') return;
+  activeScrollLocks = Math.max(0, activeScrollLocks - 1);
+  if (activeScrollLocks === 0) {
+    document.body.style.overflow = originalBodyOverflow;
+    document.documentElement.style.overflow = originalDocOverflow;
+    document.body.style.paddingRight = originalPaddingRight;
+  }
+}
+
 /**
  * Focus management for modal-like surfaces.
  *
@@ -110,29 +140,17 @@ export function useFocusTrap({
 
     document.addEventListener('keydown', handleKeyDown, true);
 
-    // ── Background scroll lock (compensate for the scrollbar to avoid a jump) ──
-    let previousOverflow = '';
-    let previousDocOverflow = '';
-    let previousPaddingRight = '';
-    if (lockScroll && typeof document !== 'undefined') {
-      const { body, documentElement } = document;
-      previousOverflow = body.style.overflow;
-      previousDocOverflow = documentElement.style.overflow;
-      previousPaddingRight = body.style.paddingRight;
-      const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
-      body.style.overflow = 'hidden';
-      documentElement.style.overflow = 'hidden';
-      if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+    // ── Background scroll lock (reference counted across nested dialogs) ──
+    if (lockScroll) {
+      acquireScrollLock();
     }
 
     return () => {
       clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleKeyDown, true);
 
-      if (lockScroll && typeof document !== 'undefined') {
-        document.body.style.overflow = previousOverflow;
-        document.documentElement.style.overflow = previousDocOverflow;
-        document.body.style.paddingRight = previousPaddingRight;
+      if (lockScroll) {
+        releaseScrollLock();
       }
 
       // ── 4. Restore focus to the trigger ──

@@ -7,8 +7,16 @@
 // ── Load dependencies ──
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const { LRUCache } = require('lru-cache');
 const User = require('../models/User');
 const Session = require('../models/Session');
+
+// ── High-performance LRU cache for authenticated active sessions (15s TTL) ──
+// Coalesces the initial flurry of parallel requests on page load without hitting MongoDB 8x
+const sessionAuthCache = new LRUCache({
+  max: 1000,
+  ttl: 15 * 1000, // 15 seconds
+});
 
 // ── Define authentication middleware ──
 const authenticateRequest = async (req, res, next) => {
@@ -60,7 +68,16 @@ const authenticateRequest = async (req, res, next) => {
     let authenticatedUser = null;
     let activeSession = null;
 
-    if (decodedToken.jti) {
+    const cacheKey = decodedToken.jti ? `${userId}:${decodedToken.jti}` : null;
+    if (cacheKey) {
+      const cached = sessionAuthCache.get(cacheKey);
+      if (cached && (cached.authenticatedUser.session_version || 0) <= (decodedToken.session_version || 0)) {
+        authenticatedUser = cached.authenticatedUser;
+        activeSession = cached.activeSession;
+      }
+    }
+
+    if (!authenticatedUser && decodedToken.jti) {
       const results = await Session.aggregate([
         { $match: { token_id: decodedToken.jti, user_id: uid, is_active: true } },
         { $project: { _id: 1, last_active: 1, user_id: 1 } },
@@ -81,6 +98,9 @@ const authenticateRequest = async (req, res, next) => {
       if (results.length > 0) {
         activeSession = results[0];
         authenticatedUser = results[0].user;
+        if (cacheKey) {
+          sessionAuthCache.set(cacheKey, { authenticatedUser, activeSession });
+        }
       } else {
         // Check if session was explicitly deactivated / revoked
         const revokedSession = await Session.findOne({

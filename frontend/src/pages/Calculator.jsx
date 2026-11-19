@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, {
   useCallback, useEffect, useMemo, useRef, useState,
 } from 'react';
@@ -687,7 +688,7 @@ export default function ScientificCalculator() {
       if (value === '.') {
         const lastNumMatch = prev.match(/(\d+\.?\d*)$/);
         if (lastNumMatch && lastNumMatch[1].includes('.')) return prev;
-        if (!lastNumMatch || /[+*/^(\-]$/.test(prev)) {
+        if (!lastNumMatch || /[+*/^()-]$/.test(prev)) {
           return prev + '0.';
         }
       }

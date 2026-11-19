@@ -109,7 +109,7 @@ describe('Category Spending Evolution & Forecasting Integrity', () => {
     }
 
     // Weekly bucketing logic simulation
-    const activeCats = ['Groceries', 'Education'];
+    const _activeCats = ['Groceries', 'Education'];
     const weekMap = new Map();
     for (let w = 1; w <= 4; w++) {
       const wKey = `W${w}`;

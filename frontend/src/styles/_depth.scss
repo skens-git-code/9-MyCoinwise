@@ -420,9 +420,10 @@
   }
 }
 
-/* ── 6. Modals — Deep Sheet Float ────────────────────────────── */
+/* ── 6. Modals — Clean Elevation (Framer Motion Managed) ── */
 .modal-overlay {
-  perspective: 1400px;
+  /* Avoid perspective distortion on mobile viewports */
+  perspective: none;
 }
 
 .modal-box {
@@ -432,22 +433,6 @@
     0 32px 80px rgba(0, 0, 0, 0.45),
     0 0 0 1px rgba(255, 255, 255, 0.06),
     var(--d3-rim) !important;
-}
-
-.modal-box:not([style*="transform"]) {
-  animation: modal-rise-3d 0.42s var(--d3-ease) both;
-}
-
-@keyframes modal-rise-3d {
-  0% {
-    opacity: 0;
-    transform: translateY(40px) rotateX(12deg) scale(0.94);
-  }
-
-  100% {
-    opacity: 1;
-    transform: translateY(0) rotateX(0) scale(1);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

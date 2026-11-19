@@ -127,11 +127,17 @@ function initOffscreenObserver() {
     { rootMargin: '100px 0px 100px 0px', threshold: 0 }
   );
 
+  const observedTargets = new WeakSet();
   const observeAmbientTargets = () => {
     const targets = document.querySelectorAll(
       '.d3-ambient, .ambient-orb, .auth-orb, .particles, .animated-bg, .portfolio-bg-layer, .bento-hero::after'
     );
-    targets.forEach((el) => ambientObserver.observe(el));
+    targets.forEach((el) => {
+      if (!observedTargets.has(el)) {
+        observedTargets.add(el);
+        ambientObserver.observe(el);
+      }
+    });
   };
 
   observeAmbientTargets();

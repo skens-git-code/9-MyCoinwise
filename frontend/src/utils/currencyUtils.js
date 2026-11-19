@@ -28,6 +28,27 @@ export function getCurrencyInfo(currency = 'INR') {
   return CURRENCIES[currency] || { symbol: currency || '₹', name: currency || 'INR' };
 }
 
+const numberFormatCache = new Map();
+function getCachedNumberFormatter(locale, fractionDigits) {
+  const cacheKey = `${locale}:${fractionDigits}`;
+  let formatter = numberFormatCache.get(cacheKey);
+  if (!formatter) {
+    try {
+      formatter = new Intl.NumberFormat(locale, {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
+      });
+    } catch {
+      formatter = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
+      });
+    }
+    numberFormatCache.set(cacheKey, formatter);
+  }
+  return formatter;
+}
+
 /**
  * Formats a monetary amount with currency symbol and locale-sensitive decimal grouping.
  *
@@ -44,11 +65,8 @@ export function formatCurrency(amount, currency = 'INR', localeOrLang = 'en-IN')
   const defaultLocale = currency === 'INR' ? 'en-IN' : 'en-US';
   const resolvedLocale = currency === 'INR' ? 'en-IN' : (LOCALE_MAP[localeOrLang] || localeOrLang || defaultLocale);
   const fractionDigits = Number.isInteger(info.fractionDigits) ? info.fractionDigits : 2;
-
-  const numStr = Math.abs(val).toLocaleString(resolvedLocale, {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  });
+  const formatter = getCachedNumberFormatter(resolvedLocale, fractionDigits);
+  const numStr = formatter.format(Math.abs(val));
 
   return `${isNeg ? '-' : ''}${info.symbol}${numStr}`;
 }
@@ -69,11 +87,8 @@ export function formatCurrencyParts(amount, currency = 'INR', localeOrLang = 'en
   const defaultLocale = currency === 'INR' ? 'en-IN' : 'en-US';
   const resolvedLocale = currency === 'INR' ? 'en-IN' : (LOCALE_MAP[localeOrLang] || localeOrLang || defaultLocale);
   const fractionDigits = Number.isInteger(info.fractionDigits) ? info.fractionDigits : 2;
-
-  const numStr = Math.abs(val).toLocaleString(resolvedLocale, {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  });
+  const formatter = getCachedNumberFormatter(resolvedLocale, fractionDigits);
+  const numStr = formatter.format(Math.abs(val));
 
   const [integer, decimal = fractionDigits === 0 ? '' : '00'] = numStr.split('.');
 

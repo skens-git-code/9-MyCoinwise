@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /* —————————————————————————————————————
  * Dashboard Page
  * Primary financial overview with:
@@ -670,7 +671,6 @@ export default function Dashboard() {
     fmt,
     t,
     fetchTransactions,
-    logout,
   } = useAppActions();
 
   const navigate = useNavigate();
@@ -765,7 +765,7 @@ export default function Dashboard() {
   const [editingTx, setEditingTx] = useState(null);
   const [dateFilter, setDateFilter] = useState(() => safeGetItem(dateFilterKey, 'all'));
   const [categoryFilter, setCategoryFilter] = useState(() => safeGetItem(categoryFilterKey, 'all'));
-  const [hoveredPieIndex, setHoveredPieIndex] = useState(null);
+  const [, setHoveredPieIndex] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -825,7 +825,7 @@ export default function Dashboard() {
   // ── Sanitize username: replace underscores with spaces ──
   const rawUsername = user?.username || user?.name || (user?.email ? user.email.split('@')[0] : 'Username');
   const sanitizedUsername = useMemo(() => String(rawUsername).replace(/_/g, ' ').trim() || 'Username', [rawUsername]);
-  const userAvatarChar = useMemo(() => sanitizedUsername.charAt(0).toUpperCase() || 'U', [sanitizedUsername]);
+  const _userAvatarChar = useMemo(() => sanitizedUsername.charAt(0).toUpperCase() || 'U', [sanitizedUsername]);
   const showBalanceKey = useMemo(() => userScopedKey('dash_show_balance', USER_ID), [USER_ID]);
   const [showBalance, setShowBalance] = useState(() => {
     const saved = safeGetItem(showBalanceKey, 'true');

@@ -23,18 +23,38 @@
   .app-header,
   .mobile-bottom-nav,
   .mobile-bottom-dock,
-  .command-palette-backdrop,
-  .modal-overlay,
-  .tax-modal-backdrop,
   .bento-dashboard .bento-hero,
   .nav-container,
   .portfolio-header .nav-container,
   .dashboard-quick-stats-strip,
   .dashboard-container .dashboard-quick-stats-strip,
-  [class*="glass"] {
+  [class*="glass"]:not(.modal-box):not(.modal-overlay):not(.transaction-modal):not(.transaction-modal-overlay) {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     background: var(--surface-1) !important;
+  }
+
+  /* ── Preserved Modal Overlays and Dialog Surfaces on Mobile ── */
+  .modal-overlay,
+  .transaction-modal-overlay,
+  .command-palette-backdrop,
+  .tax-modal-backdrop,
+  .mobile-drawer-overlay {
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+    background: rgba(10, 15, 29, 0.75) !important;
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .modal-box,
+  .transaction-modal,
+  .dialog-panel,
+  .tax-modal,
+  .shortcuts-modal {
+    background: var(--surface-card, var(--ambient-base, #1e293b)) !important;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12)) !important;
+    box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
   }
 
   /* ── STEP 4: Freeze & Hide Ambient Background Layers, Orbs, and Shards on Mobile ── */
@@ -80,6 +100,15 @@
   .card,
   .dashboard-quick-stats-strip {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+  }
+
+  .modal-box,
+  .transaction-modal,
+  .dialog-panel,
+  .tax-modal,
+  .shortcuts-modal,
+  .notification-toast {
+    box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
   }
 
   /* Preserve essential accessibility focus rings */

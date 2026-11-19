@@ -39,7 +39,6 @@ import { useAppState, useAppActions } from '../contexts/AppContext';
 import { useToast } from '../components/ToastProvider';
 import {
   exportToPDF,
-  cleanDescription,
   sanitizeDescription,
   cleanCategory,
   isValidTransactionDate,

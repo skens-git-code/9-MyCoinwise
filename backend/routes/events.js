@@ -140,7 +140,8 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
   try {
     // ── Load events, chronological order ──
     const events = await Event.find({ user_id: req.params.userId })
-      .sort({ date: 1 });
+      .sort({ date: 1 })
+      .lean();
     return res.json(events);
   } catch (error) {
     logger.error('[Events] list error:', error);

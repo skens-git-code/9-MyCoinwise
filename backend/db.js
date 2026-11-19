@@ -43,6 +43,7 @@ const connectToMongo = async ({ retries = 4 } = {}) => {
         heartbeatFrequencyMS: 10000,
         maxPoolSize: 50,
         minPoolSize: 5,
+        autoIndex: !config.isProduction,
         retryWrites: true,
         w: 'majority',
       });

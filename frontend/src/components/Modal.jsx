@@ -127,10 +127,10 @@ const Modal = ({
                focusable children (e.g. a pure confirmation), instead of leaving
                focus behind the dialog. */
             tabIndex={-1}
-            initial={isConfirmDialog ? { scale: 0.9, opacity: 0 } : { y: '100%', opacity: 0, scale: 0.95 }}
+            initial={isConfirmDialog ? { scale: 0.95, opacity: 0 } : { y: 20, opacity: 0, scale: 0.98 }}
             animate={isConfirmDialog ? { scale: 1, opacity: 1 } : { y: 0, opacity: 1, scale: 1 }}
-            exit={isConfirmDialog ? { scale: 0.9, opacity: 0 } : { y: '100%', opacity: 0, scale: 0.95 }}
-            transition={{ type: 'spring', damping: 22, stiffness: 260 }}
+            exit={isConfirmDialog ? { scale: 0.95, opacity: 0 } : { y: 20, opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             onClick={(e) => e.stopPropagation()}
             style={danger ? { borderColor: 'rgba(239,68,68,0.4)', boxShadow: '0 8px 32px rgba(239,68,68,0.2)' } : {}}
           >

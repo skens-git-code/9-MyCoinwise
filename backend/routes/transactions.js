@@ -1094,9 +1094,16 @@ router.get('/:userId', checkOwnership('userId'), async (req, res) => {
       })
         .sort({ date: -1, _id: -1 })
         .skip(skip)
-        .limit(limit);
+        .limit(limit)
+        .lean();
 
-      return res.json(dedupeTransactions(transactions.map((transaction) => transaction.toObject()), { excludeFuture: false }));
+      for (let i = 0; i < transactions.length; i++) {
+        if (!transactions[i].id && transactions[i]._id) {
+          transactions[i].id = String(transactions[i]._id);
+        }
+      }
+
+      return res.json(dedupeTransactions(transactions, { excludeFuture: false }));
     } catch (error) {
       logger.error('[Transactions] legacy list error:', error);
       return res.status(500).json({ error: 'Unable to load transactions.' });
